@@ -46,6 +46,11 @@ COPY --from=json-copier /usr/src/app .
 
 # Run the install before copying the rest of the files
 RUN yarn config set workspaces-experimental true
+
+RUN ls /usr/src/app/custom/labeling/
+RUN yarn run cli link-extension /usr/src/app/custom/extension/labeling
+RUN yarn run cli link-mode /usr/src/app/custom/mode/labeling-mode
+
 RUN yarn install --frozen-lockfile 
 
 COPY . .
@@ -58,8 +63,6 @@ ENV QUICK_BUILD true
 # ENV GENERATE_SOURCEMAP=false
 # ENV REACT_APP_CONFIG=config/default.js
 
-RUN yarn run cli link-extension /usr/src/app/custom/labeling/labeling
-RUN yarn run cli link-mode /usr/src/app/custom/labeling/labeling-mode
 RUN yarn run build
 
 # Stage 3: Bundle the built application into a Docker container
