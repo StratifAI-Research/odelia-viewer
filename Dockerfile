@@ -30,6 +30,7 @@ COPY ["package.json", "yarn.lock", "preinstall.js", "./"]
 COPY extensions /usr/src/app/extensions
 COPY modes /usr/src/app/modes
 COPY platform /usr/src/app/platform
+COPY custom /usr/src/app/custom
 
 # Find and remove non-package.json files
 #RUN find extensions \! -name "package.json" -mindepth 2 -maxdepth 2 -print | xargs rm -rf
@@ -57,6 +58,8 @@ ENV QUICK_BUILD true
 # ENV GENERATE_SOURCEMAP=false
 # ENV REACT_APP_CONFIG=config/default.js
 
+RUN yarn run cli link-extension /usr/src/app/custom/labeling/labeling
+RUN yarn run cli link-mode /usr/src/app/custom/labeling/labeling-mode
 RUN yarn run build
 
 # Stage 3: Bundle the built application into a Docker container

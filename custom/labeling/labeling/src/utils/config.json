@@ -1,0 +1,189 @@
+{
+  "panel_configs": [
+    {
+      "name": "patient table",
+      "label_options": [
+        {
+          "Ethnicity": {
+            "type": "options",
+            "options": [
+              "Caucasian",
+              "African",
+              "Asian"
+            ]
+          }
+        },
+        {
+          "Date of Birth": {
+            "type": "date"
+          }
+        },
+        {
+          "BRCA1": {
+            "type": "options",
+            "options": [
+              "yes",
+              "no"
+            ]
+          }
+        },
+        {
+          "BRCA2": {
+            "type": "options",
+            "options": [
+              "yes",
+              "no"
+            ]
+          }
+        },
+        {
+          "Other risk genes": {
+            "type": "options",
+            "options": [
+              "yes",
+              "no"
+            ]
+          }
+        },
+        {
+          "Family risk": {
+            "type": "options",
+            "options": [
+              "yes",
+              "no"
+            ]
+          }
+        },
+        {
+          "Other risk factors": {
+            "type": "options",
+            "options": [
+              "yes",
+              "no"
+            ]
+          }
+        },
+        {
+          "Prior history of breast cancer": {
+            "type": "options",
+            "options": [
+              "yes",
+              "no"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "study table",
+      "label_options": [
+        {
+          "BIRADS": {
+            "type": "options",
+            "options": [
+              "0",
+              "1",
+              "2",
+              "3",
+              "4",
+              "5",
+              "6",
+              "N/A"
+            ]
+          }
+        },
+        {
+          "Background Parenchymal Enhancement": {
+            "type": "options",
+            "options": [
+              "Minimal",
+              "Mild",
+              "Moderate",
+              "Marked"
+            ]
+          }
+        },
+        {
+          "History of Biopsy": {
+            "type": "options",
+            "options": [
+              "Yes",
+              "No"
+            ]
+          }
+        },
+        {
+          "Treatment": {
+            "type": "options",
+            "options": [
+              "Yes",
+              "No"
+            ]
+          }
+        },
+        {
+          "Date of Treatment": {
+            "type": "date"
+          }
+        },
+        {
+          "Neoadjuvant Radiatio": {
+            "type": "options",
+            "options": [
+              "Yes",
+              "No"
+            ]
+          }
+        },
+        {
+          "Prior Surgery": {
+            "type": "options",
+            "options": [
+              "Yes",
+              "No"
+            ]
+          }
+        },
+        {
+          "Type of Surgery (Breast conserving therapy or mastectomy)": {
+            "type": "options",
+            "options": [
+              "Breast conserving surgery",
+              "Mastectomy"
+            ]
+          }
+        },
+        {
+          "Menopausal status": {
+            "type": "options",
+            "options": [
+              "pre",
+              "peri",
+              "post"
+            ]
+          }
+        },
+        {
+          "Anti-hormonal treatment at time of examination": {
+            "type": "options",
+            "options": [
+              "Yes",
+              "No"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "leison table",
+      "label_options": [
+        {
+          "A": [
+            "b",
+            "c"
+          ]
+        }
+      ]
+    }
+  ]
+}

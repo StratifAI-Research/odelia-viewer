@@ -144,7 +144,7 @@ module.exports = (env, argv) => {
       // https: true,
       hot: true,
       open: true,
-      port: 3000,
+      port: 4000,
       client: {
         overlay: { errors: true, warnings: false },
       },

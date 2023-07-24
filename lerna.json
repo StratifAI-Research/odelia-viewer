@@ -1,6 +1,6 @@
 {
   "version": "independent",
-  "packages": ["extensions/*", "platform/*", "modes/*"],
+  "packages": ["extensions/*", "platform/*", "modes/*", "custom/labeling/*"],
   "npmClient": "yarn",
   "useWorkspaces": true,
   "command": {
