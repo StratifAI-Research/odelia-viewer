@@ -1,9 +1,11 @@
 import { id } from './id';
 import React from 'react';
-import PanelLabeling from "./panels/PanelLabeling"
-
+import PanelLabeling from "./panels/PanelLabeling";
+import PanelLeisonTable from "./panels/PanelLeisons";
 import { initMeasurementService } from './initMesurementService';
 
+import Config from "./utils/config";
+const config: Config = require('./utils/config.json');
 
 /**
  * You can remove any of the following modules if you don't need them.
@@ -34,8 +36,6 @@ export default {
   },
 
   onModeEnter: ({ servicesManager }) => {
-
-
   },
   /**
    * PanelModule should provide a list of panels that will be available in OHIF
@@ -59,6 +59,18 @@ export default {
         );
       }
     };
+    const wrappedPanelLeisons = (name) => {
+      return () => {
+        return (
+          <PanelLeisonTable
+            name={name}
+            commandsManager={commandsManager}
+            servicesManager={servicesManager}
+          />
+        );
+      }
+    };
+
 
     return [
       {
@@ -80,7 +92,7 @@ export default {
         iconName: 'tool-circle',
         iconLabel: 'Leison labels',
         label: 'Leison labels',
-        component: wrappedPanelLabeling("leison table"),
+        component: wrappedPanelLeisons("leison table"),
       },
 
     ];

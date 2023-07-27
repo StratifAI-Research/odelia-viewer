@@ -12,6 +12,14 @@ const LabelingTable = ({
 }) => {
   const label_options = Object.assign({}, ...config.label_options)
 
+  // Fill in label data for new measurements
+  if (measurement.label == '') {
+    measurement.label_data = Object.assign({}, ...config.label_options)
+    console.log(measurement.label_data)
+    // measurement.label_data.array.forEach(element => {
+    //  measurement.label_data[element] = label_options[element].options[0]
+    //});
+  }
   return (
     <div>
       <div className="flex justify-between px-2 py-1 bg-secondary-main">

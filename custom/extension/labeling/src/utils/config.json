@@ -178,10 +178,52 @@
       "name": "leison table",
       "label_options": [
         {
-          "A": [
-            "b",
-            "c"
-          ]
+          "Type of Lesion": {
+            "type": "options",
+            "options": [
+              "DCIS",
+              "Invasive Cancer (no special type)",
+              "Invasive Cancer (lobular carcinoma)",
+              "Invasive Cancer (all other)",
+              "Proliferative with atypia",
+              "Benign"
+            ]
+          },
+          "Histopathology ER": {
+            "type": "options",
+            "options": [
+              "positive",
+              "negative"
+            ]
+          },
+          "Histopathology PR": {
+            "type": "options",
+            "options": [
+              "positive",
+              "negative"
+            ]
+          },
+          "Histopathology HER2": {
+            "type": "options",
+            "options": [
+              "positive",
+              "negative"
+            ]
+          },
+          "Histopathology Ki67": {
+            "type": "options",
+            "options": [
+              "0",
+              "1"
+            ]
+          },
+          "Histopathology Oncotype": {
+            "type": "options",
+            "options": [
+              "0",
+              "1"
+            ]
+          }
         }
       ]
     }

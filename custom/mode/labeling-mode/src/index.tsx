@@ -1,4 +1,10 @@
 import { id } from './id';
+import toolbarButtons from './toolbarButtons.js';
+const configs = {
+  Length: {},
+  //
+};
+
 
 const ohif = {
   layout: '@ohif/extension-default.layoutTemplateModule.viewerLayout',
@@ -45,13 +51,95 @@ function modeFactory({ modeConfiguration }) {
      * Runs when the Mode Route is mounted to the DOM. Usually used to initialize
      * Services and other resources.
      */
-    onModeEnter: ({ servicesManager, extensionManager }) => {},
-    /**
-     * Runs when the Mode Route is unmounted from the DOM. Usually used to clean
-     * up resources and states
-     */
-    onModeExit: () => {},
-    /** */
+
+    onModeEnter: ({ servicesManager, extensionManager }) => {
+      const { toolbarService, toolGroupService } = servicesManager.services;
+      const utilityModule = extensionManager.getModuleEntry(
+        '@ohif/extension-cornerstone.utilityModule.tools'
+      );
+
+      const { toolNames, Enums } = utilityModule.exports;
+
+      const tools = {
+        active: [
+          {
+            toolName: toolNames.WindowLevel,
+            bindings: [{ mouseButton: Enums.MouseBindings.Primary }],
+          },
+          {
+            toolName: toolNames.Pan,
+            bindings: [{ mouseButton: Enums.MouseBindings.Auxiliary }],
+          },
+          {
+            toolName: toolNames.Zoom,
+            bindings: [{ mouseButton: Enums.MouseBindings.Secondary }],
+          },
+          { toolName: toolNames.StackScrollMouseWheel, bindings: [] },
+        ],
+        passive: [
+          { toolName: toolNames.Length },
+          { toolName: toolNames.Bidirectional },
+          { toolName: toolNames.Probe },
+          { toolName: toolNames.EllipticalROI },
+          { toolName: toolNames.CircleROI },
+          { toolName: toolNames.RectangleROI },
+          { toolName: toolNames.StackScroll },
+          { toolName: toolNames.CalibrationLine },
+        ],
+        // enabled
+        // disabled
+      };
+
+      const toolGroupId = 'default';
+      toolGroupService.createToolGroupAndAddTools(toolGroupId, tools, configs);
+
+      let unsubscribe;
+
+      const activateTool = () => {
+        toolbarService.recordInteraction({
+          groupId: 'WindowLevel',
+          itemId: 'WindowLevel',
+          interactionType: 'tool',
+          commands: [
+            {
+              commandName: 'setToolActive',
+              commandOptions: {
+                toolName: 'WindowLevel',
+              },
+              context: 'CORNERSTONE',
+            },
+          ],
+        });
+
+        // We don't need to reset the active tool whenever a viewport is getting
+        // added to the toolGroup.
+        unsubscribe();
+      };
+
+      // Since we only have one viewport for the basic cs3d mode and it has
+      // only one hanging protocol, we can just use the first viewport
+      ({ unsubscribe } = toolGroupService.subscribe(
+        toolGroupService.EVENTS.VIEWPORT_ADDED,
+        activateTool
+      ));
+
+      toolbarService.init(extensionManager);
+      toolbarService.addButtons(toolbarButtons);
+      toolbarService.createButtonSection('primary', [
+        'MeasurementTools',
+        'Zoom',
+        'WindowLevel',
+        'Pan',
+        'Layout',
+        'MoreTools',
+      ]);
+    },
+    onModeExit: ({ servicesManager }) => {
+      const { toolGroupService, measurementService, toolbarService } =
+        servicesManager.services;
+
+      toolGroupService.destroy();
+    },    /** */
     validationTags: {
       study: [],
       series: [],
@@ -81,7 +169,7 @@ function modeFactory({ modeConfiguration }) {
             id: ohif.layout,
             props: {
               leftPanels: [ohif.leftPanel],
-              rightPanels: [labeling.patientPanel,labeling.studyPanel,labeling.leisonPanel],
+              rightPanels: [labeling.patientPanel, labeling.studyPanel, labeling.leisonPanel],
               viewports: [
                 {
                   namespace: cornerstone.viewport,
