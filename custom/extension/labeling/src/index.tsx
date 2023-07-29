@@ -3,9 +3,7 @@ import React from 'react';
 import PanelLabeling from "./panels/PanelLabeling";
 import PanelLeisonTable from "./panels/PanelLeisons";
 import { initMeasurementService } from './initMesurementService';
-
-import Config from "./utils/config";
-const config: Config = require('./utils/config.json');
+import initLabels from "./initLabels";
 
 /**
  * You can remove any of the following modules if you don't need them.
@@ -188,4 +186,14 @@ export default {
     commandsManager,
     extensionManager,
   }) => { },
+  getUtilityModule: ({ servicesManager }) => {
+    return [
+      {
+        name: 'initLabels',
+        exports:
+          initLabels
+        ,
+      },
+    ]
+  },
 };

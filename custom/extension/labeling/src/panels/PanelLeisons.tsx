@@ -138,19 +138,7 @@ export default function PanelLeisonTable({
     //Todo: why we are jumping to image?
     // jumpToImage({ id, isActive });
 
-    const onSubmitHandler = ({ action, value }) => {
-      switch (action.id) {
-        case 'save': {
-          measurementService.update(
-            uid,
-            {
-              ...measurement,
-              ...value,
-            },
-            true
-          );
-        }
-      }
+    const onSubmitHandler = () => {
       uiDialogService.dismiss({ id: 'enter-annotation' });
     };
 
@@ -163,11 +151,13 @@ export default function PanelLeisonTable({
       contentProps: {
         title: 'Enter your annotation',
         noCloseButton: true,
-        value: { label: measurement.label || '' },
         body: ({ value, setValue }) => {
-          const onChangeHandler = event => {
-            event.persist();
-            setValue(value => ({ ...value, label: event.target.value }));
+          const onMeasurementItemEditHandler = (uid, label, label_value) => {
+            const measurement = measurementService.getMeasurement(uid);
+            measurement.label_data[label] = label_value
+            console.log(measurement.label)
+            measurement.label = "Leision annotated"
+            measurementService.update(uid, measurement)
           };
 
           const onKeyPressHandler = event => {
@@ -195,7 +185,7 @@ export default function PanelLeisonTable({
                 title='Leison annotation'
                 measurement={measurement}
                 config={config}
-                onChange={onChangeHandler}
+                onChange={onMeasurementItemEditHandler}
                 onDelete={id => {
                 }}
               />
@@ -204,7 +194,6 @@ export default function PanelLeisonTable({
         },
         actions: [
           // temp: swap button types until colors are updated
-          { id: 'cancel', text: 'Cancel', type: 'primary' },
           { id: 'save', text: 'Save', type: 'secondary' },
         ],
         onSubmit: onSubmitHandler,
@@ -254,8 +243,9 @@ PanelLeisonTable.propTypes = {
 
 function _getMappedMeasurements(measurementService) {
   const measurements = measurementService.getMeasurements();
+  const filteredMeasurements = measurements.filter((element) => element.toolName != "ODELIALabel")
 
-  const mappedMeasurements = measurements.map((m, index) =>
+  const mappedMeasurements = filteredMeasurements.map((m, index) =>
     _mapMeasurementToDisplay(m, index, measurementService.VALUE_TYPES)
   );
 
@@ -292,7 +282,7 @@ function _mapMeasurementToDisplay(measurement, index, types) {
   if (finding && finding?.text !== label) {
     displayText = [finding.text, ...displayText];
   }
-  displayText = ["Hui"]
+  displayText = []
   return {
     uid,
     label,

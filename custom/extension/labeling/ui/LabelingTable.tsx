@@ -11,15 +11,16 @@ const LabelingTable = ({
   onChange,
 }) => {
   const label_options = Object.assign({}, ...config.label_options)
-
   // Fill in label data for new measurements
+
   if (measurement.label == '') {
-    measurement.label_data = Object.assign({}, ...config.label_options)
+    measurement.label_data = {}
     console.log(measurement.label_data)
-    // measurement.label_data.array.forEach(element => {
-    //  measurement.label_data[element] = label_options[element].options[0]
-    //});
+    Object.keys(label_options).forEach(element => {
+      measurement.label_data[element] = label_options[element].options[0]
+    });
   }
+
   return (
     <div>
       <div className="flex justify-between px-2 py-1 bg-secondary-main">
@@ -30,7 +31,6 @@ const LabelingTable = ({
       <div className="overflow-x-hidden overflow-y-auto ohif-scrollbar max-h-64">
         {!!measurement.label_data && Object.keys(measurement.label_data).filter(key => key in label_options)
           .map((key, index) => {
-            console.log(label_options[key].type)
             if (label_options[key].type == "options") {
               return <LabelingOptions
                 key={key}

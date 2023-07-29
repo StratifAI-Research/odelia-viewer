@@ -50,7 +50,7 @@ export default function PanelLabeling({
             filtered_measurement.map((measurement) => {
 
               return <LabelingTable
-                title={t('Labels User 123')}
+                title={t('Labels')}
                 measurement={measurement}
                 config={config}
                 onClick={id => {

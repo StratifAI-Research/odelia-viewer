@@ -1,5 +1,8 @@
 import { id } from './id';
 import toolbarButtons from './toolbarButtons.js';
+import { DicomMetadataStore } from '@ohif/core';
+import getStudies from './studiesList';
+
 const configs = {
   Length: {},
   //
@@ -164,6 +167,83 @@ function modeFactory({ modeConfiguration }) {
     routes: [
       {
         path: 'template',
+        init: async (
+          { servicesManager, extensionManager, studyInstanceUIDs, dataSource, filters },
+          hangingProtocolId
+        ) => {
+          const {
+            displaySetService,
+            hangingProtocolService,
+            measurementService
+          } = servicesManager.services;
+
+          const unsubscriptions = [];
+          const initLabels = extensionManager.getModuleEntry(
+            "labeling.utilityModule.initLabels"
+          ).exports;
+          //initLabels({ extensionManager, measurementService, StudyInstanceUID: 123 });
+          initLabels({ extensionManager, measurementService, StudyInstanceUID: studyInstanceUIDs[0] });
+
+          const onDisplaySetsAdded = ({ displaySetsAdded, options }) => {
+            const displaySet = displaySetsAdded[0];
+            const { StudyInstanceUID } = displaySet;
+            //TODO: Fetch measurements from DICOM
+
+            //measurementService.addMeasurement(/**...**/);
+          };
+
+          // subscription to the DISPLAY_SETS_ADDED
+          const { unsubscribe: displaySetsAddedUnsubscribe } = displaySetService.subscribe(
+            displaySetService.EVENTS.DISPLAY_SETS_ADDED,
+            onDisplaySetsAdded
+          );
+          unsubscriptions.push(displaySetsAddedUnsubscribe);
+
+          const {
+            unsubscribe: instanceAddedUnsubscribe,
+          } = DicomMetadataStore.subscribe(
+            DicomMetadataStore.EVENTS.INSTANCES_ADDED,
+            function ({ StudyInstanceUID, SeriesInstanceUID, madeInClient = false }) {
+              const seriesMetadata = DicomMetadataStore.getSeries(
+                StudyInstanceUID,
+                SeriesInstanceUID
+              );
+              displaySetService.makeDisplaySets(seriesMetadata.instances, madeInClient);
+            }
+          );
+
+          unsubscriptions.push(instanceAddedUnsubscribe);
+
+          const allRetrieves = studyInstanceUIDs.map(StudyInstanceUID =>
+            dataSource.retrieve.series.metadata({
+              StudyInstanceUID,
+              filters,
+            })
+          );
+
+          Promise.allSettled(allRetrieves).then(() => {
+            const displaySets = displaySetService.getActiveDisplaySets();
+
+            if (!displaySets || !displaySets.length) {
+              return;
+            }
+
+            // Gets the studies list to use
+            const studies = getStudies(studyInstanceUIDs, displaySets);
+
+            // study being displayed, and is thus the "active" study.
+            const activeStudy = studies[0];
+
+            // run the hanging protocol matching on the displaySets with the predefined
+            // hanging protocol in the mode configuration
+            hangingProtocolService.run(
+              { studies, activeStudy, displaySets },
+              hangingProtocolId
+            );
+          });
+
+          return unsubscriptions;
+        },
         layoutTemplate: ({ location, servicesManager }) => {
           return {
             id: ohif.layout,

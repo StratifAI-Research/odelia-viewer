@@ -21,7 +21,6 @@ const ODELIALabel = {
       return null;
     }
 
-
     if (annotation.type != "ODELIALabel") {
       throw new Error('Wrong annotation type passed');
     }
