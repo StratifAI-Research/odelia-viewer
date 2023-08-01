@@ -1,14 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import PropTypes from 'prop-types';
-import { utils, ServicesManager } from '@ohif/core';
+import { ServicesManager } from '@ohif/core';
 import { MeasurementTable, Dialog, Input, useViewportGrid } from '@ohif/ui';
 import ActionButtons from './ActionButtons';
+import CSVImporter from './CSVImporter'
+
 import debounce from 'lodash.debounce';
 import LabelingTable from '../../ui/LabelingTable';
 import Config from "../utils/config";
 
 
-const { downloadCSVReport } = utils;
+import downloadCSVReport from '../utils/downloadCSVReport';
+import importCSVReport from '../utils/importCSVReport';
 
 export default function PanelLeisonTable({
   name,
@@ -65,66 +68,11 @@ export default function PanelLeisonTable({
 
   async function exportReport() {
     const measurements = measurementService.getMeasurements();
-
     downloadCSVReport(measurements, measurementService);
   }
 
   async function clearMeasurements() {
     measurementService.clearMeasurements();
-  }
-
-  async function createReport(): Promise<any> {
-    // filter measurements that are added to the active study
-    const activeViewport = viewports[activeViewportIndex];
-    const measurements = measurementService.getMeasurements();
-    const displaySet = displaySetService.getDisplaySetByUID(
-      activeViewport.displaySetInstanceUIDs[0]
-    );
-    const trackedMeasurements = measurements.filter(
-      m => displaySet.StudyInstanceUID === m.referenceStudyUID
-    );
-
-    if (trackedMeasurements.length <= 0) {
-      uiNotificationService.show({
-        title: 'No Measurements',
-        message: 'No Measurements are added to the current Study.',
-        type: 'info',
-        duration: 3000,
-      });
-      return;
-    }
-
-    const promptResult = await createReportDialogPrompt(uiDialogService, {
-      extensionManager,
-    });
-
-    if (promptResult.action === CREATE_REPORT_DIALOG_RESPONSE.CREATE_REPORT) {
-      const dataSources = extensionManager.getDataSources(
-        promptResult.dataSourceName
-      );
-      const dataSource = dataSources[0];
-
-      const SeriesDescription =
-        // isUndefinedOrEmpty
-        promptResult.value === undefined || promptResult.value === ''
-          ? 'Research Derived Series' // default
-          : promptResult.value; // provided value
-
-      // Re-use an existing series having the same series description to avoid
-      // creating too many series instances.
-      const options = findSRWithSameSeriesDescription(
-        SeriesDescription,
-        displaySetService
-      );
-
-      return createReportAsync(
-        servicesManager,
-        commandsManager,
-        dataSource,
-        trackedMeasurements,
-        options
-      );
-    }
   }
 
   const jumpToImage = ({ uid, isActive }) => {
@@ -138,7 +86,12 @@ export default function PanelLeisonTable({
     //Todo: why we are jumping to image?
     // jumpToImage({ id, isActive });
 
-    const onSubmitHandler = () => {
+    const onSubmitHandler = ({ action, value }) => {
+      switch (action.id) {
+        case 'delete': {
+          measurementService.remove(uid)
+        }
+      }
       uiDialogService.dismiss({ id: 'enter-annotation' });
     };
 
@@ -162,38 +115,23 @@ export default function PanelLeisonTable({
 
           const onKeyPressHandler = event => {
             if (event.key === 'Enter') {
-              onSubmitHandler({ value, action: { id: 'save' } });
+              onSubmitHandler();
             }
           };
           return (
-            /*
-            <div className="p-4 bg-primary-dark">
-              <Input
-                autoFocus
-                id="annotation"
-                className="mt-2 bg-black border-primary-main"
-                type="text"
-                containerClassName="mr-2"
-                value={value.label}
-                onChange={onChangeHandler}
-                onKeyPress={onKeyPressHandler}
-              />
-            </div>
-            */
             <div className="p-4 bg-primary-dark">
               <LabelingTable
                 title='Leison annotation'
                 measurement={measurement}
                 config={config}
                 onChange={onMeasurementItemEditHandler}
-                onDelete={id => {
-                }}
               />
             </div>
           );
         },
         actions: [
           // temp: swap button types until colors are updated
+          { id: 'delete', text: 'Delete', type: 'cancel' },
           { id: 'save', text: 'Save', type: 'secondary' },
         ],
         onSubmit: onSubmitHandler,
@@ -227,12 +165,17 @@ export default function PanelLeisonTable({
         />
       </div>
       <div className="flex justify-center p-4">
+        <CSVImporter
+          onClick={(csvData) => {
+            importCSVReport({ measurementService, extensionManager }, csvData)
+          }}
+        />
         <ActionButtons
-          onExportClick={exportReport}
-          onClearMeasurementsClick={clearMeasurements}
-          onCreateReportClick={createReport}
+          onClick={exportReport}
+          name="Export CSV"
         />
       </div>
+
     </>
   );
 }

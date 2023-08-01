@@ -13,11 +13,10 @@ const LabelingDate = ({
   const [isHovering, setIsHovering] = useState(false);
   const [selectedOption, setSelectedOption] = useState(label_value);
 
-  const onChangeValueHandler = event => {
-    const new_value = event.target.value
-    setSelectedOption(new_value)
-    event.stopPropagation();
-    onChange(label, new_value);
+  const onChangeValueHandler = ({ date }) => {
+    console.log(date)
+    setSelectedOption(date)
+    onChange(label, date);
   };
 
 
@@ -43,8 +42,8 @@ const LabelingDate = ({
         </div>
         <div className="flex items-center ml-3">
           <DatePicker
-            date={label_value}
-            onChange={e => onChange(e)} />
+            date={selectedOption}
+            onChange={e => onChangeValueHandler(e)} />
         </div>
       </div>
     </div>

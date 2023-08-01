@@ -77,7 +77,6 @@ LabelingTable.propTypes = {
   activeLabelId: PropTypes.string.isRequired,
   onClick: PropTypes.func.isRequired,
   onEdit: PropTypes.func.isRequired,
-  onDelete: PropTypes.func.isRequired,
   onToggleVisibility: PropTypes.func.isRequired,
   onToggleVisibilityAll: PropTypes.func.isRequired,
 };

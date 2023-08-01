@@ -11,6 +11,7 @@ export default function initLabels({ measurementService, extensionManager, Study
     ODELIA_LABELING_SOURCE_NAME, ODELIA_LABELING_SOURCE_VERSION);
   const annotationType = "ODELIALabel"
 
+  console.log(StudyInstanceUID)
 
   if (measurements && measurements.some((element) => element.referenceStudyUID == StudyInstanceUID)) {
     console.log("Measurement already inited, skipping")
@@ -25,7 +26,7 @@ export default function initLabels({ measurementService, extensionManager, Study
         label_data[element] = label_options[element].options[0]
       }
       else {
-        label_data[element] = ""
+        label_data[element] = "undefined"
       }
     });
   })
@@ -46,7 +47,6 @@ export default function initLabels({ measurementService, extensionManager, Study
 
   const matchingMapping = mappings.find(
     m => m.annotationType === annotationType,
-
   );
   measurementService.addRawMeasurement(
     source,

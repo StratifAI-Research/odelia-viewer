@@ -152,7 +152,6 @@ const DateRange = (props) => {
       isOutsideRange={(day) => !isInclusivelyBeforeDay(day, moment())}
       hideKeyboardShortcutsPanel={true}
       numberOfMonths={1}
-      showClearDates={false}
       anchorDirection="left"
     />
   );

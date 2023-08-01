@@ -19,13 +19,19 @@ export default function downloadCSVReport(measurementData) {
       referenceSeriesUID,
       getReport,
       uid,
+      type
     } = measurement;
 
+    //if (type != "ODELIALabel") {
+    //  console.warn('Skipping leisons for now');
+    //  return;
+    //}
     if (!getReport) {
       console.warn('Measurement does not have a getReport function');
       return;
     }
-
+    console.log(referenceStudyUID)
+    console.log(measurement)
     const studyMetadata = DicomMetadataStore.getStudy(
       referenceStudyUID
     );

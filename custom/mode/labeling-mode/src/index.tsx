@@ -60,7 +60,6 @@ function modeFactory({ modeConfiguration }) {
       const utilityModule = extensionManager.getModuleEntry(
         '@ohif/extension-cornerstone.utilityModule.tools'
       );
-
       const { toolNames, Enums } = utilityModule.exports;
 
       const tools = {
@@ -264,7 +263,7 @@ function modeFactory({ modeConfiguration }) {
     /** List of extensions that are used by the mode */
     extensions: extensionDependencies,
     /** HangingProtocol used by the mode */
-    // hangingProtocol: [''],
+    hangingProtocol: 'default',
     /** SopClassHandlers used by the mode */
     sopClassHandlers: [ohif.sopClassHandler],
     /** hotkeys for mode */

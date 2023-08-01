@@ -5,7 +5,8 @@
     "packages": [
       "platform/*",
       "extensions/*",
-      "modes/*"
+      "modes/*",
+      "custom/extension/*"
     ],
     "nohoist": [
       "**/html-minifier-terser"

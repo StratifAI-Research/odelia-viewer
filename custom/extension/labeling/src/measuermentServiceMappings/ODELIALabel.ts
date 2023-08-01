@@ -14,8 +14,7 @@ const ODELIALabel = {
     formEvent
   ) => {
     const { annotation } = formEvent;
-    const { metadata, data, annotationUID } = annotation;
-    const { StudyInstanceUID } = metadata
+    const { metadata, data, annotationUID, referenceStudyUID } = annotation;
     if (!metadata || !data) {
       console.warn('ODELIALabel tool: Missing metadata or data');
       return null;
@@ -27,12 +26,12 @@ const ODELIALabel = {
 
     const displayText = getDisplayText(annotation.data);
     const getReport = () =>
-      _getReport(annotation.data, StudyInstanceUID);
+      _getReport(annotation.data, referenceStudyUID);
 
     return {
       uid: annotationUID,
       metadata,
-      referenceStudyUID: StudyInstanceUID,
+      referenceStudyUID: referenceStudyUID,
       label_data: data.label_data,
       toolName: annotation.type,
       displayText: displayText,

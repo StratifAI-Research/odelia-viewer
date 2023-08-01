@@ -83,10 +83,10 @@ const DatePicker = (props) => {
     <SingleDatePicker
       /** REQUIRED */
       date={parsedDate}
-      onDateChange={({ date: newDate }) => {
-        console.log(newDate)
+      onDateChange={(date) => {
+        console.log(date)
         onChange({
-          date: newDate ? newDate.format('YYYYMMDD') : undefined,
+          date: date.format('YYYYMMDD'),
         })
       }}
       focused={focused}
@@ -101,8 +101,8 @@ const DatePicker = (props) => {
       isOutsideRange={(day) => !isInclusivelyBeforeDay(day, moment())}
       hideKeyboardShortcutsPanel={true}
       numberOfMonths={1}
-      showClearDates={false}
       anchorDirection="left"
+      displayFormat="DD/MM/YYYY"
     />
   );
 };
