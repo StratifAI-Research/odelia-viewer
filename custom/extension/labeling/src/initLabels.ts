@@ -26,7 +26,7 @@ export default function initLabels({ measurementService, extensionManager, Study
         label_data[element] = label_options[element].options[0]
       }
       else {
-        label_data[element] = "undefined"
+        label_data[element] = "19700101"
       }
     });
   })
