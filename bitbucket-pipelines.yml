@@ -49,6 +49,7 @@ pipelines:
             - VERSION="odelia-1.${BITBUCKET_BUILD_NUMBER}"
             - IMAGE=${DOCKERHUB_NAMESPACE}/${IMAGE_NAME}
             - docker tag "${IMAGE_NAME}" "${IMAGE}:${VERSION}"
+            - docker tag "${IMAGE_NAME}" "${IMAGE}:latest"
             - docker push "${IMAGE}:${VERSION}"
             - docker push "${IMAGE}:latest"
           services:
