@@ -13,7 +13,9 @@ export default function downloadCSVReport(measurementData) {
   ];
 
   const reportMap = {};
-  measurementData.forEach(measurement => {
+  const labelMeasurements = measurementData.filter(measurement => measurement.type == "ODELIALabel")
+  const leisonMeasurements = measurementData.filter(measurement => measurement.type == "value_type::circle")
+  labelMeasurements.forEach(measurement => {
     const {
       referenceStudyUID,
       referenceSeriesUID,
@@ -43,10 +45,38 @@ export default function downloadCSVReport(measurementData) {
     const commonRowItems = _getCommonRowItems(measurement, seriesMetadata);
     const report = getReport(measurement);
 
-    reportMap[uid] = {
-      report,
-      commonRowItems,
-    };
+
+    //Filter leisions same as current study AND that has been annotated
+    const filteredLeisions = leisonMeasurements.filter(measurement => measurement.referenceStudyUID == referenceStudyUID)
+      .filter(measurement => measurement.label_data !== undefined)
+
+    // Duplicate ODELIA label for each leision and add leision report, otherwise return ODELIALAbel
+    if (filteredLeisions.length != 0) {
+      filteredLeisions.forEach(leisonMeasurement => {
+        const {
+          getReport,
+          uid,
+          metadata
+        } = leisonMeasurement;
+
+        const leisionReport = getReport(leisonMeasurement);
+        report.columns = [...report.columns, ...leisionReport.columns]
+        report.values = [...report.values, ...leisionReport.values]
+        report.columns.push("referencedImageId")
+        report.values.push(metadata['referencedImageId'])
+        reportMap[uid] = {
+          report,
+          commonRowItems,
+        };
+      }
+      )
+    }
+    else {
+      reportMap[uid] = {
+        report,
+        commonRowItems,
+      };
+    }
   });
 
   // get columns names inside the report from each measurement and

@@ -65,6 +65,7 @@ export default {
             name={name}
             commandsManager={commandsManager}
             servicesManager={servicesManager}
+            extensionManager={extensionManager}
           />
         );
       }

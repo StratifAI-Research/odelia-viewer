@@ -431,6 +431,8 @@ class MeasurementService extends PubSubService {
     }
 
     let measurement = {};
+    measurement = toMeasurementSchema(data);
+
     try {
       measurement = toMeasurementSchema(data);
       measurement.source = source;
@@ -483,7 +485,7 @@ class MeasurementService extends PubSubService {
       });
     }
 
-    return newMeasurement.id;
+    return newMeasurement.uid;
   }
 
   /**

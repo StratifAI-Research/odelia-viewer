@@ -4,13 +4,13 @@ import { ODELIA_LABELING_SOURCE_NAME, ODELIA_LABELING_SOURCE_VERSION } from "../
 import { DicomMetadataStore } from '@ohif/core';
 
 const unusedColumns = ["AnnotationType", "Patient ID", "Patient Name", "StudyInstanceUID", "Leison ID"]
+const leisonToolColumns = ["FrameOfReferenceUID", "points"]
 
 export default function importCSVReport({ measurementService, extensionManager }, csvData) {
-  const { measurements } = measurementService.getMeasurements()
   measurementService.clearMeasurements()
   const dataSource = extensionManager.getActiveDataSource()[0]
 
-  const source = measurementService.getSource(ODELIA_LABELING_SOURCE_NAME, ODELIA_LABELING_SOURCE_VERSION)
+  const label_source = measurementService.getSource(ODELIA_LABELING_SOURCE_NAME, ODELIA_LABELING_SOURCE_VERSION)
 
   const mappings = measurementService.getSourceMappings(
     ODELIA_LABELING_SOURCE_NAME, ODELIA_LABELING_SOURCE_VERSION);
@@ -31,6 +31,7 @@ export default function importCSVReport({ measurementService, extensionManager }
     return Object.assign(...keys.map((k, i) => ({ [k]: values[i] })));
   })
   let labels: any = _collateLabels(parsedMeasurements)
+
   Object.keys(labels).forEach(patientID => {
     const label_data = Object.keys(labels[patientID])
       .filter((key) => !(unusedColumns.includes(key)) && !(key in leisonConfig))
@@ -50,7 +51,7 @@ export default function importCSVReport({ measurementService, extensionManager }
       type: "ODELIALabel",
     }
     measurementService.addRawMeasurement(
-      source,
+      label_source,
       annotationType,
       { annotation },
       matchingMapping.toMeasurementSchema,
@@ -58,8 +59,42 @@ export default function importCSVReport({ measurementService, extensionManager }
     );
   })
 
-}
 
+  const CORNERSTONE_3D_TOOLS_SOURCE_NAME = 'Cornerstone3DTools';
+  const CORNERSTONE_3D_TOOLS_SOURCE_VERSION = '0.1';
+
+  const leison_source = measurementService.getSource(CORNERSTONE_3D_TOOLS_SOURCE_NAME, CORNERSTONE_3D_TOOLS_SOURCE_VERSION)
+
+  const leisonMappings = measurementService.getSourceMappings(
+    CORNERSTONE_3D_TOOLS_SOURCE_NAME, CORNERSTONE_3D_TOOLS_SOURCE_VERSION);
+
+  const leisonAnnotationType = "CircleROI"
+  console.log(leisonMappings)
+  const matchingLeisonMapping = leisonMappings.find(
+    m => m.annotationType === leisonAnnotationType,
+  );
+
+  const leisons: any = _parseLeisons(parsedMeasurements, leisonConfig)
+  leisons.forEach(annotation => {
+    const uid = measurementService.addRawMeasurement(
+      leison_source,
+      leisonAnnotationType,
+      { annotation },
+      matchingLeisonMapping.toMeasurementSchema,
+      dataSource
+    );
+    // Initialize leisons labeling table
+    console.log(uid)
+    const measurement = measurementService.getMeasurement(uid)
+    measurement.label_data = {}
+    console.log(measurement.label_data)
+    measurement.label_data = annotation.data.label_data
+    measurement.label = ""
+    measurementService.update(uid,measurement)
+
+
+  })
+}
 
 
 function _collateLabels(parsedMeasurements) {
@@ -68,7 +103,41 @@ function _collateLabels(parsedMeasurements) {
   return collatedLabels
 }
 
-function _parseLeisons({ StudyInstanceUID, csvData }) {
+function _parseLeisons(parsedMeasurements, leisonColumns) {
+  const parsedLeisions = []
+  parsedMeasurements.map(element => {
+    const leision_data = Object.keys(element)
+      .filter((key) => !(unusedColumns.includes(key)) && (key in leisonColumns.label_options[0]))
+      .reduce((obj, key) => {
+        obj[key] = element[key];
+        return obj;
+      }, {})
+    console.log(element)
+    console.log(leisonColumns)
+    console.log(leision_data)
 
-
+    const annotation = {
+      annotationUID: 1,
+      metadata: {
+        toolName: "CircleROI",
+        FrameOfReferenceUID: element['FrameOfReferenceUID'],
+        referencedImageId: element['referencedImageId'],
+      },
+      data: {
+        label_data: leision_data,
+        cachedStats: [],
+        handles: {
+          textBox: {},
+          points: element['points'].split(';').map(pos => pos.split(' ').map(Number))
+        }
+      },
+      referenceStudyUID: element['StudyInstanceUID'],
+      toolName: "CircleROI",
+      displayText: "",
+      type: "value_type::circle",
+    }
+    console.log(element['points'])
+    parsedLeisions.push(annotation)
+  })
+  return parsedLeisions
 }

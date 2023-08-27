@@ -10,7 +10,6 @@ import { Button, ButtonGroup } from '@ohif/ui';
 const CSVImporter = ({ onClick }: Props) => {
   const ref = useRef()
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    ref.current.click()
     if (e.target.files) {
       try {
         const file = e.target.files[0];
@@ -30,9 +29,9 @@ const CSVImporter = ({ onClick }: Props) => {
   return (
     <React.Fragment>
       <ButtonGroup color="black" size="inherit">
-        <Button className="px-2 py-2 text-base" onClick={handleFileChange}>
+        <Button className="px-2 py-2 text-base" onClick={() => ref.current.click()}>
           Import CSV
-          <input style={{ display: 'none' }} ref={ref} type="file" accept=".csv" />
+          <input style={{ display: 'none' }} ref={ref} type="file" accept=".csv" onChange={handleFileChange} />
         </Button>
       </ButtonGroup>
     </React.Fragment>
