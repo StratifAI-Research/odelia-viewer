@@ -51,27 +51,22 @@ export default function downloadCSVReport(measurementData) {
     // Duplicate ODELIA label for each leision and add leision report, otherwise return ODELIALAbel
     if (filteredLeisions.length != 0) {
       filteredLeisions.forEach(leisonMeasurement => {
-        const lesionReport = structuredClone(report);
         const { getReport, uid, metadata } = leisonMeasurement;
 
         const leisionReport = getReport(leisonMeasurement);
 
-        // TODO: Replace with proper getReport for custom lesion
+        // TODO: Replace with proper getReport function for lesions
         Object.keys(leisonMeasurement.label_data).forEach(key => {
-          lesionReport.columns.push(key);
-          lesionReport.values.push(leisonMeasurement.label_data[key]);
+          leisionReport.columns.push(key);
+          leisionReport.values.push(leisonMeasurement.label_data[key]);
         });
-        lesionReport.columns = [
-          ...lesionReport.columns,
-          ...leisionReport.columns,
-        ];
-        lesionReport.values = [...lesionReport.values, ...leisionReport.values];
-        lesionReport.columns.push('referencedImageId');
-        lesionReport.values.push(metadata['referencedImageId']);
-        console.log(lesionReport);
 
+        leisionReport.columns = [...report.columns, ...leisionReport.columns];
+        leisionReport.values = [...report.values, ...leisionReport.values];
+        leisionReport.columns.push('referencedImageId');
+        leisionReport.values.push(metadata['referencedImageId']);
         reportMap[uid] = {
-          report: lesionReport,
+          report: leisionReport,
           commonRowItems,
         };
       });
