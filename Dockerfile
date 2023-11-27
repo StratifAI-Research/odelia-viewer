@@ -74,5 +74,6 @@ RUN luarocks install luacrypto
 
 # Copy build output to image
 COPY --from=builder /usr/src/app/platform/viewer/dist /var/www/html
+COPY --from=builder /usr/src/app/platform/viewer/.recipes/OpenResty-Orthanc/config/nginx.conf /usr/local/openresty/nginx/conf/nginx.conf
 
 ENTRYPOINT ["/usr/local/openresty/nginx/sbin/nginx", "-g", "daemon off;"]
