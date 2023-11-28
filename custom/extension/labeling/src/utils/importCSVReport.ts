@@ -50,11 +50,9 @@ export default function importCSVReport(
 
   const keys = csvData[0];
 
-  console.log('CSV Header:', typeof keys);
-
   const rawMeasurements = csvData.slice(1);
 
-  console.log(rawMeasurements);
+  console.log('Raw Measurements', rawMeasurements);
 
   let parsedMeasurements: { [key: string]: string }[] = [];
 
@@ -66,7 +64,6 @@ export default function importCSVReport(
       const k = keys[j];
       measurement[k] = values[j];
     }
-
     parsedMeasurements.push(measurement);
   }
 
