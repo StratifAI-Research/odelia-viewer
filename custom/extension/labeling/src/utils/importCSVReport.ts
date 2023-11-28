@@ -48,7 +48,7 @@ export default function importCSVReport(
     config => config.name == 'leison table'
   )[0];
 
-  const keys = Array.isArray(csvData) && csvData.length > 0 ? csvData[0] : {};
+  const keys = csvData[0];
 
   console.log('CSV Header:', typeof keys);
 
@@ -56,11 +56,19 @@ export default function importCSVReport(
 
   console.log(rawMeasurements);
 
-  let parsedMeasurements: { [key: string]: string }[] = rawMeasurements.map(
-    (values: string[]) => {
-      return Object.assign(...keys.map((k, i) => ({ [k]: values[i] })));
+  let parsedMeasurements: { [key: string]: string }[] = [];
+
+  for (let i = 0; i < rawMeasurements.length; i++) {
+    const values = rawMeasurements[i];
+    const measurement: { [key: string]: string } = {};
+
+    for (let j = 0; j < keys.length; j++) {
+      const k = keys[j];
+      measurement[k] = values[j];
     }
-  );
+
+    parsedMeasurements.push(measurement);
+  }
 
   let labels: any = _collateLabels(parsedMeasurements);
 
