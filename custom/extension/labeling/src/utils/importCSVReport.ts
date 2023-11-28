@@ -56,9 +56,11 @@ export default function importCSVReport(
 
   console.log(rawMeasurements);
 
-  let parsedMeasurements = rawMeasurements.map(values => {
-    return Object.assign(...keys.map((k, i) => ({ [k]: values[i] })));
-  });
+  let parsedMeasurements: { [key: string]: string }[] = rawMeasurements.map(
+    (values: string[]) => {
+      return Object.assign(...keys.map((k, i) => ({ [k]: values[i] })));
+    }
+  );
 
   let labels: any = _collateLabels(parsedMeasurements);
 
