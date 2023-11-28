@@ -1,9 +1,9 @@
 import { id } from './id';
 import React from 'react';
-import PanelLabeling from "./panels/PanelLabeling";
-import PanelLeisonTable from "./panels/PanelLeisons";
+import PanelLabeling from './panels/PanelLabeling';
+import PanelLeisonTable from './panels/PanelLeisons';
 import { initMeasurementService } from './initMesurementService';
-import initLabels from "./initLabels";
+import initLabels from './initLabels';
 
 /**
  * You can remove any of the following modules if you don't need them.
@@ -26,15 +26,14 @@ export default {
     commandsManager,
     configuration = {},
   }) => {
-    const { measurementService } = servicesManager.services
-    const ODELIAMeasurementSource = initMeasurementService(measurementService)
+    const { measurementService } = servicesManager.services;
+    const ODELIAMeasurementSource = initMeasurementService(measurementService);
 
     // TODO: Hydrate labels
-
   },
 
-  onModeEnter: ({ servicesManager }) => {
-  },
+  onModeEnter: ({ servicesManager }) => {},
+
   /**
    * PanelModule should provide a list of panels that will be available in OHIF
    * for Modes to consume and render. Each panel is defined by a {name,
@@ -46,7 +45,7 @@ export default {
     commandsManager,
     extensionManager,
   }): Types.Panel[] => {
-    const wrappedPanelLabeling = (name) => {
+    const wrappedPanelLabeling = name => {
       return () => {
         return (
           <PanelLabeling
@@ -56,9 +55,9 @@ export default {
             extensionManager={extensionManager}
           />
         );
-      }
+      };
     };
-    const wrappedPanelLeisons = (name) => {
+    const wrappedPanelLeisons = name => {
       return () => {
         return (
           <PanelLeisonTable
@@ -68,9 +67,8 @@ export default {
             extensionManager={extensionManager}
           />
         );
-      }
+      };
     };
-
 
     return [
       {
@@ -78,25 +76,25 @@ export default {
         iconName: 'tab-patient-info',
         iconLabel: 'Labeling',
         label: 'Patient label',
-        component: wrappedPanelLabeling("patient table"),
+        component: wrappedPanelLabeling('patient table'),
       },
       {
         name: 'panelLabelingStudy',
         iconName: 'list-bullets',
         iconLabel: 'Study labels',
         label: 'Study labels',
-        component: wrappedPanelLabeling("study table"),
+        component: wrappedPanelLabeling('study table'),
       },
       {
         name: 'panelLabelingLeison',
         iconName: 'tool-circle',
         iconLabel: 'Leison labels',
         label: 'Leison labels',
-        component: wrappedPanelLeisons("leison table"),
+        component: wrappedPanelLeisons('leison table'),
       },
-
     ];
   },
+
   /**
    * ViewportModule should provide a list of viewports that will be available in OHIF
    * for Modes to consume and use in the viewports. Each viewport is defined by
@@ -107,7 +105,8 @@ export default {
     servicesManager,
     commandsManager,
     extensionManager,
-  }) => { },
+  }) => {},
+
   /**
    * ToolbarModule should provide a list of tool buttons that will be available in OHIF
    * for Modes to consume and use in the toolbar. Each tool button is defined by
@@ -118,7 +117,8 @@ export default {
     servicesManager,
     commandsManager,
     extensionManager,
-  }) => { },
+  }) => {},
+
   /**
    * LayoutTemplateMOdule should provide a list of layout templates that will be
    * available in OHIF for Modes to consume and use to layout the viewer.
@@ -131,7 +131,8 @@ export default {
     servicesManager,
     commandsManager,
     extensionManager,
-  }) => { },
+  }) => {},
+
   /**
    * SopClassHandlerModule should provide a list of sop class handlers that will be
    * available in OHIF for Modes to consume and use to create displaySets from Series.
@@ -142,7 +143,8 @@ export default {
     servicesManager,
     commandsManager,
     extensionManager,
-  }) => { },
+  }) => {},
+
   /**
    * HangingProtocolModule should provide a list of hanging protocols that will be
    * available in OHIF for Modes to use to decide on the structure of the viewports
@@ -154,7 +156,8 @@ export default {
     servicesManager,
     commandsManager,
     extensionManager,
-  }) => { },
+  }) => {},
+
   /**
    * CommandsModule should provide a list of commands that will be available in OHIF
    * for Modes to consume and use in the viewports. Each command is defined by
@@ -166,7 +169,8 @@ export default {
     servicesManager,
     commandsManager,
     extensionManager,
-  }) => { },
+  }) => {},
+
   /**
    * ContextModule should provide a list of context that will be available in OHIF
    * and will be provided to the Modes. A context is a state that is shared OHIF.
@@ -177,7 +181,8 @@ export default {
     servicesManager,
     commandsManager,
     extensionManager,
-  }) => { },
+  }) => {},
+
   /**
    * DataSourceModule should provide a list of data sources to be used in OHIF.
    * DataSources can be used to map the external data formats to the OHIF's
@@ -187,15 +192,14 @@ export default {
     servicesManager,
     commandsManager,
     extensionManager,
-  }) => { },
+  }) => {},
+
   getUtilityModule: ({ servicesManager }) => {
     return [
       {
         name: 'initLabels',
-        exports:
-          initLabels
-        ,
+        exports: initLabels,
       },
-    ]
+    ];
   },
 };
