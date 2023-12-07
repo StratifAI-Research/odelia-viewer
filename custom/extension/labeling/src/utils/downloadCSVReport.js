@@ -6,22 +6,22 @@ export default function downloadCSVReport(measurementData) {
     return;
   }
 
-  const columns = [
-    'Patient ID',
-    'Patient Name',
-    'StudyInstanceUID'
-  ];
+  const columns = ['Patient ID', 'Patient Name', 'StudyInstanceUID'];
 
   const reportMap = {};
-  const labelMeasurements = measurementData.filter(measurement => measurement.type == "ODELIALabel")
-  const leisonMeasurements = measurementData.filter(measurement => measurement.type == "value_type::circle")
+  const labelMeasurements = measurementData.filter(
+    measurement => measurement.type == 'ODELIALabel'
+  );
+  const leisonMeasurements = measurementData.filter(
+    measurement => measurement.type == 'value_type::circle'
+  );
   labelMeasurements.forEach(measurement => {
     const {
       referenceStudyUID,
       referenceSeriesUID,
       getReport,
       uid,
-      type
+      type,
     } = measurement;
 
     //if (type != "ODELIALabel") {
@@ -32,53 +32,52 @@ export default function downloadCSVReport(measurementData) {
       console.warn('Measurement does not have a getReport function');
       return;
     }
-    console.log(referenceStudyUID)
-    console.log(measurement)
-    const studyMetadata = DicomMetadataStore.getStudy(
-      referenceStudyUID
-    );
+    console.log(referenceStudyUID);
+    console.log(measurement);
+    const studyMetadata = DicomMetadataStore.getStudy(referenceStudyUID);
     const seriesMetadata = DicomMetadataStore.getSeries(
       referenceStudyUID,
-      studyMetadata.series[0].SeriesInstanceUID,
+      studyMetadata.series[0].SeriesInstanceUID
     );
 
     const commonRowItems = _getCommonRowItems(measurement, seriesMetadata);
     const report = getReport(measurement);
 
-
     //Filter leisions same as current study AND that has been annotated
-    const filteredLeisions = leisonMeasurements.filter(measurement => measurement.referenceStudyUID == referenceStudyUID)
-      .filter(measurement => measurement.label_data !== undefined)
+    const filteredLeisions = leisonMeasurements
+      .filter(measurement => measurement.referenceStudyUID == referenceStudyUID)
+      .filter(measurement => measurement.label_data !== undefined);
 
     // Duplicate ODELIA label for each leision and add leision report, otherwise return ODELIALAbel
     if (filteredLeisions.length != 0) {
       filteredLeisions.forEach(leisonMeasurement => {
-        const {
-          getReport,
-          uid,
-          metadata
-        } = leisonMeasurement;
+        const { getReport, uid, metadata } = leisonMeasurement;
 
         const leisionReport = getReport(leisonMeasurement);
-        report.columns = [...report.columns, ...leisionReport.columns]
-        report.values = [...report.values, ...leisionReport.values]
-        report.columns.push("referencedImageId")
-        report.values.push(metadata['referencedImageId'])
+
+        // TODO: Replace with proper getReport function for lesions
+        Object.keys(leisonMeasurement.label_data).forEach(key => {
+          leisionReport.columns.push(key);
+          leisionReport.values.push(leisonMeasurement.label_data[key]);
+        });
+
+        leisionReport.columns = [...report.columns, ...leisionReport.columns];
+        leisionReport.values = [...report.values, ...leisionReport.values];
+        leisionReport.columns.push('referencedImageId');
+        leisionReport.values.push(metadata['referencedImageId']);
         reportMap[uid] = {
-          report,
+          report: leisionReport,
           commonRowItems,
         };
-      }
-      )
-    }
-    else {
+      });
+    } else {
       reportMap[uid] = {
         report,
         commonRowItems,
       };
     }
   });
-
+  console.log(reportMap);
   // get columns names inside the report from each measurement and
   // add them to the rows array (this way we can add columns for any custom
   // measurements that may be added in the future)
