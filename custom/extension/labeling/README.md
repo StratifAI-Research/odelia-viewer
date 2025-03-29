@@ -1,7 +1,7 @@
-# labeling 
-## Description 
-Labeling 
-## Author 
- 
-## License 
+# labeling
+## Description
+Odelia Labeling Mode
+## Author
+
+## License
 MIT
