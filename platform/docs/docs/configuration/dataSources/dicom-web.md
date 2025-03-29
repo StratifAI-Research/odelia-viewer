@@ -32,7 +32,7 @@ _Not sure if you have `docker` installed already? Try running `docker --version`
 in command prompt or terminal_
 
 > If you are using `Docker Toolbox` you need to change the _PROXY_DOMAIN_
-> parameter in _platform/viewer/package.json_ to http://192.168.99.100:8042 or
+> parameter in _platform/app/package.json_ to http://192.168.99.100:8042 or
 > the ip docker-machine ip throws. This is the value [`WebPack`][webpack-proxy]
 > uses to proxy requests
 
@@ -65,16 +65,14 @@ yarn run orthanc:up
 _Upload your first Study:_
 
 1. Navigate to
-   [Orthanc's web interface](http://localhost:8042/app/explorer.html) at
-   `http://localhost:8042/app/explorer.html` in a web browser.
-2. In the top right corner, click "Upload"
-3. Click "Select files to upload..." and select one or more DICOM files
-4. Click "Start the upload"
+   [Orthanc's web interface](http://localhost:8042/ui/app/index.html#/) at
+   `http://localhost:8042/ui/app/index.html#/` in a web browser.
+2. In the left you can see the upload button where you can drag and drop your DICOM files
 
 #### Orthanc: Learn More
 
 You can see the `docker-compose.yml` file this command runs at
-[`<project-root>/.docker/Nginx-Orthanc/`][orthanc-docker-compose], and more on
+[`<project-root>/platform/app/.recipes/Nginx-Orthanc`][orthanc-docker-compose], and more on
 Orthanc for Docker in [Orthanc's documentation][orthanc-docker].
 
 #### Connecting to Orthanc
@@ -97,20 +95,20 @@ yarn run dev:orthanc
 #### Configuration: Learn More
 
 > For more configuration fun, check out the
-> [Essentials Configuration](../index.md) guide.
+> [Essentials Configuration](../configurationFiles.md) guide.
 
 Let's take a look at what's going on under the hood here. `yarn run dev:orthanc`
 is running the `dev:orthanc` script in our project's `package.json` (inside
-`platform/viewer`). That script is:
+`platform/app`). That script is:
 
 ```js
-cross-env NODE_ENV=development PROXY_TARGET=/dicom-web PROXY_DOMAIN=http://localhost:8042 APP_CONFIG=config/docker_nginx-orthanc.js webpack-dev-server --config .webpack/webpack.pwa.js -w
+cross-env NODE_ENV=development PROXY_TARGET=/dicom-web PROXY_DOMAIN=http://localhost:8042 APP_CONFIG=config/docker-nginx-orthanc.js webpack-dev-server --config .webpack/webpack.pwa.js -w
 ```
 
 - `cross-env` sets three environment variables
   - PROXY_TARGET: `/dicom-web`
   - PROXY_DOMAIN: `http://localhost:8042`
-  - APP_CONFIG: `config/docker_nginx-orthanc.js`
+  - APP_CONFIG: `config/docker-nginx-orthanc.js`
 - `webpack-dev-server` runs using the `.webpack/webpack.pwa.js` configuration
   file. It will watch for changes and update as we develop.
 
@@ -120,7 +118,7 @@ requesting resources that live at a different domain.
 
 The `APP_CONFIG` value tells our app which file to load on to `window.config`.
 By default, our app uses the file at
-`<project-root>/platform/viewer/public/config/default.js`. Here is what that
+`<project-root>/platform/app/public/config/default.js`. Here is what that
 configuration looks like:
 
 ```js
@@ -131,10 +129,10 @@ window.config = {
   showStudyList: true,
   dataSources: [
     {
-      friendlyName: 'dcmjs DICOMWeb Server',
       namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
       sourceName: 'dicomweb',
       configuration: {
+        friendlyName: 'dcmjs DICOMWeb Server',
         name: 'DCM4CHEE',
         wadoUriRoot: 'https://server.dcmjs.org/dcm4chee-arc/aets/DCM4CHEE/wado',
         qidoRoot: 'https://server.dcmjs.org/dcm4chee-arc/aets/DCM4CHEE/rs',
@@ -153,8 +151,71 @@ window.config = {
 };
 ```
 
+### Data Source Configuration Options
+
+The following properties can be added to the `configuration` property of each data source.
+
+##### `dicomUploadEnabled`
+A boolean indicating if the DICOM upload to the data source is permitted/accepted or not. A value of true provides a link on the OHIF work list page that allows for DICOM files from the local file system to be uploaded to the data source
+
+:::tip
+The [OHIF plugin for Orthanc](https://book.orthanc-server.com/plugins/ohif.html) by default utilizes the DICOM JSON data
+source and it has been discovered that only those studies uploaded to Orthanc AFTER the plugin has been installed are
+available as DICOM JSON. As such, if the OHIF plugin for Orthanc is desired for studies uploaded prior to installing the plugin,
+then consider switching to using [DICOMweb instead](https://book.orthanc-server.com/plugins/ohif.html#using-dicomweb).
+:::
+
+![toolbarModule-layout](../../assets/img/uploader.gif)
+
+Don't forget to add the customization to the config as well
+
+```js
+customizationService: {
+  dicomUploadComponent:
+    '@ohif/extension-cornerstone.customizationModule.cornerstoneDicomUploadComponent',
+},
+```
+
+
+#### `singlepart`
+A comma delimited string specifying which payloads the data source responds with as single part. Those not listed are considered multipart. Values that can be included here are `pdf`, `video`, `bulkdata`, `thumbnail` and `image`.
+
+For DICOM video and PDF it has been found that Orthanc delivers multipart, while DCM4CHEE delivers single part. Consult the DICOM conformance statement for your particular data source to determine which payload types it delivers.
+
 To learn more about how you can configure the OHIF Viewer, check out our
-[Configuration Guide](../index.md).
+[Configuration Guide](../configurationFiles.md).
+
+
+### DICOM PDF
+See the [`singlepart`](#singlepart) data source configuration option.
+
+### DICOM Video
+See the [`singlepart`](#singlepart) data source configuration option.
+
+### BulkDataURI
+
+The `bulkDataURI` configuration option alters how the datasource uses the
+bulkdata end points for retrieving metadata if the data was originally not included in the
+response from the server. This is useful for the metadata information that
+are big and can/should be retrieved in a separate request. In case the bulkData URI
+is relative (instead of absolute) the `relativeResolution` option can be used to
+specify the resolution of the relative URI. The possible values are `studies`, `series`.
+
+The default value is shown below (this will be added if not included in the config).
+
+```js
+bulkDataURI: {
+  enabled: true,
+  relativeResolution: 'series',
+},
+```
+
+The other options allowed are:
+
+* transform - to take the string and return an updated string
+* startsWith and prefixWith - to remove a standard prefix and add an optional prefix
+  * Used primarily for a reverse proxy or change in URL naming
+* relativeResolution - used to set bulkdata paths to studies resolution for incorrect bulkdata paths
 
 ### Running DCM4CHEE
 
@@ -171,7 +232,7 @@ An overview of steps for running OHIF Viewer using a local DCM4CHEE is shown
 below:
 
 <div style={{padding:"56.25% 0 0 0", position:"relative"}}>
-    <iframe src="https://player.vimeo.com/video/557570043?badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479" frameBorder="0" allow="autoplay; fullscreen; picture-in-picture" allowFullScreen style= {{ position:"absolute",top:0,left:0,width:"100%",height:"100%"}} title="measurement-report"></iframe>
+    <iframe src="https://player.vimeo.com/video/843233881?badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479" frameBorder="0" allow="autoplay; fullscreen; picture-in-picture" allowFullScreen style= {{ position:"absolute",top:0,left:0,width:"100%",height:"100%"}} title="measurement-report"></iframe>
 </div>
 
 [dcm4chee]: https://github.com/dcm4che/dcm4chee-arc-light
@@ -184,8 +245,10 @@ below:
 [osirix]: http://www.osirix-viewer.com/
 [horos]: https://www.horosproject.org/
 [default-config]:
-  https://github.com/OHIF/Viewers/blob/master/platform/viewer/public/config/default.js
+  https://github.com/OHIF/Viewers/blob/master/platform/app/public/config/default.js
 [html-templates]:
-  https://github.com/OHIF/Viewers/tree/master/platform/viewer/public/html-templates
+  https://github.com/OHIF/Viewers/tree/master/platform/app/public/html-templates
 [config-files]:
-  https://github.com/OHIF/Viewers/tree/master/platform/viewer/public/config
+  https://github.com/OHIF/Viewers/tree/master/platform/app/public/config
+[storescu]: http://support.dcmtk.org/docs/storescu.html
+[webpack-proxy]: https://webpack.js.org/configuration/dev-server/#devserverproxy

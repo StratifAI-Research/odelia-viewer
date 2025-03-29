@@ -24,14 +24,13 @@ function buildInstanceWadoUrl(config, instance) {
  * @param thumbnail
  * @returns {string} The imageId to be used by Cornerstone
  */
-export default function getImageId({
-  instance,
-  frame,
-  config,
-  thumbnail = false,
-}) {
+export default function getImageId({ instance, frame, config, thumbnail = false }) {
   if (!instance) {
     return;
+  }
+
+  if (instance.imageId && frame === undefined) {
+    return instance.imageId;
   }
 
   if (instance.url) {

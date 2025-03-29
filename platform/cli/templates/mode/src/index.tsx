@@ -1,3 +1,5 @@
+import { hotkeys } from '@ohif/core';
+import { initToolGroups, toolbarButtons } from '@ohif/mode-longitudinal';
 import { id } from './id';
 
 const ohif = {
@@ -5,7 +7,7 @@ const ohif = {
   sopClassHandler: '@ohif/extension-default.sopClassHandlerModule.stack',
   hangingProtocol: '@ohif/extension-default.hangingProtocolModule.default',
   leftPanel: '@ohif/extension-default.panelModule.seriesList',
-  rightPanel: '@ohif/extension-default.panelModule.measure',
+  rightPanel: '@ohif/extension-cornerstone.panelModule.panelMeasurement',
 };
 
 const cornerstone = {
@@ -38,12 +40,43 @@ function modeFactory({ modeConfiguration }) {
      * Runs when the Mode Route is mounted to the DOM. Usually used to initialize
      * Services and other resources.
      */
-    onModeEnter: ({ servicesManager, extensionManager }) => {},
-    /**
-     * Runs when the Mode Route is unmounted from the DOM. Usually used to clean
-     * up resources and states
-     */
-    onModeExit: () => {},
+    onModeEnter: ({ servicesManager, extensionManager, commandsManager }: withAppTypes) => {
+      const { measurementService, toolbarService, toolGroupService } = servicesManager.services;
+
+      measurementService.clearMeasurements();
+
+      // Init Default and SR ToolGroups
+      initToolGroups(extensionManager, toolGroupService, commandsManager);
+
+      toolbarService.addButtons(toolbarButtons);
+      toolbarService.createButtonSection('primary', [
+        'MeasurementTools',
+        'Zoom',
+        'WindowLevel',
+        'Pan',
+        'Capture',
+        'Layout',
+        'Crosshairs',
+        'MoreTools',
+      ]);
+    },
+    onModeExit: ({ servicesManager }: withAppTypes) => {
+      const {
+        toolGroupService,
+        syncGroupService,
+        segmentationService,
+        cornerstoneViewportService,
+        uiDialogService,
+        uiModalService,
+      } = servicesManager.services;
+
+      uiDialogService.dismissAll();
+      uiModalService.hide();
+      toolGroupService.destroy();
+      syncGroupService.destroy();
+      segmentationService.destroy();
+      cornerstoneViewportService.destroy();
+    },
     /** */
     validationTags: {
       study: [],
@@ -53,7 +86,9 @@ function modeFactory({ modeConfiguration }) {
      * A boolean return value that indicates whether the mode is valid for the
      * modalities of the selected studies. For instance a PET/CT mode should be
      */
-    isValidMode: ({ modalities }) => true,
+    isValidMode: ({ modalities }) => {
+      return { valid: true };
+    },
     /**
      * Mode Routes are used to define the mode's behavior. A list of Mode Route
      * that includes the mode's path and the layout to be used. The layout will
@@ -93,7 +128,7 @@ function modeFactory({ modeConfiguration }) {
     /** SopClassHandlers used by the mode */
     sopClassHandlers: [ohif.sopClassHandler],
     /** hotkeys for mode */
-    hotkeys: [''],
+    hotkeys: [...hotkeys.defaults.hotkeyBindings],
   };
 }
 

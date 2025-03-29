@@ -2,10 +2,14 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import classnames from 'classnames';
 
-import { Icon, Thumbnail, Tooltip } from '../';
+import Thumbnail from '../Thumbnail';
+import Tooltip from '../Tooltip';
 import { StringNumber } from '../../types';
-
-const ThumbnailTracked = ({
+import { useTranslation } from 'react-i18next';
+import { Icons } from '@ohif/ui-next';
+// Todo: This class to me feels like it belongs in an extension, not in platform/ui
+// because it is dealing with mode specific components/information
+function ThumbnailTracked({
   displaySetInstanceUID,
   className,
   imageSrc,
@@ -13,100 +17,57 @@ const ThumbnailTracked = ({
   description,
   seriesNumber,
   numInstances,
+  loadingProgress,
   countIcon,
+  messages,
   dragData,
   onClick,
   onDoubleClick,
   onClickUntrack,
-  viewportIdentificator,
   isTracked,
   isActive,
-}) => {
+}) {
+  const { t } = useTranslation('ThumbnailTracked');
   const trackedIcon = isTracked ? 'circled-checkmark' : 'dotted-circle';
-  const viewportIdentificatorLabel = viewportIdentificator.join(', ');
-  const renderViewportLabels = () => {
-    const MAX_LABELS_PER_COL = 3;
-    const shouldShowStack = viewportIdentificator.length > MAX_LABELS_PER_COL;
-    if (shouldShowStack) {
-      return (
-        <div>
-          <div>
-            {viewportIdentificator.slice(0, MAX_LABELS_PER_COL).map(label => (
-              <div key={label}>{label}</div>
-            ))}
-          </div>
-          <Tooltip
-            position="right"
-            content={
-              <div className="text-left max-w-40">
-                Series is displayed <br /> in viewport{' '}
-                {viewportIdentificatorLabel}
-              </div>
-            }
-          >
-            <Icon name="tool-more-menu" className="text-white py-2" />
-          </Tooltip>
-        </div>
-      );
-    }
-
-    return viewportIdentificator.map(label => <div key={label}>{label}</div>);
-  };
 
   return (
     <div
-      className={classnames(
-        'flex flex-row flex-1 px-3 py-2 cursor-pointer outline-none',
-        className
-      )}
+      className={classnames('flex flex-1 cursor-pointer flex-row px-3 outline-none', className)}
       id={`thumbnail-${displaySetInstanceUID}`}
     >
-      <div className="flex flex-col items-center flex-2">
+      <div className="flex-2 flex flex-col items-center">
         <div
           className={classnames(
-            'flex flex-col items-center justify-start p-2 mb-2 relative cursor-pointer',
+            'relative mb-2 flex cursor-pointer flex-col items-center justify-start p-2',
             isTracked && 'rounded-sm hover:bg-gray-900'
           )}
         >
           <Tooltip
             position="right"
             content={
-              <div className="flex flex-row flex-1">
-                <div className="flex items-center justify-center pr-4 flex-2">
-                  <Icon name="info-link" className="text-primary-active" />
+              <div className="flex flex-1 flex-row">
+                <div className="flex-2 flex items-center justify-center pr-4">
+                  <Icons.InfoLink className="text-primary-active" />
                 </div>
-                <div className="flex flex-col flex-1">
+                <div className="flex flex-1 flex-col">
                   <span>
-                    Series is
                     <span className="text-white">
-                      {isTracked ? ' tracked' : ' untracked'}
+                      {isTracked ? t('Series is tracked') : t('Series is untracked')}
                     </span>
                   </span>
-                  {!!viewportIdentificator.length && (
-                    <span>
-                      in viewport
-                      <span className="ml-1 text-white">
-                        {viewportIdentificatorLabel}
-                      </span>
-                    </span>
-                  )}
                 </div>
               </div>
             }
           >
-            <Icon name={trackedIcon} className="w-4 mb-2 text-primary-light" />
+            <Icons.ByName
+              name={trackedIcon}
+              className="text-primary-light mb-2 w-4"
+            />
           </Tooltip>
-
-          <div
-            className="text-xl leading-tight text-white text-center"
-            data-cy={'thumbnail-viewport-labels'}
-          >
-            {renderViewportLabels()}
-          </div>
         </div>
         {isTracked && (
           <div onClick={onClickUntrack}>
-            <Icon name="cancel" className="w-4 text-primary-active" />
+            <Icons.Cancel className="text-primary-active w-4" />
           </div>
         )}
       </div>
@@ -117,15 +78,17 @@ const ThumbnailTracked = ({
         dragData={dragData}
         description={description}
         seriesNumber={seriesNumber}
+        messages={messages}
         numInstances={numInstances}
         countIcon={countIcon}
+        loadingProgress={loadingProgress}
         isActive={isActive}
         onClick={onClick}
         onDoubleClick={onDoubleClick}
       />
     </div>
   );
-};
+}
 
 ThumbnailTracked.propTypes = {
   /**
@@ -146,11 +109,12 @@ ThumbnailTracked.propTypes = {
   description: PropTypes.string.isRequired,
   seriesNumber: StringNumber.isRequired,
   numInstances: PropTypes.number.isRequired,
+  loadingProgress: PropTypes.number,
   onClick: PropTypes.func.isRequired,
   onDoubleClick: PropTypes.func.isRequired,
   onClickUntrack: PropTypes.func.isRequired,
-  viewportIdentificator: PropTypes.array,
   isTracked: PropTypes.bool,
+  messages: PropTypes.object,
   isActive: PropTypes.bool.isRequired,
 };
 

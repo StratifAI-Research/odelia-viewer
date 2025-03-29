@@ -1,29 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import PropTypes from 'prop-types';
-import { useNavigate } from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
-import { useLocation } from 'react-router';
 
-import {
-  SidePanel,
-  ErrorBoundary,
-  UserPreferences,
-  AboutModal,
-  Header,
-  useModal,
-  LoadingIndicatorProgress,
-} from '@ohif/ui';
-import i18n from '@ohif/i18n';
-import {
-  ServicesManager,
-  HangingProtocolService,
-  hotkeys,
-  CommandsManager,
-} from '@ohif/core';
+import { InvestigationalUseDialog } from '@ohif/ui';
+import { HangingProtocolService, CommandsManager } from '@ohif/core';
 import { useAppConfig } from '@state';
-import Toolbar from '../Toolbar/Toolbar';
+import ViewerHeader from './ViewerHeader';
+import SidePanelWithServices from '../Components/SidePanelWithServices';
+import { Onboarding, ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@ohif/ui-next';
+import useResizablePanels from './ResizablePanelsHook';
 
-const { availableLanguages, defaultLanguage, currentLanguage } = i18n;
+const resizableHandleClassName = 'mt-[1px] bg-black';
 
 function ViewerLayout({
   // From Extension Module Params
@@ -34,95 +20,44 @@ function ViewerLayout({
   // From Modes
   viewports,
   ViewportGridComp,
-  leftPanels = [],
-  rightPanels = [],
-  leftPanelDefaultClosed = false,
-  rightPanelDefaultClosed = false,
-}): React.FunctionComponent {
+  leftPanelClosed = false,
+  rightPanelClosed = false,
+  leftPanelResizable = false,
+  rightPanelResizable = false,
+}: withAppTypes): React.FunctionComponent {
   const [appConfig] = useAppConfig();
-  const navigate = useNavigate();
-  const location = useLocation();
 
-  const onClickReturnButton = () => {
-    const { pathname } = location;
-    const dataSourceIdx = pathname.indexOf('/', 1);
-    const search =
-      dataSourceIdx === -1
-        ? undefined
-        : `datasources=${pathname.substring(dataSourceIdx + 1)}`;
-    navigate({
-      pathname: '/',
-      search,
-    });
-  };
+  const { panelService, hangingProtocolService, customizationService } = servicesManager.services;
+  const [showLoadingIndicator, setShowLoadingIndicator] = useState(appConfig.showLoadingIndicator);
 
-  const { t } = useTranslation();
-  const { show, hide } = useModal();
-
-  const [showLoadingIndicator, setShowLoadingIndicator] = useState(
-    appConfig.showLoadingIndicator
+  const hasPanels = useCallback(
+    (side): boolean => !!panelService.getPanels(side).length,
+    [panelService]
   );
 
-  const { hangingProtocolService } = servicesManager.services;
+  const [hasRightPanels, setHasRightPanels] = useState(hasPanels('right'));
+  const [hasLeftPanels, setHasLeftPanels] = useState(hasPanels('left'));
+  const [leftPanelClosedState, setLeftPanelClosed] = useState(leftPanelClosed);
+  const [rightPanelClosedState, setRightPanelClosed] = useState(rightPanelClosed);
 
-  const { hotkeyDefinitions, hotkeyDefaults } = hotkeysManager;
-  const versionNumber = process.env.VERSION_NUMBER;
-  const buildNumber = process.env.BUILD_NUM;
+  const [
+    leftPanelProps,
+    rightPanelProps,
+    resizablePanelGroupProps,
+    resizableLeftPanelProps,
+    resizableViewportGridPanelProps,
+    resizableRightPanelProps,
+    onHandleDragging,
+  ] = useResizablePanels(
+    leftPanelClosed,
+    setLeftPanelClosed,
+    rightPanelClosed,
+    setRightPanelClosed
+  );
 
-  const menuOptions = [
-    {
-      title: t('Header:About'),
-      icon: 'info',
-      onClick: () =>
-        show({
-          content: AboutModal,
-          title: 'About OHIF Viewer',
-          contentProps: { versionNumber, buildNumber },
-        }),
-    },
-    {
-      title: t('Header:Preferences'),
-      icon: 'settings',
-      onClick: () =>
-        show({
-          title: t('UserPreferencesModal:User Preferences'),
-          content: UserPreferences,
-          contentProps: {
-            hotkeyDefaults: hotkeysManager.getValidHotkeyDefinitions(
-              hotkeyDefaults
-            ),
-            hotkeyDefinitions,
-            currentLanguage: currentLanguage(),
-            availableLanguages,
-            defaultLanguage,
-            onCancel: () => {
-              hotkeys.stopRecord();
-              hotkeys.unpause();
-              hide();
-            },
-            onSubmit: ({ hotkeyDefinitions, language }) => {
-              i18n.changeLanguage(language.value);
-              hotkeysManager.setHotkeys(hotkeyDefinitions);
-              hide();
-            },
-            onReset: () => hotkeysManager.restoreDefaultBindings(),
-            hotkeysModule: hotkeys,
-          },
-        }),
-    },
-  ];
-
-  if (appConfig.oidc) {
-    menuOptions.push({
-      title: t('Header:Logout'),
-      icon: 'power-off',
-      onClick: async () => {
-        navigate(
-          `/logout?redirect_uri=${encodeURIComponent(window.location.href)}`
-        );
-      },
-    });
-  }
+  const LoadingIndicatorProgress = customizationService.getCustomization(
+    'ui.loadingIndicatorProgress'
+  );
 
   /**
    * Set body classes (tailwindcss) that don't allow vertical
@@ -141,35 +76,13 @@ function ViewerLayout({
   const getComponent = id => {
     const entry = extensionManager.getModuleEntry(id);
 
-    if (!entry) {
+    if (!entry || !entry.component) {
       throw new Error(
-        `${id} is not a valid entry for an extension module, please check your configuration or make sure the extension is registered.`
+        `${id} is not valid for an extension module or no component found from extension ${id}. Please verify your configuration or ensure that the extension is properly registered. It's also possible that your mode is utilizing a module from an extension that hasn't been included in its dependencies (add the extension to the "extensionDependencies" array in your mode's index.js file). Check the reference string to the extension in your Mode configuration`
       );
     }
 
-    let content;
-    if (entry && entry.component) {
-      content = entry.component;
-    } else {
-      throw new Error(
-        `No component found from extension ${id}. Check the reference string to the extension in your Mode configuration`
-      );
-    }
-
-    return { entry, content };
-  };
-
-  const getPanelData = id => {
-    const { content, entry } = getComponent(id);
-
-    return {
-      id: entry.id,
-      iconName: entry.iconName,
-      iconLabel: entry.iconLabel,
-      label: entry.label,
-      name: entry.name,
-      content,
-    };
+    return { entry, content: entry.component };
   };
 
   useEffect(() => {
@@ -198,67 +111,96 @@ function ViewerLayout({
     };
   };
 
-  const leftPanelComponents = leftPanels.map(getPanelData);
-  const rightPanelComponents = rightPanels.map(getPanelData);
+  useEffect(() => {
+    const { unsubscribe } = panelService.subscribe(
+      panelService.EVENTS.PANELS_CHANGED,
+      ({ options }) => {
+        setHasLeftPanels(hasPanels('left'));
+        setHasRightPanels(hasPanels('right'));
+        if (options?.leftPanelClosed !== undefined) {
+          setLeftPanelClosed(options.leftPanelClosed);
+        }
+        if (options?.rightPanelClosed !== undefined) {
+          setRightPanelClosed(options.rightPanelClosed);
+        }
+      }
+    );
+
+    return () => {
+      unsubscribe();
+    };
+  }, [panelService, hasPanels]);
+
   const viewportComponents = viewports.map(getViewportComponentData);
 
   return (
     <div>
-      <Header
-        menuOptions={menuOptions}
-        isReturnEnabled={!!appConfig.showStudyList}
-        onClickReturnButton={onClickReturnButton}
-        WhiteLabeling={appConfig.whiteLabeling}
-      >
-        <ErrorBoundary context="Primary Toolbar">
-          <div className="relative flex justify-center">
-            <Toolbar servicesManager={servicesManager} />
-          </div>
-        </ErrorBoundary>
-      </Header>
+      <ViewerHeader
+        hotkeysManager={hotkeysManager}
+        extensionManager={extensionManager}
+        servicesManager={servicesManager}
+        appConfig={appConfig}
+      />
       <div
-        className="bg-black flex flex-row items-stretch w-full overflow-hidden flex-nowrap relative"
+        className="relative flex w-full flex-row flex-nowrap items-stretch overflow-hidden bg-black"
         style={{ height: 'calc(100vh - 52px' }}
       >
         <React.Fragment>
-          {showLoadingIndicator && (
-            <LoadingIndicatorProgress className="h-full w-full bg-black" />
-          )}
-          {/* LEFT SIDEPANELS */}
-          {leftPanelComponents.length ? (
-            <ErrorBoundary context="Left Panel">
-              <SidePanel
-                side="left"
-                activeTabIndex={leftPanelDefaultClosed ? null : 0}
-                tabs={leftPanelComponents}
-                servicesManager={servicesManager}
-              />
-            </ErrorBoundary>
-          ) : null}
-          {/* TOOLBAR + GRID */}
-          <div className="flex flex-col flex-1 h-full">
-            <div className="flex items-center justify-center flex-1 h-full overflow-hidden bg-black relative">
-              <ErrorBoundary context="Grid">
-                <ViewportGridComp
-                  servicesManager={servicesManager}
-                  viewportComponents={viewportComponents}
-                  commandsManager={commandsManager}
+          {showLoadingIndicator && <LoadingIndicatorProgress className="h-full w-full bg-black" />}
+          <ResizablePanelGroup {...resizablePanelGroupProps}>
+            {/* LEFT SIDEPANELS */}
+
+            {hasLeftPanels ? (
+              <>
+                <ResizablePanel {...resizableLeftPanelProps}>
+                  <SidePanelWithServices
+                    side="left"
+                    isExpanded={!leftPanelClosedState}
+                    servicesManager={servicesManager}
+                    {...leftPanelProps}
+                  />
+                </ResizablePanel>
+                <ResizableHandle
+                  onDragging={onHandleDragging}
+                  disabled={!leftPanelResizable}
+                  className={resizableHandleClassName}
                 />
-              </ErrorBoundary>
-            </div>
-          </div>
-          {rightPanelComponents.length ? (
-            <ErrorBoundary context="Right Panel">
-              <SidePanel
-                side="right"
-                activeTabIndex={rightPanelDefaultClosed ? null : 0}
-                tabs={rightPanelComponents}
-                servicesManager={servicesManager}
-              />
-            </ErrorBoundary>
-          ) : null}
+              </>
+            ) : null}
+            {/* TOOLBAR + GRID */}
+            <ResizablePanel {...resizableViewportGridPanelProps}>
+              <div className="flex h-full flex-1 flex-col">
+                <div className="relative flex h-full flex-1 items-center justify-center overflow-hidden bg-black">
+                  <ViewportGridComp
+                    servicesManager={servicesManager}
+                    viewportComponents={viewportComponents}
+                    commandsManager={commandsManager}
+                  />
+                </div>
+              </div>
+            </ResizablePanel>
+            {hasRightPanels ? (
+              <>
+                <ResizableHandle
+                  onDragging={onHandleDragging}
+                  disabled={!rightPanelResizable}
+                  className={resizableHandleClassName}
+                />
+                <ResizablePanel {...resizableRightPanelProps}>
+                  <SidePanelWithServices
+                    side="right"
+                    isExpanded={!rightPanelClosedState}
+                    servicesManager={servicesManager}
+                    {...rightPanelProps}
+                  />
+                </ResizablePanel>
+              </>
+            ) : null}
+          </ResizablePanelGroup>
         </React.Fragment>
       </div>
+      <Onboarding />
+      <InvestigationalUseDialog dialogConfiguration={appConfig?.investigationalUseDialog} />
     </div>
   );
 }
@@ -269,14 +211,15 @@ ViewerLayout.propTypes = {
     getModuleEntry: PropTypes.func.isRequired,
   }).isRequired,
   commandsManager: PropTypes.instanceOf(CommandsManager),
-  servicesManager: PropTypes.instanceOf(ServicesManager),
+  servicesManager: PropTypes.object.isRequired,
   // From modes
   leftPanels: PropTypes.array,
   rightPanels: PropTypes.array,
-  leftPanelDefaultClosed: PropTypes.bool.isRequired,
-  rightPanelDefaultClosed: PropTypes.bool.isRequired,
+  leftPanelClosed: PropTypes.bool.isRequired,
+  rightPanelClosed: PropTypes.bool.isRequired,
   /** Responsible for rendering our grid of viewports; provided by consuming application */
   children: PropTypes.oneOfType([PropTypes.node, PropTypes.func]).isRequired,
+  viewports: PropTypes.array,
 };
 
 export default ViewerLayout;

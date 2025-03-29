@@ -1,10 +1,8 @@
-import {
-  synchronizers,
-  SynchronizerManager,
-  Synchronizer,
-} from '@cornerstonejs/tools';
+import { synchronizers, SynchronizerManager, Synchronizer } from '@cornerstonejs/tools';
+import { getRenderingEngines, utilities } from '@cornerstonejs/core';
 
-import { pubSubServiceInterface, Types, ServicesManager } from '@ohif/core';
+import { pubSubServiceInterface, Types } from '@ohif/core';
+import createHydrateSegmentationSynchronizer from './createHydrateSegmentationSynchronizer';
 
 const EVENTS = {
   TOOL_GROUP_CREATED: 'event::cornerstone::syncgroupservice:toolgroupcreated',
@@ -14,10 +12,7 @@ const EVENTS = {
  * @params options - are an optional set of options associated with the first
  * sync group declared.
  */
-export type SyncCreator = (
-  type: string,
-  options?: Record<string, unknown>
-) => Synchronizer;
+export type SyncCreator = (id: string, options?: Record<string, unknown>) => Synchronizer;
 
 export type SyncGroup = {
   type: string;
@@ -32,6 +27,8 @@ const POSITION = 'cameraposition';
 const VOI = 'voi';
 const ZOOMPAN = 'zoompan';
 const STACKIMAGE = 'stackimage';
+const IMAGE_SLICE = 'imageslice';
+const HYDRATE_SEG = 'hydrateseg';
 
 const asSyncGroup = (syncGroup: string | SyncGroup): SyncGroup =>
   typeof syncGroup === 'string' ? { type: syncGroup } : syncGroup;
@@ -40,42 +37,55 @@ export default class SyncGroupService {
   static REGISTRATION = {
     name: 'syncGroupService',
     altName: 'SyncGroupService',
-    create: ({
-      servicesManager,
-    }: Types.Extensions.ExtensionParams): SyncGroupService => {
+    create: ({ servicesManager }: Types.Extensions.ExtensionParams): SyncGroupService => {
       return new SyncGroupService(servicesManager);
     },
   };
 
-  servicesManager: ServicesManager;
+  servicesManager: AppTypes.ServicesManager;
   listeners: { [key: string]: (...args: any[]) => void } = {};
   EVENTS: { [key: string]: string };
   synchronizerCreators: Record<string, SyncCreator> = {
     [POSITION]: synchronizers.createCameraPositionSynchronizer,
     [VOI]: synchronizers.createVOISynchronizer,
     [ZOOMPAN]: synchronizers.createZoomPanSynchronizer,
-    [STACKIMAGE]: synchronizers.createStackImageSynchronizer,
+    // todo: remove stack image since it is legacy now and the image_slice
+    // handles both stack and volume viewports
+    [STACKIMAGE]: synchronizers.createImageSliceSynchronizer,
+    [IMAGE_SLICE]: synchronizers.createImageSliceSynchronizer,
+    [HYDRATE_SEG]: createHydrateSegmentationSynchronizer,
   };
 
-  constructor(serviceManager: ServicesManager) {
-    this.servicesManager = serviceManager;
+  synchronizersByType: { [key: string]: Synchronizer[] } = {};
+
+  constructor(servicesManager: AppTypes.ServicesManager) {
+    this.servicesManager = servicesManager;
     this.listeners = {};
     this.EVENTS = EVENTS;
     //
     Object.assign(this, pubSubServiceInterface);
   }
 
-  private _createSynchronizer(
-    type: string,
-    id: string,
-    options
-  ): Synchronizer | undefined {
+  private _createSynchronizer(type: string, id: string, options): Synchronizer | undefined {
+    // Initialize if not already done
+    this.synchronizersByType[type] = this.synchronizersByType[type] || [];
     const syncCreator = this.synchronizerCreators[type.toLowerCase()];
+
     if (syncCreator) {
-      return syncCreator(id, options);
+      // Pass the servicesManager along with other parameters
+      const synchronizer = syncCreator(id, { ...options, servicesManager: this.servicesManager });
+
+      if (synchronizer) {
+        this.synchronizersByType[type].push(synchronizer);
+        return synchronizer;
+      }
     } else {
-      console.warn('Unknown synchronizer type', type, id);
+      console.debug(`Unknown synchronizer type: ${type}, id: ${id}`);
     }
+  }
+
+  public getSyncCreatorForType(type: string): SyncCreator {
+    return this.synchronizerCreators[type.toLowerCase()];
   }
 
   /**
@@ -83,8 +93,30 @@ export default class SyncGroupService {
    * @param type is the type of the synchronizer to create
    * @param creator
    */
-  public setSynchronizer(type: string, creator: SyncCreator): void {
+  public addSynchronizerType(type: string, creator: SyncCreator): void {
     this.synchronizerCreators[type.toLowerCase()] = creator;
+  }
+
+  public getSynchronizer(id: string): Synchronizer | void {
+    return SynchronizerManager.getSynchronizer(id);
+  }
+
+  /**
+   * Registers a custom synchronizer.
+   * @param id - The id of the synchronizer.
+   * @param createFunction - The function that creates the synchronizer.
+   */
+  public registerCustomSynchronizer(id: string, createFunction: SyncCreator): void {
+    this.synchronizerCreators[id] = createFunction;
+  }
+
+  /**
+   * Retrieves an array of synchronizers of a specific type.
+   * @param type - The type of synchronizers to retrieve.
+   * @returns An array of synchronizers of the specified type.
+   */
+  public getSynchronizersOfType(type: string): Synchronizer[] {
+    return this.synchronizersByType[type];
   }
 
   protected _getOrCreateSynchronizer(
@@ -109,21 +141,18 @@ export default class SyncGroupService {
       return;
     }
 
-    const syncGroupsArray = Array.isArray(syncGroups)
-      ? syncGroups
-      : [syncGroups];
+    const syncGroupsArray = Array.isArray(syncGroups) ? syncGroups : [syncGroups];
 
     syncGroupsArray.forEach(syncGroup => {
       const syncGroupObj = asSyncGroup(syncGroup);
-      const {
-        type,
-        target = true,
-        source = true,
-        options = {},
-        id = type,
-      } = syncGroupObj;
+      const { type, target = true, source = true, options = {}, id = type } = syncGroupObj;
 
       const synchronizer = this._getOrCreateSynchronizer(type, id, options);
+
+      if (!synchronizer) {
+        return;
+      }
+
       synchronizer.setOptions(viewportId, options);
 
       const viewportInfo = { viewportId, renderingEngineId };
@@ -142,6 +171,20 @@ export default class SyncGroupService {
     SynchronizerManager.destroy();
   }
 
+  public getSynchronizersForViewport(viewportId: string): Synchronizer[] {
+    const renderingEngine =
+      getRenderingEngines().find(re => {
+        return re.getViewports().find(vp => vp.id === viewportId);
+      }) || getRenderingEngines()[0];
+
+    const synchronizers = SynchronizerManager.getAllSynchronizers();
+    return synchronizers.filter(
+      s =>
+        s.hasSourceViewport(renderingEngine.id, viewportId) ||
+        s.hasTargetViewport(renderingEngine.id, viewportId)
+    );
+  }
+
   public removeViewportFromSyncGroup(
     viewportId: string,
     renderingEngineId: string,
@@ -158,6 +201,11 @@ export default class SyncGroupService {
         return;
       }
 
+      // Only image slice synchronizer register spatial registration
+      if (this.isImageSliceSyncronizer(synchronizer)) {
+        this.unRegisterSpatialRegistration(synchronizer);
+      }
+
       synchronizer.remove({
         viewportId,
         renderingEngineId,
@@ -171,5 +219,46 @@ export default class SyncGroupService {
         SynchronizerManager.destroySynchronizer(synchronizer.id);
       }
     });
+  }
+  /**
+   * Clean up the spatial registration metadata created by synchronizer
+   * This is needed to be able to re-sync images slices if needed
+   * @param synchronizer
+   */
+  unRegisterSpatialRegistration(synchronizer: Synchronizer) {
+    const sourceViewports = synchronizer.getSourceViewports().map(vp => vp.viewportId);
+    const targetViewports = synchronizer.getTargetViewports().map(vp => vp.viewportId);
+
+    // Create an array of pair of viewports to remove from spatialRegistrationMetadataProvider
+    // All sourceViewports combined with all targetViewports
+    const toUnregister = sourceViewports
+      .map((sourceViewportId: string) => {
+        return targetViewports.map(targetViewportId => [targetViewportId, sourceViewportId]);
+      })
+      .reduce((acc, c) => acc.concat(c), []);
+
+    toUnregister.forEach(viewportIdPair => {
+      utilities.spatialRegistrationMetadataProvider.add(viewportIdPair, undefined);
+    });
+  }
+  /**
+   * Check if the synchronizer type is IMAGE_SLICE
+   * Need to convert to lowercase here because the types are lowercase
+   * e.g: synchronizerCreators
+   * @param synchronizer
+   */
+  isImageSliceSyncronizer(synchronizer: Synchronizer) {
+    return this.getSynchronizerType(synchronizer).toLowerCase() === IMAGE_SLICE;
+  }
+  /**
+   * Returns the syncronizer type
+   * @param synchronizer
+   */
+  getSynchronizerType(synchronizer: Synchronizer): string {
+    const synchronizerTypes = Object.keys(this.synchronizersByType);
+    const syncType = synchronizerTypes.find(syncType =>
+      this.getSynchronizersOfType(syncType).includes(synchronizer)
+    );
+    return syncType;
   }
 }

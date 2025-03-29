@@ -9,12 +9,7 @@ import validate from './lib/validator';
  * @param {object[]} options.displaySets is a list of the display sets
  * @return {Object}      Matching Object with score and details (which rule passed or failed)
  */
-const match = (
-  metadataInstance,
-  rules = [],
-  customAttributeRetrievalCallbacks,
-  options
-) => {
+const match = (metadataInstance, rules = [], customAttributeRetrievalCallbacks, options) => {
   const validateOptions = {
     format: 'grouped',
   };
@@ -46,24 +41,32 @@ const match = (
     const { attribute, from = 'metadataInstance' } = rule;
     // Do not use the custom attribute from the metadataInstance since it is subject to change
     if (customAttributeRetrievalCallbacks.hasOwnProperty(attribute)) {
-      readValues[attribute] = customAttributeRetrievalCallbacks[
-        attribute
-      ].callback.call(rule, metadataInstance, options);
+      readValues[attribute] = customAttributeRetrievalCallbacks[attribute].callback.call(
+        rule,
+        metadataInstance,
+        options
+      );
     } else {
-      readValues[attribute] =
-        fromSrc[from]?.[attribute] ?? instance?.[attribute];
+      readValues[attribute] = fromSrc[from]?.[attribute] ?? instance?.[attribute];
     }
+
+    // handle cases where the constraint is also a custom attribute
+    const resolvedConstraint = resolveConstraintAttributes(
+      readValues,
+      rule.constraint,
+      customAttributeRetrievalCallbacks,
+      fromSrc
+    );
 
     // Format the constraint as required by Validate.js
     const testConstraint = {
-      [attribute]: rule.constraint,
+      [attribute]: resolvedConstraint,
     };
 
     // Create a single attribute object to be validated, since metadataInstance is an
     // instance of Metadata (StudyMetadata, SeriesMetadata or InstanceMetadata)
-    let attributeValue = readValues[attribute];
     const attributeMap = {
-      [attribute]: attributeValue,
+      [attribute]: readValues[attribute],
     };
 
     // Use Validate.js to evaluate the constraints on the specified metadataInstance
@@ -74,13 +77,14 @@ const match = (
       errorMessages = ['Something went wrong during validation.', e];
     }
 
-    console.log(
-      'Test',
-      `${from}.${attribute}`,
-      readValues[attribute],
-      JSON.stringify(rule.constraint),
-      !errorMessages
-    );
+    // TODO: move to a logger
+    // console.log(
+    //   'Test',
+    //   `${from}.${attribute}`,
+    //   readValues[attribute],
+    //   JSON.stringify(rule.constraint),
+    //   !errorMessages
+    // );
 
     if (!errorMessages) {
       // If no errorMessages were returned, then validation passed.
@@ -119,6 +123,47 @@ const match = (
     details,
     requiredFailed,
   };
+};
+
+// New helper function to resolve constraint attributes
+const resolveConstraintAttributes = (
+  readValues,
+  constraint,
+  customAttributeRetrievalCallbacks,
+  fromSrc
+) => {
+  if (typeof constraint !== 'object' || constraint === null) {
+    return constraint;
+  }
+
+  const resolvedConstraint = {};
+  Object.entries(constraint).forEach(([key, value]) => {
+    if (typeof value === 'object' && Object.keys(value).length > 0 && 'attribute' in value) {
+      const attributeName = value.attribute;
+      const attributeFrom = value.from ?? 'metadataInstance';
+
+      if (customAttributeRetrievalCallbacks.hasOwnProperty(attributeName)) {
+        const value = customAttributeRetrievalCallbacks[attributeName].callback.call(
+          null,
+          fromSrc[attributeFrom],
+          fromSrc.options
+        );
+
+        resolvedConstraint[key] = {
+          value,
+        };
+      } else {
+        resolvedConstraint[key] = {
+          value:
+            fromSrc[attributeFrom]?.[attributeName] ?? fromSrc.metadataInstance?.[attributeName],
+        };
+      }
+    } else {
+      resolvedConstraint[key] = value;
+    }
+  }, {});
+
+  return resolvedConstraint;
 };
 
 const HPMatcher = {

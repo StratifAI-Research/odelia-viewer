@@ -1,17 +1,19 @@
 import MODULE_TYPES from './MODULE_TYPES';
 import log from '../log';
-import { AppConfig } from '../types/AppConfig';
-import { ServicesManager } from '../services';
+import { PubSubService, ServiceProvidersManager } from '../services';
 import { HotkeysManager, CommandsManager } from '../classes';
+import type { DataSourceDefinition } from '../types';
+import type AppTypes from '../types/AppTypes';
 
 /**
  * This is the arguments given to create the extension.
  */
 export interface ExtensionConstructor {
-  servicesManager: ServicesManager;
+  servicesManager: AppTypes.ServicesManager;
+  serviceProvidersManager: ServiceProvidersManager;
   commandsManager: CommandsManager;
   hotkeysManager: HotkeysManager;
-  appConfig: AppConfig;
+  appConfig: AppTypes.Config;
 }
 
 /**
@@ -26,7 +28,10 @@ export type ExtensionConfiguration = Record<string, unknown>;
  */
 export interface ExtensionParams extends ExtensionConstructor {
   extensionManager: ExtensionManager;
+  servicesManager: AppTypes.ServicesManager;
+  serviceProvidersManager: ServiceProvidersManager;
   configuration?: ExtensionConfiguration;
+  peerImport: (moduleId: string) => Promise<any>;
 }
 
 /**
@@ -42,8 +47,11 @@ export interface Extension {
   getViewportModule?: (p: ExtensionParams) => unknown;
   getUtilityModule?: (p: ExtensionParams) => unknown;
   getCustomizationModule?: (p: ExtensionParams) => unknown;
-  onModeEnter?: () => void;
-  onModeExit?: () => void;
+  getSopClassHandlerModule?: (p: ExtensionParams) => unknown;
+  getToolbarModule?: (p: ExtensionParams) => unknown;
+  getPanelModule?: (p: ExtensionParams) => unknown;
+  onModeEnter?: (p: AppTypes) => void;
+  onModeExit?: (p: AppTypes) => void;
 }
 
 export type ExtensionRegister = {
@@ -57,23 +65,47 @@ export type CommandsModule = {
   defaultContext?: string;
 };
 
-export default class ExtensionManager {
+export default class ExtensionManager extends PubSubService {
+  public static readonly EVENTS = {
+    ACTIVE_DATA_SOURCE_CHANGED: 'event::activedatasourcechanged',
+  };
+
+  public static readonly MODULE_TYPES = MODULE_TYPES;
+
   private _commandsManager: CommandsManager;
-  private _servicesManager: ServicesManager;
+  private _servicesManager: AppTypes.ServicesManager;
   private _hotkeysManager: HotkeysManager;
+  private _serviceProvidersManager: ServiceProvidersManager;
+  private modulesMap: Record<string, unknown>;
+  private modules: Record<string, any[]>;
+  private registeredExtensionIds: string[];
+  private moduleTypeNames: string[];
+  private _appConfig: any;
+  private _extensionLifeCycleHooks: {
+    onModeEnter: Record<string, any>;
+    onModeExit: Record<string, any>;
+  };
+  private dataSourceMap: Record<string, any>;
+  private dataSourceDefs: Record<string, any>;
+  private defaultDataSourceName: string;
+  private activeDataSource: string;
+  private peerImport: (moduleId) => Promise<any>;
 
   constructor({
     commandsManager,
     servicesManager,
+    serviceProvidersManager,
     hotkeysManager,
     appConfig = {},
   }: ExtensionConstructor) {
+    super(ExtensionManager.EVENTS);
     this.modules = {};
     this.registeredExtensionIds = [];
     this.moduleTypeNames = Object.values(MODULE_TYPES);
     //
     this._commandsManager = commandsManager;
     this._servicesManager = servicesManager;
+    this._serviceProvidersManager = serviceProvidersManager;
     this._hotkeysManager = hotkeysManager;
     this._appConfig = appConfig;
 
@@ -85,11 +117,31 @@ export default class ExtensionManager {
     this.dataSourceMap = {};
     this.dataSourceDefs = {};
     this.defaultDataSourceName = appConfig.defaultDataSourceName;
-    this.activeDataSource = undefined;
+    this.activeDataSource = appConfig.defaultDataSourceName;
+    this.peerImport = appConfig.peerImport;
   }
 
-  public setActiveDataSource(dataSourceName: string): void {
-    this.activeDataSource = dataSourceName;
+  public setActiveDataSource(dataSource: string): void {
+    if (this.activeDataSource === dataSource) {
+      return;
+    }
+
+    this.activeDataSource = dataSource;
+
+    this._broadcastEvent(
+      ExtensionManager.EVENTS.ACTIVE_DATA_SOURCE_CHANGED,
+      this.dataSourceDefs[this.activeDataSource]
+    );
+  }
+
+  public getRegisteredExtensionIds() {
+    return [...this.registeredExtensionIds];
+  }
+
+  private getUniqueServicesList(servicesManager: AppTypes.ServicesManager) {
+    // Make sure only one service instance is returned because almost all services are
+    // registered with different keys (eg: StudyPrefetcherService and studyPrefetcherService)
+    return Array.from(new Set(Object.values(servicesManager.services)));
   }
 
   /**
@@ -106,11 +158,12 @@ export default class ExtensionManager {
       _hotkeysManager,
       _extensionLifeCycleHooks,
     } = this;
+    const services = this.getUniqueServicesList(_servicesManager);
 
     // The onModeEnter of the service must occur BEFORE the extension
     // onModeEnter in order to reset the state to a standard state
     // before the extension restores and cached data.
-    for (const service of Object.values(_servicesManager.services)) {
+    for (const service of services) {
       service?.onModeEnter?.();
     }
 
@@ -122,18 +175,16 @@ export default class ExtensionManager {
           servicesManager: _servicesManager,
           commandsManager: _commandsManager,
           hotkeysManager: _hotkeysManager,
+          extensionManager: this,
         });
       }
     });
   }
 
   public onModeExit(): void {
-    const {
-      registeredExtensionIds,
-      _servicesManager,
-      _commandsManager,
-      _extensionLifeCycleHooks,
-    } = this;
+    const { registeredExtensionIds, _servicesManager, _commandsManager, _extensionLifeCycleHooks } =
+      this;
+    const services = this.getUniqueServicesList(_servicesManager);
 
     registeredExtensionIds.forEach(extensionId => {
       const onModeExit = _extensionLifeCycleHooks.onModeExit[extensionId];
@@ -148,7 +199,7 @@ export default class ExtensionManager {
 
     // The service onModeExit calls must occur after the extension ones
     // so that extension ones can store/restore data.
-    for (const service of Object.values(_servicesManager.services)) {
+    for (const service of services) {
       try {
         service?.onModeExit?.();
       } catch (e) {
@@ -164,10 +215,7 @@ export default class ExtensionManager {
    * @param {Object[]} extensions - Array of extensions
    */
   public registerExtensions = async (
-    extensions: (
-      | ExtensionRegister
-      | [ExtensionRegister, ExtensionConfiguration]
-    )[],
+    extensions: (ExtensionRegister | [ExtensionRegister, ExtensionConfiguration])[],
     dataSources: unknown[] = []
   ): Promise<void> => {
     // Todo: we ideally should be able to run registrations in parallel
@@ -186,11 +234,7 @@ export default class ExtensionManager {
           // for (const extension of extensions)
           const ohifExtension = extension[0];
           const configuration = extension[1];
-          await this.registerExtension(
-            ohifExtension,
-            configuration,
-            dataSources
-          );
+          await this.registerExtension(ohifExtension, configuration, dataSources);
         } else {
           await this.registerExtension(extension, {}, dataSources);
         }
@@ -234,6 +278,7 @@ export default class ExtensionManager {
     if (extension.preRegistration) {
       await extension.preRegistration({
         servicesManager: this._servicesManager,
+        serviceProvidersManager: this._serviceProvidersManager,
         commandsManager: this._commandsManager,
         hotkeysManager: this._hotkeysManager,
         extensionManager: this,
@@ -243,13 +288,11 @@ export default class ExtensionManager {
     }
 
     if (extension.onModeEnter) {
-      this._extensionLifeCycleHooks.onModeEnter[extensionId] =
-        extension.onModeEnter;
+      this._extensionLifeCycleHooks.onModeEnter[extensionId] = extension.onModeEnter;
     }
 
     if (extension.onModeExit) {
-      this._extensionLifeCycleHooks.onModeExit[extensionId] =
-        extension.onModeExit;
+      this._extensionLifeCycleHooks.onModeExit[extensionId] = extension.onModeExit;
     }
 
     // Register Modules
@@ -261,59 +304,72 @@ export default class ExtensionManager {
         configuration
       );
 
-      if (extensionModule) {
-        switch (moduleType) {
-          case MODULE_TYPES.COMMANDS:
-            this._initCommandsModule(extensionModule);
-            break;
-          case MODULE_TYPES.DATA_SOURCE:
-            this._initDataSourcesModule(
-              extensionModule,
-              extensionId,
-              dataSources
-            );
-            break;
-          case MODULE_TYPES.HANGING_PROTOCOL:
-            this._initHangingProtocolsModule(extensionModule, extensionId);
-          case MODULE_TYPES.TOOLBAR:
-          case MODULE_TYPES.VIEWPORT:
-          case MODULE_TYPES.PANEL:
-          case MODULE_TYPES.SOP_CLASS_HANDLER:
-          case MODULE_TYPES.CONTEXT:
-          case MODULE_TYPES.LAYOUT_TEMPLATE:
-          case MODULE_TYPES.CUSTOMIZATION:
-          case MODULE_TYPES.STATE_SYNC:
-          case MODULE_TYPES.UTILITY:
-            // Default for most extension points,
-            // Just adds each entry ready for consumption by mode.
-            extensionModule.forEach(element => {
-              if (!element.name) {
-                throw new Error(
-                  `Extension ID ${extensionId} module ${moduleType} element has no name`
-                );
-              }
-              const id = `${extensionId}.${moduleType}.${element.name}`;
-              element.id = id;
-              this.modulesMap[id] = element;
-            });
-            break;
-          default:
-            throw new Error(`Module type invalid: ${moduleType}`);
-        }
-
-        this.modules[moduleType].push({
-          extensionId,
-          module: extensionModule,
-        });
+      if (!extensionModule) {
+        return;
       }
+
+      switch (moduleType) {
+        case MODULE_TYPES.COMMANDS:
+          this._initCommandsModule(extensionModule);
+          break;
+
+        case MODULE_TYPES.DATA_SOURCE:
+          this._initDataSourcesModule(extensionModule, extensionId, dataSources);
+          break;
+
+        case MODULE_TYPES.HANGING_PROTOCOL:
+          this._initHangingProtocolsModule(extensionModule, extensionId);
+          break;
+
+        case MODULE_TYPES.PANEL:
+          this._initPanelModule(extensionModule, extensionId);
+          break;
+
+        case MODULE_TYPES.TOOLBAR:
+          this._initToolbarModule(extensionModule, extensionId);
+          break;
+
+        case MODULE_TYPES.VIEWPORT:
+        case MODULE_TYPES.SOP_CLASS_HANDLER:
+        case MODULE_TYPES.CONTEXT:
+        case MODULE_TYPES.LAYOUT_TEMPLATE:
+        case MODULE_TYPES.CUSTOMIZATION:
+        case MODULE_TYPES.STATE_SYNC:
+        case MODULE_TYPES.UTILITY:
+          this.processExtensionModule(extensionModule, extensionId, moduleType);
+          break;
+        default:
+          throw new Error(`Module type invalid: ${moduleType}`);
+      }
+
+      this.modules[moduleType].push({
+        extensionId,
+        module: extensionModule,
+      });
     });
 
     // Track extension registration
     this.registeredExtensionIds.push(extensionId);
   };
 
+  /**
+   * Retrieves the module entry associated with the given string entry
+   * @param stringEntry - The string entry to retrieve the module entry for which is
+   * in the format of `${extensionId}.${moduleType}.${moduleName}`
+   * @returns The module entry associated with the given string entry.
+   */
   getModuleEntry = stringEntry => {
     return this.modulesMap[stringEntry];
+  };
+
+  /**
+   * Retrieves all modules of a given type for all registered extensions.
+   *
+   * @param moduleType - The type of modules to retrieve.
+   * @returns An array of modules of the specified type.
+   */
+  getModulesByType = (moduleType: string) => {
+    return this.modules[moduleType];
   };
 
   getDataSources = dataSourceName => {
@@ -330,8 +386,27 @@ export default class ExtensionManager {
     return this.dataSourceMap[this.activeDataSource];
   };
 
-  getDataSource = () => {
-    return this.dataSourceMap[this.activeDataSource];
+  /**
+   * Gets the data source definition for the given data source name.
+   * If no data source name is provided, the active data source definition is
+   * returned.
+   * @param dataSourceName the data source name
+   * @returns the data source definition
+   */
+  getDataSourceDefinition = dataSourceName => {
+    if (dataSourceName === undefined) {
+      // Default to the activeDataSource
+      dataSourceName = this.activeDataSource;
+    }
+
+    return this.dataSourceDefs[dataSourceName];
+  };
+
+  /**
+   * Gets the data source definition for the active data source.
+   */
+  getActiveDataSourceDefinition = () => {
+    return this.getDataSourceDefinition(this.activeDataSource);
   };
 
   /**
@@ -366,7 +441,7 @@ export default class ExtensionManager {
 
       return extensionModule;
     } catch (ex) {
-      console.log(ex);
+      console.error(ex);
       throw new Error(
         `Exception thrown while trying to call ${getModuleFnName} for the ${extensionId} extension`
       );
@@ -383,10 +458,113 @@ export default class ExtensionManager {
     });
   };
 
-  _initDataSourcesModule(extensionModule, extensionId, dataSources = []) {
-    const { userAuthenticationService } = this._servicesManager.services;
-    dataSources.forEach(dataSource => {
-      this.dataSourceDefs[dataSource.sourceName] = dataSource;
+  _initPanelModule = (extensionModule, extensionId) => {
+    this.processExtensionModule(extensionModule, extensionId, MODULE_TYPES.PANEL);
+  };
+
+  _initToolbarModule = (extensionModule, extensionId) => {
+    // check if the toolbar module has a handler function for evaluation of
+    // the toolbar button state
+    const { toolbarService } = this._servicesManager.services;
+    extensionModule.forEach(toolbarButton => {
+      if (toolbarButton.evaluate) {
+        toolbarService.registerEvaluateFunction(toolbarButton.name, toolbarButton.evaluate);
+      }
+    });
+  };
+
+  /**
+   * Processes an extension module.
+   * @param extensionModule - The extension module to process.
+   * @param extensionId - The ID of the extension.
+   * @param moduleType - The type of the module.
+   */
+  private processExtensionModule(extensionModule, extensionId: string, moduleType: string) {
+    extensionModule.forEach(element => {
+      if (!element.name) {
+        throw new Error(`Extension ID ${extensionId} module ${moduleType} element has no name`);
+      }
+      const id = `${extensionId}.${moduleType}.${element.name}`;
+      element.id = id;
+      this.modulesMap[id] = element;
+    });
+  }
+
+  /**
+   * Adds the given data source and optionally sets it as the active data source.
+   * The method does this by first creating the data source.
+   * @param dataSourceDef the data source definition to be added
+   * @param activate flag to indicate if the added data source should be set to the active data source
+   */
+  addDataSource(dataSourceDef: DataSourceDefinition, options = { activate: false }) {
+    const existingDataSource = this.getDataSources(dataSourceDef.sourceName);
+    if (existingDataSource?.[0]) {
+      // The data source already exists and cannot be added.
+      return;
+    }
+
+    this._createDataSourceInstance(dataSourceDef);
+
+    if (options.activate) {
+      this.setActiveDataSource(dataSourceDef.sourceName);
+    }
+  }
+
+  /**
+   * Updates the configuration of the given data source name. It first creates a new data source with
+   * the existing definition and the new configuration passed in.
+   * @param dataSourceName the name of the data source to update
+   * @param dataSourceConfiguration the new configuration to update the data source with
+   */
+  updateDataSourceConfiguration(dataSourceName: string, dataSourceConfiguration: any) {
+    const existingDataSource = this.getDataSources(dataSourceName);
+    if (!existingDataSource?.[0]) {
+      // Cannot update a non existent data source.
+      return;
+    }
+
+    const dataSourceDef = this.dataSourceDefs[dataSourceName];
+    // Update the configuration.
+    dataSourceDef.configuration = dataSourceConfiguration;
+    this._createDataSourceInstance(dataSourceDef);
+
+    if (this.activeDataSource === dataSourceName) {
+      // When the active data source is changed/set, fire an event to indicate that its configuration has changed.
+      this._broadcastEvent(ExtensionManager.EVENTS.ACTIVE_DATA_SOURCE_CHANGED, dataSourceDef);
+    }
+  }
+
+  /**
+   * Creates a data source instance from the given definition. The definition is
+   * added to dataSourceDefs and the created instance is added to dataSourceMap.
+   * @param dataSourceDef
+   * @returns
+   */
+  _createDataSourceInstance(dataSourceDef: DataSourceDefinition) {
+    const module = this.getModuleEntry(dataSourceDef.namespace);
+
+    if (!module) {
+      return;
+    }
+
+    this.dataSourceDefs[dataSourceDef.sourceName] = dataSourceDef;
+
+    const dataSourceInstance = module.createDataSource(
+      dataSourceDef.configuration,
+      this._servicesManager,
+      this
+    );
+
+    this.dataSourceMap[dataSourceDef.sourceName] = [dataSourceInstance];
+  }
+
+  _initDataSourcesModule(
+    extensionModule,
+    extensionId,
+    dataSources: Array<DataSourceDefinition> = []
+  ): void {
+    extensionModule.forEach(element => {
+      this.modulesMap[`${extensionId}.${MODULE_TYPES.DATA_SOURCE}.${element.name}`] = element;
     });
 
     extensionModule.forEach(element => {
@@ -394,24 +572,9 @@ export default class ExtensionManager {
 
       dataSources.forEach(dataSource => {
         if (dataSource.namespace === namespace) {
-          const dataSourceInstance = element.createDataSource(
-            dataSource.configuration,
-            userAuthenticationService
-          );
-
-          if (this.dataSourceMap[dataSource.sourceName]) {
-            this.dataSourceMap[dataSource.sourceName].push(dataSourceInstance);
-          } else {
-            this.dataSourceMap[dataSource.sourceName] = [dataSourceInstance];
-          }
+          this.addDataSource(dataSource);
         }
       });
-    });
-
-    extensionModule.forEach(element => {
-      this.modulesMap[
-        `${extensionId}.${MODULE_TYPES.DATA_SOURCE}.${element.name}`
-      ] = element;
     });
   }
 
@@ -434,10 +597,12 @@ export default class ExtensionManager {
     }
 
     Object.keys(definitions).forEach(commandName => {
-      const commandDefinition = definitions[commandName];
+      let commandDefinition = definitions[commandName];
+      if (typeof commandDefinition === 'function') {
+        commandDefinition = { commandFn: commandDefinition };
+      }
       const commandHasContextThatDoesNotExist =
-        commandDefinition.context &&
-        !this._commandsManager.getContext(commandDefinition.context);
+        commandDefinition.context && !this._commandsManager.getContext(commandDefinition.context);
 
       if (commandHasContextThatDoesNotExist) {
         this._commandsManager.createContext(commandDefinition.context);
@@ -450,6 +615,10 @@ export default class ExtensionManager {
       );
     });
   };
+
+  public get appConfig() {
+    return this._appConfig;
+  }
 }
 
 /**

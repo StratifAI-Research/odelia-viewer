@@ -53,44 +53,19 @@ export function formatDICOMTime(time, strFormat = 'HH:mm:ss') {
 }
 
 /**
- * Formats a patient name for display purposes
- *
- * @param {string} name
- * @returns {string} formatted name.
- */
-export function formatPN(name) {
-  if (!name) {
-    return '';
-  }
-
-  const cleaned = name
-    .split('^')
-    .filter(s => !!s)
-    .join(', ')
-    .trim();
-  return cleaned === ',' || cleaned === '' ? '' : cleaned;
-}
-
-/**
  * Gets compression type
  *
  * @param {number} imageId
- * @returns {string} comrpession type.
+ * @returns {string} compression type.
  */
 export function getCompression(imageId) {
   const generalImageModule = metaData.get('generalImageModule', imageId) || {};
-  const {
-    lossyImageCompression,
-    lossyImageCompressionRatio,
-    lossyImageCompressionMethod,
-  } = generalImageModule;
+  const { lossyImageCompression, lossyImageCompressionRatio, lossyImageCompressionMethod } =
+    generalImageModule;
 
   if (lossyImageCompression === '01' && lossyImageCompressionRatio !== '') {
     const compressionMethod = lossyImageCompressionMethod || 'Lossy: ';
-    const compressionRatio = formatNumberPrecision(
-      lossyImageCompressionRatio,
-      2
-    );
+    const compressionRatio = formatNumberPrecision(lossyImageCompressionRatio, 2);
     return compressionMethod + compressionRatio + ' : 1';
   }
 

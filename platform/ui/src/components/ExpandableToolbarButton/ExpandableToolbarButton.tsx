@@ -2,19 +2,19 @@ import React from 'react';
 import PropTypes from 'prop-types';
 import classnames from 'classnames';
 
-import { IconButton, Icon } from '../';
-
+import IconButton from '../IconButton';
+import { Icons } from '@ohif/ui-next';
 import './ExpandableToolbarButton.css';
 
 const ExpandableToolbarButton = ({
-  type,
-  id,
-  isActive,
-  onClick,
-  icon,
+  type = 'primary',
+  id = '',
+  isActive = false,
+  onClick = () => {},
+  icon = 'clipboard',
   className,
-  content: Content,
-  contentProps,
+  content: Content = null,
+  contentProps = {},
 }) => {
   const classes = {
     type: {
@@ -40,7 +40,10 @@ const ExpandableToolbarButton = ({
   };
 
   return (
-    <div key={id} className="ExpandableToolbarButton">
+    <div
+      key={id}
+      className="ExpandableToolbarButton"
+    >
       <IconButton
         variant={isActive ? 'contained' : 'text'}
         className={classnames(
@@ -51,16 +54,14 @@ const ExpandableToolbarButton = ({
         onClick={onClickHandler}
         key={id}
       >
-        <Icon name={icon} />
+        <Icons.ByName name={icon} />
       </IconButton>
       <div className="absolute z-10 pt-4">
-        <div
-          className={classnames(
-            'ExpandableToolbarButton__content w-48',
-            className
-          )}
-        >
-          <Content {...contentProps} onClick={onChildClickHandler} />
+        <div className={classnames('ExpandableToolbarButton__content w-48', className)}>
+          <Content
+            {...contentProps}
+            onClick={onChildClickHandler}
+          />
         </div>
       </div>
     </div>
@@ -68,15 +69,6 @@ const ExpandableToolbarButton = ({
 };
 
 const noop = () => {};
-
-ExpandableToolbarButton.defaultProps = {
-  id: '',
-  icon: 'clipboard',
-  isActive: false,
-  type: 'primary',
-  content: null,
-  onClick: noop,
-};
 
 ExpandableToolbarButton.propTypes = {
   /* Influences background/hover styling */

@@ -2,37 +2,61 @@
 const dotenv = require('dotenv');
 //
 const path = require('path');
+const fs = require('fs');
+
 const webpack = require('webpack');
 
 // ~~ PLUGINS
-const BundleAnalyzerPlugin = require('webpack-bundle-analyzer')
-  .BundleAnalyzerPlugin;
+// const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
 const TerserJSPlugin = require('terser-webpack-plugin');
-const CopyPlugin = require('copy-webpack-plugin');
 
 // ~~ PackageJSON
-const PACKAGE = require('../platform/viewer/package.json');
 // const vtkRules = require('vtk.js/Utilities/config/dependency.js').webpack.core
 //   .rules;
 // ~~ RULES
-const loadShadersRule = require('./rules/loadShaders.js');
+// const loadShadersRule = require('./rules/loadShaders.js');
 const loadWebWorkersRule = require('./rules/loadWebWorkers.js');
 const transpileJavaScriptRule = require('./rules/transpileJavaScript.js');
 const cssToJavaScript = require('./rules/cssToJavaScript.js');
+// Only uncomment for old v2 stylus
+// const stylusToJavaScript = require('./rules/stylusToJavaScript.js');
+const ReactRefreshWebpackPlugin = require('@pmmmwh/react-refresh-webpack-plugin');
 
 // ~~ ENV VARS
 const NODE_ENV = process.env.NODE_ENV;
 const QUICK_BUILD = process.env.QUICK_BUILD;
 const BUILD_NUM = process.env.CIRCLE_BUILD_NUM || '0';
 
+// read from ../version.txt
+const VERSION_NUMBER = fs.readFileSync(path.join(__dirname, '../version.txt'), 'utf8') || '';
+
+const COMMIT_HASH = fs.readFileSync(path.join(__dirname, '../commit.txt'), 'utf8') || '';
+
 //
 dotenv.config();
 
-module.exports = (env, argv, { SRC_DIR, DIST_DIR }) => {
-  if (!process.env.NODE_ENV) {
-    throw new Error('process.env.NODE_ENV not set');
-  }
+const defineValues = {
+  /* Application */
+  'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
+  'process.env.NODE_DEBUG': JSON.stringify(process.env.NODE_DEBUG),
+  'process.env.DEBUG': JSON.stringify(process.env.DEBUG),
+  'process.env.PUBLIC_URL': JSON.stringify(process.env.PUBLIC_URL || '/'),
+  'process.env.BUILD_NUM': JSON.stringify(BUILD_NUM),
+  'process.env.VERSION_NUMBER': JSON.stringify(VERSION_NUMBER),
+  'process.env.COMMIT_HASH': JSON.stringify(COMMIT_HASH),
+  /* i18n */
+  'process.env.USE_LOCIZE': JSON.stringify(process.env.USE_LOCIZE || ''),
+  'process.env.LOCIZE_PROJECTID': JSON.stringify(process.env.LOCIZE_PROJECTID || ''),
+  'process.env.LOCIZE_API_KEY': JSON.stringify(process.env.LOCIZE_API_KEY || ''),
+  'process.env.REACT_APP_I18N_DEBUG': JSON.stringify(process.env.REACT_APP_I18N_DEBUG || ''),
+};
 
+// Only redefine updated values.  This avoids warning messages in the logs
+if (!process.env.APP_CONFIG) {
+  defineValues['process.env.APP_CONFIG'] = '';
+}
+
+module.exports = (env, argv, { SRC_DIR, ENTRY }) => {
   const mode = NODE_ENV === 'production' ? 'production' : 'development';
   const isProdBuild = NODE_ENV === 'production';
   const isQuickBuild = QUICK_BUILD === 'true';
@@ -40,9 +64,7 @@ module.exports = (env, argv, { SRC_DIR, DIST_DIR }) => {
   const config = {
     mode: isProdBuild ? 'production' : 'development',
     devtool: isProdBuild ? 'source-map' : 'cheap-module-source-map',
-    entry: {
-      app: `${SRC_DIR}/index.js`,
-    },
+    entry: ENTRY,
     optimization: {
       // splitChunks: {
       //   // include all types of chunks
@@ -50,7 +72,7 @@ module.exports = (env, argv, { SRC_DIR, DIST_DIR }) => {
       // },
       //runtimeChunk: 'single',
       minimize: isProdBuild,
-      sideEffects: true,
+      sideEffects: false,
     },
     output: {
       // clean: true,
@@ -68,18 +90,56 @@ module.exports = (env, argv, { SRC_DIR, DIST_DIR }) => {
       children: false,
       warnings: true,
     },
-    devServer: {
-      open: true,
-      port: 3000,
-      historyApiFallback: true,
-      headers: {
-        'Cross-Origin-Embedder-Policy': 'require-corp',
-        'Cross-Origin-Opener-Policy': 'same-origin',
-      },
+    cache: {
+      type: 'filesystem',
     },
     module: {
-      noParse: [/(codec)/, /(dicomicc)/],
+      noParse: [/(dicomicc)/],
       rules: [
+        ...(isProdBuild
+          ? []
+          : [
+              {
+                test: /\.[jt]sx?$/,
+                exclude: /node_modules/,
+                loader: 'babel-loader',
+                options: {
+                  plugins: isProdBuild ? [] : ['react-refresh/babel'],
+                },
+              },
+            ]),
+        {
+          test: /\.svg?$/,
+          oneOf: [
+            {
+              use: [
+                {
+                  loader: '@svgr/webpack',
+                  options: {
+                    svgoConfig: {
+                      plugins: [
+                        {
+                          name: 'preset-default',
+                          params: {
+                            overrides: {
+                              removeViewBox: false,
+                            },
+                          },
+                        },
+                      ],
+                    },
+                    prettier: false,
+                    svgo: true,
+                    titleProp: true,
+                  },
+                },
+              ],
+              issuer: {
+                and: [/\.(ts|tsx|js|jsx|md|mdx)$/],
+              },
+            },
+          ],
+        },
         transpileJavaScriptRule(mode),
         loadWebWorkersRule,
         // loadShadersRule,
@@ -90,9 +150,23 @@ module.exports = (env, argv, { SRC_DIR, DIST_DIR }) => {
           },
         },
         cssToJavaScript,
+        // Note: Only uncomment the following if you are using the old style of stylus in v2
+        // Also you need to uncomment this platform/app/.webpack/rules/extractStyleChunks.js
+        // stylusToJavaScript,
         {
           test: /\.wasm/,
           type: 'asset/resource',
+        },
+        {
+          test: /\.(png|jpe?g|gif|svg)$/i,
+          use: [
+            {
+              loader: 'file-loader',
+              options: {
+                name: 'assets/images/[name].[ext]',
+              },
+            },
+          ],
         },
       ], //.concat(vtkRules),
     },
@@ -100,18 +174,13 @@ module.exports = (env, argv, { SRC_DIR, DIST_DIR }) => {
       mainFields: ['module', 'browser', 'main'],
       alias: {
         // Viewer project
-        '@': path.resolve(__dirname, '../platform/viewer/src'),
-        '@components': path.resolve(
-          __dirname,
-          '../platform/viewer/src/components'
-        ),
-        '@hooks': path.resolve(__dirname, '../platform/viewer/src/hooks'),
-        '@routes': path.resolve(__dirname, '../platform/viewer/src/routes'),
-        '@state': path.resolve(__dirname, '../platform/viewer/src/state'),
+        '@': path.resolve(__dirname, '../platform/app/src'),
+        '@components': path.resolve(__dirname, '../platform/app/src/components'),
+        '@hooks': path.resolve(__dirname, '../platform/app/src/hooks'),
+        '@routes': path.resolve(__dirname, '../platform/app/src/routes'),
+        '@state': path.resolve(__dirname, '../platform/app/src/state'),
         'dicom-microscopy-viewer':
           'dicom-microscopy-viewer/dist/dynamic-import/dicomMicroscopyViewer.min.js',
-        '@cornerstonejs/dicom-image-loader':
-          '@cornerstonejs/dicom-image-loader/dist/dynamic-import/cornerstoneDICOMImageLoader.min.js',
       },
       // Which directories to search when resolving modules
       modules: [
@@ -119,7 +188,7 @@ module.exports = (env, argv, { SRC_DIR, DIST_DIR }) => {
         path.resolve(__dirname, '../node_modules'),
         // Hoisted Yarn Workspace Modules
         path.resolve(__dirname, '../../../node_modules'),
-        path.resolve(__dirname, '../platform/viewer/node_modules'),
+        path.resolve(__dirname, '../platform/app/node_modules'),
         path.resolve(__dirname, '../platform/ui/node_modules'),
         SRC_DIR,
       ],
@@ -127,31 +196,19 @@ module.exports = (env, argv, { SRC_DIR, DIST_DIR }) => {
       extensions: ['.js', '.jsx', '.json', '.ts', '.tsx', '*'],
       // symlinked resources are resolved to their real path, not their symlinked location
       symlinks: true,
-      fallback: { fs: false, path: false, zlib: false },
+      fallback: {
+        fs: false,
+        path: false,
+        zlib: false,
+        buffer: require.resolve('buffer'),
+      },
     },
     plugins: [
-      new webpack.DefinePlugin({
-        /* Application */
-        'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV),
-        'process.env.DEBUG': JSON.stringify(process.env.DEBUG),
-        'process.env.APP_CONFIG': JSON.stringify(process.env.APP_CONFIG || ''),
-        'process.env.PUBLIC_URL': JSON.stringify(process.env.PUBLIC_URL || '/'),
-        'process.env.VERSION_NUMBER': JSON.stringify(
-          process.env.VERSION_NUMBER || PACKAGE.productVersion || ''
-        ),
-        'process.env.BUILD_NUM': JSON.stringify(BUILD_NUM),
-        /* i18n */
-        'process.env.USE_LOCIZE': JSON.stringify(process.env.USE_LOCIZE || ''),
-        'process.env.LOCIZE_PROJECTID': JSON.stringify(
-          process.env.LOCIZE_PROJECTID || ''
-        ),
-        'process.env.LOCIZE_API_KEY': JSON.stringify(
-          process.env.LOCIZE_API_KEY || ''
-        ),
-        'process.env.REACT_APP_I18N_DEBUG': JSON.stringify(
-          process.env.REACT_APP_I18N_DEBUG || ''
-        ),
+      new webpack.DefinePlugin(defineValues),
+      new webpack.ProvidePlugin({
+        Buffer: ['buffer', 'Buffer'],
       }),
+      ...(isProdBuild ? [] : [new ReactRefreshWebpackPlugin({ overlay: false })]),
       // Uncomment to generate bundle analyzer
       // new BundleAnalyzerPlugin(),
     ],

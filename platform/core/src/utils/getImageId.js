@@ -24,6 +24,10 @@ export default function getImageId(instance, frame, thumbnail = false) {
     return;
   }
 
+  if (instance.imageId && frame === undefined) {
+    return instance.imageId;
+  }
+
   if (typeof instance.getImageId === 'function') {
     return instance.getImageId();
   }
@@ -38,11 +42,7 @@ export default function getImageId(instance, frame, thumbnail = false) {
 
   const renderingAttr = thumbnail ? 'thumbnailRendering' : 'imageRendering';
 
-  if (
-    !instance[renderingAttr] ||
-    instance[renderingAttr] === 'wadouri' ||
-    !instance.wadorsuri
-  ) {
+  if (!instance[renderingAttr] || instance[renderingAttr] === 'wadouri' || !instance.wadorsuri) {
     let imageId = 'dicomweb:' + instance.wadouri;
     if (frame !== undefined) {
       imageId += '&frame=' + frame;

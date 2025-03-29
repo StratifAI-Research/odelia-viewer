@@ -1,4 +1,5 @@
 import { DicomMetadataStore } from '../services/DicomMetadataStore/DicomMetadataStore';
+import formatPN from './formatPN';
 
 export default function downloadCSVReport(measurementData) {
   if (measurementData.length === 0) {
@@ -17,22 +18,14 @@ export default function downloadCSVReport(measurementData) {
 
   const reportMap = {};
   measurementData.forEach(measurement => {
-    const {
-      referenceStudyUID,
-      referenceSeriesUID,
-      getReport,
-      uid,
-    } = measurement;
+    const { referenceStudyUID, referenceSeriesUID, getReport, uid } = measurement;
 
     if (!getReport) {
       console.warn('Measurement does not have a getReport function');
       return;
     }
 
-    const seriesMetadata = DicomMetadataStore.getSeries(
-      referenceStudyUID,
-      referenceSeriesUID
-    );
+    const seriesMetadata = DicomMetadataStore.getSeries(referenceStudyUID, referenceSeriesUID);
 
     const commonRowItems = _getCommonRowItems(measurement, seriesMetadata);
     const report = getReport(measurement);
@@ -57,9 +50,7 @@ export default function downloadCSVReport(measurementData) {
 
   const results = _mapReportsToRowArray(reportMap, columns);
 
-  let csvContent =
-    'data:text/csv;charset=utf-8,' +
-    results.map(res => res.join(',')).join('\n');
+  let csvContent = 'data:text/csv;charset=utf-8,' + results.map(res => res.join(',')).join('\n');
 
   _createAndDownloadFile(csvContent);
 }
@@ -96,7 +87,7 @@ function _getCommonRowItems(measurement, seriesMetadata) {
 
   return {
     'Patient ID': firstInstance.PatientID, // Patient ID
-    'Patient Name': firstInstance.PatientName.Alphabetic, // PatientName
+    'Patient Name': formatPN(firstInstance.PatientName) || '', // Patient Name
     StudyInstanceUID: measurement.referenceStudyUID, // StudyInstanceUID
     SeriesInstanceUID: measurement.referenceSeriesUID, // SeriesInstanceUID
     SOPInstanceUID: measurement.SOPInstanceUID, // SOPInstanceUID

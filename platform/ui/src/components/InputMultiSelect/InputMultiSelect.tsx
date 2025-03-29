@@ -1,7 +1,8 @@
 import React from 'react';
 import PropTypes from 'prop-types';
 
-import { Select, InputLabelWrapper } from '../';
+import Select from '../Select';
+import InputLabelWrapper from '../InputLabelWrapper';
 
 const InputMultiSelect = ({
   id,
@@ -9,9 +10,9 @@ const InputMultiSelect = ({
   isSortable,
   sortDirection,
   onLabelClick,
-  value,
-  placeholder,
-  options,
+  value = [],
+  placeholder = '',
+  options = [],
   onChange,
 }) => {
   return (
@@ -29,7 +30,7 @@ const InputMultiSelect = ({
         value={value}
         isMulti={true}
         isClearable={false}
-        isSearchable={false}
+        isSearchable={true}
         closeMenuOnSelect={false}
         hideSelectedOptions={false}
         onChange={(selectedOptions, action) => {
@@ -49,18 +50,11 @@ const InputMultiSelect = ({
   );
 };
 
-InputMultiSelect.defaultProps = {
-  value: [],
-  placeholder: '',
-  options: [],
-};
-
 InputMultiSelect.propTypes = {
   id: PropTypes.string,
   label: PropTypes.string.isRequired,
   isSortable: PropTypes.bool.isRequired,
-  sortDirection: PropTypes.oneOf(['ascending', 'descending', 'none'])
-    .isRequired,
+  sortDirection: PropTypes.oneOf(['ascending', 'descending', 'none']).isRequired,
   onLabelClick: PropTypes.func.isRequired,
   onChange: PropTypes.func.isRequired,
   placeholder: PropTypes.string,

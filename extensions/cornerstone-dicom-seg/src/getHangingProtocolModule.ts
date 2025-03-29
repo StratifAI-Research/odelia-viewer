@@ -5,7 +5,6 @@ const segProtocol: Types.HangingProtocol.Protocol = {
   // Don't store this hanging protocol as it applies to the currently active
   // display set by default
   // cacheId: null,
-  hasUpdatedPriorsInformation: false,
   name: 'Segmentations',
   // Just apply this one when specifically listed
   protocolMatchingRules: [],
@@ -21,6 +20,17 @@ const segProtocol: Types.HangingProtocol.Protocol = {
       viewportType: 'stack',
       toolGroupId: 'default',
       allowUnmatchedView: true,
+      syncGroups: [
+        {
+          type: 'hydrateseg',
+          id: 'sameFORId',
+          source: true,
+          target: true,
+          // options: {
+          //   matchingRules: ['sameFOR'],
+          // },
+        },
+      ],
     },
     displaySets: [
       {
@@ -53,7 +63,20 @@ const segProtocol: Types.HangingProtocol.Protocol = {
       },
       viewports: [
         {
-          viewportOptions: { allowUnmatchedView: true },
+          viewportOptions: {
+            allowUnmatchedView: true,
+            syncGroups: [
+              {
+                type: 'hydrateseg',
+                id: 'sameFORId',
+                source: true,
+                target: true,
+                // options: {
+                //   matchingRules: ['sameFOR'],
+                // },
+              },
+            ],
+          },
           displaySets: [
             {
               id: 'segDisplaySetId',

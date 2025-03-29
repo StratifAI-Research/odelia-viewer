@@ -1,5 +1,6 @@
 import MeasurementService from './MeasurementService';
 import ServicesManager from './ServicesManager';
+import ServiceProvidersManager from './ServiceProvidersManager';
 import UIDialogService from './UIDialogService';
 import UIModalService from './UIModalService';
 import UINotificationService from './UINotificationService';
@@ -10,27 +11,28 @@ import ToolbarService from './ToolBarService';
 import ViewportGridService from './ViewportGridService';
 import CineService from './CineService';
 import HangingProtocolService from './HangingProtocolService';
-import pubSubServiceInterface, {
-  PubSubService,
-} from './_shared/pubSubServiceInterface';
+import pubSubServiceInterface, { PubSubService } from './_shared/pubSubServiceInterface';
 import UserAuthenticationService from './UserAuthenticationService';
 import CustomizationService from './CustomizationService';
-
-import Services from '../types/Services';
-import StateSyncService from './StateSyncService';
 import PanelService from './PanelService';
+import WorkflowStepsService from './WorkflowStepsService';
+import StudyPrefetcherService from './StudyPrefetcherService';
+import { MultiMonitorService } from './MultiMonitorService';
+
+import type Services from '../types/Services';
 
 export {
   Services,
   MeasurementService,
   ServicesManager,
+  ServiceProvidersManager,
   CustomizationService,
-  StateSyncService,
   UIDialogService,
   UIModalService,
   UINotificationService,
   UIViewportDialogService,
   DicomMetadataStore,
+  MultiMonitorService,
   DisplaySetService,
   ToolbarService,
   ViewportGridService,
@@ -40,4 +42,6 @@ export {
   PubSubService,
   UserAuthenticationService,
   PanelService,
+  WorkflowStepsService,
+  StudyPrefetcherService,
 };

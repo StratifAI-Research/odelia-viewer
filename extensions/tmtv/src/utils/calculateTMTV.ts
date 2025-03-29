@@ -11,10 +11,7 @@ import { utilities } from '@cornerstonejs/tools';
  * @param {number} segmentIndex
  * @returns {number} TMTV in ml
  */
-function calculateTMTV(
-  labelmaps: Array<Types.IImageVolume>,
-  segmentIndex = 1
-): number {
+function calculateTMTV(labelmaps: Array<Types.IImageVolume>, segmentIndex = 1): number {
   const volumeId = 'mergedLabelmap';
 
   const mergedLabelmap = utilities.segmentation.createMergedLabelmapForIndex(
@@ -23,20 +20,21 @@ function calculateTMTV(
     volumeId
   );
 
-  const { imageData, spacing } = mergedLabelmap;
-  const values = imageData
-    .getPointData()
-    .getScalars()
-    .getData();
+  const { imageData, spacing, voxelManager } = mergedLabelmap;
 
   // count non-zero values inside the outputData, this would
   // consider the overlapping regions to be only counted once
-  const numVoxels = values.reduce((acc, curr) => {
-    if (curr > 0) {
-      return acc + 1;
+  let numVoxels = 0;
+  const callback = ({ value }) => {
+    if (value > 0) {
+      numVoxels += 1;
     }
-    return acc;
-  }, 0);
+  };
+
+  voxelManager.forEach(callback, {
+    imageData,
+    isInObject: () => true,
+  });
 
   return 1e-3 * numVoxels * spacing[0] * spacing[1] * spacing[2];
 }

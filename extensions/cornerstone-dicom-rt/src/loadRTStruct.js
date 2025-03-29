@@ -7,12 +7,13 @@ async function checkAndLoadContourData(instance, datasource) {
     return Promise.reject('Invalid instance object or ROIContourSequence');
   }
 
-  const promises = [];
-  let counter = 0;
+  const promisesMap = new Map();
 
   for (const ROIContour of instance.ROIContourSequence) {
+    const referencedROINumber = ROIContour.ReferencedROINumber;
     if (!ROIContour || !ROIContour.ContourSequence) {
-      return Promise.reject('Invalid ROIContour or ContourSequence');
+      promisesMap.set(referencedROINumber, [Promise.resolve([])]);
+      continue;
     }
 
     for (const Contour of ROIContour.ContourSequence) {
@@ -21,20 +22,16 @@ async function checkAndLoadContourData(instance, datasource) {
       }
 
       const contourData = Contour.ContourData;
-      counter++;
+
       if (Array.isArray(contourData)) {
-        promises.push(Promise.resolve(contourData));
+        promisesMap.has(referencedROINumber)
+          ? promisesMap.get(referencedROINumber).push(Promise.resolve(contourData))
+          : promisesMap.set(referencedROINumber, [Promise.resolve(contourData)]);
       } else if (contourData && contourData.BulkDataURI) {
         const bulkDataURI = contourData.BulkDataURI;
 
-        if (
-          !datasource ||
-          !datasource.retrieve ||
-          !datasource.retrieve.bulkDataURI
-        ) {
-          return Promise.reject(
-            'Invalid datasource object or retrieve function'
-          );
+        if (!datasource || !datasource.retrieve || !datasource.retrieve.bulkDataURI) {
+          return Promise.reject('Invalid datasource object or retrieve function');
         }
 
         const bulkDataPromise = datasource.retrieve.bulkDataURI({
@@ -44,79 +41,69 @@ async function checkAndLoadContourData(instance, datasource) {
           SOPInstanceUID: instance.SOPInstanceUID,
         });
 
-        promises.push(bulkDataPromise);
+        promisesMap.has(referencedROINumber)
+          ? promisesMap.get(referencedROINumber).push(bulkDataPromise)
+          : promisesMap.set(referencedROINumber, [bulkDataPromise]);
       } else {
         return Promise.reject(`Invalid ContourData: ${contourData}`);
       }
     }
   }
-  const flattenedPromises = promises.flat();
-  const resolvedPromises = await Promise.allSettled(flattenedPromises);
 
-  // Modify contourData and replace it in its corresponding ROIContourSequence's Contour's contourData
-  let index = 0;
-  instance.ROIContourSequence.forEach((ROIContour, roiIndex) => {
-    ROIContour.ContourSequence.forEach((Contour, contourIndex) => {
-      const promise = resolvedPromises[index++];
+  const resolvedPromisesMap = new Map();
+  for (const [key, promiseArray] of promisesMap.entries()) {
+    resolvedPromisesMap.set(key, await Promise.allSettled(promiseArray));
+  }
 
-      if (promise.status === 'fulfilled') {
-        const uint8Array = new Uint8Array(promise.value);
-        const textDecoder = new TextDecoder();
-        const dataUint8Array = textDecoder.decode(uint8Array);
-        if (
-          typeof dataUint8Array === 'string' &&
-          dataUint8Array.includes('\\')
-        ) {
-          const numSlashes = (dataUint8Array.match(/\\/g) || []).length;
-          let startIndex = 0;
-          let endIndex = dataUint8Array.indexOf('\\', startIndex);
-          let numbersParsed = 0;
-          const ContourData = [];
+  instance.ROIContourSequence.forEach(ROIContour => {
+    try {
+      const referencedROINumber = ROIContour.ReferencedROINumber;
+      const resolvedPromises = resolvedPromisesMap.get(referencedROINumber);
 
-          while (numbersParsed !== numSlashes + 1) {
-            const str = dataUint8Array.substring(startIndex, endIndex);
-            let value = parseFloat(str);
-
-            ContourData.push(value);
-            startIndex = endIndex + 1;
-            endIndex = dataUint8Array.indexOf('\\', startIndex);
-            endIndex === -1 ? (endIndex = dataUint8Array.length) : endIndex;
-            numbersParsed++;
+      if (ROIContour.ContourSequence) {
+        ROIContour.ContourSequence.forEach((Contour, index) => {
+          const promise = resolvedPromises[index];
+          if (promise.status === 'fulfilled') {
+            if (Array.isArray(promise.value) && promise.value.every(Number.isFinite)) {
+              // If promise.value is already an array of numbers, use it directly
+              Contour.ContourData = promise.value;
+            } else {
+              // If the resolved promise value is a byte array (Blob), it needs to be decoded
+              const uint8Array = new Uint8Array(promise.value);
+              const textDecoder = new TextDecoder();
+              const dataUint8Array = textDecoder.decode(uint8Array);
+              if (typeof dataUint8Array === 'string' && dataUint8Array.includes('\\')) {
+                Contour.ContourData = dataUint8Array.split('\\').map(parseFloat);
+              } else {
+                Contour.ContourData = [];
+              }
+            }
+          } else {
+            console.error(promise.reason);
           }
-          Contour.ContourData = ContourData;
-        } else {
-          Contour.ContourData = [];
-        }
-      } else {
-        console.error(promise.reason);
+        });
       }
-    });
+    } catch (error) {
+      console.error(error);
+    }
   });
 }
 
-export default async function loadRTStruct(
-  extensionManager,
-  rtStructDisplaySet,
-  referencedDisplaySet,
-  headers
-) {
+export default async function loadRTStruct(extensionManager, rtStructDisplaySet, headers) {
   const utilityModule = extensionManager.getModuleEntry(
     '@ohif/extension-cornerstone.utilityModule.common'
   );
   const dataSource = extensionManager.getActiveDataSource()[0];
-  const { useBulkDataURI } = dataSource.getConfig?.() || {};
+  const { bulkDataURI } = dataSource.getConfig?.() || {};
 
   const { dicomLoaderService } = utilityModule.exports;
-  const imageIdSopInstanceUidPairs = _getImageIdSopInstanceUidPairsForDisplaySet(
-    referencedDisplaySet
-  );
 
   // Set here is loading is asynchronous.
   // If this function throws its set back to false.
   rtStructDisplaySet.isLoaded = true;
   let instance = rtStructDisplaySet.instance;
 
-  if (!useBulkDataURI) {
+  if (!bulkDataURI || !bulkDataURI.enabled) {
     const segArrayBuffer = await dicomLoaderService.findDicomDataPromise(
       rtStructDisplaySet,
       null,
@@ -124,20 +111,14 @@ export default async function loadRTStruct(
     );
 
     const dicomData = DicomMessage.readFile(segArrayBuffer);
-    const rtStructDataset = DicomMetaDictionary.naturalizeDataset(
-      dicomData.dict
-    );
+    const rtStructDataset = DicomMetaDictionary.naturalizeDataset(dicomData.dict);
     rtStructDataset._meta = DicomMetaDictionary.namifyDataset(dicomData.meta);
     instance = rtStructDataset;
   } else {
     await checkAndLoadContourData(instance, dataSource);
   }
 
-  const {
-    StructureSetROISequence,
-    ROIContourSequence,
-    RTROIObservationsSequence,
-  } = instance;
+  const { StructureSetROISequence, ROIContourSequence, RTROIObservationsSequence } = instance;
 
   // Define our structure set entry and add it to the rtstruct module state.
   const structureSet = {
@@ -145,6 +126,7 @@ export default async function loadRTStruct(
     SeriesInstanceUID: instance.SeriesInstanceUID,
     ROIContours: [],
     visible: true,
+    ReferencedSOPInstanceUIDsSet: new Set(),
   };
 
   for (let i = 0; i < ROIContourSequence.length; i++) {
@@ -161,19 +143,9 @@ export default async function loadRTStruct(
 
     const contourPoints = [];
     for (let c = 0; c < ContourSequenceArray.length; c++) {
-      const {
-        ContourImageSequence,
-        ContourData,
-        NumberOfContourPoints,
-        ContourGeometricType,
-      } = ContourSequenceArray[c];
+      const { ContourData, NumberOfContourPoints, ContourGeometricType, ContourImageSequence } =
+        ContourSequenceArray[c];
 
-      const sopInstanceUID = ContourImageSequence.ReferencedSOPInstanceUID;
-      const imageId = _getImageId(imageIdSopInstanceUidPairs, sopInstanceUID);
-
-      if (!imageId) {
-        continue;
-      }
       let isSupported = false;
 
       const points = [];
@@ -202,6 +174,12 @@ export default async function loadRTStruct(
         type: ContourGeometricType,
         isSupported,
       });
+
+      if (ContourImageSequence?.ReferencedSOPInstanceUID) {
+        structureSet.ReferencedSOPInstanceUIDsSet.add(
+          ContourImageSequence?.ReferencedSOPInstanceUID
+        );
+      }
     }
 
     _setROIContourMetadata(
@@ -216,26 +194,6 @@ export default async function loadRTStruct(
   return structureSet;
 }
 
-const _getImageId = (imageIdSopInstanceUidPairs, sopInstanceUID) => {
-  const imageIdSopInstanceUidPairsEntry = imageIdSopInstanceUidPairs.find(
-    imageIdSopInstanceUidPairsEntry =>
-      imageIdSopInstanceUidPairsEntry.sopInstanceUID === sopInstanceUID
-  );
-
-  return imageIdSopInstanceUidPairsEntry
-    ? imageIdSopInstanceUidPairsEntry.imageId
-    : null;
-};
-
-function _getImageIdSopInstanceUidPairsForDisplaySet(referencedDisplaySet) {
-  return referencedDisplaySet.images.map(image => {
-    return {
-      imageId: image.imageId,
-      sopInstanceUID: image.SOPInstanceUID,
-    };
-  });
-}
-
 function _setROIContourMetadata(
   structureSet,
   StructureSetROISequence,
@@ -245,8 +203,7 @@ function _setROIContourMetadata(
   isSupported
 ) {
   const StructureSetROI = StructureSetROISequence.find(
-    structureSetROI =>
-      structureSetROI.ROINumber === ROIContour.ReferencedROINumber
+    structureSetROI => structureSetROI.ROINumber === ROIContour.ReferencedROINumber
   );
 
   const ROIContourData = {
@@ -286,23 +243,15 @@ function _setROIContourDataColor(ROIContour, ROIContourData) {
   }
 }
 
-function _setROIContourRTROIObservations(
-  ROIContourData,
-  RTROIObservationsSequence,
-  ROINumber
-) {
+function _setROIContourRTROIObservations(ROIContourData, RTROIObservationsSequence, ROINumber) {
   const RTROIObservations = RTROIObservationsSequence.find(
     RTROIObservations => RTROIObservations.ReferencedROINumber === ROINumber
   );
 
   if (RTROIObservations) {
     // Deep copy so we don't keep the reference to the dcmjs dataset entry.
-    const {
-      ObservationNumber,
-      ROIObservationDescription,
-      RTROIInterpretedType,
-      ROIInterpreter,
-    } = RTROIObservations;
+    const { ObservationNumber, ROIObservationDescription, RTROIInterpretedType, ROIInterpreter } =
+      RTROIObservations;
 
     ROIContourData.RTROIObservations = {
       ObservationNumber,

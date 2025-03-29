@@ -54,21 +54,22 @@ function _getStudyInstanceUIDs() {
 }
 
 function _getStudy(StudyInstanceUID) {
-  return _model.studies.find(
-    aStudy => aStudy.StudyInstanceUID === StudyInstanceUID
-  );
+  return _model.studies.find(aStudy => aStudy.StudyInstanceUID === StudyInstanceUID);
 }
 
 function _getSeries(StudyInstanceUID, SeriesInstanceUID) {
+  if(!StudyInstanceUID) {
+    const series = _model.studies.map(study => study.series).flat();
+    return series.find(aSeries => aSeries.SeriesInstanceUID === SeriesInstanceUID);
+  }
+
   const study = _getStudy(StudyInstanceUID);
 
   if (!study) {
     return;
   }
 
-  return study.series.find(
-    aSeries => aSeries.SeriesInstanceUID === SeriesInstanceUID
-  );
+  return study.series.find(aSeries => aSeries.SeriesInstanceUID === SeriesInstanceUID);
 }
 
 function _getInstance(StudyInstanceUID, SeriesInstanceUID, SOPInstanceUID) {
@@ -78,9 +79,7 @@ function _getInstance(StudyInstanceUID, SeriesInstanceUID, SOPInstanceUID) {
     return;
   }
 
-  return series.instances.find(
-    instance => instance.SOPInstanceUID === SOPInstanceUID
-  );
+  return series.getInstance(SOPInstanceUID);
 }
 
 function _getInstanceByImageId(imageId) {
@@ -102,20 +101,14 @@ function _getInstanceByImageId(imageId) {
  * @param {*} metadata metadata inform of key value pairs
  * @returns
  */
-function _updateMetadataForSeries(
-  StudyInstanceUID,
-  SeriesInstanceUID,
-  metadata
-) {
+function _updateMetadataForSeries(StudyInstanceUID, SeriesInstanceUID, metadata) {
   const study = _getStudy(StudyInstanceUID);
 
   if (!study) {
     return;
   }
 
-  const series = study.series.find(
-    aSeries => aSeries.SeriesInstanceUID === SeriesInstanceUID
-  );
+  const series = study.series.find(aSeries => aSeries.SeriesInstanceUID === SeriesInstanceUID);
 
   const { instances } = series;
   // update all instances metadata for this series with the new metadata
@@ -149,9 +142,7 @@ const BaseImplementation = {
 
     // If Arraybuffer, parse to DICOMJSON before naturalizing.
     if (dicomJSONDatasetOrP10ArrayBuffer instanceof ArrayBuffer) {
-      const dicomData = dcmjs.data.DicomMessage.readFile(
-        dicomJSONDatasetOrP10ArrayBuffer
-      );
+      const dicomData = dcmjs.data.DicomMessage.readFile(dicomJSONDatasetOrP10ArrayBuffer);
 
       dicomJSONDataset = dicomData.dict;
     } else {
@@ -161,18 +152,14 @@ const BaseImplementation = {
     let naturalizedDataset;
 
     if (dicomJSONDataset['SeriesInstanceUID'] === undefined) {
-      naturalizedDataset = dcmjs.data.DicomMetaDictionary.naturalizeDataset(
-        dicomJSONDataset
-      );
+      naturalizedDataset = dcmjs.data.DicomMetaDictionary.naturalizeDataset(dicomJSONDataset);
     } else {
       naturalizedDataset = dicomJSONDataset;
     }
 
     const { StudyInstanceUID } = naturalizedDataset;
 
-    let study = _model.studies.find(
-      study => study.StudyInstanceUID === StudyInstanceUID
-    );
+    let study = _model.studies.find(study => study.StudyInstanceUID === StudyInstanceUID);
 
     if (!study) {
       _model.studies.push(createStudyMetadata(StudyInstanceUID));
@@ -184,9 +171,7 @@ const BaseImplementation = {
   addInstances(instances, madeInClient = false) {
     const { StudyInstanceUID, SeriesInstanceUID } = instances[0];
 
-    let study = _model.studies.find(
-      study => study.StudyInstanceUID === StudyInstanceUID
-    );
+    let study = _model.studies.find(study => study.StudyInstanceUID === StudyInstanceUID);
 
     if (!study) {
       _model.studies.push(createStudyMetadata(StudyInstanceUID));
@@ -206,7 +191,23 @@ const BaseImplementation = {
       madeInClient,
     });
   },
+  updateSeriesMetadata(seriesMetadata) {
+    const { StudyInstanceUID, SeriesInstanceUID } = seriesMetadata;
+    const series = _getSeries(StudyInstanceUID, SeriesInstanceUID);
+    if (!series) {
+      return;
+    }
+
+    const study = _getStudy(StudyInstanceUID);
+    if (study) {
+      study.setSeriesMetadata(SeriesInstanceUID, seriesMetadata);
+    }
+  },
   addSeriesMetadata(seriesSummaryMetadata, madeInClient = false) {
+    if (!seriesSummaryMetadata || !seriesSummaryMetadata.length || !seriesSummaryMetadata[0]) {
+      return;
+    }
+
     const { StudyInstanceUID } = seriesSummaryMetadata[0];
     let study = _getStudy(StudyInstanceUID);
     if (!study) {
@@ -230,15 +231,14 @@ const BaseImplementation = {
 
     this._broadcastEvent(EVENTS.SERIES_ADDED, {
       StudyInstanceUID,
+      seriesSummaryMetadata,
       madeInClient,
     });
   },
   addStudy(study) {
     const { StudyInstanceUID } = study;
 
-    const existingStudy = _model.studies.find(
-      study => study.StudyInstanceUID === StudyInstanceUID
-    );
+    const existingStudy = _model.studies.find(study => study.StudyInstanceUID === StudyInstanceUID);
 
     if (!existingStudy) {
       const newStudy = createStudyMetadata(StudyInstanceUID);

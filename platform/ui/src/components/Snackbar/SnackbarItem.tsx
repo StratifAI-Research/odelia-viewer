@@ -1,9 +1,8 @@
 import React, { useEffect } from 'react';
 import classNames from 'classnames';
-import Icon from '../Icon';
 
 import SnackbarTypes from './SnackbarTypes';
-
+import { Icons } from '@ohif/ui-next';
 const iconClasses = {
   [SnackbarTypes.INFO]: 'notifications-info',
   [SnackbarTypes.WARNING]: 'notifications-warning',
@@ -27,36 +26,34 @@ const SnackbarItem = ({ options, onClose }) => {
     [SnackbarTypes.ERROR]: 'bg-[#dabdbe]',
   };
 
-  const hidden =
-    'duration-300 transition-all ease-in-out h-0 opacity-0 pt-0 mb-0 pb-0';
+  const hidden = 'duration-300 transition-all ease-in-out h-0 opacity-0 pt-0 mb-0 pb-0';
 
   return (
     <div
-      className={classNames(
-        `${options.visible ? '' : hidden} sb-item`,
-        typeClasses[options.type]
-      )}
+      className={classNames(`${options.visible ? '' : hidden} sb-item`, typeClasses[options.type])}
     >
-      <div className="flex ">
-        <div
-          onClick={handleClose}
-          className="w-5 h-5 rounded-full absolute flex items-center justify-center right-0 top-0 mr-2 mt-2 text-[#0944b3]"
-        >
-          <Icon name="close" className="w-5 h-5 text-black" />
-        </div>
-        <Icon name={iconClasses[options.type]} className="w-5 h-5 mt-[1px]" />
-        <div className="flex-col ml-2">
+      <div className="flex">
+        <Icons.ByName
+          name={iconClasses[options.type]}
+          className="mt-[1px] h-5 w-5"
+        />
+        <div className="mx-2 flex-col">
           {/* </span> */}
           {options.title && (
-            <div className="break-normal text-lg font-bold text-black">
-              {options.title}
-            </div>
+            <div className="break-normal text-lg font-bold text-black">{options.title}</div>
           )}
           {options.message && (
-            <div className="break-normal text-base text-black">
-              {options.message}
-            </div>
+            <div className="break-normal text-base text-black">{options.message}</div>
           )}
+        </div>
+        <div
+          onClick={handleClose}
+          className="relative left-[3px] top-[-3px] ml-auto flex h-5 w-5 items-center justify-center self-start rounded-full text-[#0944b3]"
+        >
+          <Icons.ByName
+            name="close"
+            className="text-black"
+          />
         </div>
       </div>
     </div>

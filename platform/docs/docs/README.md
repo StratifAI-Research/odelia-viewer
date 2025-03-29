@@ -18,19 +18,55 @@ Key features:
   Offers a Data Source API for communicating with archives over proprietary API
   formats.
 - Provides a plugin framework for creating task-based workflow modes which can
-  re-use core functionality.
+  reuse core functionality.
 - Beautiful user interface (UI) designed with extensibility in mind. UI
   components available in a reusable component library built with React.js and
   Tailwind CSS
 
-![OHIF Viewer Screenshot](./assets/img/OHIF-Viewer.png)
 
-<div className="text--center">
-    <div className="button-group">
-        <a className='button button--primary' href="https://v3-demo.ohif.org/">Try the demo</a>
-        <a className='button button--primary' href="./release-notes">Release Notes</a>
+<div style={{ textAlign: 'center' }}>
+    <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+        <a style={{
+            backgroundColor: '#4042af',
+            color: 'white',
+            padding: '0.5rem 1rem',
+            borderRadius: '0.25rem',
+            textDecoration: 'none',
+            ':hover': {
+                backgroundColor: '#2a2b74'
+            }
+        }} href="https://ohif.org/news/">Subscribe to our newsletter</a>
+        <a style={{
+            backgroundColor: '#4042af',
+            color: 'white',
+            padding: '0.5rem 1rem',
+            borderRadius: '0.25rem',
+            textDecoration: 'none',
+            ':hover': {
+                backgroundColor: '#2a2b74'
+            }
+        }} href="./release-notes">Release Notes</a>
     </div>
 </div>
+
+<br/>
+<br/>
+
+
+
+|     |  | |
+| :-: | :---  | :--- |
+| <img src="https://github.com/OHIF/Viewers/blob/master/platform/docs/docs/assets/img/demo-measurements.webp?raw=true" alt="Measurement tracking" width="350"/> | Measurement Tracking | [Demo](https://viewer.ohif.org/viewer?StudyInstanceUIDs=1.3.6.1.4.1.25403.345050719074.3824.20170125095438.5) |
+| <img src="https://github.com/OHIF/Viewers/blob/master/platform/docs/docs/assets/img/demo-segmentation.webp?raw=true" alt="Segmentations" width="350"/> | Labelmap Segmentations  | [Demo](https://viewer.ohif.org/viewer?StudyInstanceUIDs=1.3.12.2.1107.5.2.32.35162.30000015050317233592200000046) |
+| <img src="https://github.com/OHIF/Viewers/blob/master/platform/docs/docs/assets/img/demo-ptct.webp?raw=true" alt="Hanging Protocols" width="350"/> | Fusion and Custom Hanging protocols  | [Demo](https://viewer.ohif.org/tmtv?StudyInstanceUIDs=1.3.6.1.4.1.14519.5.2.1.7009.2403.334240657131972136850343327463) |
+| <img src="https://github.com/OHIF/Viewers/blob/master/platform/docs/docs/assets/img/demo-volume-rendering.webp?raw=true" alt="Volume Rendering" width="350"/> | Volume Rendering  | [Demo](https://viewer.ohif.org/viewer?StudyInstanceUIDs=1.3.6.1.4.1.25403.345050719074.3824.20170125095438.5&hangingprotocolId=mprAnd3DVolumeViewport) |
+| <img src="https://github.com/OHIF/Viewers/blob/master/platform/docs/docs/assets/img/demo-pdf.webp?raw=true" alt="PDF" width="350"/> | PDF  | [Demo](https://viewer.ohif.org/viewer?StudyInstanceUIDs=2.25.317377619501274872606137091638706705333) |
+| <img src="https://github.com/OHIF/Viewers/blob/master/platform/docs/docs/assets/img/demo-rtstruct.webp?raw=true" alt="RTSTRUCT" width="350"/> | RT STRUCT  | [Demo](https://viewer.ohif.org/viewer?StudyInstanceUIDs=1.3.6.1.4.1.5962.99.1.2968617883.1314880426.1493322302363.3.0) |
+| <img src="https://github.com/OHIF/Viewers/blob/master/platform/docs/docs/assets/img/demo-4d.webp?raw=true" alt="4D" width="350"/> | 4D  | [Demo](https://viewer.ohif.org/dynamic-volume?StudyInstanceUIDs=2.25.232704420736447710317909004159492840763) |
+| <img src="https://github.com/OHIF/Viewers/blob/master/platform/docs/docs/assets/img/demo-video.webp?raw=true" alt="VIDEO" width="350"/> | Video  | [Demo](https://viewer.ohif.org/viewer?StudyInstanceUIDs=2.25.96975534054447904995905761963464388233) |
+| <img src="https://github.com/OHIF/Viewers/blob/master/platform/docs/docs/assets/img/microscopy.webp?raw=true" alt="microscopy" width="350"/> | Slide Microscopy  | [Demo](https://viewer.ohif.org/microscopy?StudyInstanceUIDs=2.25.141277760791347900862109212450152067508) |
+
+
 
 ## Where to next?
 
@@ -91,7 +127,7 @@ MIT © [OHIF](https://github.com/OHIF)
 
 <!-- prettier-ignore-start -->
 [ohif-org]: https://www.ohif.org
-[ohif-demo]: http://v3-demo.ohif.org/
+[ohif-demo]: http://viewer.ohif.org/
 [dicom-web]: https://en.wikipedia.org/wiki/DICOMweb
 [gh-issues]: https://github.com/OHIF/Viewers/issues
 <!-- prettier-ignore-end -->

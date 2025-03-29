@@ -2,15 +2,15 @@ import React from 'react';
 import classNames from 'classnames';
 import PropTypes from 'prop-types';
 
-import { Typography, Icon } from '..';
+import Typography from '../Typography';
+import { Icons } from '@ohif/ui-next';
 
 const CloseButton = ({ onClick }) => {
   return (
-    <Icon
+    <Icons.Close
       data-cy="close-button"
       onClick={onClick}
-      name="close"
-      className="cursor-pointer text-primary-active w-6 h-6"
+      className="text-primary-active cursor-pointer"
     />
   );
 };
@@ -19,15 +19,18 @@ CloseButton.propTypes = {
   onClick: PropTypes.func,
 };
 
-const Header = ({ title, noCloseButton, onClose }) => {
-  const theme = 'bg-secondary-main';
+const Header = ({ title, noCloseButton = false, onClose }) => {
+  const theme = 'bg-primary-dark';
   const flex = 'flex items-center justify-between';
-  const border = 'border-b-2 border-solid border-black rounded-t';
-  const spacing = 'p-4';
+  const padding = 'pb-[20px]';
 
   return (
-    <div className={classNames(theme, flex, border, spacing)}>
-      <Typography variant="h6" color="primaryActive">
+    <div className={classNames(theme, flex, padding)}>
+      <Typography
+        variant="h6"
+        color="primaryLight"
+        className="!leading-[1.2]"
+      >
         {title}
       </Typography>
       {!noCloseButton && <CloseButton onClick={onClose} />}
@@ -40,10 +43,6 @@ Header.propTypes = {
   title: PropTypes.string,
   noCloseButton: PropTypes.bool,
   onClose: PropTypes.func,
-};
-
-Header.defaultProps = {
-  noCloseButton: false,
 };
 
 export default Header;

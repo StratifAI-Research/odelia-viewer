@@ -1,19 +1,5 @@
 {
-  "version": "independent",
-  "packages": ["extensions/*", "platform/*", "modes/*", "custom/extension/*"],
-  "npmClient": "yarn",
-  "useWorkspaces": true,
-  "command": {
-    "publish": {
-      "ignoreChanges": ["*.md", "*.yml", "*.spec.js", "*.test.js"],
-      "message": "chore(release): publish"
-    },
-    "version": {
-      "allowBranch": "master",
-      "conventionalCommits": true,
-      "createRelease": "github",
-      "yes": true,
-      "message": "chore(release): publish [skip ci]"
-    }
-  }
+  "version": "3.10.0-beta.102",
+  "packages": ["extensions/*", "platform/*", "modes/*","custom/extension/*", "addOns/externals/*"],
+  "npmClient": "yarn"
 }

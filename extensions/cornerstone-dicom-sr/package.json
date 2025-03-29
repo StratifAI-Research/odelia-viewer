@@ -1,11 +1,11 @@
 {
   "name": "@ohif/extension-cornerstone-dicom-sr",
-  "version": "3.0.0",
+  "version": "3.10.0-beta.102",
   "description": "OHIF extension for an SR Cornerstone Viewport",
   "author": "OHIF",
   "license": "MIT",
   "repository": "OHIF/Viewers",
-  "main": "dist/index.umd.js",
+  "main": "dist/ohif-extension-cornerstone-dicom-sr.umd.js",
   "module": "src/index.tsx",
   "engines": {
     "node": ">=14",
@@ -23,30 +23,32 @@
     "ohif-extension"
   ],
   "scripts": {
-    "dev": "cross-env NODE_ENV=development webpack --config .webpack/webpack.dev.js --watch --debug --output-pathinfo",
+    "clean": "shx rm -rf dist",
+    "clean:deep": "yarn run clean && shx rm -rf node_modules",
+    "dev": "cross-env NODE_ENV=development webpack --config .webpack/webpack.dev.js --watch --output-pathinfo",
     "dev:cornerstone": "yarn run dev",
     "build": "cross-env NODE_ENV=production webpack --config .webpack/webpack.prod.js",
-    "build:package": "yarn run build",
+    "build:package-1": "yarn run build",
     "start": "yarn run dev",
     "test:unit": "jest --watchAll",
     "test:unit:ci": "jest --ci --runInBand --collectCoverage --passWithNoTests"
   },
   "peerDependencies": {
-    "@ohif/core": ">=3.0.0",
-    "@ohif/extension-cornerstone": ">=3.0.0",
-    "@ohif/extension-measurement-tracking": "^3.0.0",
-    "@ohif/ui": "^2.0.0",
-    "dcmjs": "^0.29.5",
+    "@ohif/core": "3.10.0-beta.102",
+    "@ohif/extension-cornerstone": "3.10.0-beta.102",
+    "@ohif/extension-measurement-tracking": "3.10.0-beta.102",
+    "@ohif/ui": "3.10.0-beta.102",
+    "dcmjs": "*",
     "dicom-parser": "^1.8.9",
     "hammerjs": "^2.0.8",
     "prop-types": "^15.6.2",
-    "react": "^17.0.2"
+    "react": "^18.3.1"
   },
   "dependencies": {
     "@babel/runtime": "^7.20.13",
-    "classnames": "^2.3.2",
-    "@cornerstonejs/adapters": "^0.6.0",
-    "@cornerstonejs/core": "^0.42.2",
-    "@cornerstonejs/tools": "^0.65.0"
+    "@cornerstonejs/adapters": "^2.19.3",
+    "@cornerstonejs/core": "^2.19.3",
+    "@cornerstonejs/tools": "^2.19.3",
+    "classnames": "^2.3.2"
   }
 }

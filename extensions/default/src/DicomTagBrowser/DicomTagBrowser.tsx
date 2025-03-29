@@ -1,21 +1,45 @@
 import dcmjs from 'dcmjs';
 import moment from 'moment';
-import React, { useState, useMemo } from 'react';
-import { classes } from '@ohif/core';
+import React, { useState, useMemo, useCallback } from 'react';
+import { classes, Types } from '@ohif/core';
+import { InputFilterText } from '@ohif/ui';
+import { Select, SelectTrigger, SelectContent, SelectItem, Slider } from '@ohif/ui-next';
+
 import DicomTagTable from './DicomTagTable';
 import './DicomTagBrowser.css';
-import { InputRange, Select, Typography } from '@ohif/ui';
+
+export type Row = {
+  uid: string;
+  tag: string;
+  valueRepresentation: string;
+  keyword: string;
+  value: string;
+  isVisible: boolean;
+  depth: number;
+  parents?: string[];
+  children?: string[];
+  areChildrenVisible?: true;
+};
+
+let rowCounter = 0;
+const generateRowId = () => `row_${++rowCounter}`;
 
 const { ImageSet } = classes;
 const { DicomMetaDictionary } = dcmjs.data;
 const { nameMap } = DicomMetaDictionary;
 
-const DicomTagBrowser = ({ displaySets, displaySetInstanceUID }) => {
-  const [
-    selectedDisplaySetInstanceUID,
-    setSelectedDisplaySetInstanceUID,
-  ] = useState(displaySetInstanceUID);
+const DicomTagBrowser = ({
+  displaySets,
+  displaySetInstanceUID,
+}: {
+  displaySets: Types.DisplaySet[];
+  displaySetInstanceUID: string;
+}) => {
+  const [selectedDisplaySetInstanceUID, setSelectedDisplaySetInstanceUID] =
+    useState(displaySetInstanceUID);
   const [instanceNumber, setInstanceNumber] = useState(1);
+  const [shouldShowInstanceList, setShouldShowInstanceList] = useState(false);
+  const [filterValue, setFilterValue] = useState('');
 
   const onSelectChange = value => {
     setSelectedDisplaySetInstanceUID(value.value);
@@ -25,9 +49,6 @@ const DicomTagBrowser = ({ displaySets, displaySetInstanceUID }) => {
   const activeDisplaySet = displaySets.find(
     ds => ds.displaySetInstanceUID === selectedDisplaySetInstanceUID
   );
-
-  const isImageStack = _isImageStack(activeDisplaySet);
-  const showInstanceList = isImageStack && activeDisplaySet.images.length > 1;
 
   const displaySetList = useMemo(() => {
     displaySets.sort((a, b) => a.SeriesNumber - b.SeriesNumber);
@@ -48,126 +69,170 @@ const DicomTagBrowser = ({ displaySets, displaySetInstanceUID }) => {
 
       return {
         value: displaySetInstanceUID,
-        label: `${SeriesNumber} (${Modality}): ${SeriesDescription}`,
+        label: `${SeriesNumber} (${Modality}):  ${SeriesDescription}`,
         description: displayDate,
       };
     });
   }, [displaySets]);
 
+  const getMetadata = useCallback(
+    isImageStack => {
+      if (isImageStack) {
+        return activeDisplaySet.images[instanceNumber - 1];
+      }
+      return activeDisplaySet.instance || activeDisplaySet;
+    },
+    [activeDisplaySet, instanceNumber]
+  );
+
+  const rows = useMemo(() => {
+    const isImageStack = activeDisplaySet instanceof ImageSet;
+    const metadata = getMetadata(isImageStack);
+
+    setShouldShowInstanceList(isImageStack && activeDisplaySet.images.length > 1);
+    const tags = getSortedTags(metadata);
+    const rows = getFormattedRowsFromTags({ tags, metadata, depth: 0 });
+    return rows;
+  }, [getMetadata, activeDisplaySet]);
+
+  const filteredRows = useMemo(() => {
+    if (!filterValue) {
+      return rows;
+    }
+
+    const matchedRowIds = new Set();
+
+    const propertiesToCheck = ['tag', 'valueRepresentation', 'keyword', 'value'];
+
+    const setIsMatched = row => {
+      const isDirectMatch = propertiesToCheck.some(propertyName =>
+        row[propertyName]?.toLowerCase().includes(filterValueLowerCase)
+      );
+
+      if (!isDirectMatch) {
+        return;
+      }
+
+      matchedRowIds.add(row.uid);
+
+      [...(row.parents ?? []), ...(row.children ?? [])].forEach(uid => matchedRowIds.add(uid));
+    };
+
+    const filterValueLowerCase = filterValue.toLowerCase();
+    rows.forEach(setIsMatched);
+    return rows.filter(row => matchedRowIds.has(row.uid));
+  }, [rows, filterValue]);
+
   return (
-    <div className="dicom-tag-browser-content">
-      <div className="flex flex-row items-center mb-2">
-        <Typography variant="subtitle" className="w-1/2 mr-8">
-          Series
-        </Typography>
-        {showInstanceList && (
-          <Typography variant="subtitle" className="w-1/2">
-            Instance Number
-          </Typography>
-        )}
-      </div>
-      <div className="flex flex-row items-center mb-6">
-        <div className="w-1/2 mr-8">
-          <Select
-            isClearable={false}
-            onChange={onSelectChange}
-            options={displaySetList}
-            value={displaySetList.find(
-              ds => ds.value === selectedDisplaySetInstanceUID
-            )}
-            className="text-white"
-          />
-        </div>
-        {showInstanceList ? (
-          <div className="w-1/2">
-            <InputRange
-              value={instanceNumber}
-              key={selectedDisplaySetInstanceUID}
-              onChange={value => {
-                setInstanceNumber(parseInt(value));
-              }}
-              minValue={1}
-              maxValue={activeDisplaySet.images.length}
-              step={1}
+    <div className="dicom-tag-browser-content bg-muted">
+      <div className="mb-6 flex flex-row items-start pl-1">
+        <div className="flex w-full flex-row items-start gap-4">
+          <div className="flex w-1/3 flex-col">
+            <span className="text-muted-foreground flex h-6 items-center text-xs">Series</span>
+            <Select
+              value={selectedDisplaySetInstanceUID}
+              onValueChange={value => onSelectChange({ value })}
+            >
+              <SelectTrigger>
+                {displaySetList.find(ds => ds.value === selectedDisplaySetInstanceUID)?.label ||
+                  'Select Series'}
+              </SelectTrigger>
+              <SelectContent>
+                {displaySetList.map(item => {
+                  return (
+                    <SelectItem
+                      key={item.value}
+                      value={item.value}
+                    >
+                      {item.label}
+                      <span className="text-muted-foreground ml-1 text-xs">{item.description}</span>
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
+          </div>
+          {shouldShowInstanceList && (
+            <div className="mx-auto flex w-1/5 flex-col">
+              <span className="text-muted-foreground flex h-6 items-center text-xs">
+                Instance Number ({instanceNumber} of {activeDisplaySet?.images?.length})
+              </span>
+              <Slider
+                value={[instanceNumber]}
+                onValueChange={([value]) => {
+                  setInstanceNumber(value);
+                }}
+                min={1}
+                max={activeDisplaySet?.images?.length}
+                step={1}
+                className="pt-4"
+              />
+            </div>
+          )}
+          <div className="ml-auto flex w-1/3 flex-col">
+            <span className="text-muted-foreground flex h-6 items-center text-xs">
+              Search metadata
+            </span>
+            <InputFilterText
+              placeholder="Search metadata..."
+              onDebounceChange={setFilterValue}
             />
           </div>
-        ) : null}
+        </div>
       </div>
-      <DicomTagTable
-        rows={getFormattedRowsFromTags(activeDisplaySet, instanceNumber)}
-      ></DicomTagTable>
+      <DicomTagTable rows={filteredRows} />
     </div>
   );
 };
 
-function getFormattedRowsFromTags(displaySet, instanceNumber) {
-  const isImageStack = _isImageStack(displaySet);
-
-  let metadata;
-
-  if (isImageStack) {
-    metadata = displaySet.images[instanceNumber - 1];
-  } else {
-    metadata = displaySet;
-  }
-
-  const tags = getSortedTags(metadata);
-  const rows = [];
+function getFormattedRowsFromTags({ tags, metadata, depth, parents }) {
+  const rows: Row[] = [];
 
   tags.forEach(tagInfo => {
+    const uid = generateRowId();
     if (tagInfo.vr === 'SQ') {
-      rows.push([
-        `${tagInfo.tagIndent}${tagInfo.tag}`,
-        tagInfo.vr,
-        tagInfo.keyword,
-        '',
-      ]);
-
-      const { values } = tagInfo;
-
-      values.forEach((item, index) => {
-        const formatedRowsFromTags = getFormattedRowsFromTags(item);
-
-        rows.push([
-          `${item[0].tagIndent}(FFFE,E000)`,
-          '',
-          `Item #${index}`,
-          '',
-        ]);
-
-        rows.push(...formatedRowsFromTags);
-      });
+      const children = tagInfo.values.flatMap(value =>
+        getFormattedRowsFromTags({
+          tags: value,
+          metadata,
+          depth: depth + 1,
+          parents: parents ? [...parents, uid] : [uid],
+        })
+      );
+      const row: Row = {
+        uid,
+        tag: tagInfo.tag,
+        valueRepresentation: tagInfo.vr,
+        keyword: tagInfo.keyword,
+        value: '',
+        depth,
+        isVisible: true,
+        areChildrenVisible: true,
+        children: children.map(child => child.uid),
+        parents,
+      };
+      rows.push(row, ...children);
     } else {
       if (tagInfo.vr === 'xs') {
         try {
-          /*  const dataset = metadataProvider.getStudyDataset(
-              meta.StudyInstanceUID
-            );*/
-          //  console.log(dataset);
-          //  const tag = dcmjs.data.Tag.fromPString(tagInfo.tag).toCleanString();
-          // const originalTagInfo = dataset[tag];
-          //  tagInfo.vr = originalTagInfo.vr;
+          const tag = dcmjs.data.Tag.fromPString(tagInfo.tag).toCleanString();
+          const originalTagInfo = metadata[tag];
+          tagInfo.vr = originalTagInfo.vr;
         } catch (error) {
-          console.error(
-            `Failed to parse value representation for tag '${tagInfo.keyword}'`
-          );
+          console.warn(`Failed to parse value representation for tag '${tagInfo.keyword}'`);
         }
       }
-      if (tagInfo.vr === 'PN') {
-        rows.push([
-          `${tagInfo.tagIndent}${tagInfo.tag}`,
-          tagInfo.vr,
-          tagInfo.keyword,
-          tagInfo.value,
-        ]);
-      } else {
-        rows.push([
-          `${tagInfo.tagIndent}${tagInfo.tag}`,
-          tagInfo.vr,
-          tagInfo.keyword,
-          tagInfo.value,
-        ]);
-      }
+      const row: Row = {
+        uid,
+        tag: tagInfo.tag,
+        valueRepresentation: tagInfo.vr,
+        keyword: tagInfo.keyword,
+        value: tagInfo.value,
+        depth,
+        isVisible: true,
+        parents,
+      };
+      rows.push(row);
     }
   });
 
@@ -188,16 +253,6 @@ function getRows(metadata, depth = 0) {
 
   const keywords = Object.keys(metadata);
 
-  let tagIndent = '';
-
-  for (let i = 0; i < depth; i++) {
-    tagIndent += '>';
-  }
-
-  if (depth > 0) {
-    tagIndent += ' '; // If indented, add a space after the indents.
-  }
-
   const rows = [];
   for (let i = 0; i < keywords.length; i++) {
     let keyword = keywords[i];
@@ -217,7 +272,6 @@ function getRows(metadata, depth = 0) {
 
       const sequence = {
         tag: tagInfo.tag,
-        tagIndent,
         vr: tagInfo.vr,
         keyword,
         values: [],
@@ -283,7 +337,6 @@ function getRows(metadata, depth = 0) {
     if (tagInfo) {
       rows.push({
         tag: tagInfo.tag,
-        tagIndent,
         vr: tagInfo.vr,
         keyword,
         value,
@@ -295,7 +348,6 @@ function getRows(metadata, depth = 0) {
         const tag = `(${keyword.substring(0, 4)},${keyword.substring(4, 8)})`;
         rows.push({
           tag,
-          tagIndent,
           vr: '',
           keyword: 'Private Tag',
           value,
@@ -305,10 +357,6 @@ function getRows(metadata, depth = 0) {
   }
 
   return rows;
-}
-
-function _isImageStack(displaySet) {
-  return displaySet instanceof ImageSet;
 }
 
 function toArray(objectOrArray) {

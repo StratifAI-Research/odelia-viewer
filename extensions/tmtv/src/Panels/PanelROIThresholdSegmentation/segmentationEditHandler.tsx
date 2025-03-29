@@ -1,7 +1,7 @@
 import React from 'react';
-import { Input, Dialog } from '@ohif/ui';
+import { Input, Dialog, ButtonEnums } from '@ohif/ui';
 
-function segmentationItemEditHandler({ id, servicesManager }) {
+function segmentationItemEditHandler({ id, servicesManager }: withAppTypes) {
   const { segmentationService, uiDialogService } = servicesManager.services;
 
   const segmentation = segmentationService.getSegmentation(id);
@@ -9,13 +9,10 @@ function segmentationItemEditHandler({ id, servicesManager }) {
   const onSubmitHandler = ({ action, value }) => {
     switch (action.id) {
       case 'save': {
-        segmentationService.addOrUpdateSegmentation(
-          {
-            ...segmentation,
-            ...value,
-          },
-          true
-        );
+        segmentationService.addOrUpdateSegmentation({
+          ...segmentation,
+          ...value,
+        });
       }
     }
     uiDialogService.dismiss({ id: 'enter-annotation' });
@@ -43,23 +40,20 @@ function segmentationItemEditHandler({ id, servicesManager }) {
           }
         };
         return (
-          <div className="p-4 bg-primary-dark">
-            <Input
-              autoFocus
-              className="mt-2 bg-black border-primary-main"
-              type="text"
-              containerClassName="mr-2"
-              value={value.label}
-              onChange={onChangeHandler}
-              onKeyPress={onKeyPressHandler}
-            />
-          </div>
+          <Input
+            autoFocus
+            className="border-primary-main bg-black"
+            type="text"
+            containerClassName="mr-2"
+            value={value.label}
+            onChange={onChangeHandler}
+            onKeyPress={onKeyPressHandler}
+          />
         );
       },
       actions: [
-        // temp: swap button types until colors are updated
-        { id: 'cancel', text: 'Cancel', type: 'primary' },
-        { id: 'save', text: 'Save', type: 'secondary' },
+        { id: 'cancel', text: 'Cancel', type: ButtonEnums.type.secondary },
+        { id: 'save', text: 'Save', type: ButtonEnums.type.primary },
       ],
       onSubmit: onSubmitHandler,
     },
