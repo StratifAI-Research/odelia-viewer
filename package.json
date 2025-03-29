@@ -58,6 +58,7 @@
     "test:e2e:ci": "npx playwright test",
     "test:e2e:ui": "npx playwright test --ui",
     "test:e2e:headed": "npx playwright test --headed",
+    "test:e2e:debug": "npx playwright test --debug",
     "test:e2e:dist": "lerna run test:e2e:dist --stream",
     "test:e2e:serve": "yarn test:data && lerna run test:e2e:serve --stream",
     "see-changed": "lerna changed",
@@ -76,7 +77,7 @@
   "optionalDependencies": {
     "@percy/cypress": "^3.1.1",
     "@playwright/test": "^1.48.0",
-    "cypress": "^14.0.0",
+    "cypress": "^14.1.0",
     "cypress-file-upload": "^5.0.8"
   },
   "devDependencies": {
@@ -94,6 +95,7 @@
     "@babel/preset-react": "^7.16.7",
     "@babel/preset-typescript": "^7.13.0",
     "prettier": "^3.3.3",
+    "patch-package": "^8.0.0",
     "prettier-plugin-tailwindcss": "0.6.9"
   },
   "husky": {

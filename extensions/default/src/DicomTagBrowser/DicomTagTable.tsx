@@ -39,7 +39,7 @@ const RowComponent = ({
     <div
       style={{ ...style, ...rowStyle }}
       className={classNames(
-        'hover:bg-secondary-main border-secondary-light flex w-full flex-row items-center break-all bg-black text-base transition duration-300',
+        'hover:bg-secondary-main border-secondary-light text-foreground flex w-full flex-row items-center break-all bg-black text-base transition duration-300',
         lineHeightClassName
       )}
       key={keyPrefix}
@@ -47,9 +47,19 @@ const RowComponent = ({
       {isChildOrParent && (
         <div style={{ paddingLeft: `${padding}px`, opacity: onToggle ? 1 : 0 }}>
           {row.areChildrenVisible ? (
-            <Icons.ChevronDown onClick={handleToggle} />
+            <div
+              className="cursor-pointer p-1"
+              onClick={handleToggle}
+            >
+              <Icons.ChevronDown />
+            </div>
           ) : (
-            <Icons.ChevronRight onClick={handleToggle} />
+            <div
+              className="cursor-pointer p-1"
+              onClick={handleToggle}
+            >
+              <Icons.ChevronRight />
+            </div>
           )}
         </div>
       )}
@@ -229,9 +239,11 @@ function DicomTagTable({ rows }: { rows: Row[] }) {
           return internalRow;
         });
         setInternalRows(newInternalRows);
+
+        listRef?.current?.resetAfterIndex(0);
       };
     },
-    [internalRows]
+    [internalRows, listRef]
   );
 
   const getRowComponent = useCallback(
@@ -281,7 +293,7 @@ function DicomTagTable({ rows }: { rows: Row[] }) {
             itemCount={visibleRows.length}
             itemSize={getItemSize(visibleRows)}
             width={'100%'}
-            className="ohif-scrollbar"
+            className="ohif-scrollbar text-foreground"
           >
             {getRowComponent({ rows: visibleRows })}
           </List>

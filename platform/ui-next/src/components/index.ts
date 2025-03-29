@@ -52,8 +52,13 @@ import { ThumbnailList } from './ThumbnailList';
 import { PanelSection } from './PanelSection';
 import { DisplaySetMessageListTooltip } from './DisplaySetMessageListTooltip';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from './Tooltip';
-import { ToolboxUI, Toolbox } from './OHIFToolbox';
+import { ToolboxUI } from './OHIFToolbox';
 import Numeric from './Numeric';
+import { InputDialog, PresetDialog } from './OHIFDialogs';
+import { AboutModal, ImageModal, UserPreferencesModal } from './OHIFModals';
+import Modal from './Modal/Modal';
+import { FooterAction } from './FooterAction';
+import { InputFilter } from './InputFilter';
 
 import {
   DropdownMenu,
@@ -74,12 +79,18 @@ import {
 } from './DropdownMenu';
 import { Onboarding } from './Onboarding';
 import { DoubleSlider } from './DoubleSlider';
-import { DataRow } from './DataRow';
-import { MeasurementTable } from './MeasurementTable';
-import { SegmentationTable, useSegmentationTableContext } from './SegmentationTable';
+export { DataRow } from './DataRow';
+export { MeasurementTable } from './MeasurementTable';
+import {
+  SegmentationTable,
+  useSegmentationTableContext,
+  useSegmentationExpanded,
+  useSegmentStatistics,
+} from './SegmentationTable';
 import { Toaster, toast } from './Sonner';
 import { StudySummary } from './StudySummary';
 import { ErrorBoundary } from './Errorboundary';
+export * from './ColorCircle';
 import { Header } from './Header';
 import { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent } from './Card';
 import {
@@ -101,6 +112,10 @@ import {
   ToolButtonListItem,
   ToolButtonListDivider,
 } from './ToolButton';
+import { ToolSettings } from './OHIFToolSettings';
+
+// Segmentation Context Exports
+export { useSegmentationTableContext, useSegmentationExpanded, useSegmentStatistics };
 
 export {
   Numeric,
@@ -169,7 +184,6 @@ export {
   PanelSection,
   DisplaySetMessageListTooltip,
   ToolboxUI,
-  Toolbox,
   DropdownMenu,
   DropdownMenuTrigger,
   DropdownMenuContent,
@@ -195,12 +209,9 @@ export {
   TooltipTrigger,
   TooltipContent,
   TooltipProvider,
-  DataRow,
-  MeasurementTable,
   Toaster,
   toast,
   SegmentationTable,
-  useSegmentationTableContext,
   StudySummary,
   Header,
   Card,
@@ -225,4 +236,13 @@ export {
   ToolButtonListDropDown,
   ToolButtonListItem,
   ToolButtonListDivider,
+  InputDialog,
+  PresetDialog,
+  Modal,
+  AboutModal,
+  ImageModal,
+  UserPreferencesModal,
+  FooterAction,
+  ToolSettings,
+  InputFilter,
 };
