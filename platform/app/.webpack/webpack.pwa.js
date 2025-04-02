@@ -78,6 +78,8 @@ module.exports = (env, argv) => {
         // Hoisted Yarn Workspace Modules
         path.resolve(__dirname, '../../../node_modules'),
         SRC_DIR,
+        path.resolve(__dirname, '/home/luab/work/odelia-viewer/custom/mode/send-ai/node_modules'),
+        path.resolve(__dirname, 'custom/extension/orthanc-ai-routing/node_modules'),
       ],
     },
     plugins: [
