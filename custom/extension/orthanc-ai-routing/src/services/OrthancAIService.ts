@@ -214,15 +214,24 @@ class OrthancAIService {
   }
 
   /**
+   * Refresh the current page
+   */
+  private refreshPage(): void {
+    console.log('Refreshing page...');
+    window.location.reload();
+  }
+
+  /**
    * Start polling for new series in the study
    * @param callback Function to call when new series are detected
    * @param interval Polling interval in milliseconds
+   * @param autoRefresh Whether to automatically refresh the page when new series are detected
    */
-  async startRefreshCheck(callback: Function, interval: number = 5000): Promise<void> {
+  async startRefreshCheck(callback?: Function, interval: number = 5000, autoRefresh: boolean = true): Promise<void> {
     // Stop any existing refresh check
     this.stopRefreshCheck();
 
-    this.refreshCallback = callback;
+    this.refreshCallback = callback || null;
     this.dicomStudyUID = this.getDicomStudyInstanceUIDFromURL();
 
     if (!this.dicomStudyUID) {
@@ -250,6 +259,10 @@ class OrthancAIService {
 
             if (this.refreshCallback) {
               this.refreshCallback();
+            }
+
+            if (autoRefresh) {
+              this.refreshPage();
             }
           }
         } catch (error) {
