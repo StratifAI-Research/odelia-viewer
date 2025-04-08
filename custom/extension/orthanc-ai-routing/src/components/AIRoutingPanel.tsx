@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { Button, LoadingIndicatorProgress } from '@ohif/ui';
+import React, { useState, useEffect } from 'react';
+import { Button } from '@ohif/ui';
+import { requestDisplaySetCreationForStudy } from '@ohif/extension-default';
 import OrthancAIService from '../services/OrthancAIService';
-import { ViewportGridService } from '@ohif/core';
+import AIEndpointConfig, { AIEndpoint } from './AIEndpointConfig';
 
 interface ViewportGridService {
   getState: () => {
@@ -25,7 +26,13 @@ interface ServicesManager {
   services: {
     viewportGridService: ViewportGridService;
     orthancAIService: OrthancAIService;
+    displaySetService: any;
+    hangingProtocolService: any;
+    uiNotificationService: any;
+    customizationService: any;
+    dataSourceService: any;
   };
+  getDataSource: () => any;
 }
 
 interface AIRoutingPanelProps {
@@ -33,132 +40,163 @@ interface AIRoutingPanelProps {
 }
 
 const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
-  const [status, setStatus] = useState<'idle' | 'routing' | 'checking'>('idle');
-  const [routingStatus, setRoutingStatus] = useState<any>(null);
+  const [status, setStatus] = useState<'idle' | 'routing' | 'checking' | 'refreshing'>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [studyInstanceUID, setStudyInstanceUID] = useState<string | null>(null);
+  const [progress, setProgress] = useState<number>(0);
+  const [currentEndpoint, setCurrentEndpoint] = useState<AIEndpoint | null>(null);
 
-  const updateStudyInstanceUID = useCallback(() => {
-    const viewportGridService = servicesManager.services.viewportGridService;
-    if (!viewportGridService) {
-      console.warn('Viewport grid service not found');
-      return;
-    }
+  const {
+    orthancAIService,
+    displaySetService,
+    hangingProtocolService,
+    uiNotificationService,
+    customizationService,
+    dataSourceService
+  } = servicesManager.services;
 
-    const state = viewportGridService.getState();
-    const activeViewportId = state.activeViewportId;
+  // Get the ProgressLoadingBar component from the customization service
+  const ProgressLoadingBar = customizationService.getCustomization('ui.progressLoadingBar');
 
-    if (!activeViewportId) {
-      console.warn('No active viewport');
-      return;
-    }
+  // Get the actual DICOM StudyInstanceUID from the URL
+  const dicomStudyUID = orthancAIService.getDicomStudyInstanceUIDFromURL();
 
-    const viewport = state.viewports.get(activeViewportId);
-    if (!viewport) {
-      console.warn('No viewport data found for active viewport');
-      return;
-    }
-
-    const displaySetInstanceUIDs = viewport.displaySetInstanceUIDs;
-    if (!displaySetInstanceUIDs || displaySetInstanceUIDs.length === 0) {
-      console.warn('No display set instance UIDs in active viewport');
-      setStudyInstanceUID(null);
-      return;
-    }
-
-    // Get the first display set instance UID
-    const displaySetInstanceUID = displaySetInstanceUIDs[0];
-    console.info('Display set instance UID:', displaySetInstanceUID);
-    setStudyInstanceUID(displaySetInstanceUID);
-  }, [servicesManager]);
-
+  // Load the current endpoint on component mount
   useEffect(() => {
-    const viewportGridService = servicesManager.services.viewportGridService;
-    if (!viewportGridService) {
-      console.warn('Viewport grid service not found');
-      return;
-    }
+    const endpoint = orthancAIService.getCurrentEndpoint();
+    setCurrentEndpoint(endpoint);
+  }, [orthancAIService]);
 
-    // Subscribe to viewport events
-    const subscriptions = [
-      viewportGridService.subscribe(
-        viewportGridService.EVENTS.ACTIVE_VIEWPORT_ID_CHANGED,
-        () => {
-          setTimeout(updateStudyInstanceUID, 0);
-        }
-      ),
-      viewportGridService.subscribe(
-        viewportGridService.EVENTS.GRID_STATE_CHANGED,
-        () => {
-          setTimeout(updateStudyInstanceUID, 0);
-        }
-      ),
-      viewportGridService.subscribe(
-        viewportGridService.EVENTS.VIEWPORTS_READY,
-        () => {
-          setTimeout(updateStudyInstanceUID, 0);
-        }
-      ),
-    ];
-
-    // Initial update
-    updateStudyInstanceUID();
-
+  // Clean up when component unmounts
+  useEffect(() => {
     return () => {
-      subscriptions.forEach(subscription => subscription.unsubscribe());
+      // Stop any polling when component unmounts
+      orthancAIService.stopRefreshCheck();
     };
-  }, [servicesManager, updateStudyInstanceUID]);
+  }, [orthancAIService]);
+
+  // Handle endpoint change
+  const handleEndpointChange = (endpoint: AIEndpoint) => {
+    setCurrentEndpoint(endpoint);
+    orthancAIService.setCurrentEndpoint(endpoint);
+
+    // Show notification
+    uiNotificationService.show({
+      title: 'AI Endpoint Changed',
+      message: `Using AI endpoint: ${endpoint.name}`,
+      type: 'info',
+      duration: 3000,
+    });
+  };
+
+  // Handle refreshing the display when new AI results are detected
+  const handleNewAIResults = () => {
+    console.log('New AI results detected!');
+    setStatus('idle');
+    setProgress(100);
+
+    // Show completion message
+    uiNotificationService.show({
+      title: 'AI Results Ready',
+      message: 'New AI results have been loaded',
+      type: 'success',
+      duration: 5000,
+    });
+  };
 
   const handleRouteToAI = async () => {
-    if (!studyInstanceUID) {
-      setError('No study selected');
+    if (!dicomStudyUID) {
+      setError('No study selected or no StudyInstanceUID in URL');
+      return;
+    }
+
+    if (!currentEndpoint) {
+      setError('No AI endpoint configured. Please add an AI endpoint first.');
       return;
     }
 
     try {
       setStatus('routing');
       setError(null);
-      const response = await servicesManager.services.orthancAIService.routeStudyToAI(studyInstanceUID);
-      setRoutingStatus(response);
-      setStatus('checking');
+      setProgress(10);
+
+      // Start a progress animation
+      const progressInterval = setInterval(() => {
+        setProgress(prevProgress => {
+          // Cap at 90% until we get actual completion
+          const newProgress = prevProgress + 5;
+          return newProgress > 90 ? 90 : newProgress;
+        });
+      }, 1000);
+
+      // Use the new method that extracts the StudyInstanceUID from the URL
+      const response = await orthancAIService.routeCurrentStudyToAI();
+
+      // Clear the interval
+      clearInterval(progressInterval);
+      setProgress(95);
+
+      // Start checking for new AI results
+      if (response.status === 'success') {
+        setStatus('checking');
+        setError(null);
+
+        // Show notification
+        uiNotificationService.show({
+          title: 'Study Sent for AI Processing',
+          message: 'The study has been sent for AI processing. Results will appear automatically when ready.',
+          type: 'info',
+          duration: 5000,
+        });
+
+        // Start polling for new series
+        orthancAIService.startRefreshCheck(handleNewAIResults);
+      } else if (response.status === 'error') {
+        setError(response.message || 'Unknown error');
+        setStatus('idle');
+
+        // Show error notification
+        uiNotificationService.show({
+          title: 'AI Routing Failed',
+          message: response.message || 'Failed to route study to AI',
+          type: 'error',
+          duration: 5000,
+        });
+      } else {
+        setStatus('idle');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to route study to AI');
       setStatus('idle');
+      setProgress(0);
+
+      // Show error notification
+      uiNotificationService.show({
+        title: 'AI Routing Failed',
+        message: err instanceof Error ? err.message : 'Failed to route study to AI',
+        type: 'error',
+        duration: 5000,
+      });
     }
   };
 
-  useEffect(() => {
-    let interval: NodeJS.Timeout;
-
-    if (status === 'checking' && studyInstanceUID) {
-      const checkStatus = async () => {
-        try {
-          const status = await servicesManager.services.orthancAIService.getRoutingStatus(studyInstanceUID);
-          setRoutingStatus(status);
-          if (status.status === 'completed' || status.status === 'failed') {
-            clearInterval(interval);
-            setStatus('idle');
-          }
-        } catch (err) {
-          setError(err instanceof Error ? err.message : 'Failed to check routing status');
-          clearInterval(interval);
-          setStatus('idle');
-        }
-      };
-
-      interval = setInterval(checkStatus, 5000);
-    }
-
-    return () => {
-      if (interval) {
-        clearInterval(interval);
-      }
-    };
-  }, [status, studyInstanceUID]);
+  // For testing purposes - uncomment to see the progress bar
+  // useEffect(() => {
+  //   setStatus('routing');
+  //   setProgress(50);
+  // }, []);
 
   return (
     <div className="p-4">
       <h3 className="mb-4 text-lg font-semibold">AI Routing Panel</h3>
+
+      {/* AI Endpoint Configuration */}
+      <div className="mb-4">
+        <h4 className="text-sm font-medium mb-2">AI Endpoint Configuration</h4>
+        <AIEndpointConfig
+          onEndpointChange={handleEndpointChange}
+          currentEndpoint={currentEndpoint}
+        />
+      </div>
 
       {error && (
         <div className="mb-4 rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700">
@@ -166,42 +204,36 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
         </div>
       )}
 
-      {status === 'routing' && (
-        <div className="mb-4">
-          <LoadingIndicatorProgress />
-          <p className="mt-2 text-sm text-gray-600">Routing study to AI endpoint...</p>
-        </div>
-      )}
-
-      {status === 'checking' && routingStatus && (
-        <div className="mb-4">
-          <LoadingIndicatorProgress />
-          <p className="mt-2 text-sm text-gray-600">
-            Status: {routingStatus.status}
-            {routingStatus.message && ` - ${routingStatus.message}`}
+      {/* Status and progress section */}
+      {(status === 'routing' || status === 'checking' || status === 'refreshing') && (
+        <div className="mb-4 p-3 border rounded bg-gray-50">
+          <div className="mb-2">
+            <ProgressLoadingBar progress={progress} />
+            <div className="text-xs text-right text-gray-500 mt-1">{progress}%</div>
+          </div>
+          <p className="text-sm text-gray-600">
+            {status === 'routing' && 'Routing study to AI endpoint...'}
+            {status === 'checking' && 'Waiting for AI results...'}
+            {status === 'refreshing' && 'Loading new AI results...'}
           </p>
-        </div>
-      )}
-
-      {routingStatus?.status === 'completed' && (
-        <div className="mb-4 rounded border border-green-400 bg-green-100 px-4 py-3 text-green-700">
-          Routing completed successfully!
-        </div>
-      )}
-
-      {routingStatus?.status === 'failed' && (
-        <div className="mb-4 rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700">
-          Routing failed: {routingStatus.message}
         </div>
       )}
 
       <Button
         onClick={handleRouteToAI}
-        disabled={status === 'routing' || status === 'checking' || !studyInstanceUID}
+        disabled={status !== 'idle' || !dicomStudyUID || !currentEndpoint}
         className="w-full"
       >
         Route to AI
       </Button>
+
+      {dicomStudyUID ? (
+        <p className="mt-2 text-xs text-gray-500 break-all">
+          DICOM Study UID: {dicomStudyUID}
+        </p>
+      ) : (
+        <p className="mt-2 text-xs text-red-500">Could not find StudyInstanceUID in URL</p>
+      )}
     </div>
   );
 };

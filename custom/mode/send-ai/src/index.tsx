@@ -1,4 +1,4 @@
-import { initToolGroups, toolbarButtons } from '@ohif/mode-longitudinal';
+// import { initToolGroups, toolbarButtons } from '@ohif/mode-longitudinal';
 import { id } from './id';
 import { ModeFactoryParams } from './types';
 
@@ -98,7 +98,7 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
             id: ohif.layout,
             props: {
               leftPanels: [ohif.leftPanel],
-              rightPanels: [ohif.rightPanel, orthancAI.panel],
+              rightPanels: [orthancAI.panel],
               viewports: [
                 {
                   namespace: cornerstone.viewport,
