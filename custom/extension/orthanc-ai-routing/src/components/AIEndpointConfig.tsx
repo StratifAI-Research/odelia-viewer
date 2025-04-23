@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Button } from '@ohif/ui';
+import { Button, Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '@ohif/ui-next';
 
 // Interface for AI endpoint configuration
 export interface AIEndpoint {
@@ -38,6 +38,7 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
 
   // Load endpoints from localStorage on component mount
   useEffect(() => {
@@ -98,6 +99,7 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
     setIsFormVisible(false);
     setEditingEndpoint(null);
     setErrors({});
+    setShowDeleteConfirmation(false);
   };
 
   const validateForm = (): boolean => {
@@ -165,12 +167,20 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
         onEndpointChange(defaultEndpoint);
       }
     }
+
+    handleCloseForm();
   };
 
   const handleEndpointSelect = (endpointId: string) => {
     const selectedEndpoint = endpoints.find(endpoint => endpoint.id === endpointId);
     if (selectedEndpoint) {
       onEndpointChange(selectedEndpoint);
+    }
+  };
+
+  const confirmDelete = () => {
+    if (editingEndpoint) {
+      handleDeleteEndpoint(editingEndpoint.id);
     }
   };
 
@@ -199,7 +209,6 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
             <div className="flex space-x-2">
               <Button
                 onClick={() => handleOpenForm()}
-                size="small"
                 className="flex-1"
               >
                 Add New
@@ -207,7 +216,6 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
               <Button
                 onClick={() => currentEndpoint && handleOpenForm(currentEndpoint)}
                 disabled={!currentEndpoint}
-                size="small"
                 className="flex-1"
               >
                 Edit
@@ -283,22 +291,58 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
             />
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex justify-end space-x-2">
+            {editingEndpoint && (
+              <Button
+                variant="destructive"
+                onClick={() => {
+                  setShowDeleteConfirmation(true);
+                }}
+              >
+                Delete
+              </Button>
+            )}
             <Button
               onClick={handleCloseForm}
-              className="mr-2"
               variant="secondary"
-              size="small"
             >
               Cancel
             </Button>
             <Button
               onClick={handleSubmit}
-              size="small"
             >
               {editingEndpoint ? 'Update' : 'Add'}
             </Button>
           </div>
+
+          <Dialog
+            open={showDeleteConfirmation}
+            onOpenChange={setShowDeleteConfirmation}
+          >
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Confirm Delete</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to delete the endpoint "{editingEndpoint?.name}"? This action cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  onClick={() => setShowDeleteConfirmation(false)}
+                  className="mr-2"
+                  variant="secondary"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={confirmDelete}
+                  variant="destructive"
+                >
+                  Delete
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </div>
       )}
     </div>

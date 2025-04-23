@@ -120,6 +120,20 @@ class OrthancAIService {
     this.currentEndpoint = endpoint;
     this.aiServerName = endpoint.name;
     this.aiServerUrl = endpoint.url;
+
+    // Update the endpoint in localStorage
+    try {
+      const savedEndpoints = localStorage.getItem('aiEndpoints');
+      if (savedEndpoints) {
+        const endpoints: AIEndpoint[] = JSON.parse(savedEndpoints);
+        const updatedEndpoints = endpoints.map(e =>
+          e.id === endpoint.id ? endpoint : e
+        );
+        localStorage.setItem('aiEndpoints', JSON.stringify(updatedEndpoints));
+      }
+    } catch (error) {
+      console.error('Failed to update AI endpoint in localStorage:', error);
+    }
   }
 
   /**
@@ -317,24 +331,16 @@ class OrthancAIService {
       const orthancStudyId = await this.getOrthancStudyId(dicomStudyUID);
       console.log('Found Orthanc study ID:', orthancStudyId);
 
-      // Now create the routing request with the Orthanc study ID
+      // Create the routing request with the Orthanc study ID
       const routingRequest: RoutingRequest = {
         study_id: orthancStudyId,
         target: this.currentEndpoint.name,
         target_url: this.currentEndpoint.url
       };
 
-      // Add username and password if provided
-      if (this.currentEndpoint.username) {
-        routingRequest.username = this.currentEndpoint.username;
-      }
-
-      if (this.currentEndpoint.password) {
-        routingRequest.password = this.currentEndpoint.password;
-      }
-
       console.log('Routing request:', routingRequest);
 
+      // Use the /send-to-ai endpoint
       const response = await fetch(`${this.orthancUrl}/send-to-ai`, {
         method: 'POST',
         headers: {
