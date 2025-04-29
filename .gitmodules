@@ -2,3 +2,6 @@
 	path = testdata
 	url = https://github.com/OHIF/viewer-testdata-dicomweb.git
 	branch = main
+[submodule "custom/orthanc-routing-example"]
+	path = custom/orthanc-routing-example
+	url = https://github.com/Luab/orthanc-routing-example.git

@@ -154,18 +154,20 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
 
   const handleDeleteEndpoint = (endpointId: string) => {
     const updatedEndpoints = endpoints.filter(endpoint => endpoint.id !== endpointId);
-    setEndpoints(updatedEndpoints);
 
-    // If we're deleting the current endpoint, select another one or clear selection
-    if (currentEndpoint && currentEndpoint.id === endpointId) {
-      if (updatedEndpoints.length > 0) {
+    // If no endpoints left, create a new default one
+    if (updatedEndpoints.length === 0) {
+      const defaultEndpoint = { ...DEFAULT_ENDPOINT };
+      setEndpoints([defaultEndpoint]);
+      onEndpointChange(defaultEndpoint);
+      localStorage.setItem('aiEndpoints', JSON.stringify([defaultEndpoint]));
+    } else {
+      setEndpoints(updatedEndpoints);
+      // If we're deleting the current endpoint, select another one
+      if (currentEndpoint && currentEndpoint.id === endpointId) {
         onEndpointChange(updatedEndpoints[0]);
-      } else {
-        // If no endpoints left, create a new default one
-        const defaultEndpoint = { ...DEFAULT_ENDPOINT };
-        setEndpoints([defaultEndpoint]);
-        onEndpointChange(defaultEndpoint);
       }
+      localStorage.setItem('aiEndpoints', JSON.stringify(updatedEndpoints));
     }
 
     handleCloseForm();
