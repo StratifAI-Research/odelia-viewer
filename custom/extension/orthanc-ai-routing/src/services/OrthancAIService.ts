@@ -68,7 +68,7 @@ class OrthancAIService {
   constructor({ configuration = {} }: { configuration?: OrthancAIServiceConfig }) {
     this.orthancUrl = configuration.orthancUrl || 'http://localhost:45821';
     this.aiServerName = configuration.aiServerName || 'ai-server';
-    this.aiServerUrl = configuration.aiServerUrl || 'http://orthanc-ai:8042';
+    this.aiServerUrl = configuration.aiServerUrl || 'http://orthanc-ai:8042/dicom-web';
 
     // Try to load the current endpoint from localStorage
     this.loadCurrentEndpoint();
@@ -340,24 +340,36 @@ class OrthancAIService {
 
       console.log('Routing request:', routingRequest);
 
-      // Use the /send-to-ai endpoint
-      const response = await fetch(`${this.orthancUrl}/send-to-ai`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(routingRequest),
-      });
+      // Set up timeout using AbortController
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Failed to route study to AI:', errorText);
-        throw new Error(`Failed to route study to AI: ${errorText}`);
+      try {
+        // Use the /send-to-ai endpoint
+        const response = await fetch(`${this.orthancUrl}/send-to-ai`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(routingRequest),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+
+        const data = await response.json();
+        return data as RoutingResponse;
+      } catch (error: unknown) {
+        clearTimeout(timeoutId);
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new Error('Request timed out after 30 seconds');
+        }
+        throw error;
       }
-
-      const responseData = await response.json();
-      console.log('Routing response:', responseData);
-      return responseData;
     } catch (error) {
       console.error('Error routing study to AI:', error);
       throw error;

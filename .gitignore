@@ -63,3 +63,7 @@ tests/test-results/
 tests/playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Docker volume mounts
+custom/deploy/volumes/
+custom/deploy/logs/

@@ -12,6 +12,7 @@
       "extensions/*",
       "modes/*",
       "custom/extension/*",
+      "custom/mode/*",
       "addOns/externals/*"
     ],
     "nohoist": [

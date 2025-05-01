@@ -80,6 +80,10 @@ module.exports = (env, argv) => {
         SRC_DIR,
         path.resolve(__dirname, '/home/luab/work/odelia-viewer/custom/mode/send-ai/node_modules'),
         path.resolve(__dirname, 'custom/extension/orthanc-ai-routing/node_modules'),
+        path.resolve(__dirname, 'custom/extension/orthanc-ai-routing/node_modules'),
+        path.resolve(__dirname, 'custom/extension/labeling/node_modules'),
+        path.resolve(__dirname, 'custom/mode/send-ai/node_modules'),
+        path.resolve(__dirname, 'custom/mode/labeling-mode/node_modules'),
       ],
     },
     plugins: [

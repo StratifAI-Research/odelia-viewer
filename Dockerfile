@@ -56,6 +56,7 @@ ENV PATH=/usr/src/app/node_modules/.bin:$PATH
 # Do an initial install and then a final install
 COPY package.json yarn.lock preinstall.js lerna.json ./
 COPY --parents ./addOns/package.json ./addOns/*/*/package.json ./extensions/*/package.json ./modes/*/package.json ./platform/*/package.json ./
+COPY --parents ./custom/mode/*/package.json ./custom/extension/*/package.json ./
 # Run the install before copying the rest of the files
 
 RUN bun pm cache rm
@@ -94,6 +95,10 @@ COPY --from=builder /usr/src/app/platform/app/dist /usr/share/nginx/html${PUBLIC
 # Copy paths that are renamed/redirected generally
 # Microscopy libraries depend on root level include, so must be copied
 COPY --from=builder /usr/src/app/platform/app/dist/dicom-microscopy-viewer /usr/share/nginx/html/dicom-microscopy-viewer
+
+# Copy app-config.js
+COPY --chown=nginx:nginx custom/deploy/config/app-config.js /usr/share/nginx/html${PUBLIC_URL}app-config.js
+RUN chmod 644 /usr/share/nginx/html${PUBLIC_URL}app-config.js
 
 # In entrypoint.sh, app-config.js might be overwritten, so chmod it to be writeable.
 # The nginx user cannot chmod it, so change to root.

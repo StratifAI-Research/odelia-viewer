@@ -19,7 +19,7 @@ interface AIEndpointConfigProps {
 const DEFAULT_ENDPOINT: AIEndpoint = {
   id: 'default-ai-server',
   name: 'ai-server',
-  url: 'http://orthanc-ai:8042',
+  url: 'http://orthanc-router:8042/dicom-web',
 };
 
 const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({

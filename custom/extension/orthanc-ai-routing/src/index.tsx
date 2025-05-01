@@ -22,7 +22,7 @@ if (!window.config) {
 
 // Set Orthanc URL configuration defaults
 if (!window.config.orthancUrl) {
-  window.config.orthancUrl = 'http://localhost:45821';
+  window.config.orthancUrl = window.location.origin;
 }
 
 // Set AI Server configuration defaults
