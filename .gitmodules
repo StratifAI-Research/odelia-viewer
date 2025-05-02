@@ -5,3 +5,6 @@
 [submodule "custom/orthanc-routing-example"]
 	path = custom/orthanc-routing-example
 	url = https://github.com/Luab/orthanc-routing-example.git
+[submodule "custom/deploy/orthanc-routing-example"]
+	path = custom/deploy/orthanc-routing-example
+	url = https://github.com/Luab/orthanc-routing-example
