@@ -84,6 +84,9 @@ module.exports = (env, argv) => {
         path.resolve(__dirname, 'custom/extension/labeling/node_modules'),
         path.resolve(__dirname, 'custom/mode/send-ai/node_modules'),
         path.resolve(__dirname, 'custom/mode/labeling-mode/node_modules'),
+        path.resolve(__dirname, 'custom/extension/view-ai-result/node_modules'),
+        path.resolve(__dirname, 'custom/extension/view-ai-result/node_modules'),
+        path.resolve(__dirname, 'custom/extension/view-ai-result/node_modules'),
       ],
     },
     plugins: [

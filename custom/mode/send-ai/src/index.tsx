@@ -10,8 +10,8 @@ const ohif = {
   rightPanel: '@ohif/extension-cornerstone.panelModule.panelMeasurement',
 };
 
-const cornerstone = {
-  viewport: '@ohif/extension-cornerstone.viewportModule.cornerstone',
+const viewAIResult = {
+  viewport: 'view-ai-result.viewportModule.ai-tracked-viewport',
 };
 
 const orthancAI = {
@@ -25,6 +25,7 @@ const extensionDependencies = {
   '@ohif/extension-default': '^3.0.0',
   '@ohif/extension-cornerstone': '^3.0.0',
   'orthanc-ai-routing': '^0.0.1',
+  'view-ai-result': '^0.0.1',
 };
 
 function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
@@ -101,7 +102,7 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
               rightPanels: [orthancAI.panel],
               viewports: [
                 {
-                  namespace: cornerstone.viewport,
+                  namespace: viewAIResult.viewport,
                   displaySetsToDisplay: [ohif.sopClassHandler],
                 },
               ],

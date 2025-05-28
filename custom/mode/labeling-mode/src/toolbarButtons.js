@@ -283,6 +283,23 @@ const toolbarButtons = [
       ],
     },
   },
+  {
+    id: 'HeatmapToggle',
+    type: 'ohif.toggle',
+    props: {
+      icon: 'tool-heatmap',
+      label: 'Heatmap',
+      type: 'toggle',
+      commands: [
+        {
+          commandName: 'toggleHeatmapView',
+          commandOptions: {},
+          context: 'VIEWER',
+        },
+      ],
+      tooltip: 'Toggle Heatmap View',
+    },
+  },
 ];
 
 export default toolbarButtons;

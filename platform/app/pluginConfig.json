@@ -69,6 +69,10 @@
     {
       "packageName": "labeling",
       "version": "0.0.1"
+    },
+    {
+      "packageName": "view-ai-result",
+      "version": "0.0.1"
     }
   ],
   "modes": [
