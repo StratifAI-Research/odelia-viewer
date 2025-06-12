@@ -1,9 +1,11 @@
 <!-- prettier-ignore-start -->
 <!-- markdownlint-disable -->
 <div align="center">
-  <h1>OHIF Medical Imaging Viewer</h1>
-  <p><strong>The OHIF Viewer</strong> is a zero-footprint medical image viewer
-provided by the <a href="https://ohif.org/">Open Health Imaging Foundation (OHIF)</a>. It is a configurable and extensible progressive web application with out-of-the-box support for image archives which support <a href="https://www.dicomstandard.org/using/dicomweb/">DICOMweb</a>.</p>
+  <h1>Odelia Medical Imaging Viewer (based on OHIF)</h1>
+  <p><strong>The Odelia Viewer</strong> is a zero-footprint medical image viewer
+based on the <a href="https://ohif.org/">Open Health Imaging Foundation (OHIF)</a> platform. It is a configurable and extensible progressive web application with out-of-the-box support for image archives which support <a href="https://www.dicomstandard.org/using/dicomweb/">DICOMweb</a>.</p>
+
+  <p>This viewer is part of the <strong>ODELIA project</strong> - an innovative EU-funded research initiative developing <strong>Open Source Swarm Learning to Empower Medical AI</strong>. The project focuses on advancing AI-driven breast cancer detection in MRI screenings while ensuring data privacy through cutting-edge swarm learning technology.</p>
 </div>
 
 
@@ -53,7 +55,7 @@ provided by the <a href="https://ohif.org/">Open Health Imaging Foundation (OHIF
 
 ## About
 
-The OHIF Viewer can retrieve
+The Odelia Viewer can retrieve
 and load images from most sources and formats; render sets in 2D, 3D, and
 reconstructed representations; allows for the manipulation, annotation, and
 serialization of observations; supports internationalization, OpenID Connect,
@@ -63,21 +65,33 @@ Almost everything offers some degree of customization and configuration. If it
 doesn't support something you need, we accept pull requests and have an ever
 improving Extension System.
 
+### ODELIA Project
+
+The Odelia Viewer is developed as part of the **ODELIA** (Open Consortium for Decentralized Medical Artificial Intelligence) project, funded by the European Union's Horizon Europe research and innovation programme under grant agreement No 101057091.
+
+**Key Objectives:**
+- **Swarm Learning Framework**: Building the first open-source software framework for swarm learning, enabling privacy-preserving AI development without data sharing
+- **Breast Cancer Detection**: Developing and validating AI algorithms for accurate breast cancer detection in MRI screenings
+- **European Collaboration**: Uniting 12 partners across 7 European countries in a groundbreaking medical AI initiative
+- **Privacy-First Approach**: Ensuring data security and GDPR compliance through decentralized AI training
+
+The project runs from 2023-2027 with total funding of €8.69 million, aiming to revolutionize medical AI while protecting patient privacy and fostering international collaboration in healthcare innovation.
+
 ## Why Choose Us
 
 ### Community & Experience
 
-The OHIF Viewer is a collaborative effort that has served as the basis for many
+The Odelia Viewer is based on the OHIF Viewer, a collaborative effort that has served as the basis for many
 active, production, and FDA Cleared medical imaging viewers. It benefits from
-our extensive community's collective experience, and from the sponsored
+OHIF's extensive community's collective experience, and from the sponsored
 contributions of individuals, research groups, and commercial organizations.
 
 ### Built to Adapt
 
 After more than 8-years of integrating with many companies and organizations,
 The OHIF Viewer has been rebuilt from the ground up to better address the
-varying workflow and configuration needs of its many users. All of the Viewer's
-core features are built using it's own extension system. The same extensibility
+varying workflow and configuration needs of its many users. The Odelia Viewer inherits
+all of these capabilities. All of the Viewer's core features are built using its own extension system. The same extensibility
 that allows us to offer:
 
 - 2D and 3D medical image viewing
@@ -96,6 +110,7 @@ forking).
 
 ### Support
 
+- [ODELIA Project Website](https://odelia.ai/) - Official project information and updates
 - [Report a Bug 🐛](https://github.com/OHIF/Viewers/issues/new?assignees=&labels=Community%3A+Report+%3Abug%3A%2CAwaiting+Reproduction&projects=&template=bug-report.yml&title=%5BBug%5D+)
 - [Request a Feature 🚀](https://github.com/OHIF/Viewers/issues/new?assignees=&labels=Community%3A+Request+%3Ahand%3A&projects=&template=feature-request.yml&title=%5BFeature+Request%5D+)
 - [Ask a Question 🤗](community.ohif.org)
@@ -104,6 +119,11 @@ forking).
 For commercial support, academic collaborations, and answers to common
 questions; please use [Get Support](https://ohif.org/get-support/) to contact
 us.
+
+**ODELIA Project Resources:**
+- [Project Website](https://odelia.ai/)
+- [EU CORDIS Project Page](https://cordis.europa.eu/project/id/101057091)
+- [MediSwarm GitHub Repository](https://github.com/KatherLab/MediSwarm) - Open-source swarm learning framework
 
 
 ## Developing
