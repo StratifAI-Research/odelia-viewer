@@ -3,7 +3,6 @@ import { useViewportGrid } from '@ohif/ui-next';
 import { AIResult, AISideBySideViewportProps } from '../types';
 import { getAIResults } from '../services/mockAIResults';
 import HeatmapToggle from './HeatmapToggle';
-import AIResultsSelector from './AIResultsSelector';
 
 const AITrackedViewport = ({
   viewportId,
@@ -99,6 +98,7 @@ const AITrackedViewport = ({
             ...viewportOptions,
             viewportId,
             viewportType: 'stack',
+            showOverlays: true,
           },
           displaySetOptions: [{}],
           positionId,
@@ -115,6 +115,7 @@ const AITrackedViewport = ({
             viewportId: heatmapViewportId,
             viewportType: 'stack',
             showHeatmap: true,
+            showOverlays: false,
           },
           displaySetOptions: [{
             colormap: {
@@ -162,6 +163,7 @@ const AITrackedViewport = ({
             ...viewportOptions,
             viewportId,
             viewportType: 'stack',
+            showOverlays: true,
           },
         },
         {
@@ -172,6 +174,7 @@ const AITrackedViewport = ({
             viewportId: heatmapViewportId,
             viewportType: 'stack',
             showHeatmap: true,
+            showOverlays: false,
           },
         },
       ]);
@@ -279,121 +282,130 @@ const AITrackedViewport = ({
   useEffect(() => {
     if (!aiResult) return;
 
-    // Configure viewport overlays
-    customizationService.setCustomizations({
-      'viewportOverlay.topLeft': {
-        $push: [
-          {
-            id: 'AIStatus',
-            inheritsFrom: 'ohif.overlayItem',
-            label: '',
-            title: 'AI Results Status',
-            color: '#9ccef9',
-            contentF: ({ instance }) => {
-              return (
-                <div className="overlay-item flex flex-row">
-                  <span className="mr-1 shrink-0">AI:</span>
-                  <span className="ml-1 shrink-0">{aiResult ? 'Available' : 'Not Available'}</span>
-                </div>
-              );
-            }
-          }
-        ]
-      },
-      'viewportOverlay.topRight': {
-        $push: [
-          {
-            id: 'AIClassification',
-            inheritsFrom: 'ohif.overlayItem',
-            title: 'AI Classification',
-            color: '#9ccef9',
-            contentF: ({ instance }) => {
-              if (!aiResult?.classifications || viewportId.includes('-heatmap')) return null;
-              const currentClassification = aiResult.classifications[currentResultIndex];
-              return (
-                <div className="overlay-item flex flex-col">
-                  <div className="flex flex-row items-center">
-                    <span className="mr-1 shrink-0">{currentClassification.side} Breast:</span>
-                    <span className={`ml-1 shrink-0 ${currentClassification.isMalignant ? 'text-red-400' : 'text-green-400'}`}>
-                      {currentClassification.isMalignant ? 'Malignant' : 'Benign'}
-                    </span>
-                  </div>
-                  <div className="flex flex-row items-center">
-                    <span className="mr-1 shrink-0">Confidence:</span>
-                    <span className="ml-1 shrink-0">{(currentClassification.confidence * 100).toFixed(1)}%</span>
-                  </div>
-                  {aiResult.classifications.length > 1 && (
-                    <div className="flex flex-row items-center mt-1">
-                      <span className="mr-1 shrink-0">Result:</span>
-                      <span className="ml-1 shrink-0">{currentResultIndex + 1} of {aiResult.classifications.length}</span>
-                      <div className="ml-2 flex flex-row pointer-events-auto">
-                        <button
-                          className="px-1 text-sm hover:text-white cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAIResultChange('prev');
-                          }}
-                        >
-                          ←
-                        </button>
-                        <button
-                          className="px-1 text-sm hover:text-white cursor-pointer"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleAIResultChange('next');
-                          }}
-                        >
-                          →
-                        </button>
+    // Get viewport options to check if overlays should be shown
+    const viewportOptions = viewportGridService.getState().viewports[viewportId]?.options;
+    const shouldShowOverlays = viewportOptions?.showOverlays !== false;
+
+    // Only handle overlays for the main viewport
+    if (!viewportId.includes('-heatmap')) {
+      // First, remove any existing overlays
+      customizationService.setCustomizations({
+        'viewportOverlay.topLeft': {
+          $set: [] // Clear all existing overlays
+        }
+      });
+
+      // Then add new overlays
+      customizationService.setCustomizations({
+        'viewportOverlay.topLeft': {
+          $set: [ // Use $set instead of $push to replace all overlays
+            {
+              id: 'AIClassification',
+              inheritsFrom: 'ohif.overlayItem',
+              title: 'AI Classification',
+              color: '#9ccef9',
+              contentF: ({ instance }) => {
+                if (!aiResult?.classifications) return null;
+
+                // Find left and right breast classifications
+                const leftBreast = aiResult.classifications.find(c => c.side === 'Left');
+                const rightBreast = aiResult.classifications.find(c => c.side === 'Right');
+
+                // TODO: Get actual model name and version from DICOM SR
+                // For now, mock the model information
+                const mockModelName = "Breast Cancer Classification Model";
+                const mockModelVersion = "v2.1.3";
+
+                return (
+                  <div className="overlay-item flex flex-col">
+                    {/* Model Name and Version */}
+                    <div className="flex flex-col mb-2 pb-1 border-b border-gray-500">
+                      <div className="flex flex-row items-center">
+                        <span className="text-sm font-semibold text-blue-300">🤖 {mockModelName}</span>
+                      </div>
+                      <div className="flex flex-row items-center mt-1">
+                        <span className="text-xs text-gray-300">Version: {mockModelVersion}</span>
                       </div>
                     </div>
-                  )}
-                </div>
-              );
+
+                    {/* Classification Results */}
+                    <div className="flex flex-col">
+                      <div className="flex flex-row items-center">
+                        <span className="mr-1 shrink-0">Left Breast:</span>
+                        <span className={`ml-1 shrink-0 ${leftBreast?.isMalignant ? 'text-red-400' : 'text-green-400'}`}>
+                          {leftBreast?.isMalignant ? 'Malignant' : 'Benign'}
+                        </span>
+                        <span className="ml-2 shrink-0">
+                          ({leftBreast?.confidence ? (leftBreast.confidence * 100).toFixed(1) : 'N/A'}%)
+                        </span>
+                      </div>
+                      <div className="flex flex-row items-center mt-1">
+                        <span className="mr-1 shrink-0">Right Breast:</span>
+                        <span className={`ml-1 shrink-0 ${rightBreast?.isMalignant ? 'text-red-400' : 'text-green-400'}`}>
+                          {rightBreast?.isMalignant ? 'Malignant' : 'Benign'}
+                        </span>
+                        <span className="ml-2 shrink-0">
+                          ({rightBreast?.confidence ? (rightBreast.confidence * 100).toFixed(1) : 'N/A'}%)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
             }
-          }
-        ]
-      }
-    });
+          ]
+        }
+      });
+    }
 
     // Add heatmap toggle to viewport action corners
     if (!viewportId.includes('-heatmap')) {
-      const components = [];
+      const components: Array<{
+        viewportId: string;
+        id: string;
+        component: React.ReactNode;
+        location: any;
+        indexPriority: number;
+      }> = [];
 
-    if (aiResult?.hasHeatmap) {
+      if (aiResult?.hasHeatmap) {
         components.push({
-        viewportId,
-        id: 'HeatmapToggle',
-        component: (
-          <HeatmapToggle
-            onToggle={() => setShowHeatmap(!showHeatmap)}
-            className={viewportId === activeViewportId ? 'visible' : 'invisible group-hover/pane:visible'}
-            isActive={showHeatmap}
-          />
-        ),
-        location: viewportActionCornersService.LOCATIONS.topRight,
-        indexPriority: 0
-      });
+          viewportId,
+          id: 'HeatmapToggle',
+          component: (
+            <div className="flex items-center gap-2">
+              <span className="text-primary-light text-sm">Heatmap Available</span>
+              <HeatmapToggle
+                onToggle={() => setShowHeatmap(!showHeatmap)}
+                className={viewportId === activeViewportId ? 'visible' : 'invisible group-hover/pane:visible'}
+                isActive={showHeatmap}
+              />
+            </div>
+          ),
+          location: viewportActionCornersService.LOCATIONS.topRight,
+          indexPriority: 0
+        });
       }
 
       if (components.length > 0) {
+        viewportActionCornersService.clear(viewportId); // Clear existing components
         viewportActionCornersService.addComponents(components);
       }
     }
 
     // Cleanup function
     return () => {
-      customizationService.setCustomizations({
-        'viewportOverlay.topLeft': {
-          $splice: [[0, 1]]
-        },
-        'viewportOverlay.topRight': {
-          $splice: [[0, 1]]
-        }
-      });
+      // Only clean up if this is the main viewport
+      if (!viewportId.includes('-heatmap')) {
+        customizationService.setCustomizations({
+          'viewportOverlay.topLeft': {
+            $set: [] // Clear all overlays on cleanup
+          }
+        });
+      }
       viewportActionCornersService.clear(viewportId);
     };
-  }, [aiResult, showHeatmap, viewportId, activeViewportId, customizationService, viewportActionCornersService, handleAIResultChange, currentResultIndex]);
+  }, [aiResult, showHeatmap, viewportId, activeViewportId, customizationService, viewportActionCornersService, viewportGridService]);
 
   const getCornerstoneViewport = () => {
     const { component: Component } = extensionManager.getModuleEntry(

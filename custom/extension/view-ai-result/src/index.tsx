@@ -1,19 +1,10 @@
 import React from 'react';
-import { id } from './id';
 import { utils } from '@ohif/extension-cornerstone';
+import { id } from './id.js';
 import AITrackedViewport from './components/AITrackedViewport';
-
-const Component = React.lazy(() => {
-  return import(/* webpackPrefetch: true */ './components/AITrackedViewport');
-});
-
-const OHIFCornerstoneViewport = props => {
-  return (
-    <React.Suspense fallback={<div>Loading...</div>}>
-      <Component {...props} />
-    </React.Suspense>
-  );
-};
+import { requestDisplaySetCreationForStudy } from '@ohif/extension-default';
+import type { Types } from '@ohif/core';
+import getPanelModule from './getPanelModule';
 
 /**
  * You can remove any of the following modules if you don't need them.
@@ -32,13 +23,15 @@ export default {
    * this extension is providing.
    */
   preRegistration: ({ servicesManager, commandsManager, configuration = {} }) => {},
+
   /**
    * PanelModule should provide a list of panels that will be available in OHIF
    * for Modes to consume and render. Each panel is defined by a {name,
    * iconName, iconLabel, label, component} object. Example of a panel module
    * is the StudyBrowserPanel that is provided by the default extension in OHIF.
    */
-  getPanelModule: ({ servicesManager, commandsManager, extensionManager }) => {},
+  getPanelModule,
+
   /**
    * ViewportModule should provide a list of viewports that will be available in OHIF
    * for Modes to consume and use in the viewports. Each viewport is defined by
@@ -46,25 +39,21 @@ export default {
    * that is provided by the Cornerstone extension in OHIF.
    */
   getViewportModule: ({ servicesManager, commandsManager, extensionManager }) => {
-    const ExtendedAITrackedViewport = props => {
-      return (
-        <AITrackedViewport
-          servicesManager={servicesManager}
-          commandsManager={commandsManager}
-          extensionManager={extensionManager}
-          {...props}
-        />
-      );
-    };
-
     return [
       {
         name: 'ai-tracked-viewport',
-        component: ExtendedAITrackedViewport,
-        isReferenceViewable: props => utils.isReferenceViewable({ ...props, servicesManager }),
+        component: props => (
+          <AITrackedViewport
+            {...props}
+            servicesManager={servicesManager}
+            commandsManager={commandsManager}
+            extensionManager={extensionManager}
+          />
+        ),
       },
     ];
   },
+
   /**
    * ToolbarModule should provide a list of tool buttons that will be available in OHIF
    * for Modes to consume and use in the toolbar. Each tool button is defined by

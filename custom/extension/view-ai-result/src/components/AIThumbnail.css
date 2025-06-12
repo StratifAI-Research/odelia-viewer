@@ -1,0 +1,75 @@
+/* Override thumbnail description styling for AI results */
+.ai-result-thumbnail div {
+  white-space: normal !important;
+  text-overflow: clip !important;
+  word-wrap: break-word !important;
+  line-height: 1.2 !important;
+}
+
+/* Specifically target description divs */
+.ai-result-thumbnail > div > div > div {
+  white-space: normal !important;
+  text-overflow: clip !important;
+  max-height: 48px !important;
+  overflow: hidden !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 3 !important;
+  -webkit-box-orient: vertical !important;
+}
+
+/* Force multiline on all text elements */
+.ai-result-thumbnail * {
+  white-space: normal !important;
+  text-overflow: clip !important;
+}
+
+/* Adjust the container height for AI results */
+.ai-result-thumbnail .flex.h-\\[52px\\] {
+  height: auto !important;
+  min-height: 52px !important;
+}
+
+/* Make AI result thumbnails slightly different to distinguish them */
+.ai-result-thumbnail {
+  border-left: 3px solid #00d4ff !important;
+}
+
+/* Target thumbnails containing robot emoji for AI results */
+[data-cy="study-browser-thumbnail"] div:has(div:contains("🤖")),
+[data-cy="study-browser-thumbnail-no-image"] div:has(div:contains("🤖")) {
+  /* Override container heights to allow more space */
+}
+
+/* More specific targeting of description text containing robot emoji */
+div[class*="text-ellipsis"]:has(text):contains("🤖"),
+div[class*="whitespace-nowrap"]:has(text):contains("🤖") {
+  white-space: normal !important;
+  text-overflow: clip !important;
+  overflow: visible !important;
+  line-height: 1.1 !important;
+  max-height: 60px !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 4 !important;
+  -webkit-box-orient: vertical !important;
+}
+
+/* Alternative approach - target by text content */
+div[class*="text-\\[12px\\]"]:contains("🤖"),
+div[class*="text-\\[13px\\]"]:contains("🤖") {
+  white-space: normal !important;
+  text-overflow: clip !important;
+  overflow: visible !important;
+  line-height: 1.1 !important;
+  font-size: 10px !important;
+}
+
+/* Try broader targeting */
+.ohif-scrollbar div:contains("🤖") {
+  white-space: normal !important;
+  word-wrap: break-word !important;
+}
+
+/* Last resort - very broad targeting */
+*:contains("🤖") {
+  white-space: normal !important;
+}
