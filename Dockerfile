@@ -50,19 +50,20 @@ RUN apt-get update && apt-get install -y build-essential python3
 RUN mkdir /usr/src/app
 WORKDIR /usr/src/app
 RUN npm install -g bun
-# RUN npm install -g lerna@7.4.2
+RUN npm install -g lerna@7.2.0
 ENV PATH=/usr/src/app/node_modules/.bin:$PATH
 
 # Do an initial install and then a final install
 COPY package.json yarn.lock preinstall.js lerna.json ./
 COPY --parents ./addOns/package.json ./addOns/*/*/package.json ./extensions/*/package.json ./modes/*/package.json ./platform/*/package.json ./
 COPY --parents ./custom/mode/*/package.json ./custom/extension/*/package.json ./
-# Run the install before copying the rest of the files
-
-RUN bun pm cache rm
-RUN bun install
 # Copy the local directory
 COPY --link --exclude=yarn.lock --exclude=package.json --exclude=Dockerfile . .
+
+# Run the install after copying all files for complete workspace context
+RUN bun pm cache rm
+RUN sed -i '/"@percy\/cypress":/d; /"cypress":/d; /"cypress-file-upload":/d; /"@playwright\/test":/d' package.json
+RUN bun install
 
 # Build here
 # After install it should hopefully be stable until the local directory changes
@@ -72,7 +73,7 @@ ARG APP_CONFIG=config/default.js
 ARG PUBLIC_URL=/
 ENV PUBLIC_URL=${PUBLIC_URL}
 
-RUN bun run show:config
+# RUN bun run show:config
 RUN bun run build
 
 # Precompress files

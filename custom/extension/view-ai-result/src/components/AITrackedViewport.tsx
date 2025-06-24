@@ -109,7 +109,7 @@ const AITrackedViewport = ({
       if (position === 1 && showHeatmap) {
         const heatmapViewportId = `${viewportId}-heatmap`;
         return {
-          displaySetInstanceUIDs: [aiResult.heatmapDisplaySet.displaySetInstanceUID],
+          displaySetInstanceUIDs: [aiResult.heatmapDisplaySet?.displaySetInstanceUID].filter(Boolean),
           viewportOptions: {
             ...viewportOptions,
             viewportId: heatmapViewportId,
@@ -168,7 +168,7 @@ const AITrackedViewport = ({
         },
         {
           viewportId: heatmapViewportId,
-          displaySetInstanceUIDs: [aiResult.heatmapDisplaySet.displaySetInstanceUID],
+          displaySetInstanceUIDs: [aiResult.heatmapDisplaySet?.displaySetInstanceUID].filter(Boolean),
           viewportOptions: {
             ...viewportOptions,
             viewportId: heatmapViewportId,
@@ -311,42 +311,62 @@ const AITrackedViewport = ({
                 const leftBreast = aiResult.classifications.find(c => c.side === 'Left');
                 const rightBreast = aiResult.classifications.find(c => c.side === 'Right');
 
-                // TODO: Get actual model name and version from DICOM SR
-                // For now, mock the model information
-                const mockModelName = "Breast Cancer Classification Model";
-                const mockModelVersion = "v2.1.3";
-
                 return (
                   <div className="overlay-item flex flex-col">
                     {/* Model Name and Version */}
                     <div className="flex flex-col mb-2 pb-1 border-b border-gray-500">
                       <div className="flex flex-row items-center">
-                        <span className="text-sm font-semibold text-blue-300">🤖 {mockModelName}</span>
+                        <span className="text-sm font-semibold text-blue-300">🤖 {aiResult.modelInfo?.name || 'AI Model'}</span>
                       </div>
-                      <div className="flex flex-row items-center mt-1">
-                        <span className="text-xs text-gray-300">Version: {mockModelVersion}</span>
-                      </div>
+                      {aiResult.modelInfo?.algorithmName && (
+                        <div className="flex flex-row items-center mt-1">
+                          <span className="text-xs text-gray-300">
+                            {aiResult.modelInfo.algorithmName}
+                            {aiResult.modelInfo.algorithmVersion && ` v${aiResult.modelInfo.algorithmVersion}`}
+                          </span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Classification Results */}
                     <div className="flex flex-col">
                       <div className="flex flex-row items-center">
                         <span className="mr-1 shrink-0">Left Breast:</span>
-                        <span className={`ml-1 shrink-0 ${leftBreast?.isMalignant ? 'text-red-400' : 'text-green-400'}`}>
-                          {leftBreast?.isMalignant ? 'Malignant' : 'Benign'}
-                        </span>
-                        <span className="ml-2 shrink-0">
-                          ({leftBreast?.confidence ? (leftBreast.confidence * 100).toFixed(1) : 'N/A'}%)
-                        </span>
+                        {leftBreast?.errorMessage ? (
+                          <span className="ml-1 shrink-0 text-yellow-400">
+                            Error: {leftBreast.errorMessage}
+                          </span>
+                        ) : leftBreast ? (
+                          <>
+                            <span className={`ml-1 shrink-0 ${leftBreast.isMalignant ? 'text-red-400' : 'text-green-400'}`}>
+                              {leftBreast.isMalignant ? 'Malignant' : 'Benign'}
+                            </span>
+                            <span className="ml-2 shrink-0">
+                              ({leftBreast.confidence ? (leftBreast.confidence * 100).toFixed(1) : 'N/A'}%)
+                            </span>
+                          </>
+                        ) : (
+                          <span className="ml-1 shrink-0 text-gray-400">No data</span>
+                        )}
                       </div>
                       <div className="flex flex-row items-center mt-1">
                         <span className="mr-1 shrink-0">Right Breast:</span>
-                        <span className={`ml-1 shrink-0 ${rightBreast?.isMalignant ? 'text-red-400' : 'text-green-400'}`}>
-                          {rightBreast?.isMalignant ? 'Malignant' : 'Benign'}
-                        </span>
-                        <span className="ml-2 shrink-0">
-                          ({rightBreast?.confidence ? (rightBreast.confidence * 100).toFixed(1) : 'N/A'}%)
-                        </span>
+                        {rightBreast?.errorMessage ? (
+                          <span className="ml-1 shrink-0 text-yellow-400">
+                            Error: {rightBreast.errorMessage}
+                          </span>
+                        ) : rightBreast ? (
+                          <>
+                            <span className={`ml-1 shrink-0 ${rightBreast.isMalignant ? 'text-red-400' : 'text-green-400'}`}>
+                              {rightBreast.isMalignant ? 'Malignant' : 'Benign'}
+                            </span>
+                            <span className="ml-2 shrink-0">
+                              ({rightBreast.confidence ? (rightBreast.confidence * 100).toFixed(1) : 'N/A'}%)
+                            </span>
+                          </>
+                        ) : (
+                          <span className="ml-1 shrink-0 text-gray-400">No data</span>
+                        )}
                       </div>
                     </div>
                   </div>

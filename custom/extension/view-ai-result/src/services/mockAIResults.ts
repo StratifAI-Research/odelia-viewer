@@ -1,34 +1,34 @@
 import { MockAIResults, AIResult } from '../types';
-import { v4 as uuidv4 } from 'uuid';
-import { servicesManager } from '@ohif/core';
+import { getAIResults as getAIResultsFromService } from './AIResultsService';
 
-// Mock data for testing
+// Keep legacy mock data for reference/testing
 const mockAIResults: MockAIResults = {
   'mock-study-1': {
+    studyInstanceUID: 'mock-study-1',
     classifications: [
       {
-        side: 'left' as const,
+        side: 'Left' as const,
         isMalignant: true,
         confidence: 0.85
       },
       {
-        side: 'right' as const,
+        side: 'Right' as const,
         isMalignant: false,
         confidence: 0.92
       }
     ],
-    hasHeatmap: true,
-    heatmapSeriesInstanceUID: 'mock-heatmap-series-1'
+    hasHeatmap: true
   },
   'mock-study-2': {
+    studyInstanceUID: 'mock-study-2',
     classifications: [
       {
-        side: 'left' as const,
+        side: 'Left' as const,
         isMalignant: false,
         confidence: 0.78
       },
       {
-        side: 'right' as const,
+        side: 'Right' as const,
         isMalignant: false,
         confidence: 0.95
       }
@@ -37,30 +37,8 @@ const mockAIResults: MockAIResults = {
   }
 };
 
-// Mock AI results using original study's display set
-export function getAIResults(studyInstanceUID: string, servicesManager: any): AIResult {
-  const { displaySetService } = servicesManager.services;
-
-  // Get all active display sets and filter by study
-  const displaySets = displaySetService.getActiveDisplaySets();
-  const studyDisplaySets = displaySets.filter(ds => ds.StudyInstanceUID === studyInstanceUID);
-  const originalDisplaySet = studyDisplaySets[0];
-
-  return {
-    hasHeatmap: true,
-    heatmapDisplaySet: originalDisplaySet,
-    heatmapSeriesInstanceUID: originalDisplaySet.SeriesInstanceUID,
-    classifications: [
-      {
-        side: 'Left',
-        isMalignant: false,
-        confidence: 0.95,
-      },
-      {
-        side: 'Right',
-        isMalignant: false,
-        confidence: 0.98,
-      }
-    ]
-  };
+// Main function - now uses real DICOM parsing instead of mock data
+export function getAIResults(studyInstanceUID: string, servicesManager: any): AIResult | null {
+  // Use the new AI Results Service to get real data from DICOM files
+  return getAIResultsFromService(studyInstanceUID, servicesManager);
 }

@@ -1,3 +1,5 @@
+import { Classification } from '../types';
+
 /**
  * Extracts AI classification results and model information from DICOM SR ContentSequence
  * @param {object} displaySet - The display set containing the DICOM SR data
@@ -8,20 +10,9 @@ export function extractAIResultData(displaySet) {
     return null;
   }
 
-  // Debug: Log the entire displaySet structure for AI results
-  console.log('Extracting AI data from SR:', {
-    SeriesDescription: displaySet.SeriesDescription,
-    Modality: displaySet.Modality,
-    instance: displaySet.instance
-  });
-
   const contentSequence = displaySet.instance.ContentSequence;
   const results: {
-    classifications: Array<{
-      concept: string;
-      result: string;
-      confidence: number | null;
-    }>;
+    classifications: Classification[];
     modelInfo: {
       name: string;
       algorithmName?: string | null;
@@ -38,53 +29,50 @@ export function extractAIResultData(displaySet) {
   const rootContainer = contentSequence.find(item => item.ValueType === 'CONTAINER');
   const itemsToProcess = rootContainer?.ContentSequence || contentSequence;
 
-    // Extract classification results and model info from content items
+  // Extract classification results and model info from content items
   itemsToProcess.forEach(item => {
-        // Classification results (findings with confidence values)
-    if (item.ValueType === 'CODE' &&
-        (item.ConceptNameCodeSequence?.[0]?.CodeMeaning?.toLowerCase().includes('probability') ||
-         item.ConceptNameCodeSequence?.[0]?.CodeMeaning?.toLowerCase().includes('side') ||
-         item.ConceptNameCodeSequence?.[0]?.CodeMeaning?.toLowerCase().includes('finding') ||
-         item.ConceptNameCodeSequence?.[0]?.CodeMeaning?.toLowerCase().includes('diagnosis') ||
-         item.ConceptCodeSequence?.[0]?.CodeMeaning?.toLowerCase().includes('benign') ||
-         item.ConceptCodeSequence?.[0]?.CodeMeaning?.toLowerCase().includes('malignant'))) {
+    const conceptMeaning = item.ConceptNameCodeSequence?.[0]?.CodeMeaning;
 
-      const classification: {
-        concept: string;
-        result: string;
-        confidence: number | null;
-      } = {
-        concept: item.ConceptNameCodeSequence?.[0]?.CodeMeaning || 'Classification',
-        result: item.ConceptCodeSequence?.[0]?.CodeMeaning || 'Unknown',
-        confidence: null
-      };
+    if (!conceptMeaning) return;
 
-      // Extract confidence value if available
-      if (item.MeasuredValueSequence?.[0]?.NumericValue) {
-        const numericValue = parseFloat(item.MeasuredValueSequence[0].NumericValue);
-        classification.confidence = isNaN(numericValue) ? null : numericValue;
+    // Handle successful classification results (Side Probability)
+    if (conceptMeaning.includes('Side Probability')) {
+      const side = conceptMeaning.includes('Left') ? 'Left' : 'Right';
+      const malignancyCode = item.ConceptCodeSequence?.[0]?.CodeMeaning;
+      const confidence = item.MeasuredValueSequence?.[0]?.NumericValue;
+
+      if (malignancyCode) {
+        const classification: Classification = {
+          side: side as 'Left' | 'Right',
+          isMalignant: malignancyCode === 'Malignant',
+          confidence: confidence ? parseFloat(confidence) : null
+        };
+
+        results.classifications.push(classification);
+        results.isClassification = true;
       }
-
-      results.classifications.push(classification);
-      results.isClassification = true;
     }
 
-            // Model information - look for various patterns
-    if ((item.ValueType === 'CODE' &&
-         (item.ConceptNameCodeSequence?.[0]?.CodeMeaning?.toLowerCase().includes('model') ||
-          item.ConceptNameCodeSequence?.[0]?.CodeMeaning?.toLowerCase().includes('algorithm') ||
-          item.ConceptNameCodeSequence?.[0]?.CodeMeaning?.toLowerCase().includes('software') ||
-          item.ConceptNameCodeSequence?.[0]?.CodeMeaning?.toLowerCase().includes('device'))) ||
-        (item.ValueType === 'TEXT' &&
-         (item.ConceptNameCodeSequence?.[0]?.CodeMeaning?.toLowerCase().includes('model') ||
-          item.ConceptNameCodeSequence?.[0]?.CodeMeaning?.toLowerCase().includes('algorithm')))) {
+    // Handle error cases (Side Analysis)
+    else if (conceptMeaning.includes('Side Analysis')) {
+      const side = conceptMeaning.includes('Left') ? 'Left' : 'Right';
+      const errorMessage = item.TextValue || 'Analysis failed';
 
+      const classification: Classification = {
+        side: side as 'Left' | 'Right',
+        isMalignant: null,
+        confidence: null,
+        errorMessage: errorMessage
+      };
+
+      results.classifications.push(classification);
+    }
+
+    // Handle model information
+    else if (conceptMeaning === 'AI Model') {
       results.modelInfo = {
-        name: item.ConceptCodeSequence?.[0]?.CodeMeaning ||
-              item.TextValue ||
-              item.ConceptNameCodeSequence?.[0]?.CodeMeaning ||
-              'AI Model',
-        algorithmName: item.AlgorithmName || item.ConceptNameCodeSequence?.[0]?.CodeMeaning || null,
+        name: item.TextValue || 'AI Model',
+        algorithmName: item.AlgorithmName || null,
         algorithmVersion: item.AlgorithmVersion || null
       };
     }
@@ -98,16 +86,20 @@ export function extractAIResultData(displaySet) {
  * @param {array} classifications - Array of classification results
  * @returns {string} - Formatted string for display
  */
-export function formatClassificationPreview(classifications) {
+export function formatClassificationPreview(classifications: Classification[]) {
   if (!classifications || classifications.length === 0) {
     return '';
   }
 
   return classifications.map(classification => {
-    const result = classification.result;
+    if (classification.errorMessage) {
+      return `${classification.side}: Error`;
+    }
+
+    const result = classification.isMalignant ? 'Malignant' : 'Benign';
     const confidence = classification.confidence !== null ?
-      ` (${classification.confidence.toFixed(1)}%)` : '';
-    return `${result}${confidence}`;
+      ` (${(classification.confidence * 100).toFixed(1)}%)` : '';
+    return `${classification.side}: ${result}${confidence}`;
   }).join(', ');
 }
 

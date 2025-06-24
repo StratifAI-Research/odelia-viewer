@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import PropTypes from 'prop-types';
@@ -12,7 +12,9 @@ import { defaultActionIcons } from './constants';
 import { createAIBrowserTabs } from '../../utils/createAIBrowserTabs';
 import { extractAIResultData } from '../../utils/extractAIResultData';
 import { applyAIThumbnailStyles, setupAIThumbnailObserver } from '../../utils/applyAIThumbnailStyles';
+import { getAIResultsService } from '../../services/AIResultsService';
 import '../../components/AIThumbnail.css';
+import { getStaticDate } from '../../utils/dateCache';
 
 const { formatDate } = utils;
 
@@ -31,6 +33,7 @@ const thumbnailNoImageModalities = [
   'DOC',
   'OT',
   'PMAP',
+  'SC', // Secondary Capture (heatmaps) - prevent sizing issues
 ];
 
 /**
@@ -56,11 +59,12 @@ export default function PanelStudyBrowserTracking({
   const navigate = useNavigate();
   const studyMode = customizationService.getCustomization('studyBrowser.studyMode');
 
+  /*
   console.log('PanelStudyBrowserTracking state:', {
     studyMode,
     customizationService: customizationService.getCustomization('studyBrowser'),
   });
-
+  */
   const { t } = useTranslation('Common');
 
   // Normally you nest the components so the tree isn't so deep, and the data
@@ -81,11 +85,20 @@ export default function PanelStudyBrowserTracking({
   const [thumbnailImageSrcMap, setThumbnailImageSrcMap] = useState({});
   const [jumpToDisplaySet, setJumpToDisplaySet] = useState(null);
 
+  // Add state for selected AI result
+  const [selectedAIResult, setSelectedAIResult] = useState(null);
+
+  // Cache for thumbnail props to prevent constant recalculation of static data like dates
+  const [thumbnailPropsCache] = useState(new Map());
+
   const [viewPresets, setViewPresets] = useState(
     customizationService.getCustomization('studyBrowser.viewPresets')
   );
 
   const [actionIcons, setActionIcons] = useState(defaultActionIcons);
+
+  // Initialize AI Results Service
+  const aiResultsService = useMemo(() => getAIResultsService(uiNotificationService), [uiNotificationService]);
 
   const updateActionIconValue = actionIcon => {
     actionIcon.value = !actionIcon.value;
@@ -105,6 +118,17 @@ export default function PanelStudyBrowserTracking({
   };
 
   const onDoubleClickThumbnailHandler = displaySetInstanceUID => {
+    // Check if this is an AI result thumbnail
+    const displaySet = displaySets.find((ds: any) => ds.displaySetInstanceUID === displaySetInstanceUID);
+    const modality = displaySet?.modality || displaySet?.Modality;
+    const isAIResult = displaySet && (modality === 'SR' || modality === 'SC');
+
+    // Don't change viewport for AI results
+    if (isAIResult) {
+      console.log('Double-click on AI result ignored - use single click to switch AI results');
+      return;
+    }
+
     let updatedViewports = [];
     const viewportId = activeViewportId;
     try {
@@ -125,6 +149,48 @@ export default function PanelStudyBrowserTracking({
     }
 
     viewportGridService.setDisplaySetsForViewports(updatedViewports);
+  };
+
+  // Handle thumbnail click for AI result selection
+  const onClickThumbnailHandler = (displaySetInstanceUID) => {
+    const displaySet = displaySets.find((ds: any) => ds.displaySetInstanceUID === displaySetInstanceUID);
+
+    if (!displaySet) {
+      console.log('No display set found for:', displaySetInstanceUID);
+      return;
+    }
+
+    // Debug: Log the display set properties to see what's available
+    console.log('Clicked display set:', {
+      displaySetInstanceUID,
+      modality: displaySet.modality,
+      Modality: displaySet.Modality,
+      description: displaySet.description,
+      seriesDescription: displaySet.seriesDescription,
+      allProperties: Object.keys(displaySet)
+    });
+
+    // Check multiple modality property variations
+    const modality = displaySet.modality || displaySet.Modality;
+    const isAIResult = modality === 'SR' || modality === 'SC';
+
+    if (isAIResult) {
+      // Handle AI result selection
+      const studyInstanceUID = displaySet.StudyInstanceUID || displaySet.studyInstanceUID;
+
+      console.log(`AI result clicked - Modality: ${modality}, StudyUID: ${studyInstanceUID}`);
+
+      // Set selected AI result using the service
+      aiResultsService.setSelectedAIResult(studyInstanceUID, displaySetInstanceUID, servicesManager);
+
+      // Update local state to trigger re-renders
+      setSelectedAIResult({ studyInstanceUID, displaySetInstanceUID });
+
+      console.log(`AI result selected: ${modality} - ${displaySet.description || displaySet.seriesDescription}`);
+    } else {
+      // For medical images, we could implement different behavior if needed
+      console.log('Medical image clicked - Modality:', modality);
+    }
   };
 
   const activeViewportDisplaySetInstanceUIDs =
@@ -202,7 +268,8 @@ export default function PanelStudyBrowserTracking({
       dataSource,
       displaySetService,
       uiDialogService,
-      uiNotificationService
+      uiNotificationService,
+      thumbnailPropsCache
     );
 
     setDisplaySets(mappedDisplaySets);
@@ -248,7 +315,8 @@ export default function PanelStudyBrowserTracking({
           dataSource,
           displaySetService,
           uiDialogService,
-          uiNotificationService
+          uiNotificationService,
+          thumbnailPropsCache
         );
 
         setDisplaySets(mappedDisplaySets);
@@ -268,7 +336,8 @@ export default function PanelStudyBrowserTracking({
           dataSource,
           displaySetService,
           uiDialogService,
-          uiNotificationService
+          uiNotificationService,
+          thumbnailPropsCache
         );
 
         setDisplaySets(mappedDisplaySets);
@@ -287,7 +356,7 @@ export default function PanelStudyBrowserTracking({
     displaySetService,
   ]);
 
-  const tabs = createAIBrowserTabs(StudyInstanceUIDs, studyDisplayList, displaySets);
+  const tabs = createAIBrowserTabs(StudyInstanceUIDs, studyDisplayList, displaySets, servicesManager);
 
   // Setup dynamic styling for AI thumbnails
   useEffect(() => {
@@ -297,11 +366,14 @@ export default function PanelStudyBrowserTracking({
     // Apply initial styling
     applyAIThumbnailStyles();
 
-    // Apply styling when tabs or data changes
-    const interval = setInterval(applyAIThumbnailStyles, 500);
+    // Apply styling when tabs or data changes (but not continuously)
+    // Only run once when tabs/activeTabName changes
+    const timeoutId = setTimeout(() => {
+      applyAIThumbnailStyles();
+    }, 100); // Single timeout instead of continuous interval
 
     return () => {
-      clearInterval(interval);
+      clearTimeout(timeoutId);
     };
   }, [tabs, activeTabName]);
 
@@ -314,10 +386,13 @@ export default function PanelStudyBrowserTracking({
 
     setExpandedStudyInstanceUIDs(updatedExpandedStudyInstanceUIDs);
 
-    if (!shouldCollapseStudy) {
-      const madeInClient = true;
-      requestDisplaySetCreationForStudy(displaySetService, StudyInstanceUID, madeInClient);
-    }
+    // Temporarily disable DICOM metadata fetching to test date refresh fix
+    console.log('Study click - metadata fetching disabled for testing');
+
+    // if (!shouldCollapseStudy) {
+    //   const madeInClient = true;
+    //   requestDisplaySetCreationForStudy(displaySetService, StudyInstanceUID, madeInClient);
+    // }
   }
 
   useEffect(() => {
@@ -382,7 +457,7 @@ export default function PanelStudyBrowserTracking({
         onClickTab={clickedTabName => {
           setActiveTabName(clickedTabName);
         }}
-        onClickThumbnail={() => {}}
+        onClickThumbnail={onClickThumbnailHandler}
         onDoubleClickThumbnail={onDoubleClickThumbnailHandler}
         activeDisplaySetInstanceUIDs={activeViewportDisplaySetInstanceUIDs}
         showSettings={true}
@@ -456,8 +531,12 @@ function _mapDisplaySets(
   dataSource,
   displaySetService,
   uiDialogService,
-  uiNotificationService
+  uiNotificationService,
+  thumbnailPropsCache = new Map()
 ) {
+  console.log(`[DisplaySets] _mapDisplaySets called with ${displaySets.length} display sets at:`, new Date().toISOString());
+  console.log(`[DisplaySets] Display set IDs:`, displaySets.map(ds => `${ds.Modality}-${ds.displaySetInstanceUID?.substring(0, 8)}`));
+
   const thumbnailDisplaySets: any[] = [];
   const thumbnailNoImageDisplaySets: any[] = [];
   displaySets
@@ -471,6 +550,23 @@ function _mapDisplaySets(
 
       const loadingProgress = displaySetLoadingState?.[displaySetInstanceUID];
 
+      // Check if we have cached thumbnail props for this display set
+      const cacheKey = `${displaySetInstanceUID}-${ds.SeriesDate || ds.StudyDate || ds.instance?.InstanceCreationDate}`;
+
+      if (thumbnailPropsCache.has(cacheKey)) {
+        console.log(`[ThumbnailCache] Using cached props for ${ds.Modality} ${displaySetInstanceUID}`);
+        const cachedProps = thumbnailPropsCache.get(cacheKey);
+        // Update dynamic properties that can change
+        cachedProps.loadingProgress = loadingProgress;
+        cachedProps.imageSrc = thumbnailSrc || thumbnailImageSrcMap[displaySetInstanceUID];
+        cachedProps.isTracked = trackedSeriesInstanceUIDs.includes(ds.SeriesInstanceUID);
+        array.push(cachedProps);
+        return; // Skip recalculation
+      }
+
+      // If not cached, calculate the thumbnail props
+      console.log(`[ThumbnailCache] Calculating new props for ${ds.Modality} ${displaySetInstanceUID}`);
+
       // Extract AI result data for AI results
       const aiResultData = extractAIResultData(ds);
 
@@ -482,6 +578,9 @@ function _mapDisplaySets(
       // Enhanced description for AI results - show all info directly
       let enhancedDescription = ds.SeriesDescription || '';
 
+      // Get static date for this display set (prevent constant refreshing)
+      const staticDate = getStaticDate(ds);
+
       // Debug logging for SRs and SCs
       if (ds.Modality === 'SR' || ds.Modality === 'SC') {
         console.log(`${ds.Modality} Display Set:`, {
@@ -489,7 +588,12 @@ function _mapDisplaySets(
           Modality: ds.Modality,
           aiResultData,
           hasInstance: !!ds.instance,
-          originalDescription: enhancedDescription
+          originalDescription: enhancedDescription,
+          staticDate,
+          InstanceCreationDate: ds.instance?.InstanceCreationDate,
+          InstanceCreationTime: ds.instance?.InstanceCreationTime,
+          SeriesDate: ds.SeriesDate,
+          StudyDate: ds.StudyDate
         });
       }
 
@@ -497,51 +601,33 @@ function _mapDisplaySets(
         // Show all information directly - CSS should handle wrapping
         let lines = [`🤖 ${aiResultData.modelInfo.name}`];
 
-        // TODO: Replace mock data with actual classification results from DICOM SR
-        // For now, mock the breast classification results
-        const mockLeftBreastResult = "Left: Benign 94.2%";
-        const mockRightBreastResult = "Right: Malignant 78.5%";
-
-        // Check if we have actual classification data
+        // Process real classification results from DICOM SR
         if (aiResultData.isClassification && aiResultData.classifications.length > 0) {
-          // Try to parse actual classification results for left/right breast
-          const leftBreastClassification = aiResultData.classifications.find(c =>
-            c.concept && c.concept.toLowerCase().includes('left')
-          );
-          const rightBreastClassification = aiResultData.classifications.find(c =>
-            c.concept && c.concept.toLowerCase().includes('right')
-          );
+          aiResultData.classifications.forEach(classification => {
+            const side = classification.side;
 
-          if (leftBreastClassification) {
-            const leftResult = leftBreastClassification.confidence
-              ? `Left: ${leftBreastClassification.result} ${(leftBreastClassification.confidence * 100).toFixed(1)}%`
-              : `Left: ${leftBreastClassification.result}`;
-            lines.push(leftResult);
-          } else {
-            // Use mock data if no actual left breast data
-            lines.push(mockLeftBreastResult);
-          }
-
-          if (rightBreastClassification) {
-            const rightResult = rightBreastClassification.confidence
-              ? `Right: ${rightBreastClassification.result} ${(rightBreastClassification.confidence * 100).toFixed(1)}%`
-              : `Right: ${rightBreastClassification.result}`;
-            lines.push(rightResult);
-          } else {
-            // Use mock data if no actual right breast data
-            lines.push(mockRightBreastResult);
-          }
+            if (classification.errorMessage) {
+              // Handle error cases
+              lines.push(`${side}: ${classification.errorMessage}`);
+            } else if (classification.isMalignant !== null) {
+              // Handle successful classification
+              const result = classification.isMalignant ? 'Malignant' : 'Benign';
+              const confidence = classification.confidence
+                ? ` ${(classification.confidence * 100).toFixed(1)}%`
+                : '';
+              lines.push(`${side}: ${result}${confidence}`);
+            }
+          });
         } else {
-          // No classification data found, use mock data
-          lines.push(mockLeftBreastResult);
-          lines.push(mockRightBreastResult);
+          // No classification data found
+          lines.push('No classification results');
         }
 
         // Join with line breaks - CSS should make this work
         enhancedDescription = lines.join('\n');
-        console.log(`AI data found for ${ds.Modality}:`, enhancedDescription);
+        console.log(`Real AI data found for ${ds.Modality}:`, enhancedDescription);
       } else if (ds.Modality === 'SR') {
-        // Show meaningful info for SRs
+        // Show meaningful info for SRs without parseable AI data
         enhancedDescription = `🤖 AI Result\n${ds.SeriesDescription || 'Structured Report'}`;
         console.log(`SR fallback applied:`, enhancedDescription);
       } else if (ds.Modality === 'SC') {
@@ -561,39 +647,44 @@ function _mapDisplaySets(
       // Temporarily remove custom className to test if that's the issue
       // const customClassName = isAIResult ? 'ai-result-thumbnail' : '';
 
-      const thumbnailProps = {
-        displaySetInstanceUID,
-        description: enhancedDescription,
-        seriesNumber: ds.SeriesNumber,
-        modality: ds.Modality,
-        seriesDate: formatDate(ds.SeriesDate),
-        numInstances: ds.numImageFrames,
-        loadingProgress,
-        countIcon: ds.countIcon,
-        messages: null,
-        StudyInstanceUID: ds.StudyInstanceUID,
-        componentType,
-        imageSrc: thumbnailSrc || thumbnailImageSrcMap[displaySetInstanceUID],
-        dragData: {
-          type: 'displayset',
-          displaySetInstanceUID,
-        },
-        isTracked: trackedSeriesInstanceUIDs.includes(ds.SeriesInstanceUID),
-        isHydratedForDerivedDisplaySet: ds.isHydrated,
-        // className: customClassName,
-      };
-
       // Debug: Log final thumbnail props for SRs
       if (ds.Modality === 'SR') {
         console.log(`Final SR thumbnail props:`, {
           displaySetInstanceUID,
-          description: thumbnailProps.description,
-          modality: thumbnailProps.modality,
-          // className: thumbnailProps.className
+          description: enhancedDescription,
+          modality: ds.Modality,
+          seriesDate: staticDate
         });
       }
 
-      array.push(thumbnailProps);
+      // Cache the calculated thumbnail props (static properties only)
+      const cacheableProps = {
+        displaySetInstanceUID,
+        description: enhancedDescription,
+        seriesNumber: ds.SeriesNumber,
+        modality: ds.Modality,
+        seriesDate: staticDate, // This is the static date we want to preserve
+        numInstances: ds.numImageFrames,
+        countIcon: ds.countIcon,
+        messages: null,
+        StudyInstanceUID: ds.StudyInstanceUID,
+        componentType,
+        dragData: {
+          type: 'displayset',
+          displaySetInstanceUID,
+        },
+        isHydratedForDerivedDisplaySet: ds.isHydrated,
+        // Dynamic properties that will be updated each time
+        loadingProgress: loadingProgress,
+        imageSrc: thumbnailSrc || thumbnailImageSrcMap[displaySetInstanceUID],
+        isTracked: trackedSeriesInstanceUIDs.includes(ds.SeriesInstanceUID),
+      };
+
+      // Save to cache for future use
+      thumbnailPropsCache.set(cacheKey, { ...cacheableProps });
+      console.log(`[ThumbnailCache] Cached props for ${ds.Modality} ${displaySetInstanceUID} with date:`, staticDate);
+
+      array.push(cacheableProps);
     });
 
   return [...thumbnailDisplaySets, ...thumbnailNoImageDisplaySets];

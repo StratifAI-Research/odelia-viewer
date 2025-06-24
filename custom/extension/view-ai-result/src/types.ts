@@ -2,16 +2,9 @@ import type { DisplaySet } from '@ohif/core';
 
 export interface Classification {
   side: 'Left' | 'Right';
-  isMalignant: boolean;
-  confidence: number;
-  location: {
-    x: number;
-    y: number;
-  };
-  size: {
-    width: number;
-    height: number;
-  };
+  isMalignant: boolean | null;
+  confidence: number | null;
+  errorMessage?: string;
 }
 
 export interface AIResult {
@@ -42,6 +35,11 @@ export interface AIResult {
         colors: [number, number, number][];
       };
     };
+  };
+  modelInfo?: {
+    name: string;
+    algorithmName?: string;
+    algorithmVersion?: string;
   };
 }
 

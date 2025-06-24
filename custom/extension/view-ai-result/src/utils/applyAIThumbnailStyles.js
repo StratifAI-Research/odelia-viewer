@@ -9,7 +9,10 @@ export function applyAIThumbnailStyles() {
 
     allTextElements.forEach(element => {
       if (element.textContent && element.textContent.includes('🤖')) {
-        console.log('Found AI thumbnail text element:', element.textContent);
+        // Check if already styled to prevent re-styling
+        if (element.dataset.aiStyled === 'true') {
+          return;
+        }
 
         // Apply multiline styles directly
         element.style.whiteSpace = 'normal';
@@ -21,6 +24,9 @@ export function applyAIThumbnailStyles() {
         element.style.display = '-webkit-box';
         element.style.webkitLineClamp = '4';
         element.style.webkitBoxOrient = 'vertical';
+
+        // Mark as styled to prevent re-styling
+        element.dataset.aiStyled = 'true';
 
         // Also apply to parent containers that might be constraining
         let parent = element.parentElement;
@@ -38,21 +44,53 @@ export function applyAIThumbnailStyles() {
   }, 100);
 }
 
+let observerDebounceTimer = null;
+
 /**
  * Set up a mutation observer to handle dynamically added thumbnails
  */
 export function setupAIThumbnailObserver() {
+  // Clear any existing observer
+  if (window.aiThumbnailObserver) {
+    window.aiThumbnailObserver.disconnect();
+  }
+
   const observer = new MutationObserver((mutations) => {
-    mutations.forEach((mutation) => {
-      if (mutation.addedNodes.length > 0) {
+    // Debounce to prevent excessive calls
+    clearTimeout(observerDebounceTimer);
+    observerDebounceTimer = setTimeout(() => {
+      let shouldApplyStyles = false;
+
+      mutations.forEach((mutation) => {
+        if (mutation.addedNodes.length > 0) {
+          // Only trigger if we actually added thumbnail-related nodes
+          for (let node of mutation.addedNodes) {
+            if (node.nodeType === 1 && // Element node
+                (node.className?.includes('thumbnail') ||
+                 node.querySelector && node.querySelector('[class*="thumbnail"]'))) {
+              shouldApplyStyles = true;
+              break;
+            }
+          }
+        }
+      });
+
+      if (shouldApplyStyles) {
+        console.log('[MutationObserver] Applying AI styles due to thumbnail changes');
         applyAIThumbnailStyles();
       }
-    });
+    }, 200); // Debounce for 200ms
   });
 
-  // Start observing the document for changes
-  observer.observe(document.body, {
+  // Only observe specific containers, not the entire document
+  const studyBrowserContainer = document.querySelector('[class*="study-browser"], [class*="StudyBrowser"]');
+  const targetElement = studyBrowserContainer || document.body;
+
+  observer.observe(targetElement, {
     childList: true,
     subtree: true
   });
+
+  // Store observer globally so we can clean it up
+  window.aiThumbnailObserver = observer;
 }
