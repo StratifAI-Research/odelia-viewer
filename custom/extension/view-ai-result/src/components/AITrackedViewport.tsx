@@ -4,7 +4,7 @@ import { useAIResult } from '../hooks/useAIResult';
 import { useViewportElement } from '../hooks/useViewportElement';
 import { useAIOverlay } from '../hooks/useAIOverlay';
 import { useAIResultSubscription } from '../hooks/useAIResultSubscription';
-import { HeatmapLayoutManager, getPrimaryDisplaySets } from '../utils';
+import { HeatmapLayoutManager, renderCornerstoneViewport, getPrimaryDisplaySets } from '../utils';
 import HeatmapToggle from './HeatmapToggle';
 
 const AITrackedViewport = ({
@@ -16,6 +16,8 @@ const AITrackedViewport = ({
   viewportOptions = {},
   ...props
 }: AISideBySideViewportProps) => {
+    const { viewportGridService } = servicesManager.services;
+
   // Detect if this is a heatmap viewport
   const isHeatmapViewport = viewportId.includes('-heatmap') ||
     displaySets.some(ds => ds.Modality === 'SC');
@@ -53,7 +55,8 @@ const AITrackedViewport = ({
     showOverlays: !isHeatmapViewport, // Only show overlays for primary viewports
   }), [viewportOptions, isHeatmapViewport]);
 
-  // Handle heatmap toggle (only for primary viewports)
+
+    // Handle heatmap toggle (only for primary viewports)
   const handleHeatmapToggle = useCallback(() => {
     if (isHeatmapViewport) return; // Don't handle toggle on heatmap viewport
 
@@ -66,16 +69,16 @@ const AITrackedViewport = ({
         displaySets: primaryDisplaySets, // Use filtered primary display sets
         viewportOptions: enhancedViewportOptions, // Use memoized options
         aiResult: currentAIResult,
-        viewportGridService: servicesManager.services.viewportGridService,
+        viewportGridService,
       });
     }
-  }, [showHeatmap, currentAIResult, viewportId, primaryDisplaySets, enhancedViewportOptions, servicesManager.services.viewportGridService, isHeatmapViewport]);
+  }, [showHeatmap, currentAIResult, viewportId, primaryDisplaySets, enhancedViewportOptions, viewportGridService, isHeatmapViewport]);
 
-  // Handle AI result selection from events - SIMPLE STATE UPDATE ONLY
+  // Handle AI result selection from events
   const handleAIResultSelected = useCallback((newSelectedAIResult) => {
     console.log(`[AITrackedViewport] AI result selected for ${viewportId}:`, newSelectedAIResult);
 
-    // Just update state - React will handle the rerender naturally!
+    // Update the selected AI result state
     setSelectedAIResult(newSelectedAIResult);
 
     // Update overlay (only for primary viewports)
@@ -113,32 +116,20 @@ const AITrackedViewport = ({
     });
   }, [viewportId, initialAIResult, selectedAIResult, currentAIResult, showHeatmap, isHeatmapViewport]);
 
-  // EXACT PATTERN FROM TrackedCornerstoneViewport
-  const getCornerstoneViewport = () => {
-    const { component: Component } = extensionManager.getModuleEntry(
-      '@ohif/extension-cornerstone.viewportModule.cornerstone'
-    );
-
-    return (
-      <Component
-        {...props}
-        displaySets={viewportDisplaySets}
-        viewportOptions={enhancedViewportOptions}
-        servicesManager={servicesManager}
-        extensionManager={extensionManager}
-        commandsManager={commandsManager}
-        onElementEnabled={evt => {
-          props.onElementEnabled?.(evt);
-          onElementEnabled(evt);
-        }}
-        onElementDisabled={onElementDisabled}
-      />
-    );
-  };
-
   return (
     <div className="relative flex h-full w-full flex-row overflow-hidden">
-      {getCornerstoneViewport()}
+      {renderCornerstoneViewport({
+        viewportId,
+        displaySets: viewportDisplaySets, // Use appropriate display sets based on viewport type
+        viewportOptions: enhancedViewportOptions, // Use memoized options
+        // NO needsRerendering prop here - let OHIF handle it through setDisplaySetsForViewports
+        extensionManager,
+        servicesManager,
+        commandsManager,
+        onElementEnabled,
+        onElementDisabled,
+        ...props,
+      })}
 
       {/* Heatmap toggle button - only show on primary viewport with heatmap available */}
       {currentAIResult?.hasHeatmap && !isHeatmapViewport && (

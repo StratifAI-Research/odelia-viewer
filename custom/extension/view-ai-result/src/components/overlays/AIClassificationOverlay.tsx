@@ -26,7 +26,7 @@ const AIClassificationOverlay: React.FC<AIClassificationOverlayProps> = ({ aiRes
   );
 
   return (
-    <div className="overlay-item flex flex-col">
+    <div className="overlay-item flex flex-col max-w-xs">
       <div className="flex flex-col mb-2 pb-1 border-b border-gray-500">
         <div className="flex flex-row items-center">
           <span className="text-sm font-semibold text-blue-300">
@@ -34,7 +34,7 @@ const AIClassificationOverlay: React.FC<AIClassificationOverlayProps> = ({ aiRes
           </span>
         </div>
       </div>
-      <div className="flex flex-col">
+      <div className="flex flex-col space-y-1">
         {renderClassification(leftBreast, 'Left')}
         {renderClassification(rightBreast, 'Right')}
       </div>

@@ -99,30 +99,7 @@ function modeFactory({ modeConfiguration }) {
       // Set up default AI overlay
       customizationService.setCustomizations({
         'viewportOverlay.topLeft': {
-          $set: [
-            {
-              id: 'DefaultAIOverlay',
-              inheritsFrom: 'ohif.overlayItem',
-              title: 'AI Analysis',
-              color: '#9ccef9',
-              contentF: () => {
-                return (
-                  <div className="overlay-item flex flex-col">
-                    <div className="flex flex-col mb-2 pb-1 border-b border-gray-500">
-                      <div className="flex flex-row items-center">
-                        <span className="text-sm font-semibold text-blue-300">🤖 Select AI Result</span>
-                      </div>
-                      <div className="flex flex-row items-center mt-1">
-                        <span className="text-xs text-gray-300">
-                          Click an AI thumbnail to view results
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-            }
-          ]
+          $set: [] // Clear default overlays to prevent conflict with AI action corners
         }
       });
 
