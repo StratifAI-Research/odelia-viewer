@@ -98,7 +98,7 @@ export function formatClassificationPreview(classifications: Classification[]) {
 
     const result = classification.isMalignant ? 'Malignant' : 'Benign';
     const confidence = classification.confidence !== null ?
-      ` (${(classification.confidence * 100).toFixed(1)}%)` : '';
+      ` (${classification.confidence.toFixed(1)}%)` : '';
     return `${classification.side}: ${result}${confidence}`;
   }).join(', ');
 }

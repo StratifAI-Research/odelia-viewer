@@ -178,9 +178,18 @@ class OrthancAIService {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Failed to lookup study:', errorText);
-        throw new Error(`Failed to lookup study: ${errorText}`);
+        // Try to extract error message from response body
+        let errorMessage = `Failed to lookup study (${response.status})`;
+        try {
+          const errorText = await response.text();
+          if (errorText) {
+            errorMessage = `Failed to lookup study: ${errorText}`;
+          }
+        } catch (parseError) {
+          console.warn('Could not parse lookup error response:', parseError);
+        }
+        console.error(errorMessage);
+        throw new Error(errorMessage);
       }
 
       // The response is an array of lookup results
@@ -212,9 +221,18 @@ class OrthancAIService {
       const response = await fetch(`${this.orthancUrl}/studies/${orthancStudyId}`);
 
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Failed to get study info:', errorText);
-        throw new Error(`Failed to get study info: ${errorText}`);
+        // Try to extract error message from response body
+        let errorMessage = `Failed to get study info (${response.status})`;
+        try {
+          const errorText = await response.text();
+          if (errorText) {
+            errorMessage = `Failed to get study info: ${errorText}`;
+          }
+        } catch (parseError) {
+          console.warn('Could not parse study info error response:', parseError);
+        }
+        console.error(errorMessage);
+        throw new Error(errorMessage);
       }
 
       const studyInfo: OrthancStudy = await response.json();
@@ -358,7 +376,28 @@ class OrthancAIService {
         clearTimeout(timeoutId);
 
         if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
+          // Try to extract error message from response body
+          let errorMessage = `HTTP error! status: ${response.status}`;
+          try {
+            const errorData = await response.json();
+            if (errorData.message) {
+              errorMessage = errorData.message;
+            } else if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } catch (parseError) {
+            // If we can't parse the JSON, try to get text response
+            try {
+              const errorText = await response.text();
+              if (errorText) {
+                errorMessage = errorText;
+              }
+            } catch (textError) {
+              // Fall back to status-based message
+              console.warn('Could not parse error response:', textError);
+            }
+          }
+          throw new Error(errorMessage);
         }
 
         const data = await response.json();

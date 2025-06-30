@@ -34,6 +34,12 @@ const OHIFCornerstoneViewport = React.memo(
       initialImageIndex: number;
     }>
   ) => {
+    console.log(`[OHIFCornerstoneViewport] Regular cornerstone viewport rendered:`, {
+      viewportId: props.viewportId,
+      displaySetsCount: props.displaySets?.length,
+      mode: 'regular-cornerstone'
+    });
+
     const {
       displaySets,
       dataSource,

@@ -323,7 +323,21 @@ function PanelStudyBrowser({
         onClickTab={clickedTabName => {
           setActiveTabName(clickedTabName);
         }}
-        onClickThumbnail={() => {}}
+                        onClickThumbnail={(displaySetInstanceUID) => {
+          // Check if AI results service is available and if this is an AI result
+          const aiResultsService = servicesManager.services['aiResultsService'];
+          if (aiResultsService) {
+            const displaySet = displaySets.find(ds => ds.displaySetInstanceUID === displaySetInstanceUID);
+            const modality = displaySet?.modality || displaySet?.Modality;
+            const isAIResult = modality === 'SR' || modality === 'SC';
+
+            if (isAIResult) {
+              console.log('AI result thumbnail clicked in default browser');
+              const studyInstanceUID = displaySet.StudyInstanceUID || displaySet.studyInstanceUID;
+              aiResultsService.setSelectedAIResult(studyInstanceUID, displaySetInstanceUID, servicesManager);
+            }
+          }
+        }}
         onDoubleClickThumbnail={onDoubleClickThumbnailHandler}
         activeDisplaySetInstanceUIDs={activeDisplaySetInstanceUIDs}
         showSettings={actionIcons.find(icon => icon.id === 'settings').value}

@@ -1,6 +1,9 @@
 import { getStaticDate } from './dateCache';
 import { extractAIResultData } from './extractAIResultData';
 
+// Cache for expensive display set lookups - key: displaySetInstanceUID, value: realDisplaySet
+const displaySetCache = new Map();
+
 /**
  * Creates tabs for the study browser that groups AI results by model name + datetime
  * @param {string[]} primaryStudyInstanceUIDs
@@ -15,11 +18,14 @@ export function createAIBrowserTabs(
   displaySets,
   servicesManager: any = null
 ) {
-  console.log('createAIBrowserTabs called with:', {
-    primaryStudyInstanceUIDs,
-    displaySetsCount: displaySets?.length,
-    hasServicesManager: !!servicesManager
-  });
+  // Reduced logging for performance - only log on initial call or cache misses
+  if (displaySetCache.size === 0) {
+    console.log('createAIBrowserTabs called with:', {
+      primaryStudyInstanceUIDs,
+      displaySetsCount: displaySets?.length,
+      hasServicesManager: !!servicesManager
+    });
+  }
 
   // Helper function to check if a display set is an AI result
   const isAIResult = (displaySet) => {
@@ -28,26 +34,44 @@ export function createAIBrowserTabs(
     return modality === 'SR' || modality === 'SC';
   };
 
-    // Helper function to get real display set from service
+  // Helper function to get real display set from service with caching
   const getRealDisplaySet = (thumbnailDisplaySet) => {
     if (!servicesManager?.services?.displaySetService) {
-      console.warn('No displaySetService available, using thumbnail data');
       return thumbnailDisplaySet;
+    }
+
+    const cacheKey = thumbnailDisplaySet.displaySetInstanceUID;
+
+    // Check cache first - return immediately if found
+    if (displaySetCache.has(cacheKey)) {
+      return displaySetCache.get(cacheKey);
     }
 
     try {
       const realDisplaySet = (servicesManager as any).services.displaySetService.getDisplaySetByUID(
         thumbnailDisplaySet.displaySetInstanceUID
       );
-      console.log('Retrieved real display set:', {
-        displaySetInstanceUID: thumbnailDisplaySet.displaySetInstanceUID,
-        hasInstance: !!realDisplaySet?.instance,
-        instanceDate: realDisplaySet?.instance?.InstanceCreationDate,
-        instanceTime: realDisplaySet?.instance?.InstanceCreationTime
-      });
-      return realDisplaySet || thumbnailDisplaySet;
+
+      const result = realDisplaySet || thumbnailDisplaySet;
+
+      // Cache the result
+      displaySetCache.set(cacheKey, result);
+
+      // Only log when actually retrieving (not from cache)
+      if (realDisplaySet) {
+        console.log('Retrieved real display set:', {
+          displaySetInstanceUID: thumbnailDisplaySet.displaySetInstanceUID,
+          hasInstance: !!realDisplaySet?.instance,
+          instanceDate: realDisplaySet?.instance?.InstanceCreationDate,
+          instanceTime: realDisplaySet?.instance?.InstanceCreationTime
+        });
+      }
+
+      return result;
     } catch (error) {
       console.warn('Error getting real display set:', error);
+      // Cache the fallback too
+      displaySetCache.set(cacheKey, thumbnailDisplaySet);
       return thumbnailDisplaySet;
     }
   };
@@ -89,13 +113,15 @@ export function createAIBrowserTabs(
       const creationTime = realDisplaySet?.instance?.InstanceCreationTime;
       const formattedDateTime = formatDateTime(creationDate, creationTime);
 
-      console.log('Processing AI result:', {
-        displaySetInstanceUID: thumbnailDisplaySet.displaySetInstanceUID,
-        modelName,
-        creationDate,
-        creationTime,
-        formattedDateTime
-      });
+      // Reduced logging - only log when datetime formatting fails
+      if (!formattedDateTime && creationDate) {
+        console.log('Processing AI result with incomplete datetime:', {
+          displaySetInstanceUID: thumbnailDisplaySet.displaySetInstanceUID,
+          modelName,
+          creationDate,
+          creationTime
+        });
+      }
 
       if (formattedDateTime) {
         // Group by datetime ONLY (both SC and SR from same run together)
@@ -217,4 +243,19 @@ export function createAIBrowserTabs(
   });
 
   return tabs;
+}
+
+/**
+ * Clear the display set cache to prevent memory leaks
+ */
+export function clearDisplaySetCache() {
+  console.log('Clearing display set cache, size was:', displaySetCache.size);
+  displaySetCache.clear();
+}
+
+/**
+ * Get cache size for debugging
+ */
+export function getDisplaySetCacheSize() {
+  return displaySetCache.size;
 }

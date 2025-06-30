@@ -2,9 +2,9 @@ import React from 'react';
 import { utils } from '@ohif/extension-cornerstone';
 import { id } from './id.js';
 import AITrackedViewport from './components/AITrackedViewport';
-import { requestDisplaySetCreationForStudy } from '@ohif/extension-default';
-import type { Types } from '@ohif/core';
 import getPanelModule from './getPanelModule';
+import getHangingProtocolModule from './getHangingProtocolModule';
+import { AIResultsService } from './services/AIResultsService';
 
 /**
  * You can remove any of the following modules if you don't need them.
@@ -22,7 +22,38 @@ export default {
    * (e.g. cornerstone, cornerstoneTools, ...) or registering any services that
    * this extension is providing.
    */
-  preRegistration: ({ servicesManager, commandsManager, configuration = {} }) => {},
+  preRegistration: ({ servicesManager, commandsManager, configuration = {} }) => {
+    console.log('🚀 AIResultsService preRegistration called');
+
+    try {
+      // Create service definition (matching orthanc-ai-routing pattern)
+      const aiResultsServiceDefinition = {
+        name: 'aiResultsService',
+        create: ({ configuration = {} }) => {
+          console.log('🔧 Creating AIResultsService instance');
+          return new AIResultsService(servicesManager.services?.uiNotificationService);
+        },
+      };
+
+      // Register the AIResultsService
+      console.log('📝 Registering AIResultsService...');
+      servicesManager.registerService(aiResultsServiceDefinition);
+      console.log('✅ AIResultsService registered successfully');
+    } catch (error) {
+      console.error('❌ Error during AIResultsService registration:', error);
+    }
+  },
+
+  /**
+   * ServicesModule should provide a list of services that will be available in OHIF
+   * for Modes to consume and use to manage data. Each service is defined by
+   * an object of { name, type, create } where the name is the name of the service,
+   * type is the type of service, and create is a function that creates the service.
+   */
+  getServicesModule: ({ servicesManager, commandsManager, extensionManager }) => {
+    // Remove duplicate registration - service is already registered in preRegistration
+    return [];
+  },
 
   /**
    * PanelModule should provide a list of panels that will be available in OHIF
@@ -84,7 +115,7 @@ export default {
    * { name, protocols}. Examples include the default hanging protocol provided by
    * the default extension that shows 2x2 viewports.
    */
-  getHangingProtocolModule: ({ servicesManager, commandsManager, extensionManager }) => {},
+  getHangingProtocolModule,
   /**
    * CommandsModule should provide a list of commands that will be available in OHIF
    * for Modes to consume and use in the viewports. Each command is defined by

@@ -12,11 +12,41 @@ import { defaultActionIcons } from './constants';
 import { createAIBrowserTabs } from '../../utils/createAIBrowserTabs';
 import { extractAIResultData } from '../../utils/extractAIResultData';
 import { applyAIThumbnailStyles, setupAIThumbnailObserver } from '../../utils/applyAIThumbnailStyles';
-import { getAIResultsService } from '../../services/AIResultsService';
+
 import '../../components/AIThumbnail.css';
 import { getStaticDate } from '../../utils/dateCache';
 
 const { formatDate } = utils;
+
+// Add proper type definitions
+type DisplaySet = {
+  displaySetInstanceUID: string;
+  modality?: string;
+  Modality?: string;
+  description?: string;
+  seriesDescription?: string;
+  StudyInstanceUID?: string;
+  studyInstanceUID?: string;
+  SeriesInstanceUID?: string;
+  SeriesNumber?: number;
+  numImageFrames?: number;
+  countIcon?: string;
+  instance?: any;
+  SeriesDate?: string;
+  StudyDate?: string;
+  thumbnailSrc?: string;
+  loadingProgress?: number;
+  isTracked?: boolean;
+  [key: string]: any;
+};
+
+type StudyDisplayItem = {
+  studyInstanceUid: string;
+  date: string;
+  description: string;
+  modalities: string[];
+  numInstances: number;
+};
 
 const DIALOG_ID = {
   UNTRACK_SERIES: 'untrack-series',
@@ -55,7 +85,20 @@ export default function PanelStudyBrowserTracking({
     studyPrefetcherService,
     customizationService,
     uiModalService,
+    aiResultsService,
   } = servicesManager.services;
+
+  // Debug: Log available services
+  console.log('🔧 Panel services debug:', {
+    allServiceNames: Object.keys(servicesManager.services),
+    hasAIResultsService: !!aiResultsService,
+    aiResultsServiceType: typeof aiResultsService,
+    servicesCount: Object.keys(servicesManager.services).length
+  });
+
+  // Debug: Show all service names to check if aiResultsService exists under a different name
+  console.log('🔧 All available services:', Object.keys(servicesManager.services).sort());
+
   const navigate = useNavigate();
   const studyMode = customizationService.getCustomization('studyBrowser.studyMode');
 
@@ -78,15 +121,15 @@ export default function PanelStudyBrowserTracking({
   const [expandedStudyInstanceUIDs, setExpandedStudyInstanceUIDs] = useState([
     ...StudyInstanceUIDs,
   ]);
-  const [studyDisplayList, setStudyDisplayList] = useState([]);
+  const [studyDisplayList, setStudyDisplayList] = useState<StudyDisplayItem[]>([]);
   const [hasLoadedViewports, setHasLoadedViewports] = useState(false);
-  const [displaySets, setDisplaySets] = useState([]);
+  const [displaySets, setDisplaySets] = useState<DisplaySet[]>([]);
   const [displaySetsLoadingState, setDisplaySetsLoadingState] = useState({});
   const [thumbnailImageSrcMap, setThumbnailImageSrcMap] = useState({});
   const [jumpToDisplaySet, setJumpToDisplaySet] = useState(null);
 
   // Add state for selected AI result
-  const [selectedAIResult, setSelectedAIResult] = useState(null);
+  const [selectedAIResult, setSelectedAIResult] = useState<{studyInstanceUID: string, displaySetInstanceUID: string} | null>(null);
 
   // Cache for thumbnail props to prevent constant recalculation of static data like dates
   const [thumbnailPropsCache] = useState(new Map());
@@ -97,8 +140,7 @@ export default function PanelStudyBrowserTracking({
 
   const [actionIcons, setActionIcons] = useState(defaultActionIcons);
 
-  // Initialize AI Results Service
-  const aiResultsService = useMemo(() => getAIResultsService(uiNotificationService), [uiNotificationService]);
+  // AI Results Service is now accessed from servicesManager
 
   const updateActionIconValue = actionIcon => {
     actionIcon.value = !actionIcon.value;
@@ -119,7 +161,7 @@ export default function PanelStudyBrowserTracking({
 
   const onDoubleClickThumbnailHandler = displaySetInstanceUID => {
     // Check if this is an AI result thumbnail
-    const displaySet = displaySets.find((ds: any) => ds.displaySetInstanceUID === displaySetInstanceUID);
+    const displaySet = displaySets.find((ds: DisplaySet) => ds.displaySetInstanceUID === displaySetInstanceUID);
     const modality = displaySet?.modality || displaySet?.Modality;
     const isAIResult = displaySet && (modality === 'SR' || modality === 'SC');
 
@@ -152,8 +194,8 @@ export default function PanelStudyBrowserTracking({
   };
 
   // Handle thumbnail click for AI result selection
-  const onClickThumbnailHandler = (displaySetInstanceUID) => {
-    const displaySet = displaySets.find((ds: any) => ds.displaySetInstanceUID === displaySetInstanceUID);
+  const onClickThumbnailHandler = (displaySetInstanceUID: string) => {
+    const displaySet = displaySets.find((ds: DisplaySet) => ds.displaySetInstanceUID === displaySetInstanceUID);
 
     if (!displaySet) {
       console.log('No display set found for:', displaySetInstanceUID);
@@ -180,11 +222,35 @@ export default function PanelStudyBrowserTracking({
 
       console.log(`AI result clicked - Modality: ${modality}, StudyUID: ${studyInstanceUID}`);
 
+      // Debug: Check service availability
+      console.log('🔍 Debug service availability:', {
+        hasAIResultsService: !!aiResultsService,
+        hasStudyInstanceUID: !!studyInstanceUID,
+        studyInstanceUID,
+        serviceType: typeof aiResultsService,
+        serviceMethods: aiResultsService ? Object.getOwnPropertyNames(Object.getPrototypeOf(aiResultsService)) : 'N/A'
+      });
+
       // Set selected AI result using the service
-      aiResultsService.setSelectedAIResult(studyInstanceUID, displaySetInstanceUID, servicesManager);
+      if (aiResultsService && studyInstanceUID) {
+        try {
+          console.log('🚀 Calling aiResultsService.setSelectedAIResult...');
+          aiResultsService.setSelectedAIResult(studyInstanceUID, displaySetInstanceUID, servicesManager);
+          console.log('✅ AI result event published successfully');
+        } catch (error) {
+          console.error('❌ Error calling aiResultsService.setSelectedAIResult:', error);
+        }
+      } else {
+        console.error('❌ aiResultsService not available or missing studyInstanceUID', {
+          hasService: !!aiResultsService,
+          hasUID: !!studyInstanceUID
+        });
+      }
 
       // Update local state to trigger re-renders
-      setSelectedAIResult({ studyInstanceUID, displaySetInstanceUID });
+      if (studyInstanceUID) {
+        setSelectedAIResult({ studyInstanceUID, displaySetInstanceUID });
+      }
 
       console.log(`AI result selected: ${modality} - ${displaySet.description || displaySet.seriesDescription}`);
     } else {
@@ -193,8 +259,9 @@ export default function PanelStudyBrowserTracking({
     }
   };
 
-  const activeViewportDisplaySetInstanceUIDs =
-    viewports.get(activeViewportId)?.displaySetInstanceUIDs || [];
+  const activeViewportDisplaySetInstanceUIDs = activeViewportId
+    ? (viewports.get(activeViewportId)?.displaySetInstanceUIDs || [])
+    : [];
 
   useEffect(() => {
     setActiveTabName(studyMode);

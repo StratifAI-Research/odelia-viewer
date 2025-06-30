@@ -34,7 +34,8 @@ const cornerstone = {
 const extensionDependencies = {
   '@ohif/extension-default': '^3.0.0',
   '@ohif/extension-cornerstone': '^3.0.0',
-  "labeling": "^0.0.1"
+  "labeling": "^0.0.1",
+  "view-ai-result": "^0.0.1"
 };
 
 function modeFactory({ modeConfiguration }) {
@@ -56,7 +57,7 @@ function modeFactory({ modeConfiguration }) {
      */
 
     onModeEnter: ({ servicesManager, extensionManager }) => {
-      const { toolbarService, toolGroupService } = servicesManager.services;
+      const { toolbarService, toolGroupService, customizationService } = servicesManager.services;
       const utilityModule = extensionManager.getModuleEntry(
         '@ohif/extension-cornerstone.utilityModule.tools'
       );
@@ -94,6 +95,36 @@ function modeFactory({ modeConfiguration }) {
 
       const toolGroupId = 'default';
       toolGroupService.createToolGroupAndAddTools(toolGroupId, tools, configs);
+
+      // Set up default AI overlay
+      customizationService.setCustomizations({
+        'viewportOverlay.topLeft': {
+          $set: [
+            {
+              id: 'DefaultAIOverlay',
+              inheritsFrom: 'ohif.overlayItem',
+              title: 'AI Analysis',
+              color: '#9ccef9',
+              contentF: () => {
+                return (
+                  <div className="overlay-item flex flex-col">
+                    <div className="flex flex-col mb-2 pb-1 border-b border-gray-500">
+                      <div className="flex flex-row items-center">
+                        <span className="text-sm font-semibold text-blue-300">🤖 Select AI Result</span>
+                      </div>
+                      <div className="flex flex-row items-center mt-1">
+                        <span className="text-xs text-gray-300">
+                          Click an AI thumbnail to view results
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+            }
+          ]
+        }
+      });
 
       let unsubscribe;
 
@@ -263,7 +294,7 @@ function modeFactory({ modeConfiguration }) {
     /** List of extensions that are used by the mode */
     extensions: extensionDependencies,
     /** HangingProtocol used by the mode */
-    hangingProtocol: 'default',
+    hangingProtocol: '@ohif/extension-view-ai-result.hpSinglePrimary',
     /** SopClassHandlers used by the mode */
     sopClassHandlers: [ohif.sopClassHandler],
     /** hotkeys for mode */

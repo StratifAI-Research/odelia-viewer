@@ -92,7 +92,7 @@ export default {
         name: 'ai-routing-panel',
         iconName: 'clipboard', // Changed to a more relevant icon
         iconLabel: 'AI',
-        label: 'AI Routing',
+        label: 'Analyze with AI',
         component: wrappedAIRoutingPanel,
       },
     ];

@@ -65,11 +65,16 @@ export function setupAIThumbnailObserver() {
         if (mutation.addedNodes.length > 0) {
           // Only trigger if we actually added thumbnail-related nodes
           for (let node of mutation.addedNodes) {
-            if (node.nodeType === 1 && // Element node
-                (node.className?.includes('thumbnail') ||
-                 node.querySelector && node.querySelector('[class*="thumbnail"]'))) {
-              shouldApplyStyles = true;
-              break;
+            if (node.nodeType === 1) { // Element node
+              // Safe className check - ensure it's a string before calling includes
+              const className = node.className;
+              const classNameStr = typeof className === 'string' ? className : className?.toString?.() || '';
+
+              if (classNameStr.includes('thumbnail') ||
+                  (node.querySelector && node.querySelector('[class*="thumbnail"]'))) {
+                shouldApplyStyles = true;
+                break;
+              }
             }
           }
         }

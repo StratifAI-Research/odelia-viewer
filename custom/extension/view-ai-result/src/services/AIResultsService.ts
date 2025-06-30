@@ -8,6 +8,18 @@ export class AIResultsService {
   private cache: Map<string, AIResult[]> = new Map();
   private selectedAIResults: Map<string, string> = new Map(); // studyUID -> displaySetUID
   private uiNotificationService: any;
+  private selectionChangeListeners: Map<string, Array<() => void>> = new Map(); // studyUID -> callbacks
+  private eventListeners: Map<string, Array<(data: any) => void>> = new Map(); // event -> callbacks
+
+  // Event constants
+  static EVENTS = {
+    AI_RESULT_SELECTED: 'AI_RESULT_SELECTED',
+    AI_RESULT_UPDATED: 'AI_RESULT_UPDATED',
+    AI_RESULT_CLEARED: 'AI_RESULT_CLEARED',
+  };
+
+  // Instance method to access events
+  EVENTS = AIResultsService.EVENTS;
 
   constructor(uiNotificationService: any) {
     this.uiNotificationService = uiNotificationService;
@@ -19,10 +31,29 @@ export class AIResultsService {
   getAllAIResults(studyInstanceUID: string, servicesManager: any): AIResult[] {
     // Check cache first
     if (this.cache.has(studyInstanceUID)) {
-      return this.cache.get(studyInstanceUID)!;
+      const cachedResults = this.cache.get(studyInstanceUID)!;
+      console.log(`[AIResultsService] Returning cached AI results:`, {
+        studyInstanceUID,
+        resultCount: cachedResults.length,
+        results: cachedResults.map(r => ({
+          modelName: r.modelInfo?.name,
+          hasHeatmap: r.hasHeatmap,
+          classificationCount: r.classifications.length
+        }))
+      });
+      return cachedResults;
     }
 
     const results = this.extractAIResultsFromStudy(studyInstanceUID, servicesManager);
+    console.log(`[AIResultsService] Extracted fresh AI results:`, {
+      studyInstanceUID,
+      resultCount: results.length,
+      results: results.map(r => ({
+        modelName: r.modelInfo?.name,
+        hasHeatmap: r.hasHeatmap,
+        classificationCount: r.classifications.length
+      }))
+    });
     this.cache.set(studyInstanceUID, results);
     return results;
   }
@@ -205,8 +236,54 @@ export class AIResultsService {
   /**
    * Clear cache
    */
+  /**
+   * Add listener for selection changes
+   */
+  addSelectionChangeListener(studyInstanceUID: string, callback: () => void): void {
+    if (!this.selectionChangeListeners.has(studyInstanceUID)) {
+      this.selectionChangeListeners.set(studyInstanceUID, []);
+    }
+    this.selectionChangeListeners.get(studyInstanceUID)!.push(callback);
+  }
+
+  /**
+   * Remove listener for selection changes
+   */
+  removeSelectionChangeListener(studyInstanceUID: string, callback: () => void): void {
+    const listeners = this.selectionChangeListeners.get(studyInstanceUID);
+    if (listeners) {
+      const index = listeners.indexOf(callback);
+      if (index > -1) {
+        listeners.splice(index, 1);
+      }
+    }
+  }
+
+  /**
+   * Notify all listeners of selection change
+   */
+  private notifySelectionChange(studyInstanceUID: string): void {
+    const listeners = this.selectionChangeListeners.get(studyInstanceUID);
+    console.log(`[AIResultsService] notifySelectionChange:`, {
+      studyInstanceUID,
+      listenersCount: listeners?.length || 0
+    });
+
+    if (listeners) {
+      listeners.forEach((callback, index) => {
+        try {
+          console.log(`[AIResultsService] Calling listener ${index}`);
+          callback();
+        } catch (error) {
+          console.warn('Error in selection change listener:', error);
+        }
+      });
+    }
+  }
+
   clearCache(): void {
     this.cache.clear();
+    this.selectionChangeListeners.clear();
   }
 
   /**
@@ -223,10 +300,23 @@ export class AIResultsService {
   getAIResultByDisplaySet(studyInstanceUID: string, displaySetInstanceUID: string, servicesManager: any): AIResult | null {
     const { displaySetService } = servicesManager.services;
 
+    console.log(`[AIResultsService] getAIResultByDisplaySet called:`, {
+      studyInstanceUID,
+      displaySetInstanceUID
+    });
+
     try {
       // Get the specific display set
       const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
+      console.log(`[AIResultsService] Retrieved display set:`, {
+        displaySetInstanceUID,
+        modality: displaySet?.Modality,
+        seriesDescription: displaySet?.SeriesDescription,
+        found: !!displaySet
+      });
+
       if (!displaySet || displaySet.Modality !== 'SR') {
+        console.log(`[AIResultsService] Invalid display set - not SR or not found`);
         return null;
       }
 
@@ -308,8 +398,15 @@ export class AIResultsService {
   setSelectedAIResult(studyInstanceUID: string, displaySetInstanceUID: string, servicesManager: any): void {
     const previousSelection = this.selectedAIResults.get(studyInstanceUID);
 
+    console.log(`[AIResultsService] setSelectedAIResult called:`, {
+      studyInstanceUID,
+      displaySetInstanceUID,
+      previousSelection
+    });
+
     // Don't do anything if it's already selected
     if (previousSelection === displaySetInstanceUID) {
+      console.log(`[AIResultsService] Already selected, skipping`);
       return;
     }
 
@@ -340,9 +437,30 @@ export class AIResultsService {
     // Update selection with the target SR
     this.selectedAIResults.set(studyInstanceUID, targetDisplaySetUID);
 
-    // Get the AI result info for notification
+    console.log(`[AIResultsService] Selection updated:`, {
+      studyInstanceUID,
+      originalDisplaySetUID: displaySetInstanceUID,
+      targetDisplaySetUID,
+      wasConverted: displaySetInstanceUID !== targetDisplaySetUID,
+      targetModality: targetDisplaySet?.Modality,
+      listenersCount: this.selectionChangeListeners.get(studyInstanceUID)?.length || 0,
+      allSelectionsAfterUpdate: Array.from(this.selectedAIResults.entries())
+    });
+
+    // Get the AI result for the event
     const aiResult = this.getAIResultByDisplaySet(studyInstanceUID, targetDisplaySetUID, servicesManager);
 
+    // Publish AI_RESULT_SELECTED event
+    this.publish(this.EVENTS.AI_RESULT_SELECTED, {
+      studyInstanceUID,
+      displaySetInstanceUID: targetDisplaySetUID,
+      aiResult
+    });
+
+    // Notify listeners of selection change (legacy)
+    this.notifySelectionChange(studyInstanceUID);
+
+    // Show notification
     if (aiResult && this.uiNotificationService) {
       const modelName = aiResult.modelInfo?.name || 'AI Model';
 
@@ -389,21 +507,75 @@ export class AIResultsService {
   getSelectedAIResult(studyInstanceUID: string, servicesManager: any): AIResult | null {
     const selectedDisplaySetUID = this.selectedAIResults.get(studyInstanceUID);
 
+    console.log(`[AIResultsService] getSelectedAIResult:`, {
+      studyInstanceUID,
+      selectedDisplaySetUID,
+      hasSelection: !!selectedDisplaySetUID,
+      allSelections: Array.from(this.selectedAIResults.entries())
+    });
+
     if (selectedDisplaySetUID) {
-      return this.getAIResultByDisplaySet(studyInstanceUID, selectedDisplaySetUID, servicesManager);
+      console.log(`[AIResultsService] Calling getAIResultByDisplaySet with:`, {
+        studyInstanceUID,
+        selectedDisplaySetUID
+      });
+      const result = this.getAIResultByDisplaySet(studyInstanceUID, selectedDisplaySetUID, servicesManager);
+      console.log(`[AIResultsService] Returning selected result:`, result);
+      return result;
     }
 
     // If no selection, return the primary (first) result and set it as selected
+    console.log(`[AIResultsService] No selection found, getting primary result`);
     const primaryResult = this.getAIResults(studyInstanceUID, servicesManager);
     if (primaryResult) {
       // Find the display set UID for the primary result
       const metadata = this.getAIResultMetadata(studyInstanceUID, servicesManager);
       if (metadata.length > 0) {
+        console.log(`[AIResultsService] Setting primary result as selected:`, metadata[0].displaySetInstanceUID);
         this.selectedAIResults.set(studyInstanceUID, metadata[0].displaySetInstanceUID);
       }
     }
 
+    console.log(`[AIResultsService] Returning primary result:`, primaryResult);
     return primaryResult;
+  }
+
+  /**
+   * Subscribe to events
+   */
+  subscribe(eventName: string, callback: (data: any) => void): { unsubscribe: () => void } {
+    if (!this.eventListeners.has(eventName)) {
+      this.eventListeners.set(eventName, []);
+    }
+    this.eventListeners.get(eventName)!.push(callback);
+
+    return {
+      unsubscribe: () => {
+        const listeners = this.eventListeners.get(eventName);
+        if (listeners) {
+          const index = listeners.indexOf(callback);
+          if (index > -1) {
+            listeners.splice(index, 1);
+          }
+        }
+      }
+    };
+  }
+
+  /**
+   * Publish events
+   */
+  private publish(eventName: string, data: any): void {
+    const listeners = this.eventListeners.get(eventName);
+    if (listeners) {
+      listeners.forEach(callback => {
+        try {
+          callback(data);
+        } catch (error) {
+          console.error(`Error in event listener for ${eventName}:`, error);
+        }
+      });
+    }
   }
 }
 
@@ -415,41 +587,4 @@ export function getAIResultsService(uiNotificationService?: any): AIResultsServi
     aiResultsServiceInstance = new AIResultsService(uiNotificationService);
   }
   return aiResultsServiceInstance;
-}
-
-/**
- * Legacy function for backward compatibility
- * Returns the primary AI result for a study
- */
-export function getAIResults(studyInstanceUID: string, servicesManager: any): AIResult | null {
-  const service = getAIResultsService(servicesManager.services?.uiNotificationService);
-  const primaryResult = service.getAIResults(studyInstanceUID, servicesManager);
-
-  if (!primaryResult) {
-    return {
-      studyInstanceUID,
-      hasHeatmap: false,
-      classifications: [
-        {
-          side: 'Left',
-          isMalignant: null,
-          confidence: null,
-          errorMessage: 'No AI results found'
-        },
-        {
-          side: 'Right',
-          isMalignant: null,
-          confidence: null,
-          errorMessage: 'No AI results found'
-        }
-      ],
-      modelInfo: {
-        name: 'No AI Results',
-        algorithmName: 'N/A',
-        algorithmVersion: 'N/A'
-      }
-    };
-  }
-
-  return primaryResult;
 }

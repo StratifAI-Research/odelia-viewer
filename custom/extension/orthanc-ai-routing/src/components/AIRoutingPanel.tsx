@@ -90,14 +90,14 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
 
   // Handle refreshing the display when new AI results are detected
   const handleNewAIResults = () => {
-    console.log('New AI results detected!');
+    console.log('New AI analysis results detected!');
     setStatus('idle');
     setProgress(100);
 
     // Show completion message
     uiNotificationService.show({
-      title: 'AI Results Ready',
-      message: 'New AI results have been loaded',
+      title: 'AI Analysis Results Ready',
+      message: 'New AI analysis results have been loaded',
       type: 'success',
       duration: 5000,
     });
@@ -142,8 +142,8 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
 
         // Show notification
         uiNotificationService.show({
-          title: 'Study Sent for AI Processing',
-          message: 'The study has been sent for AI processing. Results will appear automatically when ready.',
+          title: 'Study Sent for AI Analysis',
+          message: 'The study has been sent for AI analysis. Results will appear automatically when ready.',
           type: 'info',
           duration: 5000,
         });
@@ -156,8 +156,8 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
 
         // Show error notification
         uiNotificationService.show({
-          title: 'AI Routing Failed',
-          message: response.message || 'Failed to route study to AI',
+          title: 'AI Analysis Failed',
+          message: response.message || 'Failed to send study for AI analysis',
           type: 'error',
           duration: 5000,
         });
@@ -165,14 +165,14 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
         setStatus('idle');
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to route study to AI');
+      setError(err instanceof Error ? err.message : 'Failed to send study for AI analysis');
       setStatus('idle');
       setProgress(0);
 
       // Show error notification
       uiNotificationService.show({
-        title: 'AI Routing Failed',
-        message: err instanceof Error ? err.message : 'Failed to route study to AI',
+        title: 'AI Analysis Failed',
+        message: err instanceof Error ? err.message : 'Failed to send study for AI analysis',
         type: 'error',
         duration: 5000,
       });
@@ -187,7 +187,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
 
   return (
     <div className="p-4">
-      <h3 className="mb-4 text-lg font-semibold">AI Routing Panel</h3>
+      <h3 className="mb-4 text-lg font-semibold">AI Analysis Panel</h3>
 
       {/* AI Endpoint Configuration */}
       <div className="mb-4">
@@ -212,20 +212,23 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
             <div className="text-xs text-right text-gray-500 mt-1">{progress}%</div>
           </div>
           <p className="text-sm text-gray-600">
-            {status === 'routing' && 'Routing study to AI endpoint...'}
-            {status === 'checking' && 'Waiting for AI results...'}
-            {status === 'refreshing' && 'Loading new AI results...'}
+            {status === 'routing' && 'Sending study for AI analysis...'}
+            {status === 'checking' && 'Waiting for AI analysis results...'}
+            {status === 'refreshing' && 'Loading new AI analysis results...'}
           </p>
         </div>
       )}
 
-      <Button
-        onClick={handleRouteToAI}
-        disabled={status !== 'idle' || !dicomStudyUID || !currentEndpoint}
-        className="w-full"
-      >
-        Route to AI
-      </Button>
+      {/* Analyze with AI button - aligned with Add New and Edit buttons */}
+      <div className="flex space-x-2">
+        <Button
+          onClick={handleRouteToAI}
+          disabled={status !== 'idle' || !dicomStudyUID || !currentEndpoint}
+          className="flex-1"
+        >
+          Analyze with AI
+        </Button>
+      </div>
 
       {dicomStudyUID ? (
         <p className="mt-2 text-xs text-gray-500 break-all">
