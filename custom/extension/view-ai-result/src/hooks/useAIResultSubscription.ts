@@ -5,12 +5,12 @@ interface AIResultSubscriptionConfig {
   viewportId: string;
   isHeatmapViewport: boolean;
   servicesManager: any;
-  onAIResultSelected: (aiResult: AIResult) => void;
+  onAIResultSelected: (aiResult: AIResult, clickedDisplaySetUID: string) => void;
   onHeatmapToggle?: () => void;
   showHeatmap?: boolean;
 }
 
-export const useAIResultSubscription = (config: AIResultSubscriptionConfig) => {
+export const useAIResultSubscription = (config: AIResultSubscriptionConfig): void => {
   const {
     viewportId,
     isHeatmapViewport,
@@ -26,7 +26,8 @@ export const useAIResultSubscription = (config: AIResultSubscriptionConfig) => {
     console.log(`[useAIResultSubscription] AI result selected for ${viewportId}:`, eventData);
 
     if (eventData?.aiResult && !isHeatmapViewport) {
-      onAIResultSelected(eventData.aiResult);
+      const clickedUID = eventData.clickedDisplaySetInstanceUID ?? eventData.displaySetInstanceUID;
+      onAIResultSelected(eventData.aiResult, clickedUID);
     }
   }, [viewportId, isHeatmapViewport, onAIResultSelected]);
 

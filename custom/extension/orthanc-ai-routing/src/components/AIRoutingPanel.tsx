@@ -187,11 +187,11 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
 
   return (
     <div className="p-4">
-      <h3 className="mb-4 text-lg font-semibold">AI Analysis Panel</h3>
+      <h3 className="mb-4 text-lg font-semibold text-muted-foreground">AI Analysis Panel</h3>
 
       {/* AI Endpoint Configuration */}
       <div className="mb-4">
-        <h4 className="text-sm font-medium mb-2">AI Endpoint Configuration</h4>
+        <h4 className="text-sm font-medium mb-2 text-muted-foreground">AI Endpoint Configuration</h4>
         <AIEndpointConfig
           onEndpointChange={handleEndpointChange}
           currentEndpoint={currentEndpoint}
@@ -231,7 +231,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
       </div>
 
       {dicomStudyUID ? (
-        <p className="mt-2 text-xs text-gray-500 break-all">
+        <p className="mt-2 text-xs text-muted-foreground break-all">
           DICOM Study UID: {dicomStudyUID}
         </p>
       ) : (

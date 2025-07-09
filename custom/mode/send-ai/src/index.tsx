@@ -1,6 +1,7 @@
 // import { initToolGroups, toolbarButtons } from '@ohif/mode-longitudinal';
 import { id } from './id';
 import { ModeFactoryParams } from './types';
+import toolbarButtons from './toolbarButtons';
 
 const ohif = {
   layout: '@ohif/extension-default.layoutTemplateModule.viewerLayout',
@@ -45,10 +46,60 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
      * Runs when the Mode Route is mounted to the DOM. Usually used to initialize
      * Services and other resources.
      */
-    onModeEnter: ({ servicesManager, extensionManager, commandsManager }: ModeFactoryParams) => {
+    onModeEnter: ({ servicesManager, extensionManager }: ModeFactoryParams) => {
       const { measurementService, toolbarService, toolGroupService } = servicesManager.services;
 
-      measurementService.clearMeasurements();
+      // Clear existing measurements
+      measurementService?.clearMeasurements?.();
+
+      // Obtain Cornerstone tool definitions
+      const utilityModule = extensionManager.getModuleEntry(
+        '@ohif/extension-cornerstone.utilityModule.tools'
+      );
+
+      if (!utilityModule) {
+        console.warn('Cornerstone tools utility module not found – browsing tools not activated');
+        return;
+      }
+
+      const { toolNames, Enums } = utilityModule.exports;
+
+      // Prepare default tool group with basic browsing tools
+      const tools = {
+        active: [
+          {
+            toolName: toolNames.WindowLevel,
+            bindings: [{ mouseButton: Enums.MouseBindings.Primary }],
+          },
+          {
+            toolName: toolNames.Pan,
+            bindings: [{ mouseButton: Enums.MouseBindings.Auxiliary }],
+          },
+          {
+            toolName: toolNames.Zoom,
+            bindings: [{ mouseButton: Enums.MouseBindings.Secondary }],
+          },
+          {
+            toolName: toolNames.StackScroll,
+            bindings: [{ mouseButton: Enums.MouseBindings.Wheel }],
+          },
+        ],
+        passive: [{ toolName: toolNames.StackScroll }],
+        enabled: [],
+      };
+
+      // Create tool group if missing and add tools
+      try {
+        toolGroupService.createToolGroupAndAddTools('default', tools);
+      } catch (err) {
+        console.warn('Tool group already exists – skipping creation');
+      }
+
+      // Register toolbar buttons (safe to call multiple times – service de-dupes)
+      toolbarService?.addButtons?.(toolbarButtons);
+
+      // Ensure buttons appear in primary section
+      toolbarService?.createButtonSection?.('primary', ['Zoom', 'WindowLevel', 'Pan', 'Reset']);
     },
     onModeExit: ({ servicesManager }: ModeFactoryParams) => {
       const {

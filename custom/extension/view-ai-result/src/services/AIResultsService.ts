@@ -450,10 +450,11 @@ export class AIResultsService {
     // Get the AI result for the event
     const aiResult = this.getAIResultByDisplaySet(studyInstanceUID, targetDisplaySetUID, servicesManager);
 
-    // Publish AI_RESULT_SELECTED event
+    // Publish AI_RESULT_SELECTED event, including the original clicked UID (could be SC)
     this.publish(this.EVENTS.AI_RESULT_SELECTED, {
       studyInstanceUID,
-      displaySetInstanceUID: targetDisplaySetUID,
+      displaySetInstanceUID: targetDisplaySetUID,           // SR UID actually selected
+      clickedDisplaySetInstanceUID: displaySetInstanceUID,  // Original thumbnail clicked (SC or SR)
       aiResult
     });
 

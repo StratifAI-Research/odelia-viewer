@@ -6,32 +6,23 @@
   line-height: 1.2 !important;
 }
 
-/* Specifically target description divs */
-.ai-result-thumbnail > div > div > div {
-  white-space: normal !important;
-  text-overflow: clip !important;
-  max-height: 48px !important;
-  overflow: hidden !important;
-  display: -webkit-box !important;
-  -webkit-line-clamp: 3 !important;
-  -webkit-box-orient: vertical !important;
-}
-
 /* Force multiline on all text elements */
 .ai-result-thumbnail * {
   white-space: normal !important;
   text-overflow: clip !important;
 }
 
-/* Adjust the container height for AI results */
+/* Keep fixed height for virtualized list to avoid overlap */
 .ai-result-thumbnail .flex.h-\\[52px\\] {
-  height: auto !important;
-  min-height: 52px !important;
+  height: 52px !important; /* consistent item height required by react-window */
+  overflow: hidden !important;
 }
 
 /* Make AI result thumbnails slightly different to distinguish them */
 .ai-result-thumbnail {
   border-left: 3px solid #00d4ff !important;
+  padding-right: 1rem !important; /* leave room for panel handle */
+  box-sizing: border-box !important;
 }
 
 /* Target thumbnails containing robot emoji for AI results */
@@ -90,4 +81,57 @@ div[class*="text-\\[13px\\]"]:contains("🤖") {
 /* Prevent any absolute positioning issues */
 [data-cy="study-browser-thumbnail-no-image"] * {
   position: relative !important;
+}
+
+/* For thumbnails preset, enlarge AI result card height */
+.ai-result-thumbnail.h-\[170px\] {
+  height: 190px !important;
+  min-height: 190px !important;
+}
+
+/* Clamp AI result description to 3 lines within 52px container */
+.ai-result-thumbnail .min-h-\[18px\] {
+  white-space: normal !important;
+  overflow: hidden !important;
+  text-overflow: clip !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 3 !important;
+  -webkit-box-orient: vertical !important;
+}
+
+/* Allow multi-line in list rows and auto-adjust row height */
+.ai-result-thumbnail.h-\[40px\] {
+  height: auto !important;
+  min-height: 40px !important;
+}
+
+/* list-view (h-40) – stable 3-line clamp & disable pointer events to prevent hover glitch */
+.ai-result-thumbnail.h-\[40px\] .max-w-\[160px\]{
+  white-space:normal!important;
+  overflow:hidden!important;
+  text-overflow:clip!important;
+  display:-webkit-box!important;
+  -webkit-line-clamp:3!important;
+  -webkit-box-orient:vertical!important;
+  font-size:11px!important;
+  line-height:1.1!important;
+  max-height:34px!important;
+  pointer-events:none!important;
+}
+
+/* Allow inner content wrapper to expand in list rows */
+.ai-result-thumbnail.h-\[40px\] .relative.flex.h-\[32px\] {
+  height: auto !important;
+  align-items: flex-start !important;
+}
+
+/* Disable tooltip trigger interaction on list rows to prevent hover reflow */
+.ai-result-thumbnail.h-\[40px\] button.w-full {
+  pointer-events: none !important;
+}
+
+/* Compact font for AI overlay text inside viewport */
+#aiOverlay, #aiOverlay .overlay-item, #aiOverlay .overlay-item * {
+  font-size: 11px !important;
+  line-height: 1.25 !important;
 }

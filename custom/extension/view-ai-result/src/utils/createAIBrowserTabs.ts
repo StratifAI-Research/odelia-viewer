@@ -1,5 +1,6 @@
 import { getStaticDate } from './dateCache';
 import { extractAIResultData } from './extractAIResultData';
+import { formatDicomDateTime } from './dicomDateTime';
 
 // Cache for expensive display set lookups - key: displaySetInstanceUID, value: realDisplaySet
 const displaySetCache = new Map();
@@ -76,22 +77,9 @@ export function createAIBrowserTabs(
     }
   };
 
-  // Helper function to format DICOM datetime for display
-  const formatDateTime = (date, time) => {
-    if (!date) return null;
-
-    const year = date.substring(0, 4);
-    const month = date.substring(4, 6);
-    const day = date.substring(6, 8);
-
-    if (time) {
-      const hour = time.substring(0, 2);
-      const minute = time.substring(2, 4);
-      const second = time.substring(4, 6);
-      return `${year}-${month}-${day} ${hour}:${minute}:${second}`;
-    }
-
-    return `${year}-${month}-${day}`;
+  // Helper that wraps the shared util; keeps call-sites simple
+  const formatDateTime = (date, time, offset) => {
+    return formatDicomDateTime(date, time, offset);
   };
 
   // Group display sets
@@ -108,10 +96,15 @@ export function createAIBrowserTabs(
       const aiResultData = extractAIResultData(realDisplaySet);
       const modelName = aiResultData?.modelInfo?.name || 'AI Model';
 
-      // Extract creation date/time from real display set
+      // Extract creation date/time and possible timezone offset from real display set
       const creationDate = realDisplaySet?.instance?.InstanceCreationDate;
       const creationTime = realDisplaySet?.instance?.InstanceCreationTime;
-      const formattedDateTime = formatDateTime(creationDate, creationTime);
+      const tzOffset =
+        realDisplaySet?.instance?.TimezoneOffsetFromUTC ||
+        realDisplaySet?.instance?.TimezoneOffset ||
+        null;
+
+      const formattedDateTime = formatDateTime(creationDate, creationTime, tzOffset);
 
       // Reduced logging - only log when datetime formatting fails
       if (!formattedDateTime && creationDate) {

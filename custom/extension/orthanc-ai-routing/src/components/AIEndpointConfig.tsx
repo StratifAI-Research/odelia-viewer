@@ -226,7 +226,7 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
           </div>
 
           {currentEndpoint && (
-            <div className="text-xs text-gray-500 mb-2">
+            <div className="text-xs text-muted-foreground mb-2">
               <div>Name: {currentEndpoint.name}</div>
               <div>URL: {currentEndpoint.url}</div>
               {currentEndpoint.username && <div>Username: {currentEndpoint.username}</div>}

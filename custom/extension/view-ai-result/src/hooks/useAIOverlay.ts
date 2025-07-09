@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef } from 'react';
+import HeatmapToggle from '../components/HeatmapToggle';
 import { AIOverlayHookConfig, AIOverlayHookReturn } from '../types/overlayTypes';
 import { AIResult } from '../types';
 import AIClassificationOverlay from '../components/overlays/AIClassificationOverlay';
@@ -53,7 +54,7 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
 
         // Create container with flex-col that overrides ViewportActionCorners horizontal layout
     const aiOverlayContainer = React.createElement('div', {
-      className: 'flex flex-col gap-1 text-lg max-w-xs',
+      className: 'flex flex-col gap-0.5 text-[10px] leading-tight max-w-[120px]',
       style: { textShadow: '0.8px 0.8px 0.5px rgba(0, 0, 0, 0.75)' }
     }, [
       // Header line - beautiful blue styling
@@ -81,7 +82,7 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
       id: 'aiOverlay',
       component: aiOverlayContainer,
       location: viewportActionCornersService.LOCATIONS.topLeft,
-      indexPriority: -200, // Higher priority than default shit
+      indexPriority: -200, // Higher priority than default
     });
 
     currentOverlayRef.current = 'aiOverlay';
@@ -114,11 +115,20 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
       return;
     }
 
+    // Create a row with the heat-map icon button and a small label
     const toggleComponent = React.createElement('div', {
-      className: 'flex items-center gap-2 px-2 py-1 bg-blue-600 text-white rounded text-sm cursor-pointer',
+      className: 'flex items-center gap-1 cursor-pointer',
       onClick: onToggle,
       style: { fontSize: '12px' }
-    }, `🔥 Heatmap ${isActive ? 'ON' : 'Available'}`);
+    }, [
+      React.createElement(HeatmapToggle, {
+        key: 'btn',
+        onToggle,
+        isActive,
+        className: 'shadow-none w-6 h-6',
+      }),
+      React.createElement('span', { key: 'lbl', className: 'text-white select-none' }, isActive ? '🔥 Heatmap ON' : '🔥 Heatmap Available')
+    ]);
 
     viewportActionCornersService.addComponent({
       viewportId,

@@ -617,6 +617,9 @@ function _mapDisplaySets(
 
       const loadingProgress = displaySetLoadingState?.[displaySetInstanceUID];
 
+      // Determine if this display set is an AI result (SR or SC)
+      const isAIResultQuick = ds.Modality === 'SR' || ds.Modality === 'SC';
+
       // Check if we have cached thumbnail props for this display set
       const cacheKey = `${displaySetInstanceUID}-${ds.SeriesDate || ds.StudyDate || ds.instance?.InstanceCreationDate}`;
 
@@ -627,6 +630,10 @@ function _mapDisplaySets(
         cachedProps.loadingProgress = loadingProgress;
         cachedProps.imageSrc = thumbnailSrc || thumbnailImageSrcMap[displaySetInstanceUID];
         cachedProps.isTracked = trackedSeriesInstanceUIDs.includes(ds.SeriesInstanceUID);
+        // Ensure className is preserved for AI result styling
+        if (cachedProps && cachedProps.className === undefined && isAIResultQuick) {
+          cachedProps.className = 'ai-result-thumbnail';
+        }
         array.push(cachedProps);
         return; // Skip recalculation
       }
@@ -680,7 +687,7 @@ function _mapDisplaySets(
               // Handle successful classification
               const result = classification.isMalignant ? 'Malignant' : 'Benign';
               const confidence = classification.confidence
-                ? ` ${(classification.confidence * 100).toFixed(1)}%`
+                ? ` ${classification.confidence.toFixed(1)}%`
                 : '';
               lines.push(`${side}: ${result}${confidence}`);
             }
@@ -709,10 +716,9 @@ function _mapDisplaySets(
         console.log(`Final fallback applied:`, enhancedDescription);
       }
 
-      // Add custom CSS class for AI results to enable multiline text
-      const isAIResult = aiResultData || (ds.Modality === 'SR');
-      // Temporarily remove custom className to test if that's the issue
-      // const customClassName = isAIResult ? 'ai-result-thumbnail' : '';
+      // Add custom CSS class for AI results (SR and SC) to enable multiline text
+      const isAIResult = aiResultData || ds.Modality === 'SR' || ds.Modality === 'SC';
+      const customClassName = isAIResult ? 'ai-result-thumbnail' : '';
 
       // Debug: Log final thumbnail props for SRs
       if (ds.Modality === 'SR') {
@@ -745,6 +751,7 @@ function _mapDisplaySets(
         loadingProgress: loadingProgress,
         imageSrc: thumbnailSrc || thumbnailImageSrcMap[displaySetInstanceUID],
         isTracked: trackedSeriesInstanceUIDs.includes(ds.SeriesInstanceUID),
+        className: customClassName,
       };
 
       // Save to cache for future use

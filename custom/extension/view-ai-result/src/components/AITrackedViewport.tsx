@@ -5,7 +5,6 @@ import { useViewportElement } from '../hooks/useViewportElement';
 import { useAIOverlay } from '../hooks/useAIOverlay';
 import { useAIResultSubscription } from '../hooks/useAIResultSubscription';
 import { HeatmapLayoutManager, renderCornerstoneViewport, getPrimaryDisplaySets } from '../utils';
-import HeatmapToggle from './HeatmapToggle';
 
 const AITrackedViewport = ({
   viewportId,
@@ -63,6 +62,11 @@ const AITrackedViewport = ({
     const newShowHeatmap = !showHeatmap;
     setShowHeatmap(newShowHeatmap);
 
+    // Update the action corner toggle button state
+    if (currentAIResult?.hasHeatmap) {
+      setupHeatmapActionCorner(currentAIResult, handleHeatmapToggle, newShowHeatmap);
+    }
+
     if (currentAIResult) {
       HeatmapLayoutManager.toggleHeatmapLayout(newShowHeatmap, {
         viewportId,
@@ -75,7 +79,7 @@ const AITrackedViewport = ({
   }, [showHeatmap, currentAIResult, viewportId, primaryDisplaySets, enhancedViewportOptions, viewportGridService, isHeatmapViewport]);
 
   // Handle AI result selection from events
-  const handleAIResultSelected = useCallback((newSelectedAIResult) => {
+  const handleAIResultSelected = useCallback((newSelectedAIResult, clickedDisplaySetUID: string) => {
     console.log(`[AITrackedViewport] AI result selected for ${viewportId}:`, newSelectedAIResult);
 
     // Update the selected AI result state
@@ -92,8 +96,16 @@ const AITrackedViewport = ({
     // Setup heatmap action corner if needed (only for primary viewports)
     if (newSelectedAIResult?.hasHeatmap && !isHeatmapViewport) {
       setupHeatmapActionCorner(newSelectedAIResult, handleHeatmapToggle, false);
+
+      // Auto-enable heatmap if user clicked directly on the heatmap thumbnail (SC)
+      if (
+        newSelectedAIResult.heatmapDisplaySet?.displaySetInstanceUID === clickedDisplaySetUID &&
+        !showHeatmap
+      ) {
+        handleHeatmapToggle();
+      }
     }
-  }, [viewportId, isHeatmapViewport, updateOverlay, setupHeatmapActionCorner, handleHeatmapToggle]);
+  }, [viewportId, isHeatmapViewport, updateOverlay, setupHeatmapActionCorner, handleHeatmapToggle, showHeatmap]);
 
   // Subscribe to AI result selection events
   useAIResultSubscription({
@@ -116,6 +128,13 @@ const AITrackedViewport = ({
     });
   }, [viewportId, initialAIResult, selectedAIResult, currentAIResult, showHeatmap, isHeatmapViewport]);
 
+  // Ensure heatmap toggle action corner is in sync
+  useEffect(() => {
+    if (!isHeatmapViewport && currentAIResult?.hasHeatmap) {
+      setupHeatmapActionCorner(currentAIResult, handleHeatmapToggle, showHeatmap);
+    }
+  }, [currentAIResult, showHeatmap, isHeatmapViewport, setupHeatmapActionCorner, handleHeatmapToggle]);
+
   return (
     <div className="relative flex h-full w-full flex-row overflow-hidden">
       {renderCornerstoneViewport({
@@ -131,16 +150,7 @@ const AITrackedViewport = ({
         ...props,
       })}
 
-      {/* Heatmap toggle button - only show on primary viewport with heatmap available */}
-      {currentAIResult?.hasHeatmap && !isHeatmapViewport && (
-        <div className="absolute top-2 right-2 z-10">
-          <HeatmapToggle
-            onToggle={handleHeatmapToggle}
-            isActive={showHeatmap}
-            className="shadow-md"
-          />
-        </div>
-      )}
+      {/* Heatmap toggle is now injected via ViewportActionCornersService for better alignment */}
     </div>
   );
 };

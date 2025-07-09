@@ -9,6 +9,19 @@ export function applyAIThumbnailStyles() {
 
     allTextElements.forEach(element => {
       if (element.textContent && element.textContent.includes('🤖')) {
+        // Only apply styles if the element is inside an AI-result thumbnail
+        const thumbnailRoot = element.closest('.ai-result-thumbnail');
+
+        // If not contained in an AI thumbnail, skip entirely (prevents accordion wrapper being styled)
+        if (!thumbnailRoot) {
+          return;
+        }
+
+        // Skip styling when the element is inside a list-row thumbnail (height 40px)
+        if (thumbnailRoot.classList.toString().includes('h-[40px]')) {
+          return; // Keep list preset single-line
+        }
+
         // Check if already styled to prevent re-styling
         if (element.dataset.aiStyled === 'true') {
           return;
@@ -17,7 +30,7 @@ export function applyAIThumbnailStyles() {
         // Apply multiline styles directly
         element.style.whiteSpace = 'normal';
         element.style.textOverflow = 'clip';
-        element.style.overflow = 'visible';
+        element.style.overflow = 'hidden';
         element.style.lineHeight = '1.1';
         element.style.fontSize = '10px';
         element.style.maxHeight = '60px';
@@ -35,7 +48,7 @@ export function applyAIThumbnailStyles() {
               parent.classList.toString().includes('whitespace-nowrap')) {
             parent.style.whiteSpace = 'normal';
             parent.style.textOverflow = 'clip';
-            parent.style.overflow = 'visible';
+            parent.style.overflow = 'hidden';
           }
           parent = parent.parentElement;
         }
