@@ -117,8 +117,50 @@ export default function PanelStudyBrowserTracking({
   const [thumbnailImageSrcMap, setThumbnailImageSrcMap] = useState({});
   const [jumpToDisplaySet, setJumpToDisplaySet] = useState(null);
 
-  // Add state for selected AI result
-  const [selectedAIResult, setSelectedAIResult] = useState<{studyInstanceUID: string, displaySetInstanceUID: string} | null>(null);
+  // Track globally-selected AI SR UID published by the AIResultsService
+  const [selectedSRUID, setSelectedSRUID] = useState<string | null>(null);
+  const selectedSRUIDRef = useRef<string | null>(null);
+
+  // Keep ref in sync so subscripton callback always has latest value
+  useEffect(() => {
+    selectedSRUIDRef.current = selectedSRUID;
+  }, [selectedSRUID]);
+
+  // Subscribe once to global AI result selection events
+  useEffect(() => {
+    if (!aiResultsService) {
+      return;
+    }
+
+    const handler = (evt: { studyInstanceUID: string; displaySetInstanceUID: string }) => {
+      setSelectedSRUID(evt.displaySetInstanceUID);
+    };
+
+    // Initial selection (if any)
+    if (StudyInstanceUIDs?.length) {
+      // Try each study, keep first valid selection we find
+      for (const sid of StudyInstanceUIDs) {
+        const initial = aiResultsService.getSelectedAIResult?.(sid, servicesManager as any);
+        // `getSelectedAIResult` returns AIResult | null without UID, so rely on metadata helper
+        if (!initial) {
+          continue;
+        }
+        const metaList = aiResultsService.getAIResultMetadata?.(sid, servicesManager as any);
+        const selectedMeta = metaList?.find(m => m.isSelected);
+        if (selectedMeta) {
+          setSelectedSRUID(selectedMeta.displaySetInstanceUID);
+          break;
+        }
+      }
+    }
+
+    const { unsubscribe } = aiResultsService.subscribe(
+      aiResultsService.EVENTS.AI_RESULT_SELECTED,
+      handler
+    );
+
+    return () => unsubscribe();
+  }, [aiResultsService, StudyInstanceUIDs, servicesManager]);
 
   // Cache for thumbnail props to prevent constant recalculation of static data like dates
   const [thumbnailPropsCache] = useState(new Map());
@@ -236,10 +278,7 @@ export default function PanelStudyBrowserTracking({
         });
       }
 
-      // Update local state to trigger re-renders
-      if (studyInstanceUID) {
-        setSelectedAIResult({ studyInstanceUID, displaySetInstanceUID });
-      }
+      // Local selection state removed – the global service event will update UI
 
       console.log(`AI result selected: ${modality} - ${displaySet.description || displaySet.seriesDescription}`);
     } else {
@@ -319,6 +358,7 @@ export default function PanelStudyBrowserTracking({
       displaySetsLoadingState,
       thumbnailImageSrcMap,
       [],
+      selectedSRUIDRef.current,
       viewports,
       viewportGridService,
       dataSource,
@@ -369,6 +409,7 @@ export default function PanelStudyBrowserTracking({
       displaySetsLoadingStateRef.current,
       thumbnailImageSrcMapRef.current,
       [],
+      selectedSRUIDRef.current,
       viewportsRef.current,
       viewportGridService,
       dataSource,
@@ -693,6 +734,7 @@ function _mapDisplaySets(
   displaySetLoadingState,
   thumbnailImageSrcMap,
   trackedSeriesInstanceUIDs,
+  selectedSRUID,
   thumbnailPropsCache = new Map()
 ) {
   console.log(`[DisplaySets] _mapDisplaySets called with ${displaySets.length} display sets at:`, new Date().toISOString());
@@ -713,6 +755,7 @@ function _mapDisplaySets(
 
       // Determine if this display set is an AI result (SR or SC)
       const isAIResultQuick = ds.Modality === 'SR' || ds.Modality === 'SC';
+      const isSelectedSR = ds.Modality === 'SR' && displaySetInstanceUID === selectedSRUID;
 
       // Check if we have cached thumbnail props for this display set
       const cacheKey = `${displaySetInstanceUID}-${ds.SeriesDate || ds.StudyDate || ds.instance?.InstanceCreationDate}`;
@@ -724,9 +767,9 @@ function _mapDisplaySets(
         cachedProps.loadingProgress = loadingProgress;
         cachedProps.imageSrc = thumbnailSrc || thumbnailImageSrcMap[displaySetInstanceUID];
         cachedProps.isTracked = trackedSeriesInstanceUIDs.includes(ds.SeriesInstanceUID);
-        // Ensure className is preserved for AI result styling
-        if (cachedProps && cachedProps.className === undefined && isAIResultQuick) {
-          cachedProps.className = 'ai-result-thumbnail';
+        // Ensure className is updated for AI result styling & selection
+        if (cachedProps && isAIResultQuick) {
+          cachedProps.className = `ai-result-thumbnail${isSelectedSR ? ' selected' : ''}`;
         }
         array.push(cachedProps);
         return; // Skip recalculation
@@ -812,7 +855,7 @@ function _mapDisplaySets(
 
       // Add custom CSS class for AI results (SR and SC) to enable multiline text
       const isAIResult = aiResultData || ds.Modality === 'SR' || ds.Modality === 'SC';
-      const customClassName = isAIResult ? 'ai-result-thumbnail' : '';
+      const customClassName = isAIResult ? `ai-result-thumbnail${isSelectedSR ? ' selected' : ''}` : '';
 
       // Debug: Log final thumbnail props for SRs
       if (ds.Modality === 'SR') {
