@@ -30,9 +30,9 @@
     "format": "prettier --write \"src/**/*.{ts,tsx}\""
   },
   "peerDependencies": {
-    "@ohif/core": "^3.10.0-beta.141",
-    "@ohif/extension-default": "^3.10.0-beta.141",
-    "@ohif/extension-cornerstone": "^3.10.0-beta.141",
+    "@ohif/core": "workspace:*",
+    "@ohif/extension-default": "workspace:*",
+    "@ohif/extension-cornerstone": "workspace:*",
     "@ohif/i18n": "^1.0.0",
     "prop-types": "^15.6.2",
     "react": "^18.3.1",
@@ -45,8 +45,8 @@
   },
   "dependencies": {
     "@babel/runtime": "^7.20.13",
-    "@ohif/core": "^3.0.0",
-    "@ohif/ui": "^3.0.0",
+    "@ohif/core": "workspace:*",
+    "@ohif/ui": "workspace:*",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },

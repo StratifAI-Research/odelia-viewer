@@ -157,6 +157,23 @@ const AITrackedViewportInner = ({
     }
   }, [currentAIResult, showHeatmap, isHeatmapViewport, setupHeatmapActionCorner, handleHeatmapToggle]);
 
+  // Track changes in images length to detect late hydration
+  useEffect(() => {
+    displaySets.forEach(ds => {
+      const prev = (prevDisplaySetsRef.current as any[]).find(
+        p => p.displaySetInstanceUID === ds.displaySetInstanceUID
+      );
+      if (prev && (prev.images?.length || 0) !== (ds.images?.length || 0)) {
+        console.log(
+          `[AITrackedViewport][ImagesChange] ${viewportId} DS ${ds.displaySetInstanceUID} images:`,
+          prev.images?.length || 0,
+          '→',
+          ds.images?.length || 0
+        );
+      }
+    });
+  });
+
   return (
     <div className="relative flex h-full w-full flex-row overflow-hidden">
       {renderCornerstoneViewport({
