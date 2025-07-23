@@ -123,7 +123,30 @@ export default {
    * object of functions, definitions is an object of available commands, their
    * options, and defaultContext is the default context for the command to run against.
    */
-  getCommandsModule: ({ servicesManager, commandsManager, extensionManager }) => {},
+  getCommandsModule: ({ servicesManager, commandsManager, extensionManager }) => {
+    // Provide a no-op implementation of the resetCrosshairs command to silence
+    // warnings when the tool is not registered. This overrides the one
+    // registered by the Cornerstone extension.
+    const actions = {
+      resetCrosshairs: () => {
+        // Intentionally empty – crosshairs tool not used in this extension
+      },
+    };
+
+    const definitions = {
+      resetCrosshairs: {
+        commandFn: actions.resetCrosshairs,
+        storeContexts: [],
+        options: {},
+      },
+    };
+
+    return {
+      actions,
+      definitions,
+      defaultContext: 'CORNERSTONE',
+    };
+  },
   /**
    * ContextModule should provide a list of context that will be available in OHIF
    * and will be provided to the Modes. A context is a state that is shared OHIF.

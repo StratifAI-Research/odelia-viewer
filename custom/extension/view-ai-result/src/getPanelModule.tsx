@@ -4,6 +4,7 @@ import i18n from 'i18next';
 import React, { useCallback } from 'react';
 import { useSystem } from '@ohif/core';
 import { requestDisplaySetCreationForStudy } from '@ohif/extension-default';
+import getImageSrcFromImageId from './panels/PanelStudyBrowserTracking/getImageSrcFromImageId';
 
 function _getStudyForPatientUtility(extensionManager) {
   const utilityModule = extensionManager.getModuleEntry(
@@ -15,12 +16,16 @@ function _getStudyForPatientUtility(extensionManager) {
 }
 
 function _createGetImageSrcFromImageIdFn(extensionManager) {
-  const utilityModule = extensionManager.getModuleEntry(
-    '@ohif/extension-default.utilityModule.common'
+  const utilities = extensionManager.getModuleEntry(
+    '@ohif/extension-cornerstone.utilityModule.common'
   );
 
-  const { getImageSrcFromImageId } = utilityModule.exports;
-  return getImageSrcFromImageId;
+  try {
+    const { cornerstone } = utilities.exports.getCornerstoneLibraries();
+    return getImageSrcFromImageId.bind(null, cornerstone);
+  } catch (ex) {
+    throw new Error('Required command not found');
+  }
 }
 
 function WrappedPanelStudyBrowserTracking() {

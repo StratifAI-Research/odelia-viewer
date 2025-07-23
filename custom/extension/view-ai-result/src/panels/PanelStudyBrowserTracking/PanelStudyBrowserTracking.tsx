@@ -63,7 +63,6 @@ const thumbnailNoImageModalities = [
   'DOC',
   'OT',
   'PMAP',
-  'SC', // Secondary Capture (heatmaps) - prevent sizing issues
 ];
 
 /**
@@ -423,6 +422,102 @@ export default function PanelStudyBrowserTracking({
     displaySetService,
   ]);
 
+  // ~~ Initial Thumbnails
+  useEffect(() => {
+    // Step 1 – wait until the viewport layout is ready once we have an active viewport id
+    if (!hasLoadedViewports) {
+      if (activeViewportId) {
+        // Delay a little to allow viewports to be hydrated first – improves perceived performance
+        const delayMs = 250 + displaySetService.getActiveDisplaySets().length * 10;
+        window.setTimeout(() => setHasLoadedViewports(true), delayMs);
+      }
+
+      return; // Exit early until `hasLoadedViewports` is true
+    }
+
+    // Step 2 – once ready, grab the current display sets that have cornerstone-renderable images
+    let currentDisplaySets = displaySetService.activeDisplaySets;
+    currentDisplaySets = currentDisplaySets.filter(
+      ds => !thumbnailNoImageModalities.includes(ds.Modality)
+    );
+
+    if (!currentDisplaySets.length) {
+      return;
+    }
+
+    // Step 3 – for every display set, find a representative image and render a thumbnail src
+    currentDisplaySets.forEach(async dSet => {
+      const newImageSrcEntry: Record<string, string> = {};
+      const displaySet = displaySetService.getDisplaySetByUID(dSet.displaySetInstanceUID);
+
+      const imageIds = dataSource.getImageIdsForDisplaySet(displaySet);
+      const imageId = getImageIdForThumbnail(displaySet, imageIds);
+
+      // Skip unsupported or non-image display sets (SEG / SR, etc.)
+      if (!imageId || displaySet?.unsupported) {
+        return;
+      }
+
+      // If the display set already contains a `thumbnailSrc` we can reuse it.
+      let { thumbnailSrc } = displaySet as any;
+      if (!thumbnailSrc && (displaySet as any).getThumbnailSrc) {
+        thumbnailSrc = await (displaySet as any).getThumbnailSrc();
+      }
+      if (!thumbnailSrc) {
+        thumbnailSrc = await getImageSrc(imageId);
+        // Cache it on the display set for future reference
+        (displaySet as any).thumbnailSrc = thumbnailSrc;
+      }
+
+      newImageSrcEntry[dSet.displaySetInstanceUID] = thumbnailSrc;
+
+      setThumbnailImageSrcMap(prevState => ({ ...prevState, ...newImageSrcEntry }));
+    });
+  }, [displaySetService, dataSource, getImageSrc, activeViewportId, hasLoadedViewports]);
+
+  // ~~ subscriptions --> displaySets (DISPLAY_SETS_ADDED)
+  useEffect(() => {
+    const SubscriptionDisplaySetsAdded = displaySetService.subscribe(
+      displaySetService.EVENTS.DISPLAY_SETS_ADDED,
+      data => {
+        if (!hasLoadedViewports) {
+          return;
+        }
+
+        const { displaySetsAdded, options } = data;
+
+        displaySetsAdded.forEach(async dSet => {
+          const displaySetInstanceUID = dSet.displaySetInstanceUID;
+          const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
+
+          if (displaySet?.unsupported) {
+            return;
+          }
+
+          // If the display set was created on the client (e.g. derived) we want to scroll to it
+          if (options?.madeInClient) {
+            setJumpToDisplaySet(displaySetInstanceUID);
+          }
+
+          const imageIds = dataSource.getImageIdsForDisplaySet(displaySet);
+          const imageId = getImageIdForThumbnail(displaySet, imageIds);
+          if (!imageId) {
+            return;
+          }
+
+          const newImageSrcEntry: Record<string, string> = {};
+          newImageSrcEntry[displaySetInstanceUID] = await getImageSrc(imageId);
+
+          setThumbnailImageSrcMap(prevState => ({ ...prevState, ...newImageSrcEntry }));
+        });
+      }
+    );
+
+    return () => {
+      SubscriptionDisplaySetsAdded.unsubscribe();
+    };
+  }, [displaySetService, dataSource, getImageSrc, hasLoadedViewports]);
+
   const tabs = createAIBrowserTabs(StudyInstanceUIDs, studyDisplayList, displaySets, servicesManager);
 
   // Setup dynamic styling for AI thumbnails
@@ -546,7 +641,7 @@ export default function PanelStudyBrowserTracking({
 
 PanelStudyBrowserTracking.propTypes = {
   dataSource: PropTypes.shape({
-    ImageIdsForDisplaySet: PropTypes.func.isRequired,
+    getImageIdsForDisplaySet: PropTypes.func.isRequired,
   }).isRequired,
   getImageSrc: PropTypes.func.isRequired,
   getStudiesForPatientByMRN: PropTypes.func.isRequired,
