@@ -6,7 +6,7 @@ import { useAIOverlay } from '../hooks/useAIOverlay';
 import { useAIResultSubscription } from '../hooks/useAIResultSubscription';
 import { HeatmapLayoutManager, renderCornerstoneViewport, getPrimaryDisplaySets } from '../utils';
 
-const AITrackedViewport = ({
+const AITrackedViewportInner = ({
   viewportId,
   servicesManager,
   extensionManager,
@@ -50,8 +50,9 @@ const AITrackedViewport = ({
 
   // Memoize enhanced viewport options to prevent cascade rerenders
   const enhancedViewportOptions = useMemo(() => ({
+    viewportType: 'stack', // keep stable to avoid viewport remounts
+    showOverlays: !isHeatmapViewport,
     ...viewportOptions,
-    showOverlays: !isHeatmapViewport, // Only show overlays for primary viewports
   }), [viewportOptions, isHeatmapViewport]);
 
 
@@ -91,8 +92,9 @@ const AITrackedViewport = ({
     }
 
     // Reset heatmap state when new AI result is selected
-    setShowHeatmap(false);
-
+    if (showHeatmap){
+      setShowHeatmap(false);
+    }
     // Setup heatmap action corner if needed (only for primary viewports)
     if (newSelectedAIResult?.hasHeatmap && !isHeatmapViewport) {
       setupHeatmapActionCorner(newSelectedAIResult, handleHeatmapToggle, false);
@@ -114,6 +116,26 @@ const AITrackedViewport = ({
     servicesManager,
     onAIResultSelected: handleAIResultSelected,
   });
+
+  // === DEBUG: Log render and prop identity changes ===
+  const prevDisplaySetsRef = React.useRef(displaySets);
+  const prevViewportOptionsRef = React.useRef(viewportOptions);
+
+  useEffect(() => {
+    console.log(`[AITrackedViewport][Render] ${viewportId}`);
+
+    if (prevDisplaySetsRef.current !== displaySets) {
+      console.log(`[AITrackedViewport][PropChange] displaySets array identity changed for ${viewportId}. Length prev=${prevDisplaySetsRef.current?.length} curr=${displaySets?.length}`);
+    }
+
+    if (prevViewportOptionsRef.current !== viewportOptions) {
+      console.log(`[AITrackedViewport][PropChange] viewportOptions identity changed for ${viewportId}. prev:`, prevViewportOptionsRef.current, 'curr:', viewportOptions);
+    }
+
+    prevDisplaySetsRef.current = displaySets;
+    prevViewportOptionsRef.current = viewportOptions;
+  });
+  // === END DEBUG ===
 
   // Debug effect to track AI result changes
   useEffect(() => {
@@ -155,4 +177,34 @@ const AITrackedViewport = ({
   );
 };
 
-export default AITrackedViewport;
+function areEqual(prevProps: AISideBySideViewportProps, nextProps: AISideBySideViewportProps) {
+  // Quick exits
+  if (prevProps.viewportId !== nextProps.viewportId) {
+    return false;
+  }
+
+  // Compare displaySetInstanceUIDs
+  const prevDS = prevProps.displaySets || [];
+  const nextDS = nextProps.displaySets || [];
+
+  if (prevDS.length !== nextDS.length) {
+    return false;
+  }
+
+  for (let i = 0; i < prevDS.length; i++) {
+    if (prevDS[i].displaySetInstanceUID !== nextDS[i].displaySetInstanceUID) {
+      return false;
+    }
+  }
+
+  // Compare viewportType and basic flags
+  const prevType = prevProps.viewportOptions?.viewportType;
+  const nextType = nextProps.viewportOptions?.viewportType;
+  if (prevType !== nextType) {
+    return false;
+  }
+
+  return true; // props are effectively equal, skip re-render
+}
+
+export default React.memo(AITrackedViewportInner, areEqual);

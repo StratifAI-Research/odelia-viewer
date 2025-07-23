@@ -30,7 +30,7 @@ export class HeatmapLayoutManager {
           viewportOptions: {
             ...viewportOptions,
             viewportId: primaryViewportId,
-            viewportType: 'stack',
+            viewportType: 'volume',
           },
           displaySetOptions: [{}],
         };
@@ -72,7 +72,7 @@ export class HeatmapLayoutManager {
       viewportOptions: {
         ...viewportOptions,
         viewportId: baseViewportId,
-        viewportType: 'stack',
+        viewportType: 'volume',
       },
       displaySetOptions: [{}],
     });

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import PropTypes from 'prop-types';
@@ -87,16 +87,6 @@ export default function PanelStudyBrowserTracking({
     aiResultsService,
   } = servicesManager.services;
 
-  // Debug: Log available services
-  console.log('🔧 Panel services debug:', {
-    allServiceNames: Object.keys(servicesManager.services),
-    hasAIResultsService: !!aiResultsService,
-    aiResultsServiceType: typeof aiResultsService,
-    servicesCount: Object.keys(servicesManager.services).length
-  });
-
-  // Debug: Show all service names to check if aiResultsService exists under a different name
-  console.log('🔧 All available services:', Object.keys(servicesManager.services).sort());
 
   const navigate = useNavigate();
   const studyMode = customizationService.getCustomization('studyBrowser.studyMode');
@@ -365,62 +355,77 @@ export default function PanelStudyBrowserTracking({
     return () => unsubscribe();
   }, [studyPrefetcherService]);
 
+  const lastSignatureRef = useRef<string>('');
+  // Refs to hold latest dynamic state for the subscription callback
+  const displaySetsLoadingStateRef = useRef(displaySetsLoadingState);
+  const thumbnailImageSrcMapRef = useRef(thumbnailImageSrcMap);
+  const viewportsRef = useRef(viewports);
+  const debounceTimeoutRef = useRef<number | null>(null);
+
+  // Helper to perform expensive remap and state update
+  const runMapping = (displaySetsInput) => {
+    const mappedDisplaySets = _mapDisplaySets(
+      displaySetsInput,
+      displaySetsLoadingStateRef.current,
+      thumbnailImageSrcMapRef.current,
+      [],
+      viewportsRef.current,
+      viewportGridService,
+      dataSource,
+      displaySetService,
+      uiDialogService,
+      uiNotificationService,
+      thumbnailPropsCache
+    );
+
+    const sig = mappedDisplaySets
+      .map(ds => `${ds.displaySetInstanceUID}:${ds.loadingProgress || 0}`)
+      .join('|');
+    if (sig === lastSignatureRef.current) {
+      return;
+    }
+    lastSignatureRef.current = sig;
+    setDisplaySets(mappedDisplaySets);
+  };
+
+  // Keep refs in sync with state
   useEffect(() => {
-    // TODO: Will this always hold _all_ the displaySets we care about?
-    // DISPLAY_SETS_CHANGED returns `DisplaySerService.activeDisplaySets`
+    displaySetsLoadingStateRef.current = displaySetsLoadingState;
+  }, [displaySetsLoadingState]);
+
+  useEffect(() => {
+    thumbnailImageSrcMapRef.current = thumbnailImageSrcMap;
+  }, [thumbnailImageSrcMap]);
+
+  useEffect(() => {
+    viewportsRef.current = viewports;
+  }, [viewports]);
+
+  // ~~ subscriptions --> displaySets (DISPLAY_SETS_CHANGED)
+  useEffect(() => {
+    // Subscribe once – dependencies kept stable via refs to avoid resubscribe churn
     const SubscriptionDisplaySetsChanged = displaySetService.subscribe(
       displaySetService.EVENTS.DISPLAY_SETS_CHANGED,
       changedDisplaySets => {
-        const mappedDisplaySets = _mapDisplaySets(
-          changedDisplaySets,
-          displaySetsLoadingState,
-          thumbnailImageSrcMap,
-          [],
-          viewports,
-          viewportGridService,
-          dataSource,
-          displaySetService,
-          uiDialogService,
-          uiNotificationService,
-          thumbnailPropsCache
-        );
-
-        setDisplaySets(mappedDisplaySets);
-      }
-    );
-
-    const SubscriptionDisplaySetMetaDataInvalidated = displaySetService.subscribe(
-      displaySetService.EVENTS.DISPLAY_SET_SERIES_METADATA_INVALIDATED,
-      () => {
-        const mappedDisplaySets = _mapDisplaySets(
-          displaySetService.getActiveDisplaySets(),
-          displaySetsLoadingState,
-          thumbnailImageSrcMap,
-          [],
-          viewports,
-          viewportGridService,
-          dataSource,
-          displaySetService,
-          uiDialogService,
-          uiNotificationService,
-          thumbnailPropsCache
-        );
-
-        setDisplaySets(mappedDisplaySets);
+        // Always clear previous debounce and schedule a new one
+        if (debounceTimeoutRef.current !== null) {
+          clearTimeout(debounceTimeoutRef.current);
+        }
+        // Run mapping after small delay to batch rapid updates
+        debounceTimeoutRef.current = window.setTimeout(() => {
+          debounceTimeoutRef.current = null;
+          runMapping(changedDisplaySets);
+        }, 150); // 150ms debounce – adjust as needed
       }
     );
 
     return () => {
+      if (debounceTimeoutRef.current !== null) {
+        clearTimeout(debounceTimeoutRef.current);
+      }
       SubscriptionDisplaySetsChanged.unsubscribe();
-      SubscriptionDisplaySetMetaDataInvalidated.unsubscribe();
     };
-  }, [
-    displaySetsLoadingState,
-    thumbnailImageSrcMap,
-    viewports,
-    dataSource,
-    displaySetService,
-  ]);
+  }, [displaySetService, viewportGridService, dataSource, uiDialogService, uiNotificationService, thumbnailPropsCache]);
 
   // ~~ Initial Thumbnails
   useEffect(() => {
@@ -688,12 +693,6 @@ function _mapDisplaySets(
   displaySetLoadingState,
   thumbnailImageSrcMap,
   trackedSeriesInstanceUIDs,
-  viewports,
-  viewportGridService,
-  dataSource,
-  displaySetService,
-  uiDialogService,
-  uiNotificationService,
   thumbnailPropsCache = new Map()
 ) {
   console.log(`[DisplaySets] _mapDisplaySets called with ${displaySets.length} display sets at:`, new Date().toISOString());

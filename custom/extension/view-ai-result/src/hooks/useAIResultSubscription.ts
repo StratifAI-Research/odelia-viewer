@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback } from 'react';
 import { AIResult } from '../types';
 
 interface AIResultSubscriptionConfig {
@@ -22,24 +22,14 @@ export const useAIResultSubscription = (config: AIResultSubscriptionConfig): voi
 
   const { aiResultsService } = servicesManager.services;
 
-  /**
-   * Store the latest callback in a ref so we don’t need it in the dependency
-   * array – prevents effect churn when the parent recreates the function on
-   * every render.
-   */
-  const latestOnAIResultSelected = useRef(onAIResultSelected);
-  latestOnAIResultSelected.current = onAIResultSelected;
-
-  // Stable handler that never changes identity unless viewportId/heatmap flag changes
-  const stableHandleAIResultSelected = useCallback((eventData: any) => {
+  const handleAIResultSelected = useCallback((eventData: any) => {
     console.log(`[useAIResultSubscription] AI result selected for ${viewportId}:`, eventData);
 
     if (eventData?.aiResult && !isHeatmapViewport) {
       const clickedUID = eventData.clickedDisplaySetInstanceUID ?? eventData.displaySetInstanceUID;
-      // Call the latest version of the callback passed from the parent
-      latestOnAIResultSelected.current(eventData.aiResult, clickedUID);
+      onAIResultSelected(eventData.aiResult, clickedUID);
     }
-  }, [viewportId, isHeatmapViewport]);
+  }, [viewportId, isHeatmapViewport, onAIResultSelected]);
 
   useEffect(() => {
     if (!aiResultsService || isHeatmapViewport) {
@@ -51,7 +41,7 @@ export const useAIResultSubscription = (config: AIResultSubscriptionConfig): voi
 
     const subscription = aiResultsService.subscribe(
       aiResultsService.EVENTS.AI_RESULT_SELECTED,
-      stableHandleAIResultSelected
+      handleAIResultSelected
     );
 
     // Cleanup function
@@ -59,5 +49,10 @@ export const useAIResultSubscription = (config: AIResultSubscriptionConfig): voi
       console.log(`[useAIResultSubscription] Cleaning up subscription for ${viewportId}`);
       subscription.unsubscribe();
     };
-  }, [aiResultsService, viewportId, isHeatmapViewport, stableHandleAIResultSelected]);
+  }, [
+    aiResultsService,
+    viewportId,
+    isHeatmapViewport,
+    handleAIResultSelected
+  ]);
 };
