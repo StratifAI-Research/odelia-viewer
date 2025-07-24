@@ -12,16 +12,16 @@
   text-overflow: clip !important;
 }
 
-/* Keep fixed height for virtualized list to avoid overlap */
+/* Allow the thumbnail container to auto-expand vertically */
 .ai-result-thumbnail .flex.h-\\[52px\\] {
-  height: 52px !important; /* consistent item height required by react-window */
-  overflow: hidden !important;
+  height: auto !important;
+  overflow: visible !important;
 }
 
 /* Base AI thumbnail styling (no colored border by default) */
 .ai-result-thumbnail {
   border-left: none !important;
-  padding-right: 1rem !important; /* leave room for panel handle */
+  padding-right: 0 !important; /* reset to match default padding */
   box-sizing: border-box !important;
 }
 
@@ -94,14 +94,15 @@ div[class*="text-\\[13px\\]"]:contains("🤖") {
   min-height: 190px !important;
 }
 
-/* Clamp AI result description to 3 lines within 52px container */
-.ai-result-thumbnail .min-h-\[18px\] {
+/* Let description wrap freely without truncation (grid preset) */
+.ai-result-thumbnail .min-h-\\[18px\\] {
   white-space: normal !important;
-  overflow: hidden !important;
+  overflow: visible !important;
   text-overflow: clip !important;
-  display: -webkit-box !important;
-  -webkit-line-clamp: 3 !important;
-  -webkit-box-orient: vertical !important;
+  height: auto !important;
+  max-height: none !important;
+  display: block !important;
+  word-break: break-word !important;
 }
 
 /* Allow multi-line in list rows and auto-adjust row height */
@@ -110,18 +111,18 @@ div[class*="text-\\[13px\\]"]:contains("🤖") {
   min-height: 40px !important;
 }
 
-/* list-view (h-40) – stable 3-line clamp & disable pointer events to prevent hover glitch */
-.ai-result-thumbnail.h-\[40px\] .max-w-\[160px\]{
-  white-space:normal!important;
-  overflow:hidden!important;
-  text-overflow:clip!important;
-  display:-webkit-box!important;
-  -webkit-line-clamp:3!important;
-  -webkit-box-orient:vertical!important;
-  font-size:11px!important;
-  line-height:1.1!important;
-  max-height:34px!important;
-  pointer-events:none!important;
+/* list preset – allow full wrapping, still disable pointer events to avoid hover reflow */
+.ai-result-thumbnail.h-\\[40px\\] .max-w-\\[160px\\]{
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  display: block !important;
+  font-size: 11px !important;
+  line-height: 1.1 !important;
+  max-height: none !important;
+  height: auto !important;
+  pointer-events: none !important;
+  word-break: break-word !important;
 }
 
 /* Allow inner content wrapper to expand in list rows */
