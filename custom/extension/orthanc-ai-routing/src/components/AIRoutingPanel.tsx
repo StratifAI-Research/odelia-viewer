@@ -117,23 +117,31 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
     try {
       setStatus('routing');
       setError(null);
-      setProgress(10);
+      // Start progress at 20% for immediate feedback
+      setProgress(20);
 
       // Start a progress animation
       const progressInterval = setInterval(() => {
-        setProgress(prevProgress => {
-          // Cap at 90% until we get actual completion
-          const newProgress = prevProgress + 5;
-          return newProgress > 90 ? 90 : newProgress;
+        setProgress(prev => {
+          // Quickly ramp up to ~40%
+          if (prev < 40) {
+            const next = prev + 4;
+            return next >= 40 ? 40 : next;
+          }
+          // After 40%, advance slowly to avoid jumping to near-complete too early
+          const next = prev + 1;
+          // Cap at 80% until AI results are detected
+          return next > 80 ? 80 : next;
         });
-      }, 1000);
+      }, 2000);
 
       // Use the new method that extracts the StudyInstanceUID from the URL
       const response = await orthancAIService.routeCurrentStudyToAI();
 
       // Clear the interval
       clearInterval(progressInterval);
-      setProgress(95);
+      // Move progress to 45% to indicate the study was accepted and we are now waiting for results
+      setProgress(prev => (prev < 45 ? 45 : prev));
 
       // Start checking for new AI results
       if (response.status === 'success') {
@@ -211,10 +219,10 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
             <ProgressLoadingBar progress={progress} />
             <div className="text-xs text-right text-gray-500 mt-1">{progress}%</div>
           </div>
-          <p className="text-sm text-gray-600">
-            {status === 'routing' && 'Sending study for AI analysis...'}
-            {status === 'checking' && 'Waiting for AI analysis results...'}
-            {status === 'refreshing' && 'Loading new AI analysis results...'}
+          <p className="text-sm text-gray-800">
+            {status === 'routing' && 'Sending to AI...'}
+            {status === 'checking' && 'Awaiting AI results...'}
+            {status === 'refreshing' && 'Loading AI results...'}
           </p>
         </div>
       )}
