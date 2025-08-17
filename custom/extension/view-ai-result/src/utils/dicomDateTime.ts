@@ -61,3 +61,52 @@ export function formatDicomDateTime(
 
   return `${yyyy}-${MM}-${dd} ${HH}:${mm}:${ss}`;
 }
+
+/**
+ * Convert DICOM Date/Time (+ optional TZ offset) to ISO-8601 UTC string.
+ * Returns undefined if inputs are insufficient.
+ */
+export function dicomDateTimeToIsoUtc(
+  date?: string,
+  time?: string,
+  tzOffset?: string | null
+): string | undefined {
+  if (!date) return undefined;
+  if (date.length !== 8) return undefined;
+
+  const year = parseInt(date.substring(0, 4), 10);
+  const month = parseInt(date.substring(4, 6), 10) - 1; // zero-based
+  const day = parseInt(date.substring(6, 8), 10);
+
+  let hour = 0;
+  let minute = 0;
+  let second = 0;
+  let millisecond = 0;
+
+  if (time && time.length >= 2) {
+    hour = parseInt(time.substring(0, 2), 10) || 0;
+    if (time.length >= 4) minute = parseInt(time.substring(2, 4), 10) || 0;
+    if (time.length >= 6) second = parseInt(time.substring(4, 6), 10) || 0;
+    // fractional part after dot/comma
+    if (time.length > 6 && (time[6] === '.' || time[6] === ',')) {
+      const frac = time.substring(7);
+      const msStr = (frac + '000').slice(0, 3);
+      millisecond = parseInt(msStr, 10) || 0;
+    }
+  }
+
+  // Parse timezone offset (e.g., +HHMM, -HH:MM)
+  let offsetMinutes = 0;
+  if (tzOffset && /^[+-]\d{2}:?\d{2}$/.test(tzOffset)) {
+    const cleaned = tzOffset.replace(':', '');
+    const sign = cleaned[0] === '-' ? -1 : 1;
+    const offHours = parseInt(cleaned.substring(1, 3), 10) || 0;
+    const offMins = parseInt(cleaned.substring(3, 5), 10) || 0;
+    offsetMinutes = sign * (offHours * 60 + offMins);
+  }
+
+  // Interpret provided date/time in the specified TZ, convert to UTC epoch
+  const localMillis = Date.UTC(year, month, day, hour, minute, second, millisecond);
+  const utcMillis = localMillis - offsetMinutes * 60 * 1000;
+  return new Date(utcMillis).toISOString();
+}

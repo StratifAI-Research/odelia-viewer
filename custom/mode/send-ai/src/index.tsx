@@ -15,6 +15,11 @@ const viewAIResult = {
   viewport: 'view-ai-result.viewportModule.ai-tracked-viewport',
 };
 
+// New Feedback Panel from view-ai-result extension
+const viewAIResultPanel = {
+  feedback: 'view-ai-result.panelModule.aiFeedback',
+};
+
 const orthancAI = {
   panel: 'orthanc-ai-routing.panelModule.ai-routing-panel',
 };
@@ -51,6 +56,12 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
 
       // Clear existing measurements
       measurementService?.clearMeasurements?.();
+
+      // Enable nested AI sub-tabs by default
+      const { customizationService } = servicesManager.services;
+      customizationService?.setCustomizations?.({
+        'studyBrowser.tabMode': 'study-ai-subtabs',
+      });
 
       // Obtain Cornerstone tool definitions
       const utilityModule = extensionManager.getModuleEntry(
@@ -150,7 +161,7 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
             id: ohif.layout,
             props: {
               leftPanels: [ohif.leftPanel],
-              rightPanels: [orthancAI.panel],
+              rightPanels: [orthancAI.panel, viewAIResultPanel.feedback],
               viewports: [
                 {
                   namespace: viewAIResult.viewport,

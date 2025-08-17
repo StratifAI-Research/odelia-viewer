@@ -155,6 +155,33 @@ export default defineConfig({
             },
           }
         : {}),
+      // Dev proxy for Orthanc feedback plugin and send-to-ai endpoints
+      // Route /pacs/feedback/* -> http://localhost:8000/feedback/* (default PROXY_DOMAIN if provided)
+      '/pacs/feedback': {
+        target: PROXY_DOMAIN || 'http://localhost:8000',
+        changeOrigin: true,
+        pathRewrite: {
+          '^/pacs': '',
+        },
+      },
+      // Direct /feedback/* for setups without /pacs prefix
+      '/feedback': {
+        target: PROXY_DOMAIN || 'http://localhost:8000',
+        changeOrigin: true,
+      },
+      // Route /pacs/send-to-ai -> http://localhost:8000/send-to-ai
+      '/pacs/send-to-ai': {
+        target: PROXY_DOMAIN || 'http://localhost:8000',
+        changeOrigin: true,
+        pathRewrite: {
+          '^/pacs': '',
+        },
+      },
+      // Direct /send-to-ai
+      '/send-to-ai': {
+        target: PROXY_DOMAIN || 'http://localhost:8000',
+        changeOrigin: true,
+      },
     },
     // Configure history API fallback
     historyApiFallback: {

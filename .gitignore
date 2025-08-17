@@ -67,3 +67,4 @@ tests/playwright-report/
 # Docker volume mounts
 custom/deploy/volumes/*
 custom/deploy/logs/*
+design_docs/

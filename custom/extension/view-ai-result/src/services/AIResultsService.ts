@@ -1,5 +1,6 @@
 import { AIResult, Classification } from '../types';
 import { extractAIResultData } from '../utils/extractAIResultData';
+import { dicomDateTimeToIsoUtc } from '../utils/dicomDateTime';
 
 /**
  * Service for extracting AI results from DICOM files
@@ -23,6 +24,10 @@ export class AIResultsService {
 
   constructor(uiNotificationService: any) {
     this.uiNotificationService = uiNotificationService;
+  }
+
+  private toIsoFromDicom(dateStr?: string, timeStr?: string, tzOffset?: string | null): string | undefined {
+    return dicomDateTimeToIsoUtc(dateStr, timeStr, tzOffset);
   }
 
   /**
@@ -94,10 +99,17 @@ export class AIResultsService {
               aiResultData.modelInfo?.name
             );
 
+            const resultTs = this.toIsoFromDicom(
+              srDisplaySet.instance?.InstanceCreationDate || srDisplaySet.SeriesDate || srDisplaySet.ContentDate || srDisplaySet.StudyDate,
+              srDisplaySet.instance?.InstanceCreationTime || srDisplaySet.SeriesTime || srDisplaySet.ContentTime || srDisplaySet.StudyTime,
+              srDisplaySet.instance?.TimezoneOffsetFromUTC || null
+            );
+
             const aiResult: AIResult = {
               studyInstanceUID,
               hasHeatmap: !!heatmapDisplaySet,
               classifications: aiResultData.classifications,
+              resultTs,
               heatmapDisplaySet: heatmapDisplaySet,
               modelInfo: aiResultData.modelInfo ? {
                 name: aiResultData.modelInfo.name,
@@ -112,6 +124,11 @@ export class AIResultsService {
           console.warn('Error parsing AI results from SR:', error);
 
           // Create error result
+          const resultTs = this.toIsoFromDicom(
+            srDisplaySet.instance?.InstanceCreationDate || srDisplaySet.SeriesDate || srDisplaySet.ContentDate || srDisplaySet.StudyDate,
+            srDisplaySet.instance?.InstanceCreationTime || srDisplaySet.SeriesTime || srDisplaySet.ContentTime || srDisplaySet.StudyTime,
+            srDisplaySet.instance?.TimezoneOffsetFromUTC || null
+          );
           const errorResult: AIResult = {
             studyInstanceUID,
             hasHeatmap: false,
@@ -129,6 +146,7 @@ export class AIResultsService {
                 errorMessage: 'AI results could not be parsed'
               }
             ],
+            resultTs,
             modelInfo: {
               name: 'AI Model (Error)',
               algorithmName: 'Unknown',
@@ -342,10 +360,17 @@ export class AIResultsService {
         aiResultData.modelInfo?.name
       );
 
+      const resultTs = this.toIsoFromDicom(
+        displaySet.instance?.InstanceCreationDate || displaySet.SeriesDate || displaySet.ContentDate || displaySet.StudyDate,
+        displaySet.instance?.InstanceCreationTime || displaySet.SeriesTime || displaySet.ContentTime || displaySet.StudyTime,
+        displaySet.instance?.TimezoneOffsetFromUTC || null
+      );
+
       return {
         studyInstanceUID,
         hasHeatmap: !!heatmapDisplaySet,
         classifications: aiResultData.classifications,
+        resultTs,
         heatmapDisplaySet: heatmapDisplaySet,
         modelInfo: aiResultData.modelInfo ? {
           name: aiResultData.modelInfo.name,

@@ -11,6 +11,11 @@ export interface AIResult {
   studyInstanceUID: string;
   hasHeatmap: boolean;
   classifications: Classification[];
+  /**
+   * ISO-8601 UTC timestamp representing when the AI result was created.
+   * Typically derived from the SR InstanceCreationDate/Time.
+   */
+  resultTs?: string;
   heatmapDisplaySet?: DisplaySet & {
     SOPInstanceUID: string;
     metadata: {

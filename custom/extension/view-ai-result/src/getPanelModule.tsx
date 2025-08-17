@@ -5,6 +5,7 @@ import React, { useCallback } from 'react';
 import { useSystem } from '@ohif/core';
 import { requestDisplaySetCreationForStudy } from '@ohif/extension-default';
 import getImageSrcFromImageId from './panels/PanelStudyBrowserTracking/getImageSrcFromImageId';
+import FeedbackPanel from './panels/FeedbackPanel/FeedbackPanel';
 
 function _getStudyForPatientUtility(extensionManager) {
   const utilityModule = extensionManager.getModuleEntry(
@@ -61,6 +62,13 @@ function getPanelModule({ commandsManager, extensionManager, servicesManager }):
       iconLabel: 'Studies',
       label: i18n.t('SidePanel:Studies'),
       component: props => <WrappedPanelStudyBrowserTracking {...props} />,
+    },
+    {
+      name: 'aiFeedback',
+      iconName: 'tab-linear',
+      iconLabel: 'Feedback',
+      label: 'Feedback',
+      component: props => <FeedbackPanel {...props} />,
     },
   ];
 }

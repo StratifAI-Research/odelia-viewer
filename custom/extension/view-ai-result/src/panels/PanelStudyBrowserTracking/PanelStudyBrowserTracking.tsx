@@ -6,10 +6,12 @@ import { useSystem, utils } from '@ohif/core';
 import { useImageViewer, Dialog, ButtonEnums } from '@ohif/ui';
 import { useViewportGrid } from '@ohif/ui-next';
 import { StudyBrowser } from '@ohif/ui-next';
+import { StudyBrowserNested } from '../../components/StudyBrowserNested/StudyBrowserNested';
 import { Separator } from '@ohif/ui-next';
 import { PanelStudyBrowserHeader, MoreDropdownMenu } from '@ohif/extension-default';
 import { defaultActionIcons } from './constants';
 import { createAIBrowserTabs } from '../../utils/createAIBrowserTabs';
+import { createStudyAIBrowserTabsNested } from '../../utils/createStudyAIBrowserTabsNested';
 import { extractAIResultData } from '../../utils/extractAIResultData';
 import { applyAIThumbnailStyles, setupAIThumbnailObserver } from '../../utils/applyAIThumbnailStyles';
 
@@ -564,7 +566,28 @@ export default function PanelStudyBrowserTracking({
     };
   }, [displaySetService, dataSource, getImageSrc, hasLoadedViewports]);
 
-  const tabs = createAIBrowserTabs(StudyInstanceUIDs, studyDisplayList, displaySets, servicesManager);
+  const tabMode = customizationService.getCustomization('studyBrowser.tabMode');
+
+  const tabs = tabMode === 'study-ai-subtabs'
+    ? createStudyAIBrowserTabsNested(
+        StudyInstanceUIDs,
+        studyDisplayList,
+        displaySets,
+        servicesManager
+      )
+    : createAIBrowserTabs(
+        StudyInstanceUIDs,
+        studyDisplayList,
+        displaySets,
+        servicesManager
+      );
+
+  // Ensure activeTabName is valid
+  useEffect(() => {
+    if (!tabs.find(t => t.name === activeTabName) && tabs.length) {
+      setActiveTabName(tabs[0].name);
+    }
+  }, [tabs, activeTabName]);
 
   // Setup dynamic styling for AI thumbnails
   useEffect(() => {
@@ -656,31 +679,47 @@ export default function PanelStudyBrowserTracking({
         />
       </>
 
-      <StudyBrowser
-        tabs={tabs}
-        servicesManager={servicesManager}
-        activeTabName={activeTabName}
-        expandedStudyInstanceUIDs={expandedStudyInstanceUIDs}
-        onClickStudy={_handleStudyClick}
-        onClickTab={clickedTabName => {
-          setActiveTabName(clickedTabName);
-        }}
-        onClickThumbnail={onClickThumbnailHandler}
-        onDoubleClickThumbnail={onDoubleClickThumbnailHandler}
-        activeDisplaySetInstanceUIDs={activeViewportDisplaySetInstanceUIDs}
-        showSettings={true}
-        viewPresets={viewPresets}
-        ThumbnailMenuItems={MoreDropdownMenu({
-          commandsManager,
-          servicesManager,
-          menuItemsKey: 'studyBrowser.thumbnailMenuItems',
-        })}
-        StudyMenuItems={MoreDropdownMenu({
-          commandsManager,
-          servicesManager,
-          menuItemsKey: 'studyBrowser.studyMenuItems',
-        })}
-      />
+      {tabMode === 'study-ai-subtabs' ? (
+        <StudyBrowserNested
+          tabs={tabs as any}
+          activeTabName={activeTabName}
+          expandedStudyInstanceUIDs={expandedStudyInstanceUIDs}
+          onClickStudy={_handleStudyClick}
+          onClickTab={setActiveTabName}
+          onClickThumbnail={onClickThumbnailHandler}
+          onDoubleClickThumbnail={onDoubleClickThumbnailHandler}
+          activeDisplaySetInstanceUIDs={activeViewportDisplaySetInstanceUIDs}
+          servicesManager={servicesManager}
+          showSettings={true}
+          viewPresets={viewPresets}
+          commandsManager={commandsManager}
+        />
+      ) : (
+        <StudyBrowser
+          tabs={tabs}
+          servicesManager={servicesManager}
+          activeTabName={activeTabName}
+          expandedStudyInstanceUIDs={expandedStudyInstanceUIDs}
+          onClickStudy={_handleStudyClick}
+          onClickTab={clickedTabName => setActiveTabName(clickedTabName)}
+          onClickThumbnail={onClickThumbnailHandler}
+          onDoubleClickThumbnail={onDoubleClickThumbnailHandler}
+          activeDisplaySetInstanceUIDs={activeViewportDisplaySetInstanceUIDs}
+          showSettings={true}
+          viewPresets={viewPresets}
+          ThumbnailMenuItems={MoreDropdownMenu({
+            commandsManager,
+            servicesManager,
+            menuItemsKey: 'studyBrowser.thumbnailMenuItems',
+          })}
+          StudyMenuItems={MoreDropdownMenu({
+            commandsManager,
+            servicesManager,
+            menuItemsKey: 'studyBrowser.studyMenuItems',
+          })}
+        />
+      )}
+
     </>
   );
 }
@@ -735,7 +774,8 @@ function _mapDisplaySets(
   thumbnailImageSrcMap,
   trackedSeriesInstanceUIDs,
   selectedSRUID,
-  thumbnailPropsCache = new Map()
+  thumbnailPropsCache = new Map(),
+  ...extraArgs
 ) {
   console.log(`[DisplaySets] _mapDisplaySets called with ${displaySets.length} display sets at:`, new Date().toISOString());
   console.log(`[DisplaySets] Display set IDs:`, displaySets.map(ds => `${ds.Modality}-${ds.displaySetInstanceUID?.substring(0, 8)}`));
