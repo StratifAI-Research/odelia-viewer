@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSystem, utils } from '@ohif/core';
 import { useImageViewer } from '@ohif/ui';
+import { FooterAction } from '@ohif/ui-next';
 
 /**
  * Mock Feedback Panel – allows radiologists to mark Agree / Unsure / Disagree per breast side.
@@ -69,6 +70,7 @@ const FeedbackPanel: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submitMessage, setSubmitMessage] = useState<string>('');
   const [hasFeedbackByUID, setHasFeedbackByUID] = useState<Record<string, boolean>>({});
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
 
   // Helper to refresh dropdown list & selection info
   const refreshMeta = useCallback(() => {
@@ -298,6 +300,7 @@ const FeedbackPanel: React.FC = () => {
     if (!bothSidesChosen || !canQueryBackend) return;
     setIsSubmitting(true);
     try {
+      const { uiNotificationService } = servicesManager.services || {};
       const payload = {
         study_uid: activeStudyUID,
         model_name: modelName,
@@ -306,6 +309,7 @@ const FeedbackPanel: React.FC = () => {
         user_id: MOCK_USER_ID,
         verdict_L: VERDICT_TO_INT[feedback.Left as 'Agree' | 'Unsure' | 'Disagree'],
         verdict_R: VERDICT_TO_INT[feedback.Right as 'Agree' | 'Unsure' | 'Disagree'],
+        edited: isEditMode ? true : undefined,
       };
       const res = await fetch(`${FEEDBACK_API_BASE}/feedback/submit`, {
         method: 'POST',
@@ -314,7 +318,13 @@ const FeedbackPanel: React.FC = () => {
       });
       if (res.status === 201) {
         setLocked(true);
-        setSubmitMessage('Saved');
+        setIsEditMode(false);
+        uiNotificationService?.show({
+          title: 'Feedback',
+          message: 'Feedback ' + (payload.edited ? 'updated' : 'saved'),
+          type: 'success',
+          duration: 2500,
+        });
         await checkSubmissionStatus();
       } else if (res.status === 409) {
         setLocked(true);
@@ -330,6 +340,47 @@ const FeedbackPanel: React.FC = () => {
       setIsSubmitting(false);
     }
   };
+
+  // Edit confirmation modal content
+  const EditConfirmModal: React.FC<{ hide: () => void; onConfirm: () => void }> = ({ hide, onConfirm }) => {
+    return (
+      <div className="text-foreground">
+        <div className="text-base font-medium mb-2">Edit feedback?</div>
+        <div className="text-sm mb-4">You can change your previously submitted feedback for this AI result.</div>
+        <div className="flex justify-end space-x-2">
+          <FooterAction.Secondary onClick={hide}>Cancel</FooterAction.Secondary>
+          <FooterAction.Primary
+            onClick={() => {
+              onConfirm();
+              hide();
+            }}
+            className="bg-primary-main"
+          >
+            Enable Editing
+          </FooterAction.Primary>
+        </div>
+      </div>
+    );
+  };
+
+  const handleStartEdit = useCallback(() => {
+    const { uiModalService, uiNotificationService } = servicesManager.services || {};
+    const onConfirm = () => {
+      setLocked(false);
+      setIsEditMode(true);
+      uiNotificationService?.show({
+        title: 'Feedback',
+        message: 'Edit mode enabled',
+        type: 'info',
+        duration: 2000,
+      });
+    };
+    uiModalService?.show({
+      title: 'Confirm Edit',
+      content: EditConfirmModal,
+      contentProps: { onConfirm },
+    });
+  }, [servicesManager.services]);
 
   // Utility to format confidence nicely
   const formatConfidence = (v: number | null | undefined) => {
@@ -450,8 +501,23 @@ const FeedbackPanel: React.FC = () => {
         >
           {locked ? 'Submitted' : isSubmitting ? 'Saving…' : 'Submit Feedback'}
         </button>
-        {submitMessage && (
-          <div className="text-xs text-gray-300">{submitMessage}</div>
+        {locked ? (
+          <div>
+            <button
+              className={`w-full py-2 rounded ${
+                isSubmitting
+                  ? 'bg-gray-700 cursor-not-allowed'
+                  : 'bg-primary-main hover:bg-primary-light'
+              }`}
+              disabled={isSubmitting}
+              onClick={handleStartEdit}
+              title={isSubmitting ? 'Please wait…' : 'Enable editing for this feedback'}
+            >
+              Edit Feedback
+            </button>
+          </div>
+        ) : (
+          submitMessage && <div className="text-xs text-gray-300">{submitMessage}</div>
         )}
       </div>
     </div>
