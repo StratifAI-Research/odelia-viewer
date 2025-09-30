@@ -20,8 +20,8 @@ const INT_TO_VERDICT: Record<number, 'Agree' | 'Unsure' | 'Disagree'> = {
   [-1]: 'Disagree',
 } as any;
 
-// Mock user id (to be replaced with real auth integration later)
-const MOCK_USER_ID = 'mock-user-1';
+// Local storage key for simple, quick user identification
+const LOCAL_USER_KEY = 'ohif.aiFeedback.displayName';
 
 // Derive Orthanc base path from app-config data source (qidoRoot like '/pacs/dicom-web').
 function deriveFeedbackApiBase(): string {
@@ -56,6 +56,7 @@ const FeedbackPanel: React.FC = () => {
   const { servicesManager } = useSystem();
   const { StudyInstanceUIDs } = useImageViewer();
   const aiResultsService: any = servicesManager.services?.aiResultsService;
+  const userAuthenticationService: any = servicesManager.services?.userAuthenticationService;
 
   // --- Local component state ---
   const activeStudyUID = StudyInstanceUIDs?.[0];
@@ -71,6 +72,31 @@ const FeedbackPanel: React.FC = () => {
   const [submitMessage, setSubmitMessage] = useState<string>('');
   const [hasFeedbackByUID, setHasFeedbackByUID] = useState<Record<string, boolean>>({});
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const [userDisplayName, setUserDisplayName] = useState<string | null>(null);
+  const [nameInput, setNameInput] = useState<string>('');
+
+  // Extract a stable user identifier from authentication service response
+  const extractUserIdFromAuth = useCallback((svcUser: any): string | null => {
+    try {
+      const profile = svcUser?.profile || {};
+      const candidates = [
+        profile?.preferred_username,
+        profile?.email,
+        profile?.sub,
+        svcUser?.preferred_username,
+        svcUser?.email,
+        svcUser?.sub,
+        svcUser?.name,
+        svcUser?.id,
+      ];
+      for (const candidate of candidates) {
+        if (candidate && String(candidate).trim().length > 0) return String(candidate).trim();
+      }
+    } catch (_) {
+      // ignore
+    }
+    return null;
+  }, []);
 
   // Helper to refresh dropdown list & selection info
   const refreshMeta = useCallback(() => {
@@ -98,6 +124,51 @@ const FeedbackPanel: React.FC = () => {
       setCurrentResult(res);
     }
   }, [aiResultsService, activeStudyUID, servicesManager]);
+
+  // --- User identity handling ---
+  const deriveUserId = useCallback((): string | null => {
+    try {
+      const svcUser = userAuthenticationService?.getUser?.();
+      const authId = extractUserIdFromAuth(svcUser);
+      if (authId) return authId;
+    } catch (_) {
+      // ignore
+    }
+    if (userDisplayName && userDisplayName.trim().length > 0) return userDisplayName.trim();
+    try {
+      const stored = window.localStorage.getItem(LOCAL_USER_KEY);
+      if (stored && stored.trim().length > 0) return stored.trim();
+    } catch (_) {
+      // ignore storage errors
+    }
+    return null;
+  }, [extractUserIdFromAuth, userAuthenticationService, userDisplayName]);
+
+  const userId: string | null = useMemo(() => deriveUserId(), [deriveUserId]);
+
+  const ensureUserInitialized = useCallback(() => {
+    try {
+      const svcUser = userAuthenticationService?.getUser?.();
+      const authId = extractUserIdFromAuth(svcUser);
+      if (authId) {
+        setUserDisplayName(String(authId));
+        return;
+      }
+      const stored = window.localStorage.getItem(LOCAL_USER_KEY);
+      if (stored && stored.trim().length > 0) {
+        setUserDisplayName(stored.trim());
+        // also reflect into auth service for consistency
+        userAuthenticationService?.setUser?.({ id: stored.trim(), name: stored.trim(), source: 'local' });
+      }
+    } catch (_) {
+      // ignore
+    }
+  }, [extractUserIdFromAuth, userAuthenticationService]);
+
+  useEffect(() => {
+    ensureUserInitialized();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Helpers to read identity fields from currentResult
   const modelName: string | undefined = useMemo(() => {
@@ -176,6 +247,10 @@ const FeedbackPanel: React.FC = () => {
       setLocked(false);
       return;
     }
+    if (!userId) {
+      setLocked(false);
+      return;
+    }
     try {
       const params = new URLSearchParams({
         study_uid: String(activeStudyUID),
@@ -188,7 +263,7 @@ const FeedbackPanel: React.FC = () => {
       if (!res.ok) return;
       const data = await res.json();
       // Lock if current user already submitted; also prefill selections
-      const u = Array.isArray(data.users) ? data.users.find((x: any) => x.user_id === MOCK_USER_ID) : null;
+      const u = Array.isArray(data.users) ? data.users.find((x: any) => x.user_id === userId) : null;
       if (u) {
         setLocked(true);
         const left = INT_TO_VERDICT[Number(u.verdict_L) as 1 | 0 | -1];
@@ -200,7 +275,7 @@ const FeedbackPanel: React.FC = () => {
     } catch (e) {
       // swallow; keep UI functional
     }
-  }, [activeStudyUID, modelName, modelVersion, resultTs, canQueryBackend]);
+  }, [activeStudyUID, modelName, modelVersion, resultTs, canQueryBackend, userId]);
 
   useEffect(() => {
     checkSubmissionStatus();
@@ -211,7 +286,7 @@ const FeedbackPanel: React.FC = () => {
   useEffect(() => {
     let aborted = false;
     (async () => {
-      if (!aiMeta?.length || !activeStudyUID) {
+      if (!aiMeta?.length || !activeStudyUID || !userId) {
         setHasFeedbackByUID({});
         return;
       }
@@ -250,7 +325,7 @@ const FeedbackPanel: React.FC = () => {
             const resp = await fetch(`${FEEDBACK_API_BASE}/feedback?${params.toString()}`);
             if (!resp.ok) return [m.displaySetInstanceUID, false] as const;
             const data = await resp.json();
-            const u = Array.isArray(data.users) ? data.users.find((x: any) => x.user_id === MOCK_USER_ID) : null;
+            const u = Array.isArray(data.users) ? data.users.find((x: any) => x.user_id === userId) : null;
             return [m.displaySetInstanceUID, Boolean(u)] as const;
           } catch (_) {
             return [m.displaySetInstanceUID, false] as const;
@@ -267,7 +342,17 @@ const FeedbackPanel: React.FC = () => {
     return () => {
       aborted = true;
     };
-  }, [aiMeta, activeStudyUID, aiResultsService, servicesManager]);
+  }, [aiMeta, activeStudyUID, aiResultsService, servicesManager, userId]);
+
+  // Compute user markers only when a user is present
+  useEffect(() => {
+    if (!userId) {
+      setHasFeedbackByUID(prev => {
+        const empty: Record<string, boolean> = {};
+        return empty;
+      });
+    }
+  }, [userId]);
 
   // --- Interaction handlers ---
   const handleDropdownChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -297,7 +382,7 @@ const FeedbackPanel: React.FC = () => {
 
   const handleSubmit = async () => {
     setSubmitMessage('');
-    if (!bothSidesChosen || !canQueryBackend) return;
+    if (!bothSidesChosen || !canQueryBackend || !userId) return;
     setIsSubmitting(true);
     try {
       const { uiNotificationService } = servicesManager.services || {};
@@ -306,7 +391,7 @@ const FeedbackPanel: React.FC = () => {
         model_name: modelName,
         model_version: modelVersion,
         result_ts: resultTs,
-        user_id: MOCK_USER_ID,
+        user_id: userId,
         verdict_L: VERDICT_TO_INT[feedback.Left as 'Agree' | 'Unsure' | 'Disagree'],
         verdict_R: VERDICT_TO_INT[feedback.Right as 'Agree' | 'Unsure' | 'Disagree'],
         edited: isEditMode ? true : undefined,
@@ -389,6 +474,40 @@ const FeedbackPanel: React.FC = () => {
   };
 
   // --- Render helpers ---
+  const renderNoUserPrompt = () => {
+    return (
+      <div className="flex flex-col h-full p-3 overflow-y-auto text-white bg-black">
+        <div className="mb-3 text-sm">Please enter your name to provide feedback.</div>
+        <div className="flex items-center space-x-2 mb-3">
+          <input
+            className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm"
+            placeholder="Your name"
+            value={nameInput}
+            onChange={e => setNameInput(e.target.value)}
+          />
+          <button
+            className={`px-3 py-2 rounded ${nameInput.trim().length > 0 ? 'bg-primary-main hover:bg-primary-light' : 'bg-gray-700 cursor-not-allowed'}`}
+            disabled={nameInput.trim().length === 0}
+            onClick={() => {
+              const trimmed = nameInput.trim();
+              if (trimmed.length === 0) return;
+              try {
+                window.localStorage.setItem(LOCAL_USER_KEY, trimmed);
+              } catch (_) {
+                // ignore storage errors
+              }
+              userAuthenticationService?.setUser?.({ id: trimmed, name: trimmed, source: 'local' });
+              setUserDisplayName(trimmed);
+              setNameInput('');
+            }}
+            title={nameInput.trim().length === 0 ? 'Enter a valid name' : 'Save name'}
+          >
+            Save
+          </button>
+        </div>
+      </div>
+    );
+  };
   const renderSideSection = (side: 'Left' | 'Right') => {
     if (!currentResult) return null;
     const classification = currentResult.classifications?.find((c: any) => c.side === side);
@@ -420,6 +539,10 @@ const FeedbackPanel: React.FC = () => {
 
   return (
     <div className="flex flex-col h-full p-3 overflow-y-auto text-white bg-black">
+      {!userId ? (
+        renderNoUserPrompt()
+      ) : (
+        <>
       {/* Dropdown for AI result selection */}
       <div className="mb-2">
         <select
@@ -519,7 +642,32 @@ const FeedbackPanel: React.FC = () => {
         ) : (
           submitMessage && <div className="text-xs text-gray-300">{submitMessage}</div>
         )}
+
+        {/* Footer: Signed in user and Change user */}
+        <div className="pt-2 border-t border-gray-800">
+          <div className="flex items-center justify-between text-xs text-gray-300">
+            <div>Signed in as <span className="font-medium">{userId}</span></div>
+            <button
+              className="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600"
+              onClick={() => {
+                try {
+                  const cfg = (window as any)?.config || {};
+                  const configured = cfg?.oidc?.[0]?.post_logout_redirect_uri || '/';
+                  const absolute = new URL(configured, window.location.origin).href;
+                  window.location.assign(`/logout?redirect_uri=${encodeURIComponent(absolute)}`);
+                } catch (_) {
+                  window.location.assign('/logout');
+                }
+              }}
+              title="Change user"
+            >
+              Change user
+            </button>
+          </div>
+        </div>
       </div>
+        </>
+      )}
     </div>
   );
 };
