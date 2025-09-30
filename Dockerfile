@@ -83,6 +83,15 @@ RUN ./.docker/compressDist.sh
 # Stage 3: Bundle the built application into a Docker container
 # which runs Nginx using Alpine Linux
 FROM nginxinc/nginx-unprivileged:1.27-alpine as final
+
+USER root
+# Download and install oauth2-proxy
+RUN curl -L https://github.com/oauth2-proxy/oauth2-proxy/releases/download/v7.4.0/oauth2-proxy-v7.4.0.linux-amd64.tar.gz -o oauth2-proxy.tar.gz && \
+  tar -xvzf oauth2-proxy.tar.gz && \
+  mv oauth2-proxy-v7.4.0.linux-amd64/oauth2-proxy /usr/local/bin/ && \
+  rm -rf oauth2-proxy-v7.4.0.linux-amd64 oauth2-proxy.tar.gz
+
+
 #RUN apk add --no-cache bash
 ARG PUBLIC_URL=/
 ENV PUBLIC_URL=${PUBLIC_URL}
@@ -101,10 +110,17 @@ COPY --from=builder /usr/src/app/platform/app/dist/dicom-microscopy-viewer /usr/
 COPY --chown=nginx:nginx custom/deploy/config/app-config.js /usr/share/nginx/html${PUBLIC_URL}app-config.js
 RUN chmod 644 /usr/share/nginx/html${PUBLIC_URL}app-config.js
 
+# Copy the entrypoint script
+COPY ./platform/app/.recipes/Nginx-Orthanc-Keycloak/config/entrypoint.sh /entrypoint.sh
+
 # In entrypoint.sh, app-config.js might be overwritten, so chmod it to be writeable.
 # The nginx user cannot chmod it, so change to root.
 USER root
+RUN chmod +x entrypoint.sh
 RUN chown -R nginx:nginx /usr/share/nginx/html
 USER nginx
+# Expose necessary ports
+EXPOSE 80 443 4180
+# Set the entrypoint script as the entrypoint
 ENTRYPOINT ["/usr/src/entrypoint.sh"]
 CMD ["nginx", "-g", "daemon off;"]
