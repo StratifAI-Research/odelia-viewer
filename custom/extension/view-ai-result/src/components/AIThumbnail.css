@@ -1,16 +1,12 @@
 /* Override thumbnail description styling for AI results */
 .ai-result-thumbnail div {
-  white-space: normal !important;
+  white-space: pre-line !important;
   text-overflow: clip !important;
   word-wrap: break-word !important;
   line-height: 1.2 !important;
 }
 
-/* Force multiline on all text elements */
-.ai-result-thumbnail * {
-  white-space: normal !important;
-  text-overflow: clip !important;
-}
+/* Broad global white-space rule removed to avoid overriding specific styles */
 
 /* Allow the thumbnail container to auto-expand vertically */
 .ai-result-thumbnail .flex.h-\\[52px\\] {
@@ -39,7 +35,7 @@
 /* More specific targeting of description text containing robot emoji */
 div[class*="text-ellipsis"]:has(text):contains("🤖"),
 div[class*="whitespace-nowrap"]:has(text):contains("🤖") {
-  white-space: normal !important;
+  white-space: pre-line !important;
   text-overflow: clip !important;
   overflow: hidden !important;
   line-height: 1.1 !important;
@@ -52,7 +48,7 @@ div[class*="whitespace-nowrap"]:has(text):contains("🤖") {
 /* Alternative approach - target by text content */
 div[class*="text-\\[12px\\]"]:contains("🤖"),
 div[class*="text-\\[13px\\]"]:contains("🤖") {
-  white-space: normal !important;
+  white-space: pre-line !important;
   text-overflow: clip !important;
   overflow: hidden !important;
   line-height: 1.1 !important;
@@ -61,13 +57,13 @@ div[class*="text-\\[13px\\]"]:contains("🤖") {
 
 /* Try broader targeting */
 .ohif-scrollbar div:contains("🤖") {
-  white-space: normal !important;
+  white-space: pre-line !important;
   word-wrap: break-word !important;
 }
 
 /* Last resort - very broad targeting */
 *:contains("🤖") {
-  white-space: normal !important;
+  white-space: pre-line !important;
 }
 
 /* Prevent thumbnail overlap issues */
@@ -96,7 +92,7 @@ div[class*="text-\\[13px\\]"]:contains("🤖") {
 
 /* Let description wrap freely without truncation (grid preset) */
 .ai-result-thumbnail .min-h-\\[18px\\] {
-  white-space: normal !important;
+  white-space: pre-line !important;
   overflow: visible !important;
   text-overflow: clip !important;
   height: auto !important;
@@ -113,7 +109,7 @@ div[class*="text-\\[13px\\]"]:contains("🤖") {
 
 /* list preset – allow full wrapping, still disable pointer events to avoid hover reflow */
 .ai-result-thumbnail.h-\\[40px\\] .max-w-\\[160px\\]{
-  white-space: normal !important;
+  white-space: pre-line !important;
   overflow: visible !important;
   text-overflow: clip !important;
   display: block !important;

@@ -27,8 +27,8 @@ export function applyAIThumbnailStyles() {
           return;
         }
 
-        // Apply multiline styles directly
-        element.style.whiteSpace = 'normal';
+        // Apply multiline styles directly (respect \n line breaks)
+        element.style.whiteSpace = 'pre-line';
         element.style.textOverflow = 'clip';
         element.style.overflow = 'hidden';
         element.style.lineHeight = '1.1';
@@ -46,7 +46,7 @@ export function applyAIThumbnailStyles() {
         while (parent && parent.classList) {
           if (parent.classList.toString().includes('text-ellipsis') ||
               parent.classList.toString().includes('whitespace-nowrap')) {
-            parent.style.whiteSpace = 'normal';
+            parent.style.whiteSpace = 'pre-line';
             parent.style.textOverflow = 'clip';
             parent.style.overflow = 'hidden';
           }
