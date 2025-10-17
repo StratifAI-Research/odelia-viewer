@@ -1,7 +1,7 @@
 // @ts-nocheck
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSystem, utils } from '@ohif/core';
-import { useImageViewer } from '@ohif/ui';
+import { useImageViewer, useUserAuthentication } from '@ohif/ui';
 import { FooterAction } from '@ohif/ui-next';
 
 /**
@@ -55,6 +55,7 @@ const FeedbackPanel: React.FC = () => {
   // Access OHIF services
   const { servicesManager } = useSystem();
   const { StudyInstanceUIDs } = useImageViewer();
+  const [authState] = useUserAuthentication();
   const aiResultsService: any = servicesManager.services?.aiResultsService;
   const userAuthenticationService: any = servicesManager.services?.userAuthenticationService;
 
@@ -128,7 +129,7 @@ const FeedbackPanel: React.FC = () => {
   // --- User identity handling ---
   const deriveUserId = useCallback((): string | null => {
     try {
-      const svcUser = userAuthenticationService?.getUser?.();
+      const svcUser = authState?.user ?? userAuthenticationService?.getUser?.();
       const authId = extractUserIdFromAuth(svcUser);
       if (authId) return authId;
     } catch (_) {
@@ -142,9 +143,9 @@ const FeedbackPanel: React.FC = () => {
       // ignore storage errors
     }
     return null;
-  }, [extractUserIdFromAuth, userAuthenticationService, userDisplayName]);
+  }, [authState, extractUserIdFromAuth, userAuthenticationService, userDisplayName]);
 
-  const userId: string | null = useMemo(() => deriveUserId(), [deriveUserId]);
+  const userId: string | null = deriveUserId();
 
   const ensureUserInitialized = useCallback(() => {
     try {
@@ -279,8 +280,7 @@ const FeedbackPanel: React.FC = () => {
 
   useEffect(() => {
     checkSubmissionStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedUID, modelName, modelVersion, resultTs, activeStudyUID]);
+  }, [selectedUID, modelName, modelVersion, resultTs, activeStudyUID, checkSubmissionStatus]);
 
   // Compute markers for dropdown: whether current user has submitted feedback per AI result
   useEffect(() => {
