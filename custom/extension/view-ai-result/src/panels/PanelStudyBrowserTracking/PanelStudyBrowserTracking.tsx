@@ -92,6 +92,7 @@ export default function PanelStudyBrowserTracking({
 
   const navigate = useNavigate();
   const studyMode = customizationService.getCustomization('studyBrowser.studyMode');
+  const tabMode = customizationService.getCustomization('studyBrowser.tabMode');
 
   /*
   console.log('PanelStudyBrowserTracking state:', {
@@ -108,7 +109,9 @@ export default function PanelStudyBrowserTracking({
   const [{ activeViewportId, viewports, isHangingProtocolLayout }, viewportGridService] =
     useViewportGrid();
 
-  const [activeTabName, setActiveTabName] = useState(studyMode);
+  const [activeTabName, setActiveTabName] = useState(
+    tabMode === 'study-ai-subtabs' ? 'all' : studyMode
+  );
   const [expandedStudyInstanceUIDs, setExpandedStudyInstanceUIDs] = useState([
     ...StudyInstanceUIDs,
   ]);
@@ -294,8 +297,8 @@ export default function PanelStudyBrowserTracking({
     : [];
 
   useEffect(() => {
-    setActiveTabName(studyMode);
-  }, [studyMode]);
+    setActiveTabName(tabMode === 'study-ai-subtabs' ? 'all' : studyMode);
+  }, [studyMode, tabMode]);
 
   // ~~ studyDisplayList
   useEffect(() => {
@@ -566,8 +569,6 @@ export default function PanelStudyBrowserTracking({
     };
   }, [displaySetService, dataSource, getImageSrc, hasLoadedViewports]);
 
-  const tabMode = customizationService.getCustomization('studyBrowser.tabMode');
-
   const tabs = tabMode === 'study-ai-subtabs'
     ? createStudyAIBrowserTabsNested(
         StudyInstanceUIDs,
@@ -617,13 +618,11 @@ export default function PanelStudyBrowserTracking({
 
     setExpandedStudyInstanceUIDs(updatedExpandedStudyInstanceUIDs);
 
-    // Temporarily disable DICOM metadata fetching to test date refresh fix
-    console.log('Study click - metadata fetching disabled for testing');
-
-    // if (!shouldCollapseStudy) {
-    //   const madeInClient = true;
-    //   requestDisplaySetCreationForStudy(displaySetService, StudyInstanceUID, madeInClient);
-    // }
+    // Load display sets for the study when it's expanded
+    if (!shouldCollapseStudy) {
+      const madeInClient = true;
+      requestDisplaySetCreationForStudy(displaySetService, StudyInstanceUID, madeInClient);
+    }
   }
 
   useEffect(() => {
@@ -954,16 +953,46 @@ function _findTabAndStudyOfDisplaySet(displaySetInstanceUID, tabs) {
     const { studies } = tabs[t];
 
     for (let s = 0; s < studies.length; s++) {
-      const { displaySets } = studies[s];
+      const study = studies[s];
 
-      for (let d = 0; d < displaySets.length; d++) {
-        const displaySet = displaySets[d];
+      // Check in originals array (for nested structure)
+      if (study.originals) {
+        for (let d = 0; d < study.originals.length; d++) {
+          if (study.originals[d].displaySetInstanceUID === displaySetInstanceUID) {
+            return {
+              tabName: tabs[t].name,
+              StudyInstanceUID: study.studyInstanceUid,
+            };
+          }
+        }
+      }
 
-        if (displaySet.displaySetInstanceUID === displaySetInstanceUID) {
-          return {
-            tabName: tabs[t].name,
-            StudyInstanceUID: studies[s].studyInstanceUid,
-          };
+      // Check in aiGroups array (for nested structure)
+      if (study.aiGroups) {
+        for (let g = 0; g < study.aiGroups.length; g++) {
+          const group = study.aiGroups[g];
+          if (group.displaySets) {
+            for (let d = 0; d < group.displaySets.length; d++) {
+              if (group.displaySets[d].displaySetInstanceUID === displaySetInstanceUID) {
+                return {
+                  tabName: tabs[t].name,
+                  StudyInstanceUID: study.studyInstanceUid,
+                };
+              }
+            }
+          }
+        }
+      }
+
+      // Fallback for flat structure (old tab mode)
+      if (study.displaySets) {
+        for (let d = 0; d < study.displaySets.length; d++) {
+          if (study.displaySets[d].displaySetInstanceUID === displaySetInstanceUID) {
+            return {
+              tabName: tabs[t].name,
+              StudyInstanceUID: study.studyInstanceUid,
+            };
+          }
         }
       }
     }

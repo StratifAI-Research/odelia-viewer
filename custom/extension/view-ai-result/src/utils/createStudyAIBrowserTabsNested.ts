@@ -6,15 +6,12 @@ import { formatDicomDateTime } from './dicomDateTime';
 const displaySetCache = new Map<string, any>();
 
 /**
- * Build a nested tab structure: one top-level tab per study and, inside each study,
- * a `subTabs` array that contains:
- *   – "original"  → all non-AI series
- *   – one sub-tab per AI run (grouped by InstanceCreationDateTime)
- *   – an optional "missing" bucket when we have AI results without a date
- *   – an optional "all" tab when the study has >1 sub-tab
+ * Build a nested tab structure with a single "All Studies" tab containing all studies.
+ * Each study contains:
+ *   – `originals` array: non-AI series displayed flat
+ *   – `aiGroups` array: AI results grouped by InstanceCreationDateTime, each collapsible
  *
- * Returned structure is compatible with the existing StudyBrowser after we extend it
- * to understand `subTabs` on every study object.
+ * This structure allows all studies to be visible in one panel with collapsible sections.
  */
 export function createStudyAIBrowserTabsNested(
   primaryStudyInstanceUIDs: string[],
@@ -73,7 +70,7 @@ export function createStudyAIBrowserTabsNested(
     displaySetsByStudy.get(sid)!.push(ds);
   });
 
-  const studyTabs: any[] = [];
+  const allStudies: any[] = [];
 
   // Iterate over all known studies (from metadata list or from displaySets)
   const studyUIDs = Array.from(
@@ -121,37 +118,34 @@ export function createStudyAIBrowserTabsNested(
 
     const aiGroups = Array.from(aiGroupsMap.values()).sort((a,b)=>a.sortKey.localeCompare(b.sortKey));
 
-    // -------------- Compose top-level study tab --------------
-    const studyLabel = meta.description || meta.date || studyUID;
-
-    studyTabs.push({
-      name: studyUID,
-      label: studyLabel,
-      studies: [
-        {
-          ...meta,
-          originals,
-          aiGroups,
-          // deprecated subTabs for backward-compat
-          subTabs: [],
-          studyInstanceUid: studyUID,
-          date: meta.date || getStaticDate(studyDisplaySets[0]),
-        },
-      ],
+    // -------------- Build study object --------------
+    allStudies.push({
+      ...meta,
+      originals,
+      aiGroups,
+      studyInstanceUid: studyUID,
+      date: meta.date || getStaticDate(studyDisplaySets[0]),
     });
   });
 
-  // Optional: sort studies – primary first, then by date desc
+  // Sort studies – primary first, then by date desc
   const primarySet = new Set(primaryStudyInstanceUIDs);
-  studyTabs.sort((a, b) => {
-    const aPrimary = primarySet.has(a.name) ? 0 : 1;
-    const bPrimary = primarySet.has(b.name) ? 0 : 1;
+  allStudies.sort((a, b) => {
+    const aPrimary = primarySet.has(a.studyInstanceUid) ? 0 : 1;
+    const bPrimary = primarySet.has(b.studyInstanceUid) ? 0 : 1;
     if (aPrimary !== bPrimary) return aPrimary - bPrimary;
     // if both same category, newest date first
-    return (Date.parse(b.studies[0].date) || 0) - (Date.parse(a.studies[0].date) || 0);
+    return (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0);
   });
 
-  return studyTabs;
+  // Return single tab containing all studies
+  return [
+    {
+      name: 'all',
+      label: 'All Studies',
+      studies: allStudies,
+    },
+  ];
 }
 
 export function clearNestedTabCache() {
