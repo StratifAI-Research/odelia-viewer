@@ -99,8 +99,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
             selectedStudyUID={selection.selectedStudyUID}
             onSelectStudy={selection.selectStudy}
             onNext={handleStudyNext}
-            isLoading={selection.isLoadingStudies}
-            error={selection.studiesError || routing.error}
+            error={routing.error}
           />
         );
 
@@ -119,8 +118,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
             onClearSelection={selection.clearSeriesSelection}
             onNext={handleSeriesNext}
             onBack={wizard.goToPrevStep}
-            isLoading={selection.isLoadingSeries}
-            error={selection.seriesError || routing.error}
+            error={routing.error}
           />
         );
 

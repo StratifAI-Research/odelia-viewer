@@ -31,6 +31,7 @@ interface RoutingRequest {
   target_url?: string;
   username?: string;
   password?: string;
+  series_uids?: string[];
 }
 
 interface RoutingResponse {
@@ -411,6 +412,94 @@ class OrthancAIService {
       }
     } catch (error) {
       console.error('Error routing study to AI:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Routes selected series from a study to the AI server
+   * @param dicomStudyUID The DICOM StudyInstanceUID
+   * @param seriesUIDs Array of DICOM SeriesInstanceUIDs to route
+   */
+  async routeSeriesToAI(dicomStudyUID: string, seriesUIDs: string[]): Promise<RoutingResponse> {
+    try {
+      console.log('Starting AI routing for study:', dicomStudyUID);
+      console.log('Selected series UIDs:', seriesUIDs);
+
+      // Check if we have a valid AI endpoint
+      if (!this.currentEndpoint) {
+        throw new Error('No AI endpoint configured. Please add an AI endpoint first.');
+      }
+
+      // Validate series UIDs
+      if (!seriesUIDs || seriesUIDs.length === 0) {
+        throw new Error('No series selected. Please select at least one series.');
+      }
+
+      // Get the Orthanc study ID using the lookup API
+      const orthancStudyId = await this.getOrthancStudyId(dicomStudyUID);
+      console.log('Found Orthanc study ID:', orthancStudyId);
+
+      // Create the routing request with series UIDs
+      const routingRequest: RoutingRequest = {
+        study_id: orthancStudyId,
+        target: this.currentEndpoint.name,
+        target_url: this.currentEndpoint.url,
+        series_uids: seriesUIDs
+      };
+
+      console.log('Routing request:', routingRequest);
+
+      // Set up timeout using AbortController
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+      try {
+        // Use the /send-to-ai endpoint
+        const response = await fetch(`${this.orthancUrl}/send-to-ai`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(routingRequest),
+          signal: controller.signal
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          let errorMessage = `HTTP error! status: ${response.status}`;
+          try {
+            const errorData = await response.json();
+            if (errorData.message) {
+              errorMessage = errorData.message;
+            } else if (errorData.error) {
+              errorMessage = errorData.error;
+            }
+          } catch (parseError) {
+            try {
+              const errorText = await response.text();
+              if (errorText) {
+                errorMessage = errorText;
+              }
+            } catch (textError) {
+              console.warn('Could not parse error response:', textError);
+            }
+          }
+          throw new Error(errorMessage);
+        }
+
+        const data = await response.json();
+        return data as RoutingResponse;
+      } catch (error: unknown) {
+        clearTimeout(timeoutId);
+        if (error instanceof Error && error.name === 'AbortError') {
+          throw new Error('Request timed out after 30 seconds');
+        }
+        throw error;
+      }
+    } catch (error) {
+      console.error('Error routing series to AI:', error);
       throw error;
     }
   }
