@@ -13,7 +13,17 @@
 
 # Dependencies
 **/node_modules/
-
+.bun/
+**/.bun/
+bun.lock
+.yarn/
+**/.yarn/
+yarn-error.log
+npm-debug.log
+**/node_modules
+**/.cache
+**/.turbo
+**/dist
 # Root
 README.md
 Dockerfile

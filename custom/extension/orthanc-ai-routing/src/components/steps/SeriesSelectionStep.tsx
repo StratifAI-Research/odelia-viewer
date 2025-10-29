@@ -93,12 +93,12 @@ export const SeriesSelectionStep: React.FC<SeriesSelectionStepProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col">
-      <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 min-h-0 p-4 space-y-4 overflow-y-auto">
         {renderContent()}
       </div>
 
-      <div className="p-4 border-t border-secondary-light space-y-2">
+      <div className="flex-shrink-0 p-4 border-t border-secondary-light space-y-2">
         <Button
           onClick={onNext}
           disabled={selectedSeriesUIDs.size === 0 || isLoading}

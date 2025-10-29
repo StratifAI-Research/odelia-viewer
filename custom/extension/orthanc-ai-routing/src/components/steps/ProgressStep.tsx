@@ -38,8 +38,8 @@ export const ProgressStep: React.FC<ProgressStepProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col">
-      <div className="flex-1 p-4 space-y-4 overflow-y-auto flex items-center justify-center">
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 min-h-0 p-4 space-y-4 overflow-y-auto flex items-center justify-center">
         <div className="w-full max-w-md space-y-4">
           {error && (
             <div className="rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700">
@@ -72,7 +72,7 @@ export const ProgressStep: React.FC<ProgressStepProps> = ({
         </div>
       </div>
 
-      <div className="p-4 border-t border-secondary-light">
+      <div className="flex-shrink-0 p-4 border-t border-secondary-light">
         {canReset && (
           <Button
             onClick={onReset}

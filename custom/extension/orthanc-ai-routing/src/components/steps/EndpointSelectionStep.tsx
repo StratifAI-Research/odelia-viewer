@@ -22,8 +22,8 @@ export const EndpointSelectionStep: React.FC<EndpointSelectionStepProps> = ({
   error,
 }) => {
   return (
-    <div className="flex-1 flex flex-col">
-      <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+    <div className="flex-1 flex flex-col min-h-0">
+      <div className="flex-1 min-h-0 p-4 space-y-4 overflow-y-auto">
         {error && (
           <div className="rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700">
             {error}
@@ -50,7 +50,7 @@ export const EndpointSelectionStep: React.FC<EndpointSelectionStepProps> = ({
         </div>
       </div>
 
-      <div className="p-4 border-t border-secondary-light space-y-2">
+      <div className="flex-shrink-0 p-4 border-t border-secondary-light space-y-2">
         <Button
           onClick={onSend}
           disabled={!currentEndpoint}
