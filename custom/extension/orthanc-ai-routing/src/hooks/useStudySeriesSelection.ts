@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
+import { utils, DicomMetadataStore } from '@ohif/core';
 import { StudyInfo } from '../components/StudySelector';
 import { SeriesInfo } from '../components/SeriesSelector';
+
+const { formatDate } = utils;
 
 interface UseStudySeriesSelectionProps {
   displaySetService: any;
@@ -47,10 +50,29 @@ export function useStudySeriesSelection({
           if (!studyUID) return; // Skip if no study UID
 
           if (!studyMap.has(studyUID)) {
+            // Get proper study-level metadata from DicomMetadataStore
+            const studyMetadata = DicomMetadataStore.getStudy(studyUID);
+
+            // Extract study-level DICOM tags
+            const studyDescription = studyMetadata?.StudyDescription || '';
+            const studyDate = studyMetadata?.StudyDate || '';
+
+            // Format date for display
+            const formattedDate = formatDate(studyDate) || '';
+
+            // Debug: Log what we're using for description
+            console.log('Study metadata from DicomMetadataStore:', {
+              studyUID,
+              StudyDescription: studyDescription,
+              StudyDate: studyDate,
+              formattedDate,
+              finalDescription: formattedDate || studyDescription || 'Unnamed Study'
+            });
+
             studyMap.set(studyUID, {
               studyInstanceUid: studyUID,
-              date: ds.StudyDate || '',
-              description: ds.StudyDescription || ds.StudyDate || 'Unnamed Study',
+              date: formattedDate,
+              description: formattedDate || studyDescription || 'Unnamed Study',
               numInstances: 0,
               numSeries: 0,
               hasAIResults: false,

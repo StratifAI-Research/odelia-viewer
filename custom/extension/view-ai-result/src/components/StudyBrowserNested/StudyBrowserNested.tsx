@@ -140,51 +140,89 @@ export const StudyBrowserNested: React.FC<Props> = ({
     setDeletingGroups(prev => new Set(prev).add(group.key));
 
     try {
-      const orthancUrl = (window as any).config?.orthancUrl || window.location.origin;
-      const deletePromises: Promise<any>[] = [];
-      const seriesUIDs: string[] = [];
+      // Delete from both Orthanc storage and OHIF viewer
+      // Note: /tools is at root level, /series is under /pacs
+      const deleteResults = { viewer: 0, storage: 0, storageFailed: 0 };
 
-      // Collect all series UIDs and delete from OHIF
       for (const displaySet of group.displaySets) {
-        // Get the real display set to access SeriesInstanceUID
-        const realDisplaySet = displaySetService.getDisplaySetByUID(displaySet.displaySetInstanceUID);
+        try {
+          // Get the real display set to access SeriesInstanceUID
+          const realDisplaySet = displaySetService.getDisplaySetByUID(displaySet.displaySetInstanceUID);
 
-        if (realDisplaySet?.SeriesInstanceUID) {
-          seriesUIDs.push(realDisplaySet.SeriesInstanceUID);
+          // 1. Delete from Orthanc storage
+          if (realDisplaySet?.SeriesInstanceUID) {
+            try {
+              // Step 1: Lookup Orthanc internal ID from DICOM SeriesInstanceUID
+              const lookupResponse = await fetch('/tools/lookup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'text/plain' },
+                body: realDisplaySet.SeriesInstanceUID
+              });
 
-          // Delete from Orthanc via REST API
-          const deletePromise = fetch(`${orthancUrl}/series/${realDisplaySet.SeriesInstanceUID}`, {
-            method: 'DELETE',
-          }).catch(err => {
-            console.error(`Failed to delete series ${realDisplaySet.SeriesInstanceUID} from Orthanc:`, err);
-            return { ok: false, error: err };
-          });
+              if (lookupResponse.ok) {
+                const lookupData = await lookupResponse.json();
+                // lookupData is array of objects: [{ Type: "Series", ID: "orthanc-id", Path: "/series/..." }]
+                const seriesEntry = lookupData.find((item: any) => item.Type === 'Series');
 
-          deletePromises.push(deletePromise);
+                if (seriesEntry?.ID) {
+                  // Step 2: Delete using Orthanc internal ID (series operations are under /pacs)
+                  const deleteResponse = await fetch(`/pacs/series/${seriesEntry.ID}`, {
+                    method: 'DELETE'
+                  });
+
+                  if (deleteResponse.ok) {
+                    deleteResults.storage++;
+                    console.log(`✓ Deleted series ${realDisplaySet.SeriesInstanceUID} from Orthanc storage`);
+                  } else {
+                    deleteResults.storageFailed++;
+                    console.error(`Failed to delete from Orthanc: ${deleteResponse.status} ${deleteResponse.statusText}`);
+                  }
+                } else {
+                  deleteResults.storageFailed++;
+                  console.warn(`No Orthanc series entry found for ${realDisplaySet.SeriesInstanceUID}`);
+                }
+              } else {
+                deleteResults.storageFailed++;
+                console.error(`Orthanc lookup failed: ${lookupResponse.status} ${lookupResponse.statusText}`);
+              }
+            } catch (storageErr) {
+              deleteResults.storageFailed++;
+              console.error(`Error deleting from Orthanc storage:`, storageErr);
+            }
+          }
+
+          // 2. Delete display set from OHIF viewer (always do this)
+          displaySetService.deleteDisplaySet(displaySet.displaySetInstanceUID);
+          deleteResults.viewer++;
+          console.log(`✓ Removed display set from viewer: ${displaySet.displaySetInstanceUID}`);
+
+        } catch (err) {
+          console.error(`Failed to delete display set ${displaySet.displaySetInstanceUID}:`, err);
         }
-
-        // Delete display set from OHIF
-        displaySetService.deleteDisplaySet(displaySet.displaySetInstanceUID);
       }
 
-      // Wait for all Orthanc deletions to complete
-      const results = await Promise.all(deletePromises);
-      const failedDeletions = results.filter((r: any) => !r.ok);
-
-      if (failedDeletions.length > 0) {
-        console.warn('Some series failed to delete from Orthanc:', failedDeletions);
+      // Show appropriate notification based on results
+      const totalDisplaySets = group.displaySets.length;
+      if (deleteResults.viewer === totalDisplaySets && deleteResults.storageFailed === 0) {
+        uiNotificationService.show({
+          title: 'AI Result Deleted',
+          message: `Successfully deleted AI result from viewer and storage: ${group.label}`,
+          type: 'success',
+          duration: 3000,
+        });
+      } else if (deleteResults.viewer === totalDisplaySets && deleteResults.storageFailed > 0) {
         uiNotificationService.show({
           title: 'Partial Deletion',
-          message: `AI result removed from viewer, but ${failedDeletions.length} series may still exist in storage.`,
+          message: `Removed from viewer, but ${deleteResults.storageFailed} series failed to delete from storage.`,
           type: 'warning',
           duration: 5000,
         });
       } else {
         uiNotificationService.show({
-          title: 'AI Result Deleted',
-          message: `Successfully deleted AI result: ${group.label}`,
-          type: 'success',
-          duration: 3000,
+          title: 'Deletion Issues',
+          message: `Removed ${deleteResults.viewer}/${totalDisplaySets} from viewer. Storage deletions: ${deleteResults.storage} succeeded, ${deleteResults.storageFailed} failed.`,
+          type: 'warning',
+          duration: 5000,
         });
       }
     } catch (error) {
