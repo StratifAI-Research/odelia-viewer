@@ -69,7 +69,7 @@ const StudySelector: React.FC<StudySelectorProps> = ({
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <div className="text-sm font-medium text-white truncate flex-1">
-                    {study.description || 'Unnamed Study'}
+                    {study.description || study.date || 'Unnamed Study'}
                   </div>
                   {study.hasAIResults && (
                     <div className="flex-shrink-0 px-2 py-0.5 text-xs rounded bg-primary-main text-white font-medium">

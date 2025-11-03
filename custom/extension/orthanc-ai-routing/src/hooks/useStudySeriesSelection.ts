@@ -50,7 +50,7 @@ export function useStudySeriesSelection({
             studyMap.set(studyUID, {
               studyInstanceUid: studyUID,
               date: ds.StudyDate || '',
-              description: ds.StudyDescription || 'Unnamed Study',
+              description: ds.StudyDescription || ds.StudyDate || 'Unnamed Study',
               numInstances: 0,
               numSeries: 0,
               hasAIResults: false,
