@@ -305,6 +305,66 @@ export class AIResultsService {
   }
 
   /**
+   * Clear cache for a specific study
+   */
+  clearStudyCache(studyInstanceUID: string): void {
+    console.log(`[AIResultsService] Clearing cache for study:`, studyInstanceUID);
+    this.cache.delete(studyInstanceUID);
+
+    // Also clear selection if it exists
+    if (this.selectedAIResults.has(studyInstanceUID)) {
+      this.selectedAIResults.delete(studyInstanceUID);
+    }
+  }
+
+  /**
+   * Remove specific display sets from cache
+   * Call this after deleting AI results to invalidate cache
+   */
+  removeDisplaySetsFromCache(studyInstanceUID: string, displaySetUIDs: string[]): void {
+    console.log(`[AIResultsService] Removing display sets from cache:`, {
+      studyInstanceUID,
+      displaySetUIDs
+    });
+
+    // Get cached results
+    const cachedResults = this.cache.get(studyInstanceUID);
+    if (!cachedResults) {
+      console.log('[AIResultsService] No cached results found for study');
+      return;
+    }
+
+    // Filter out deleted display sets
+    const updatedResults = cachedResults.filter(result =>
+      !displaySetUIDs.includes(result.displaySetInstanceUID)
+    );
+
+    // Update cache
+    if (updatedResults.length > 0) {
+      this.cache.set(studyInstanceUID, updatedResults);
+      console.log(`[AIResultsService] Updated cache with ${updatedResults.length} remaining results`);
+    } else {
+      // No results left, clear the study cache
+      this.cache.delete(studyInstanceUID);
+      this.selectedAIResults.delete(studyInstanceUID);
+      console.log('[AIResultsService] No results remaining, cleared study cache');
+    }
+
+    // Clear selection if the selected result was deleted
+    const selectedUID = this.selectedAIResults.get(studyInstanceUID);
+    if (selectedUID && displaySetUIDs.includes(selectedUID)) {
+      this.selectedAIResults.delete(studyInstanceUID);
+      console.log('[AIResultsService] Cleared selection as selected result was deleted');
+    }
+
+    // Publish cache cleared event
+    this.publish(AIResultsService.EVENTS.AI_RESULT_CLEARED, {
+      studyInstanceUID,
+      displaySetUIDs
+    });
+  }
+
+  /**
    * Get the primary (first) AI result for a study
    */
   getAIResults(studyInstanceUID: string, servicesManager: any): AIResult | null {

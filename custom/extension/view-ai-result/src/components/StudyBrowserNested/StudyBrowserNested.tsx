@@ -140,6 +140,9 @@ export const StudyBrowserNested: React.FC<Props> = ({
     setDeletingGroups(prev => new Set(prev).add(group.key));
 
     try {
+      const { aiResultsService } = servicesManager.services;
+      const displaySetUIDs: string[] = [];
+
       // Delete from both Orthanc storage and OHIF viewer
       // Note: /tools is at root level, /series is under /pacs
       const deleteResults = { viewer: 0, storage: 0, storageFailed: 0 };
@@ -148,6 +151,7 @@ export const StudyBrowserNested: React.FC<Props> = ({
         try {
           // Get the real display set to access SeriesInstanceUID
           const realDisplaySet = displaySetService.getDisplaySetByUID(displaySet.displaySetInstanceUID);
+          displaySetUIDs.push(displaySet.displaySetInstanceUID);
 
           // 1. Delete from Orthanc storage
           if (realDisplaySet?.SeriesInstanceUID) {
@@ -199,6 +203,12 @@ export const StudyBrowserNested: React.FC<Props> = ({
         } catch (err) {
           console.error(`Failed to delete display set ${displaySet.displaySetInstanceUID}:`, err);
         }
+      }
+
+      // Clear AI results cache after deletion
+      if (aiResultsService && displaySetUIDs.length > 0) {
+        console.log('Clearing AI results cache for deleted display sets');
+        aiResultsService.removeDisplaySetsFromCache(studyInstanceUid, displaySetUIDs);
       }
 
       // Show appropriate notification based on results
@@ -300,7 +310,7 @@ export const StudyBrowserNested: React.FC<Props> = ({
 
                             {/* Delete button */}
                             <button
-                              className={`ml-auto flex-shrink-0 p-1 rounded hover:bg-red-600 text-red-400 hover:text-white transition-colors ${isDeleting ? 'opacity-50 cursor-not-allowed' : ''}`}
+                              className={`ml-auto flex-shrink-0 p-1.5 rounded bg-red-600 hover:bg-red-700 text-white transition-colors ${isDeleting ? 'opacity-50 cursor-not-allowed' : ''}`}
                               onClick={(e) => handleDeleteAIGroup(group, study.studyInstanceUid, e)}
                               disabled={isDeleting}
                               title="Delete AI Result"
