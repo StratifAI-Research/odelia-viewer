@@ -652,11 +652,15 @@ const FeedbackPanel: React.FC = () => {
               onClick={() => {
                 try {
                   const cfg = (window as any)?.config || {};
+                  const routerBasename = cfg?.routerBasename || '/';
                   const configured = cfg?.oidc?.[0]?.post_logout_redirect_uri || '/';
                   const absolute = new URL(configured, window.location.origin).href;
-                  window.location.assign(`/logout?redirect_uri=${encodeURIComponent(absolute)}`);
+                  const logoutPath = `${routerBasename}${routerBasename.endsWith('/') ? '' : '/'}logout`;
+                  window.location.assign(`${logoutPath}?redirect_uri=${encodeURIComponent(absolute)}`);
                 } catch (_) {
-                  window.location.assign('/logout');
+                  // Fallback with routerBasename
+                  const routerBasename = ((window as any)?.config?.routerBasename || '/').replace(/\/$/, '');
+                  window.location.assign(`${routerBasename}/logout`);
                 }
               }}
               title="Change user"
