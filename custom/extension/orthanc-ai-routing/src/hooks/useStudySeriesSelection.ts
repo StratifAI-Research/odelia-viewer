@@ -50,29 +50,44 @@ export function useStudySeriesSelection({
           if (!studyUID) return; // Skip if no study UID
 
           if (!studyMap.has(studyUID)) {
-            // Get proper study-level metadata from DicomMetadataStore
+            // Get study metadata from DicomMetadataStore
             const studyMetadata = DicomMetadataStore.getStudy(studyUID);
 
-            // Extract study-level DICOM tags
+            // Extract StudyDescription from study metadata (this is populated)
             const studyDescription = studyMetadata?.StudyDescription || '';
-            const studyDate = studyMetadata?.StudyDate || '';
+
+            // Get StudyDate from the first series metadata since study metadata
+            // doesn't have StudyDate populated when loaded via addSeriesMetadata
+            let studyDate = '';
+            if (studyMetadata?.series?.length > 0) {
+              // Get StudyDate from first series (all series in a study have the same StudyDate)
+              studyDate = studyMetadata.series[0].StudyDate || '';
+            }
+
+            // Fallback: If still no date, try to get from display set
+            if (!studyDate && ds.StudyDate) {
+              studyDate = ds.StudyDate;
+            }
 
             // Format date for display
             const formattedDate = formatDate(studyDate) || '';
 
-            // Debug: Log what we're using for description
-            console.log('Study metadata from DicomMetadataStore:', {
-              studyUID,
-              StudyDescription: studyDescription,
-              StudyDate: studyDate,
-              formattedDate,
-              finalDescription: formattedDate || studyDescription || 'Unnamed Study'
-            });
+            // Concatenate date and description for display
+            let displayName = '';
+            if (formattedDate && studyDescription) {
+              displayName = `${formattedDate} - ${studyDescription}`;
+            } else if (formattedDate) {
+              displayName = formattedDate;
+            } else if (studyDescription) {
+              displayName = studyDescription;
+            } else {
+              displayName = 'Unnamed Study';
+            }
 
             studyMap.set(studyUID, {
               studyInstanceUid: studyUID,
               date: formattedDate,
-              description: formattedDate || studyDescription || 'Unnamed Study',
+              description: displayName,
               numInstances: 0,
               numSeries: 0,
               hasAIResults: false,
