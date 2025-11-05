@@ -70,7 +70,7 @@ def initialize_model():
         # Move model to device
         if model is not None:
             model = model.to(DEVICE)
-            logger.info(f"✓ Model loaded successfully on {DEVICE}")
+            logger.info(f"Model loaded successfully on {DEVICE}")
             logger.info(f"  Model: {model_info['model_name']}")
             logger.info(f"  Architecture: {model_info['architecture']}")
 
@@ -153,7 +153,7 @@ def download_series_dicom(series_id: str, series_uid: str) -> str:
             with open(dicom_path, "wb") as f:
                 f.write(dicom_data)
 
-        logger.info(f"✓ Downloaded {len(instances)} DICOM files to {series_folder}")
+        logger.info(f"Downloaded {len(instances)} DICOM files to {series_folder}")
         return series_folder
 
     except Exception as e:
@@ -200,7 +200,7 @@ def analyze_mri():
         "attention_maps": [
             {
                 "slice_index": 0,
-                "data": [[...]]  // 2D array
+                "data": [[[r,g,b], [r,g,b], ...]]  // RGB overlay image [H, W, 3]
             }
         ]
     }
@@ -229,31 +229,32 @@ def analyze_mri():
         # 3. Convert DICOM to NIfTI
         logger.info("Converting DICOM to NIfTI...")
         nifti_path = dicom_to_nifti(dicom_folder)
-        logger.info(f"✓ NIfTI created: {nifti_path}")
+        logger.info(f"NIfTI created: {nifti_path}")
 
-        # 4. Run inference
+        # 4. Run inference using aligned implementation
         logger.info("Running MST inference...")
 
-        # Add model path to sys.path to import predict_attention
+        # Add model path to sys.path to import the reference implementation
         if MODEL_PATH not in sys.path:
             sys.path.insert(0, MODEL_PATH)
 
         import torchio as tio
-        from predict_attention import run_prediction
+        from predict_attention import run_prediction, minmax_norm, tensor_cam2image
 
         # Load image as TorchIO ScalarImage
         img = tio.ScalarImage(nifti_path)
 
-        # Run prediction - returns probs dict and weight ScalarImage
+        # Run prediction - returns probs dict and weight ScalarImage (aligned with HF repo)
         with torch.no_grad():
             probs, weight = run_prediction(img, model)
 
-        logger.info(f"✓ Inference complete")
+        logger.info(f"Inference complete")
         logger.info(f"  Left breast probabilities: {probs['left']}")
         logger.info(f"  Right breast probabilities: {probs['right']}")
 
         # 5. Format output for server.py - bilateral classification format
-        # Extract left/right probabilities (assume [benign, malignant] order)
+        # Extract left/right probabilities (probabilities are already softmaxed in run_prediction)
+        # Format: [benign_prob, malignant_prob]
         left_malignant_prob = float(probs['left'][1])
         right_malignant_prob = float(probs['right'][1])
 
@@ -276,30 +277,39 @@ def analyze_mri():
             "version": model_info.get("version", "1.0")
         }
 
-        # Extract attention maps from weight ScalarImage
-        # weight.data is a tensor with shape [C, W, H, D]
+        # 6. Generate RGB overlay images using tensor_cam2image from HF reference
+        # Prepare tensors in the format expected by tensor_cam2image
+        # Input format: [B, C, D, H, W] for both img and weight
+        img_tensor = img.data.swapaxes(1, -1).unsqueeze(0)  # [1, C, D, H, W]
+        weight_tensor = weight.data.swapaxes(1, -1).unsqueeze(0)  # [1, C, D, H, W]
+
+        # Normalize image to [0, 1] for visualization (weight already normalized)
+        img_tensor = minmax_norm(img_tensor)
+        weight_tensor = minmax_norm(weight_tensor)
+
+        # Generate RGB overlay images (returns [B, 3, H, W] tensor with RGB overlays)
+        overlay = tensor_cam2image(img_tensor, weight_tensor, batch=0, alpha=0.5)
+
+        logger.info(f"Generated {overlay.shape[0]} RGB overlay images")
+
+        # Convert overlay to numpy and prepare ALL slices for transmission
+        overlay_np = overlay.cpu().numpy()  # [num_slices, 3, H, W]
+        num_slices = overlay_np.shape[0]
+
         attention_maps = []
-        weight_data = weight.data.cpu().numpy()
+        for slice_idx in range(num_slices):
+            # Get RGB overlay for this slice: [3, H, W]
+            overlay_slice = overlay_np[slice_idx]  # [3, H, W]
 
-        # Average across channels if multiple
-        if weight_data.shape[0] > 1:
-            weight_data = weight_data.mean(axis=0)  # [W, H, D]
-        else:
-            weight_data = weight_data[0]  # [W, H, D]
+            # Convert to [H, W, 3] for standard image format
+            overlay_slice = np.transpose(overlay_slice, (1, 2, 0))  # [H, W, 3]
 
-        # Extract slices along depth dimension
-        num_slices = weight_data.shape[2]
-        logger.info(f"Extracting {num_slices} attention map slices")
-
-        # Sample a subset of slices to avoid too much data (e.g., every 4th slice, max 8 slices)
-        slice_indices = list(range(0, num_slices, max(1, num_slices // 8)))[:8]
-
-        for slice_idx in slice_indices:
-            attention_slice = weight_data[:, :, slice_idx]  # [W, H]
             attention_maps.append({
                 "slice_index": slice_idx,
-                "data": attention_slice.tolist()
+                "data": overlay_slice.tolist()  # RGB overlay [H, W, 3]
             })
+
+        logger.info(f"Prepared {len(attention_maps)} RGB overlay slices for transmission")
 
         # Return bilateral format matching the expected viewer format
         response = {
@@ -309,17 +319,10 @@ def analyze_mri():
             "attention_maps": attention_maps
         }
 
-        logger.info(f"✓ Analysis complete - Bilateral Classification:")
+        logger.info(f"Analysis complete - Bilateral Classification:")
         logger.info(f"  Left: {left_classification['prediction']} ({left_classification['confidence']:.1f}%)")
         logger.info(f"  Right: {right_classification['prediction']} ({right_classification['confidence']:.1f}%)")
-        logger.info(f"  Returning {len(attention_maps)} attention maps")
-
-        # Cleanup
-        try:
-            shutil.rmtree(dicom_folder)
-            logger.info(f"✓ Cleaned up temporary files")
-        except Exception as e:
-            logger.warning(f"Failed to cleanup {dicom_folder}: {e}")
+        logger.info(f"  Returning {len(attention_maps)} RGB overlay slices (MRI + attention heatmap)")
 
         return jsonify(response)
 
