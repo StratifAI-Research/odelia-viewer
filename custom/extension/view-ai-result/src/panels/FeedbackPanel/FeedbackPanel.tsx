@@ -567,19 +567,40 @@ const FeedbackPanel: React.FC = () => {
           AI Prediction: {aiLabel} {formatConfidence(classification?.confidence)}
         </div>
         <div className="flex space-x-4">
-          {OPTIONS.map(opt => (
-            <label key={opt} className="flex items-center space-x-1 cursor-pointer">
-              <input
-                type="radio"
-                name={`fb-${side}`}
-                value={opt}
-                checked={feedback[side] === opt}
-                onChange={() => setFeedbackValue(side, opt)}
-                disabled={locked}
-              />
-              <span className="text-sm">{opt}</span>
-            </label>
-          ))}
+          {OPTIONS.map(opt => {
+            const isChecked = feedback[side] === opt;
+            return (
+              <label
+                key={opt}
+                className={`flex items-center space-x-1 ${
+                  locked ? 'cursor-not-allowed' : 'cursor-pointer'
+                } ${locked && !isChecked ? 'opacity-50' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name={`fb-${side}`}
+                  value={opt}
+                  checked={isChecked}
+                  onChange={() => setFeedbackValue(side, opt)}
+                  disabled={locked}
+                  style={locked && isChecked ? {
+                    accentColor: '#3b82f6',
+                    cursor: 'not-allowed'
+                  } : locked ? {
+                    accentColor: '#4b5563',
+                    cursor: 'not-allowed'
+                  } : {}}
+                />
+                <span className={`text-sm font-medium ${
+                  locked && isChecked ? 'text-blue-400' :
+                  locked ? 'text-gray-500' :
+                  'text-white'
+                }`}>
+                  {opt}
+                </span>
+              </label>
+            );
+          })}
         </div>
       </div>
     );
