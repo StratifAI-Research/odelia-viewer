@@ -31,6 +31,6 @@ export interface AIOverlayHookConfig {
 export interface AIOverlayHookReturn {
   updateOverlay: (aiResult: AIResult) => void;
   clearOverlay: () => void;
-  setupHeatmapActionCorner: (aiResult: AIResult, onToggle: () => void, isActive: boolean) => void;
+  setupHeatmapActionCorner: (aiResult: AIResult, onToggle: () => void, isActive: boolean, hasHeatmap?: boolean) => void;
   clearActionCorners: () => void;
 }

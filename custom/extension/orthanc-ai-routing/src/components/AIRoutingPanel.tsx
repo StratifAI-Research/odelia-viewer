@@ -160,7 +160,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
   return (
     <div className="flex flex-col h-full">
       {/* Fixed header */}
-      <div className="p-4 border-b border-secondary-light">
+      <div className="flex-shrink-0 p-4 border-b border-secondary-light">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-white">AI Analysis</h3>
           <div className="text-xs text-muted-foreground">
@@ -169,8 +169,10 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
         </div>
       </div>
 
-      {/* Step content */}
-      {renderStep()}
+      {/* Step content - constrained to remaining height */}
+      <div className="flex-1 min-h-0 flex flex-col">
+        {renderStep()}
+      </div>
     </div>
   );
 };

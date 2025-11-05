@@ -107,6 +107,7 @@ export class AIResultsService {
 
             const aiResult: AIResult = {
               studyInstanceUID,
+              displaySetInstanceUID: srDisplaySet.displaySetInstanceUID,
               hasHeatmap: !!heatmapDisplaySet,
               classifications: aiResultData.classifications,
               resultTs,
@@ -131,6 +132,7 @@ export class AIResultsService {
           );
           const errorResult: AIResult = {
             studyInstanceUID,
+            displaySetInstanceUID: srDisplaySet.displaySetInstanceUID,
             hasHeatmap: false,
             classifications: [
               {
@@ -191,8 +193,8 @@ export class AIResultsService {
     const srTime = srDisplaySet.instance?.InstanceCreationTime;
     const referencedSOPInstanceUID = srDisplaySet.instance?.ReferencedImageSequence?.[0]?.ReferencedSOPInstanceUID;
 
-    // Try to find exact match first
-    let matchingHeatmap = scDisplaySets.find(sc => {
+    // Try to find exact match by date/time
+    const matchingHeatmap = scDisplaySets.find(sc => {
       const scDate = sc.instance?.InstanceCreationDate;
       const scTime = sc.instance?.InstanceCreationTime;
 
@@ -206,12 +208,12 @@ export class AIResultsService {
       return dateTimeMatch;
     });
 
-    // If no exact match, try first SC as fallback
-    if (!matchingHeatmap && scDisplaySets.length > 0) {
-      console.warn('No exact heatmap match found, using first available SC display set');
-      matchingHeatmap = scDisplaySets[0];
+    if (!matchingHeatmap) {
+      console.log(`[AIResultsService] No exact heatmap match found for SR (Date: ${srDate}, Time: ${srTime}). AI result will show without heatmap.`);
+      return null;
     }
 
+    console.log(`[AIResultsService] Found matching heatmap for SR by date/time: ${matchingHeatmap.displaySetInstanceUID}`);
     return matchingHeatmap;
   }
 
@@ -230,8 +232,8 @@ export class AIResultsService {
     const scDate = scDisplaySet.instance?.InstanceCreationDate;
     const scTime = scDisplaySet.instance?.InstanceCreationTime;
 
-    // Try to find exact match first
-    let matchingSR = srDisplaySets.find(sr => {
+    // Try to find exact match by date/time
+    const matchingSR = srDisplaySets.find(sr => {
       const srDate = sr.instance?.InstanceCreationDate;
       const srTime = sr.instance?.InstanceCreationTime;
 
@@ -242,12 +244,12 @@ export class AIResultsService {
       return dateTimeMatch;
     });
 
-    // If no exact match, try first SR as fallback
-    if (!matchingSR && srDisplaySets.length > 0) {
-      console.warn('No exact SR match found for SC, using first available SR display set');
-      matchingSR = srDisplaySets[0];
+    if (!matchingSR) {
+      console.log(`[AIResultsService] No exact SR match found for SC heatmap (Date: ${scDate}, Time: ${scTime}). Heatmap will not be selectable.`);
+      return null;
     }
 
+    console.log(`[AIResultsService] Found matching SR for SC heatmap by date/time: ${matchingSR.displaySetInstanceUID}`);
     return matchingSR;
   }
 
@@ -336,7 +338,7 @@ export class AIResultsService {
 
     // Filter out deleted display sets
     const updatedResults = cachedResults.filter(result =>
-      !displaySetUIDs.includes(result.displaySetInstanceUID)
+      !result.displaySetInstanceUID || !displaySetUIDs.includes(result.displaySetInstanceUID)
     );
 
     // Update cache
@@ -428,6 +430,7 @@ export class AIResultsService {
 
       return {
         studyInstanceUID,
+        displaySetInstanceUID: displaySetInstanceUID,
         hasHeatmap: !!heatmapDisplaySet,
         classifications: aiResultData.classifications,
         resultTs,

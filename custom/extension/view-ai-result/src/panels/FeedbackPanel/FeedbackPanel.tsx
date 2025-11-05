@@ -2,6 +2,7 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSystem, utils } from '@ohif/core';
 import { useImageViewer, useUserAuthentication } from '@ohif/ui';
+import { useViewportGrid } from '@ohif/ui-next';
 import { FooterAction } from '@ohif/ui-next';
 
 /**
@@ -56,11 +57,13 @@ const FeedbackPanel: React.FC = () => {
   const { servicesManager } = useSystem();
   const { StudyInstanceUIDs } = useImageViewer();
   const [authState] = useUserAuthentication();
+  const [{ activeViewportId, viewports }, viewportGridService] = useViewportGrid();
   const aiResultsService: any = servicesManager.services?.aiResultsService;
   const userAuthenticationService: any = servicesManager.services?.userAuthenticationService;
+  const displaySetService: any = servicesManager.services?.displaySetService;
 
   // --- Local component state ---
-  const activeStudyUID = StudyInstanceUIDs?.[0];
+  const [activeStudyUID, setActiveStudyUID] = useState<string | null>(null);
   const [aiMeta, setAiMeta] = useState<any[]>([]); // dropdown list
   const [selectedUID, setSelectedUID] = useState<string>('');
   const [currentResult, setCurrentResult] = useState<any | null>(null);
@@ -98,6 +101,26 @@ const FeedbackPanel: React.FC = () => {
     }
     return null;
   }, []);
+
+  // Helper to extract study UID from the active viewport
+  const getStudyUIDFromActiveViewport = useCallback((): string | null => {
+    if (!activeViewportId || !viewports) {
+      return StudyInstanceUIDs?.[0] || null; // Fallback to first study
+    }
+
+    const activeViewport = viewports.get(activeViewportId);
+    const displaySetInstanceUIDs = activeViewport?.displaySetInstanceUIDs || [];
+
+    if (!displaySetInstanceUIDs.length) {
+      return StudyInstanceUIDs?.[0] || null; // Fallback to first study
+    }
+
+    // Get the first display set's study UID
+    const firstDisplaySetUID = displaySetInstanceUIDs[0];
+    const displaySet = displaySetService?.getDisplaySetByUID(firstDisplaySetUID);
+
+    return displaySet?.StudyInstanceUID || displaySet?.studyInstanceUID || null;
+  }, [activeViewportId, viewports, displaySetService, StudyInstanceUIDs]);
 
   // Helper to refresh dropdown list & selection info
   const refreshMeta = useCallback(() => {
@@ -170,6 +193,31 @@ const FeedbackPanel: React.FC = () => {
     ensureUserInitialized();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Initialize activeStudyUID on mount
+  useEffect(() => {
+    if (!activeStudyUID) {
+      const initialStudyUID = getStudyUIDFromActiveViewport();
+      if (initialStudyUID) {
+        setActiveStudyUID(initialStudyUID);
+      }
+    }
+  }, [activeStudyUID, getStudyUIDFromActiveViewport]);
+
+  // Track viewport changes and update activeStudyUID
+  useEffect(() => {
+    const studyUID = getStudyUIDFromActiveViewport();
+    if (studyUID && studyUID !== activeStudyUID) {
+      console.log(`FeedbackPanel: Study changed from ${activeStudyUID} to ${studyUID}`);
+      setActiveStudyUID(studyUID);
+      // Reset feedback state when study changes
+      setFeedback({ Left: null, Right: null });
+      setLocked(false);
+      setIsEditMode(false);
+      setSubmitMessage('');
+      // Note: checkSubmissionStatus will automatically refetch from backend via its useEffect
+    }
+  }, [activeViewportId, viewports, getStudyUIDFromActiveViewport, activeStudyUID]);
 
   // Helpers to read identity fields from currentResult
   const modelName: string | undefined = useMemo(() => {
@@ -579,6 +627,14 @@ const FeedbackPanel: React.FC = () => {
           Next ▶
         </button>
       </div>
+
+      {/* Active Study Indicator */}
+      {activeStudyUID && (
+        <div className="mb-3 p-2 bg-gray-800 rounded text-xs">
+          <div className="text-gray-400">Active Study:</div>
+          <div className="font-mono text-gray-300 break-all">{activeStudyUID}</div>
+        </div>
+      )}
 
       {/* AI model info */}
       {currentResult ? (

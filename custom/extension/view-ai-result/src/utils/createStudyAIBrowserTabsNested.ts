@@ -105,7 +105,7 @@ export function createStudyAIBrowserTabsNested(
         if (!aiGroupsMap.has(key)) {
           aiGroupsMap.set(key, {
             key,
-            label: dateTime ? `${modelName} – ${dateTime}` : `${modelName} – Unknown`,
+            label: dateTime ? `🤖 AI – ${dateTime}` : `🤖 AI – Unknown`,
             displaySets: [],
             sortKey: dateTime || '00000000',
           });

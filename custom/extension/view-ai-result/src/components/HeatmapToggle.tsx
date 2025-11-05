@@ -4,22 +4,27 @@ interface HeatmapToggleProps {
   onToggle: () => void;
   isActive: boolean;
   className?: string;
+  disabled?: boolean;
 }
 
 const HeatmapToggle: React.FC<HeatmapToggleProps> = ({
   onToggle,
   isActive,
   className = '',
+  disabled = false,
 }) => {
   return (
     <button
-      onClick={onToggle}
+      onClick={disabled ? undefined : onToggle}
+      disabled={disabled}
       className={`flex items-center justify-center w-8 h-8 rounded transition-colors ${
-        isActive
+        disabled
+          ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+          : isActive
           ? 'bg-primary-main text-white'
           : 'bg-secondary-dark text-primary-light hover:bg-secondary-main'
       } ${className}`}
-      title={`${isActive ? 'Hide' : 'Show'} Heatmap`}
+      title={disabled ? 'No heatmap available' : `${isActive ? 'Hide' : 'Show'} Heatmap`}
     >
       <svg
         width="16"

@@ -108,26 +108,34 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
     console.log(`[useAIOverlay] Cleared AI overlay container for primary viewport ${viewportId}`);
   }, [viewportId, isHeatmapViewport, viewportActionCornersService]);
 
-  const setupHeatmapActionCorner = useCallback((result: AIResult, onToggle: () => void, isActive: boolean) => {
+  const setupHeatmapActionCorner = useCallback((result: AIResult, onToggle: () => void, isActive: boolean, hasHeatmap: boolean = true) => {
     // Only setup action corners on primary viewports
     if (isHeatmapViewport) {
       console.log(`[useAIOverlay] Skipping action corner setup for heatmap viewport ${viewportId}`);
       return;
     }
 
+    // Determine if button should be disabled
+    const isDisabled = !hasHeatmap;
+
     // Create a row with the heat-map icon button and a small label
     const toggleComponent = React.createElement('div', {
-      className: 'flex items-center gap-1 cursor-pointer',
-      onClick: onToggle,
+      className: `flex items-center gap-1 ${isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`,
+      onClick: isDisabled ? undefined : onToggle,
+      title: isDisabled ? 'No heatmap available for this AI result' : (isActive ? 'Hide heatmap' : 'Show heatmap'),
       style: { fontSize: '12px' }
     }, [
       React.createElement(HeatmapToggle, {
         key: 'btn',
-        onToggle,
-        isActive,
+        onToggle: isDisabled ? () => {} : onToggle,
+        isActive: isActive && !isDisabled,
         className: 'shadow-none w-6 h-6',
+        disabled: isDisabled,
       }),
-      React.createElement('span', { key: 'lbl', className: 'text-white select-none' }, isActive ? '🔥 Heatmap ON' : '🔥 Heatmap Available')
+      React.createElement('span', {
+        key: 'lbl',
+        className: `select-none ${isDisabled ? 'text-gray-500' : 'text-white'}`
+      }, isDisabled ? '🔥 No Heatmap' : (isActive ? '🔥 Heatmap ON' : '🔥 Heatmap Available'))
     ]);
 
     viewportActionCornersService.addComponent({
@@ -138,7 +146,7 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
       indexPriority: -100, // High priority
     });
 
-    console.log(`[useAIOverlay] Setup heatmap action corner for primary viewport ${viewportId}`);
+    console.log(`[useAIOverlay] Setup heatmap action corner for primary viewport ${viewportId} (disabled: ${isDisabled})`);
   }, [viewportId, isHeatmapViewport, viewportActionCornersService]);
 
   const clearActionCorners = useCallback(() => {

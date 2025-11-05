@@ -9,6 +9,7 @@ export interface Classification {
 
 export interface AIResult {
   studyInstanceUID: string;
+  displaySetInstanceUID?: string; // SR display set UID that this result was extracted from
   hasHeatmap: boolean;
   classifications: Classification[];
   /**
