@@ -150,47 +150,98 @@ def get_preprocessing():
 # --- Flask Route ---
 
 @app.route("/analyze/mri", methods=["POST"])
-
 def analyze_mri():
     series_uid = str(request.json.get("seriesInstanceUID", ""))
     if not series_uid:
+        logger.error("No seriesInstanceUID provided in request")
         return jsonify({"error": "No seriesInstanceUID provided"}), 400
 
     try:
+        logger.info(f"Starting MRI analysis for series: {series_uid}")
+
+        # Step 1: Find series in Orthanc
+        logger.info("Step 1: Looking up series in Orthanc...")
         series_id = get_series_id_by_uid(series_uid)
         if not series_id:
+            logger.error(f"SeriesInstanceUID not found in Orthanc: {series_uid}")
             return jsonify({"error": "SeriesInstanceUID not found in Orthanc"}), 404
+        logger.info(f"Found series ID: {series_id}")
 
+        # Step 2: Download DICOM files
+        logger.info("Step 2: Downloading DICOM files...")
         dicom_folder = download_series_dicom(series_id, series_uid)
         if not dicom_folder:
+            logger.error("No instances found for the given SeriesInstanceUID")
             return jsonify({"error": "No instances found for the given SeriesInstanceUID"}), 404
+        logger.info(f"DICOM files downloaded to: {dicom_folder}")
 
-        nifties = dicom_to_unilateral_nifti(Path(dicom_folder), Path(f"{dicom_folder}/nifti/Dynamic_T1"))
+        # Step 3: Convert DICOM to NIfTI
+        logger.info("Step 3: Converting DICOM to NIfTI...")
+        try:
+            nifties = dicom_to_unilateral_nifti(Path(dicom_folder), Path(f"{dicom_folder}/nifti/Dynamic_T1"))
+            logger.info(f"Successfully converted to NIfTI. Available images: {list(nifties.keys())}")
+        except Exception as e:
+            logger.error(f"Failed to convert DICOM to NIfTI: {str(e)}", exc_info=True)
+            return jsonify({"error": f"DICOM to NIfTI conversion failed: {str(e)}"}), 500
+
+        # Step 4: Prepare preprocessing
+        logger.info("Step 4: Preparing preprocessing transforms...")
         transform = get_preprocessing()
-        results = {}
 
+        # Step 5: Process each side
+        results = {}
         for side in ["left", "right"]:
+            logger.info(f"Step 5.{side}: Processing {side} breast...")
             try:
-                pre = nifties[f"Pre_{side}"]
-                post = nifties[f"Post_1_{side}"]
+                # Check if required images exist
+                pre_key = f"Pre_{side}"
+                post_key = f"Post_1_{side}"
+
+                if pre_key not in nifties:
+                    logger.error(f"Missing {pre_key} in converted NIfTI images")
+                    results[side] = {"error": f"Missing Pre contrast image for {side} side"}
+                    continue
+
+                if post_key not in nifties:
+                    logger.error(f"Missing {post_key} in converted NIfTI images")
+                    results[side] = {"error": f"Missing Post contrast image for {side} side"}
+                    continue
+
+                pre = nifties[pre_key]
+                post = nifties[post_key]
+                logger.info(f"  {side}: Pre shape={pre.data.shape}, Post shape={post.data.shape}")
+
+                # Concatenate and preprocess
                 model_input = torch.cat((pre.data, post.data), dim=0)
+                logger.info(f"  {side}: Combined input shape={model_input.shape}")
+
                 model_input = transform(model_input)[None].to(DEVICE)
+                logger.info(f"  {side}: After preprocessing shape={model_input.shape}")
+
+                # Run inference
                 with torch.inference_mode():
                     prob = torch.sigmoid(mri_model(model_input)).item()
 
-
-
+                logger.info(f"  {side}: Model output probability={prob:.4f}")
                 results[side] = {
                     "prediction": "Cancerous" if prob > 0.5 else "Not Cancerous",
                     "confidence": round(prob if prob > 0.5 else 1 - prob, 4)*100,
                 }
-            except KeyError as e:
-                results[side] = {"error": f"Missing data for {side} side: {e}"}
+                logger.info(f"  {side}: Result={results[side]}")
 
+            except KeyError as e:
+                logger.error(f"Missing data for {side} side: {e}", exc_info=True)
+                results[side] = {"error": f"Missing data for {side} side: {e}"}
+            except Exception as e:
+                logger.error(f"Error processing {side} side: {e}", exc_info=True)
+                results[side] = {"error": f"Processing error for {side} side: {str(e)}"}
+
+        logger.info(f"Analysis complete. Final results: {results}")
         return jsonify(results)
 
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Unexpected error during MRI analysis: {str(e)}", exc_info=True)
+        return jsonify({"error": f"Analysis failed: {str(e)}"}), 500
 
 # --- Main ---
 
