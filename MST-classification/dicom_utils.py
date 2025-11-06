@@ -1,11 +1,8 @@
 """
-DICOM to NIfTI conversion utilities
+DICOM to NIfTI conversion utilities using SimpleITK
 """
-import numpy as np
-import pydicom
-import nibabel as nib
+import SimpleITK as sitk
 from pathlib import Path
-from typing import List
 import logging
 
 logger = logging.getLogger(__name__)
@@ -13,7 +10,8 @@ logger = logging.getLogger(__name__)
 
 def dicom_to_nifti(dicom_folder: str) -> str:
     """
-    Convert DICOM series to NIfTI format.
+    Convert DICOM series to NIfTI format using SimpleITK.
+    SimpleITK is robust and handles various DICOM metadata edge cases.
 
     Args:
         dicom_folder: Path to folder containing DICOM files
@@ -21,33 +19,34 @@ def dicom_to_nifti(dicom_folder: str) -> str:
     Returns:
         Path to created NIfTI file
     """
-    dicom_files = sorted(Path(dicom_folder).glob("*.dcm"))
+    dicom_path = Path(dicom_folder)
 
+    # Verify DICOM files exist
+    dicom_files = list(dicom_path.glob("*.dcm"))
     if not dicom_files:
         raise ValueError(f"No DICOM files found in {dicom_folder}")
 
-    # Load and sort slices
-    slices = [pydicom.dcmread(f) for f in dicom_files]
-    slices.sort(key=lambda x: int(x.InstanceNumber) if hasattr(x, 'InstanceNumber') else 0)
+    logger.info(f"Converting {len(dicom_files)} DICOM files to NIfTI using SimpleITK")
 
-    # Stack into volume
-    volume = np.stack([s.pixel_array for s in slices], axis=-1)
+    # Read DICOM series using SimpleITK
+    reader = sitk.ImageSeriesReader()
+    dicom_names = reader.GetGDCMSeriesFileNames(str(dicom_path))
 
-    # Get spatial information from first slice
-    ds = slices[0]
-    pixel_spacing = getattr(ds, 'PixelSpacing', [1.0, 1.0])
-    slice_thickness = getattr(ds, 'SliceThickness', 1.0)
+    if not dicom_names:
+        raise ValueError(f"No valid DICOM series found in {dicom_folder}")
 
-    # Create affine transformation matrix
-    affine = np.eye(4)
-    affine[0, 0] = float(pixel_spacing[0])
-    affine[1, 1] = float(pixel_spacing[1])
-    affine[2, 2] = float(slice_thickness)
+    reader.SetFileNames(dicom_names)
+    reader.MetaDataDictionaryArrayUpdateOn()
+    reader.LoadPrivateTagsOn()
 
-    # Save NIfTI
-    nifti_img = nib.Nifti1Image(volume, affine)
-    nifti_path = Path(dicom_folder) / "mri_series.nii.gz"
-    nib.save(nifti_img, nifti_path)
+    # Read the image
+    image = reader.Execute()
 
-    logger.info(f"NIfTI created: {nifti_path}, shape: {volume.shape}")
+    logger.info(f"Read DICOM series: {len(dicom_names)} slices, size: {image.GetSize()}, spacing: {image.GetSpacing()}")
+
+    # Write to NIfTI format (preserves orientation and spacing)
+    nifti_path = dicom_path / "mri_series.nii.gz"
+    sitk.WriteImage(image, str(nifti_path))
+
+    logger.info(f"NIfTI created: {nifti_path}")
     return str(nifti_path)

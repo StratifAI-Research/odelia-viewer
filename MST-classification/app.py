@@ -12,6 +12,7 @@ import shutil
 import tempfile
 import numpy as np
 import torch
+import base64
 
 from model_loader import download_model_files, load_model
 from dicom_utils import dicom_to_nifti
@@ -287,25 +288,35 @@ def analyze_mri():
         img_tensor = minmax_norm(img_tensor)
         weight_tensor = minmax_norm(weight_tensor)
 
-        # Generate RGB overlay images (returns [B, 3, H, W] tensor with RGB overlays)
+        # Generate RGB overlay images
         overlay = tensor_cam2image(img_tensor, weight_tensor, batch=0, alpha=0.5)
 
-        logger.info(f"Generated {overlay.shape[0]} RGB overlay images")
+        logger.info(f"Generated {overlay.shape[0]} RGB overlay images with shape {overlay.shape}")
 
         # Convert overlay to numpy and prepare ALL slices for transmission
-        # Convert entire tensor at once: [num_slices, 3, W, H] -> [num_slices, W, H, 3]
+        # overlay is [num_slices, 3, H, W] from tensor_cam2image
+        # Transpose to [num_slices, rows, cols, 3] for DICOM pixel data
+        # H should map to rows (vertical), W should map to cols (horizontal)
         overlay_np = overlay.cpu().numpy()
-        overlay_np = np.transpose(overlay_np, (0, 2, 3, 1))  # [num_slices, W, H, 3]
+        overlay_np = np.transpose(overlay_np, (0, 2, 3, 1))  # [D, 3, H, W] -> [D, H, W, 3]
 
-        attention_maps = [
-            {
-                "slice_index": i,
-                "data": overlay_np[i].tolist()  # [W, H, 3]
-            }
-            for i in range(overlay_np.shape[0])
-        ]
+        # Reverse slice order to match DICOM orientation
+        overlay_np = overlay_np[::-1]
 
-        logger.info(f"Prepared {len(attention_maps)} RGB overlay slices for transmission")
+        logger.info(f"Transposed overlay shape: {overlay_np.shape} [slices, rows(H), cols(W), RGB]")
+
+        # Convert to uint8 and encode as base64 for efficient transmission
+        overlay_uint8 = (overlay_np * 255).astype(np.uint8)
+        overlay_bytes = overlay_uint8.tobytes()
+        overlay_b64 = base64.b64encode(overlay_bytes).decode('ascii')
+
+        attention_maps = {
+            "data": overlay_b64,
+            "shape": overlay_uint8.shape,  # [num_slices, rows, cols, 3]
+            "dtype": "uint8"
+        }
+
+        logger.info(f"Prepared {overlay_uint8.shape[0]} RGB overlay slices (base64 encoded)")
 
         # Return bilateral format matching the expected viewer format
         response = {
@@ -318,7 +329,7 @@ def analyze_mri():
         logger.info(f"Analysis complete - Bilateral Classification:")
         logger.info(f"  Left: {left_classification['prediction']} ({left_classification['confidence']:.1f}%)")
         logger.info(f"  Right: {right_classification['prediction']} ({right_classification['confidence']:.1f}%)")
-        logger.info(f"  Returning {len(attention_maps)} RGB overlay slices (MRI + attention heatmap)")
+        logger.info(f"  Returning {attention_maps['shape'][0]} RGB overlay slices (MRI + attention heatmap)")
 
         return jsonify(response)
 

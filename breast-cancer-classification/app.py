@@ -68,8 +68,8 @@ class RandomCropOrPad(tio.CropOrPad):
 
 def load_model():
     model = nets.ResNet("basic", [2, 2, 2, 2], [64, 128, 256, 512], n_input_channels=2, num_classes=1)
-    checkpoint = torch.load(MRI_MODEL_PATH, map_location=torch.device(DEVICE))
-    model.load_state_dict(checkpoint)
+    #checkpoint = torch.load(MRI_MODEL_PATH, map_location=torch.device(DEVICE))
+    #model.load_state_dict(checkpoint)
     model.to(DEVICE)
     model.eval()
     return model

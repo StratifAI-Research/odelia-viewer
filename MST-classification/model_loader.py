@@ -123,7 +123,7 @@ def load_model():
         logger.info("✓ MST model loaded successfully")
 
         model_info = {
-            "model_name": "MST (DINOv2-based)",
+            "model_name": "ODELIA-AI",
             "architecture": "Vision Transformer",
             "version": "1.0"
         }
