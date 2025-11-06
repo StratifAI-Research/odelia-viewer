@@ -92,20 +92,20 @@ export function createStudyAIBrowserTabsNested(
     const originals: any[] = [];
     const aiGroupsMap = new Map<string, any>();
 
+    // First pass: Group AI results by datetime key
     studyDisplaySets.forEach(thumbDS => {
       if (isAIResult(thumbDS)) {
         const realDS = getRealDisplaySet(thumbDS);
-        const aiInfo = extractAIResultData(realDS);
-        const modelName = aiInfo?.modelInfo?.name || 'AI';
         const date = realDS?.instance?.InstanceCreationDate;
         const time = realDS?.instance?.InstanceCreationTime;
         const tz = realDS?.instance?.TimezoneOffsetFromUTC || realDS?.instance?.TimezoneOffset || null;
         const dateTime = formatDateTime(date, time, tz);
-        const key = dateTime || `UNKNOWN_${modelName}`;
+        const key = dateTime || `UNKNOWN_${realDS.displaySetInstanceUID}`;
+
         if (!aiGroupsMap.has(key)) {
           aiGroupsMap.set(key, {
             key,
-            label: dateTime ? `🤖 AI – ${dateTime}` : `🤖 AI – Unknown`,
+            dateTime,
             displaySets: [],
             sortKey: dateTime || '00000000',
           });
@@ -114,6 +114,26 @@ export function createStudyAIBrowserTabsNested(
       } else {
         originals.push(thumbDS);
       }
+    });
+
+    // Second pass: Extract model name from any display set in the group
+    aiGroupsMap.forEach((group, key) => {
+      let modelName = 'AI Model';
+
+      // Search through all display sets (SR + SC) to find model name
+      for (const thumbDS of group.displaySets) {
+        const realDS = getRealDisplaySet(thumbDS);
+        const aiInfo = extractAIResultData(realDS);
+
+        if (aiInfo?.modelInfo?.name) {
+          // Found valid model name - use it and stop searching
+          modelName = aiInfo.modelInfo.name;
+          break;
+        }
+      }
+
+      // Set the final label
+      group.label = `${modelName}\n${group.dateTime || 'Unknown Date'}`;
     });
 
     const aiGroups = Array.from(aiGroupsMap.values()).sort((a,b)=>a.sortKey.localeCompare(b.sortKey));

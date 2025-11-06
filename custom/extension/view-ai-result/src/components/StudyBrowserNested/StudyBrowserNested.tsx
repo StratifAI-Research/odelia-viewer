@@ -304,9 +304,9 @@ export const StudyBrowserNested: React.FC<Props> = ({
                     return (
                       <Accordion type="single" collapsible key={group.key}>
                         <AccordionItem value="group">
-                          <AccordionTrigger className="first:border-0 border-t border-secondary-light hover:bg-secondary-main bg-black data-[state=open]:bg-secondary-dark cursor-pointer select-none outline-none flex items-center gap-[6px] px-4 py-2 text-[13px]">
-                            <span className="mr-1 text-white">🤖</span>
-                            <span className="truncate flex-1 text-white">{group.label}</span>
+                          <AccordionTrigger className="first:border-0 border-t border-secondary-light hover:bg-secondary-main bg-black data-[state=open]:bg-secondary-dark cursor-pointer select-none outline-none flex items-start gap-[6px] px-4 py-2 text-[13px] min-h-[40px]">
+                            <span className="mr-1 text-white mt-0.5">🤖</span>
+                            <span className="flex-1 text-white whitespace-pre-line break-words text-left leading-snug">{group.label}</span>
 
                             {/* Delete button */}
                             <button

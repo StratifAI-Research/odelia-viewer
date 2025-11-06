@@ -6,7 +6,13 @@ import { Classification } from '../types';
  * @returns {object} - Object containing classification results and model info
  */
 export function extractAIResultData(displaySet) {
-  if (!displaySet || displaySet.Modality !== 'SR' || !displaySet.instance?.ContentSequence) {
+  // Process both SR and SC modalities for AI model info extraction
+  if (!displaySet || !displaySet.instance?.ContentSequence) {
+    return null;
+  }
+  
+  const modality = displaySet.Modality;
+  if (modality !== 'SR' && modality !== 'SC') {
     return null;
   }
 
