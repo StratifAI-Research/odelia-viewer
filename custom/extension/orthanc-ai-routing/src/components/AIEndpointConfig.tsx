@@ -40,25 +40,31 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
 
-  // Load endpoints from localStorage on component mount
+  // Load endpoints from localStorage or config on component mount
   useEffect(() => {
-    const savedEndpoints = localStorage.getItem('aiEndpoints');
     let loadedEndpoints: AIEndpoint[] = [];
 
+    // First, check if user has saved endpoints (priority)
+    const savedEndpoints = localStorage.getItem('aiEndpoints');
     if (savedEndpoints) {
       try {
         loadedEndpoints = JSON.parse(savedEndpoints);
-        if (loadedEndpoints.length === 0) {
-          loadedEndpoints = [DEFAULT_ENDPOINT];
-          localStorage.setItem('aiEndpoints', JSON.stringify(loadedEndpoints));
-        }
       } catch (error) {
         console.error('Failed to parse saved AI endpoints:', error);
-        loadedEndpoints = [DEFAULT_ENDPOINT];
-        localStorage.setItem('aiEndpoints', JSON.stringify(loadedEndpoints));
+        loadedEndpoints = [];
       }
-    } else {
-      loadedEndpoints = [DEFAULT_ENDPOINT];
+    }
+
+    // If no localStorage data, load from config
+    if (loadedEndpoints.length === 0) {
+      const configEndpoints: AIEndpoint[] = (window as any).config?.aiEndpoints || [];
+      if (configEndpoints.length > 0) {
+        loadedEndpoints = configEndpoints;
+      } else {
+        // If no config either, use default
+        loadedEndpoints = [DEFAULT_ENDPOINT];
+      }
+      // Save to localStorage for future
       localStorage.setItem('aiEndpoints', JSON.stringify(loadedEndpoints));
     }
 
