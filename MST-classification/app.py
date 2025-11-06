@@ -293,21 +293,17 @@ def analyze_mri():
         logger.info(f"Generated {overlay.shape[0]} RGB overlay images")
 
         # Convert overlay to numpy and prepare ALL slices for transmission
-        overlay_np = overlay.cpu().numpy()  # [num_slices, 3, H, W]
-        num_slices = overlay_np.shape[0]
+        # Convert entire tensor at once: [num_slices, 3, W, H] -> [num_slices, W, H, 3]
+        overlay_np = overlay.cpu().numpy()
+        overlay_np = np.transpose(overlay_np, (0, 2, 3, 1))  # [num_slices, W, H, 3]
 
-        attention_maps = []
-        for slice_idx in range(num_slices):
-            # Get RGB overlay for this slice: [3, H, W]
-            overlay_slice = overlay_np[slice_idx]  # [3, H, W]
-
-            # Convert to [H, W, 3] for standard image format
-            overlay_slice = np.transpose(overlay_slice, (1, 2, 0))  # [H, W, 3]
-
-            attention_maps.append({
-                "slice_index": slice_idx,
-                "data": overlay_slice.tolist()  # RGB overlay [H, W, 3]
-            })
+        attention_maps = [
+            {
+                "slice_index": i,
+                "data": overlay_np[i].tolist()  # [W, H, 3]
+            }
+            for i in range(overlay_np.shape[0])
+        ]
 
         logger.info(f"Prepared {len(attention_maps)} RGB overlay slices for transmission")
 
