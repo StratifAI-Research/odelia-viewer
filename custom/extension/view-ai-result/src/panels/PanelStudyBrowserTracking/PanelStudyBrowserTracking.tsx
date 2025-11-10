@@ -14,6 +14,7 @@ import { createAIBrowserTabs } from '../../utils/createAIBrowserTabs';
 import { createStudyAIBrowserTabsNested } from '../../utils/createStudyAIBrowserTabsNested';
 import { extractAIResultData } from '../../utils/extractAIResultData';
 import { applyAIThumbnailStyles, setupAIThumbnailObserver } from '../../utils/applyAIThumbnailStyles';
+import { useStudyChangeDetector } from '../../hooks/useStudyChangeDetector';
 
 import '../../components/AIThumbnail.css';
 import { getStaticDate } from '../../utils/dateCache';
@@ -131,14 +132,63 @@ export default function PanelStudyBrowserTracking({
     selectedSRUIDRef.current = selectedSRUID;
   }, [selectedSRUID]);
 
-  // Subscribe once to global AI result selection events
+  // Cache for thumbnail props to prevent constant recalculation of static data like dates
+  const [thumbnailPropsCache] = useState(new Map());
+
+  // Detect study changes and notify AIResultsService
+  useStudyChangeDetector({
+    servicesManager,
+    viewportGridService,
+    displaySetService,
+    activeViewportId,
+    viewports,
+    StudyInstanceUIDs,
+  });
+
+  // Subscribe once to global AI result selection and cleared events
   useEffect(() => {
     if (!aiResultsService) {
       return;
     }
 
-    const handler = (evt: { studyInstanceUID: string; displaySetInstanceUID: string }) => {
+    const selectionHandler = (evt: { studyInstanceUID: string; displaySetInstanceUID: string }) => {
+      console.log('[PanelStudyBrowser] AI result selected:', evt.displaySetInstanceUID);
       setSelectedSRUID(evt.displaySetInstanceUID);
+    };
+
+    const clearedHandler = (evt: { studyInstanceUID: string; displaySetUIDs?: string[]; reason?: string }) => {
+      console.log('[PanelStudyBrowser] AI result cleared:', evt);
+
+      // If the currently selected AI result was deleted, clear selection
+      if (evt.displaySetUIDs && selectedSRUIDRef.current && evt.displaySetUIDs.includes(selectedSRUIDRef.current)) {
+        console.log('[PanelStudyBrowser] Selected AI result was deleted, clearing selection');
+        setSelectedSRUID(null);
+      } else if (evt.reason === 'no_results' || evt.reason === 'cache_cleared') {
+        // If all results were cleared, clear selection
+        console.log('[PanelStudyBrowser] All AI results cleared, clearing selection');
+        setSelectedSRUID(null);
+      }
+
+      // Force remapping of display sets to refresh thumbnails
+      // This will update the UI to reflect the deletion
+      const currentDisplaySets = displaySetService.activeDisplaySets;
+      if (currentDisplaySets.length > 0) {
+        const mappedDisplaySets = _mapDisplaySets(
+          currentDisplaySets,
+          displaySetsLoadingState,
+          thumbnailImageSrcMap,
+          [],
+          selectedSRUIDRef.current,
+          viewports,
+          viewportGridService,
+          dataSource,
+          displaySetService,
+          uiDialogService,
+          uiNotificationService,
+          thumbnailPropsCache
+        );
+        setDisplaySets(mappedDisplaySets);
+      }
     };
 
     // Initial selection (if any)
@@ -159,16 +209,34 @@ export default function PanelStudyBrowserTracking({
       }
     }
 
-    const { unsubscribe } = aiResultsService.subscribe(
+    const selectedSubscription = aiResultsService.subscribe(
       aiResultsService.EVENTS.AI_RESULT_SELECTED,
-      handler
+      selectionHandler
     );
 
-    return () => unsubscribe();
-  }, [aiResultsService, StudyInstanceUIDs, servicesManager]);
+    const clearedSubscription = aiResultsService.subscribe(
+      aiResultsService.EVENTS.AI_RESULT_CLEARED,
+      clearedHandler
+    );
 
-  // Cache for thumbnail props to prevent constant recalculation of static data like dates
-  const [thumbnailPropsCache] = useState(new Map());
+    return () => {
+      selectedSubscription.unsubscribe();
+      clearedSubscription.unsubscribe();
+    };
+  }, [
+    aiResultsService,
+    StudyInstanceUIDs,
+    servicesManager,
+    displaySetService,
+    displaySetsLoadingState,
+    thumbnailImageSrcMap,
+    viewports,
+    viewportGridService,
+    dataSource,
+    uiDialogService,
+    uiNotificationService,
+    thumbnailPropsCache
+  ]);
 
   const [viewPresets, setViewPresets] = useState(
     customizationService.getCustomization('studyBrowser.viewPresets')

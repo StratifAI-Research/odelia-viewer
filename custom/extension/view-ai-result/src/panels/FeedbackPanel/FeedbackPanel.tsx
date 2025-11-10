@@ -583,13 +583,18 @@ const FeedbackPanel: React.FC = () => {
                   checked={isChecked}
                   onChange={() => setFeedbackValue(side, opt)}
                   disabled={locked}
-                  style={locked && isChecked ? {
-                    accentColor: '#3b82f6',
-                    cursor: 'not-allowed'
-                  } : locked ? {
-                    accentColor: '#4b5563',
-                    cursor: 'not-allowed'
-                  } : {}}
+                  style={{
+                    accentColor: locked && isChecked ? '#60a5fa' : undefined,
+                    WebkitAppearance: locked && isChecked ? 'none' : undefined,
+                    appearance: locked && isChecked ? 'none' : undefined,
+                    width: locked && isChecked ? '14px' : undefined,
+                    height: locked && isChecked ? '14px' : undefined,
+                    borderRadius: locked && isChecked ? '50%' : undefined,
+                    border: locked && isChecked ? '2px solid #60a5fa' : undefined,
+                    backgroundColor: locked && isChecked ? '#60a5fa' : undefined,
+                    position: 'relative' as const,
+                    cursor: locked ? 'not-allowed' : 'pointer',
+                  }}
                 />
                 <span className={`text-sm font-medium ${
                   locked && isChecked ? 'text-blue-400' :

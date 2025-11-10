@@ -6,6 +6,8 @@ interface AIResultSubscriptionConfig {
   isHeatmapViewport: boolean;
   servicesManager: any;
   onAIResultSelected: (aiResult: AIResult, clickedDisplaySetUID: string) => void;
+  onAIResultCleared?: (eventData: any) => void;
+  onStudyChanged?: (eventData: any) => void;
   onHeatmapToggle?: () => void;
   showHeatmap?: boolean;
 }
@@ -16,6 +18,8 @@ export const useAIResultSubscription = (config: AIResultSubscriptionConfig): voi
     isHeatmapViewport,
     servicesManager,
     onAIResultSelected,
+    onAIResultCleared,
+    onStudyChanged,
     onHeatmapToggle,
     showHeatmap = false
   } = config;
@@ -31,28 +35,51 @@ export const useAIResultSubscription = (config: AIResultSubscriptionConfig): voi
     }
   }, [viewportId, isHeatmapViewport, onAIResultSelected]);
 
+  const handleAIResultCleared = useCallback((eventData: any) => {
+    console.log(`[useAIResultSubscription] AI result cleared for ${viewportId}:`, eventData);
+
+    if (!isHeatmapViewport && onAIResultCleared) {
+      onAIResultCleared(eventData);
+    }
+  }, [viewportId, isHeatmapViewport, onAIResultCleared]);
+
+  const handleStudyChanged = useCallback((eventData: any) => {
+    console.log(`[useAIResultSubscription] Study changed for ${viewportId}:`, eventData);
+
+    if (!isHeatmapViewport && onStudyChanged) {
+      onStudyChanged(eventData);
+    }
+  }, [viewportId, isHeatmapViewport, onStudyChanged]);
+
   useEffect(() => {
     if (!aiResultsService || isHeatmapViewport) {
       console.log(`[useAIResultSubscription] Skipping subscription for ${viewportId}: ${!aiResultsService ? 'no service' : 'heatmap viewport'}`);
       return;
     }
 
-    console.log(`[useAIResultSubscription] Setting up subscription for ${viewportId}`);
+    console.log(`[useAIResultSubscription] Setting up subscriptions for ${viewportId}`);
 
-    const subscription = aiResultsService.subscribe(
+    const selectedSubscription = aiResultsService.subscribe(
       aiResultsService.EVENTS.AI_RESULT_SELECTED,
       handleAIResultSelected
     );
 
+    const clearedSubscription = aiResultsService.subscribe(
+      aiResultsService.EVENTS.AI_RESULT_CLEARED,
+      handleAIResultCleared
+    );
+
     // Cleanup function
     return () => {
-      console.log(`[useAIResultSubscription] Cleaning up subscription for ${viewportId}`);
-      subscription.unsubscribe();
+      console.log(`[useAIResultSubscription] Cleaning up subscriptions for ${viewportId}`);
+      selectedSubscription.unsubscribe();
+      clearedSubscription.unsubscribe();
     };
   }, [
     aiResultsService,
     viewportId,
     isHeatmapViewport,
-    handleAIResultSelected
+    handleAIResultSelected,
+    handleAIResultCleared
   ]);
 };

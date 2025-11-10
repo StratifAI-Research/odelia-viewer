@@ -11,12 +11,14 @@ export class AIResultsService {
   private uiNotificationService: any;
   private selectionChangeListeners: Map<string, Array<() => void>> = new Map(); // studyUID -> callbacks
   private eventListeners: Map<string, Array<(data: any) => void>> = new Map(); // event -> callbacks
+  private currentStudyUID: string | null = null; // Track current active study
 
   // Event constants
   static EVENTS = {
     AI_RESULT_SELECTED: 'AI_RESULT_SELECTED',
     AI_RESULT_UPDATED: 'AI_RESULT_UPDATED',
     AI_RESULT_CLEARED: 'AI_RESULT_CLEARED',
+    STUDY_CHANGED: 'STUDY_CHANGED',
   };
 
   // Instance method to access events
@@ -60,6 +62,16 @@ export class AIResultsService {
       }))
     });
     this.cache.set(studyInstanceUID, results);
+
+    // If no results found, publish cleared event
+    if (results.length === 0) {
+      console.log(`[AIResultsService] No AI results found for study ${studyInstanceUID}, publishing cleared event`);
+      this.publish(AIResultsService.EVENTS.AI_RESULT_CLEARED, {
+        studyInstanceUID,
+        reason: 'no_results'
+      });
+    }
+
     return results;
   }
 
@@ -317,6 +329,12 @@ export class AIResultsService {
     if (this.selectedAIResults.has(studyInstanceUID)) {
       this.selectedAIResults.delete(studyInstanceUID);
     }
+
+    // Publish cleared event
+    this.publish(AIResultsService.EVENTS.AI_RESULT_CLEARED, {
+      studyInstanceUID,
+      reason: 'cache_cleared'
+    });
   }
 
   /**
@@ -627,6 +645,49 @@ export class AIResultsService {
 
     console.log(`[AIResultsService] Returning primary result:`, primaryResult);
     return primaryResult;
+  }
+
+  /**
+   * Notify about study change - call this when active study changes
+   */
+  notifyStudyChange(studyInstanceUID: string, servicesManager: any): void {
+    const previousStudyUID = this.currentStudyUID;
+
+    // Only publish if study actually changed
+    if (previousStudyUID === studyInstanceUID) {
+      return;
+    }
+
+    console.log(`[AIResultsService] Study changed from ${previousStudyUID} to ${studyInstanceUID}`);
+    this.currentStudyUID = studyInstanceUID;
+
+    // Get AI results for the new study
+    const aiResults = this.getAllAIResults(studyInstanceUID, servicesManager);
+    const hasAIResults = aiResults.length > 0;
+
+    // Publish study changed event
+    this.publish(AIResultsService.EVENTS.STUDY_CHANGED, {
+      previousStudyUID,
+      currentStudyUID: studyInstanceUID,
+      hasAIResults,
+      aiResults,
+    });
+
+    // If new study has AI results, auto-select the first one
+    if (hasAIResults && !this.selectedAIResults.has(studyInstanceUID)) {
+      const firstResult = aiResults[0];
+      if (firstResult.displaySetInstanceUID) {
+        console.log(`[AIResultsService] Auto-selecting first AI result for new study`);
+        this.setSelectedAIResult(studyInstanceUID, firstResult.displaySetInstanceUID, servicesManager);
+      }
+    }
+  }
+
+  /**
+   * Get current active study UID
+   */
+  getCurrentStudyUID(): string | null {
+    return this.currentStudyUID;
   }
 
   /**
