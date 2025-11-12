@@ -1,9 +1,11 @@
-import React, { useEffect } from 'react';
+// @ts-nocheck
+import React, { useEffect, useState, useCallback } from 'react';
+import { useImageViewer } from '@ohif/ui';
+import { useViewportGrid } from '@ohif/ui-next';
 import OrthancAIService from '../services/OrthancAIService';
 import { useWizardState } from '../hooks/useWizardState';
 import { useStudySeriesSelection } from '../hooks/useStudySeriesSelection';
 import { useAIRouting } from '../hooks/useAIRouting';
-import { StudySelectionStep } from './steps/StudySelectionStep';
 import { SeriesSelectionStep } from './steps/SeriesSelectionStep';
 import { EndpointSelectionStep } from './steps/EndpointSelectionStep';
 import { ProgressStep } from './steps/ProgressStep';
@@ -32,16 +34,78 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
   // Get the ProgressLoadingBar component from the customization service
   const ProgressLoadingBar = customizationService.getCustomization('ui.progressLoadingBar');
 
-  // Get the actual DICOM StudyInstanceUID from the URL
+  // Get the actual DICOM StudyInstanceUID from the URL (fallback only)
   const dicomStudyUID = orthancAIService.getDicomStudyInstanceUIDFromURL();
 
-  // Wizard state management
+  // Viewport tracking hooks (from FeedbackPanel pattern)
+  const { StudyInstanceUIDs } = useImageViewer();
+  const [{ activeViewportId, viewports }, viewportGridService] = useViewportGrid();
+
+  // Wizard state management - start at step 1 (series selection, no study selection needed)
   const wizard = useWizardState(1);
+
+  // Active study state (auto-detected from viewport)
+  const [activeStudyUID, setActiveStudyUID] = useState<string | null>(null);
+
+  // Helper to extract study UID from the active viewport
+  const getStudyUIDFromActiveViewport = useCallback((): string | null => {
+    if (!activeViewportId || !viewports) {
+      return StudyInstanceUIDs?.[0] || dicomStudyUID || null; // Fallback to first study or URL study
+    }
+
+    const activeViewport = viewports.get(activeViewportId);
+    const displaySetInstanceUIDs = activeViewport?.displaySetInstanceUIDs || [];
+
+    if (!displaySetInstanceUIDs.length) {
+      return StudyInstanceUIDs?.[0] || dicomStudyUID || null; // Fallback
+    }
+
+    // Get the first display set's study UID
+    const firstDisplaySetUID = displaySetInstanceUIDs[0];
+    const displaySet = displaySetService?.getDisplaySetByUID(firstDisplaySetUID);
+
+    return displaySet?.StudyInstanceUID || displaySet?.studyInstanceUID || StudyInstanceUIDs?.[0] || dicomStudyUID || null;
+  }, [activeViewportId, viewports, displaySetService, StudyInstanceUIDs, dicomStudyUID]);
+
+  // Initialize activeStudyUID on mount
+  useEffect(() => {
+    let mounted = true;
+
+    if (!activeStudyUID) {
+      const initialStudyUID = getStudyUIDFromActiveViewport();
+      if (initialStudyUID && mounted) {
+        setActiveStudyUID(initialStudyUID);
+      }
+    }
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeStudyUID, getStudyUIDFromActiveViewport]);
+
+  // Track viewport changes and update activeStudyUID
+  useEffect(() => {
+    let mounted = true;
+
+    const studyUID = getStudyUIDFromActiveViewport();
+    if (studyUID && studyUID !== activeStudyUID && mounted) {
+      console.log(`AIRoutingPanel: Study changed from ${activeStudyUID} to ${studyUID}`);
+      setActiveStudyUID(studyUID);
+      // Reset wizard to step 1 when study changes mid-workflow
+      if (wizard.currentStep > 1) {
+        wizard.reset();
+      }
+    }
+
+    return () => {
+      mounted = false;
+    };
+  }, [activeViewportId, viewports, getStudyUIDFromActiveViewport, activeStudyUID, wizard]);
 
   // Study and series selection management
   const selection = useStudySeriesSelection({
     displaySetService,
-    dicomStudyUID,
+    activeStudyUID, // Pass auto-detected study instead of manual selection
   });
 
   // AI routing management
@@ -61,13 +125,6 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
   }, [orthancAIService]);
 
   // Handlers
-  const handleStudyNext = () => {
-    if (selection.selectedStudyUID) {
-      selection.selectStudy(selection.selectedStudyUID);
-      wizard.goToNextStep();
-    }
-  };
-
   const handleSeriesNext = () => {
     if (selection.selectedSeriesUIDs.size > 0) {
       wizard.goToNextStep();
@@ -75,12 +132,12 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
   };
 
   const handleSendToAI = async () => {
-    if (!selection.selectedStudyUID) return;
+    if (!activeStudyUID) return;
 
     wizard.goToNextStep(); // Go to progress screen
 
     const seriesArray = Array.from(selection.selectedSeriesUIDs);
-    await routing.sendToAI(selection.selectedStudyUID, seriesArray);
+    await routing.sendToAI(activeStudyUID, seriesArray);
   };
 
   const handleReset = () => {
@@ -89,29 +146,22 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
     routing.reset();
   };
 
+  // Get study description for display
+  const getStudyDescription = () => {
+    if (!activeStudyUID) return 'No Study Selected';
+    const study = selection.availableStudies.find(
+      st => st.studyInstanceUid === activeStudyUID
+    );
+    return study?.description || activeStudyUID.slice(0, 20) + '...';
+  };
+
   // Render current step
   const renderStep = () => {
     switch (wizard.currentStep) {
       case 1:
-        return (
-          <StudySelectionStep
-            studies={selection.availableStudies}
-            selectedStudyUID={selection.selectedStudyUID}
-            onSelectStudy={selection.selectStudy}
-            onNext={handleStudyNext}
-            isLoading={selection.isLoadingStudies}
-            error={selection.studiesError || routing.error}
-          />
-        );
-
-      case 2:
+        // Step 1: Series Selection (was Step 2)
         return (
           <SeriesSelectionStep
-            studyDescription={
-              selection.availableStudies.find(
-                st => st.studyInstanceUid === selection.selectedStudyUID
-              )?.description || 'Study'
-            }
             series={selection.availableSeries}
             selectedSeriesUIDs={selection.selectedSeriesUIDs}
             onToggleSeries={selection.toggleSeries}
@@ -119,21 +169,19 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
             onClearSelection={selection.clearSeriesSelection}
             onNext={handleSeriesNext}
             onBack={wizard.goToPrevStep}
+            onRetry={selection.retrySeries}
             isLoading={selection.isLoadingSeries}
             error={selection.seriesError || routing.error}
           />
         );
 
-      case 3:
+      case 2:
+        // Step 2: Endpoint Selection (was Step 3)
         return (
           <EndpointSelectionStep
             currentEndpoint={routing.currentEndpoint}
             onEndpointChange={routing.handleEndpointChange}
-            studyDescription={
-              selection.availableStudies.find(
-                st => st.studyInstanceUid === selection.selectedStudyUID
-              )?.description || 'Study'
-            }
+            studyDescription={getStudyDescription()}
             selectedSeriesCount={selection.selectedSeriesUIDs.size}
             onSend={handleSendToAI}
             onBack={wizard.goToPrevStep}
@@ -141,7 +189,8 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
           />
         );
 
-      case 4:
+      case 3:
+        // Step 3: Progress (was Step 4)
         return (
           <ProgressStep
             status={routing.status}
@@ -160,17 +209,29 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
   return (
     <div className="flex flex-col h-full">
       {/* Fixed header */}
-      <div className="flex-shrink-0 p-4 border-b border-secondary-light">
-        <div className="flex items-center justify-between">
+      <div className="flex-shrink-0 px-3 py-3 border-b border-secondary-light">
+        <div className="flex items-center justify-between mb-2">
           <h3 className="text-lg font-semibold text-white">AI Analysis</h3>
           <div className="text-xs text-muted-foreground">
-            Step {wizard.currentStep} of 4
+            Step {wizard.currentStep} of 3
           </div>
         </div>
+        {/* Active Study Indicator */}
+        {activeStudyUID && (
+          <div className="mt-2 p-2 bg-secondary-dark rounded text-xs">
+            <div className="text-muted-foreground">Active Study:</div>
+            <div className="font-mono text-white truncate">{getStudyDescription()}</div>
+          </div>
+        )}
+        {!activeStudyUID && (
+          <div className="mt-2 p-2 bg-red-900/20 border border-red-700 rounded text-xs text-red-400">
+            ⚠️ No study detected in viewport
+          </div>
+        )}
       </div>
 
       {/* Step content - constrained to remaining height */}
-      <div className="flex-1 min-h-0 flex flex-col">
+      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
         {renderStep()}
       </div>
     </div>

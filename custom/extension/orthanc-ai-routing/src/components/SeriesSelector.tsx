@@ -39,9 +39,9 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
     .reduce((sum, s) => sum + (s.numImageFrames || 0), 0);
 
   return (
-    <div className="space-y-3">
-      {/* Series list */}
-      <div className="space-y-2 max-h-64 overflow-y-auto">
+    <div className="space-y-2">
+      {/* Series list - can be larger now since button is fixed at bottom */}
+      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
         {series.map(seriesItem => {
           const isSelected = selectedSeriesUIDs.has(seriesItem.SeriesInstanceUID);
 
@@ -50,7 +50,7 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
               key={seriesItem.SeriesInstanceUID}
               onClick={() => onToggleSeries(seriesItem.SeriesInstanceUID)}
               className={`
-                p-3 rounded cursor-pointer transition-colors
+                p-2 rounded cursor-pointer transition-colors
                 border border-secondary-light
                 ${isSelected
                   ? 'bg-primary-dark border-primary-light'
@@ -105,7 +105,7 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
       {/* Action buttons */}
       <div className="flex gap-2">
         <Button
-          onClick={(e) => {
+          onClick={(e: React.MouseEvent) => {
             e.stopPropagation();
             onSelectAll();
           }}
@@ -116,7 +116,7 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
           ✓ Select All
         </Button>
         <Button
-          onClick={(e) => {
+          onClick={(e: React.MouseEvent) => {
             e.stopPropagation();
             onClearSelection();
           }}
@@ -128,14 +128,12 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
         </Button>
       </div>
 
-      {/* Selection summary */}
-      <div className="text-xs text-muted-foreground p-2 bg-secondary-dark rounded">
-        Selected: {selectedSeriesUIDs.size} series ({totalInstances} instances)
+      {/* Selection summary - compact */}
+      <div className="text-xs text-muted-foreground px-2 py-1 bg-secondary-dark rounded">
+        {selectedSeriesUIDs.size} series ({totalInstances} instances)
       </div>
     </div>
   );
 };
 
 export default SeriesSelector;
-
-

@@ -22,8 +22,9 @@ export const EndpointSelectionStep: React.FC<EndpointSelectionStepProps> = ({
   error,
 }) => {
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 min-h-0 p-4 space-y-4 overflow-y-auto">
+    <div className="relative flex-1 flex flex-col min-h-0 h-full">
+      {/* Content area - scrollable with padding for fixed buttons */}
+      <div className="flex-1 min-h-0 px-3 pt-4 pb-28 space-y-4 overflow-y-auto overflow-x-hidden">
         {error && (
           <div className="rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700">
             {error}
@@ -50,7 +51,8 @@ export const EndpointSelectionStep: React.FC<EndpointSelectionStepProps> = ({
         </div>
       </div>
 
-      <div className="flex-shrink-0 p-4 border-t border-secondary-light space-y-2">
+      {/* Button footer - fixed at bottom, always visible */}
+      <div className="absolute bottom-0 left-0 right-0 px-3 py-3 border-t border-secondary-light bg-black space-y-2">
         <Button
           onClick={onSend}
           disabled={!currentEndpoint}

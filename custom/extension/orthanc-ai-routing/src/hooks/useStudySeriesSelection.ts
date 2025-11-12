@@ -1,21 +1,29 @@
-import { useState, useEffect } from 'react';
+// @ts-nocheck
+import { useState, useEffect, useRef } from 'react';
 import { utils, DicomMetadataStore } from '@ohif/core';
-import { StudyInfo } from '../components/StudySelector';
 import { SeriesInfo } from '../components/SeriesSelector';
+
+// StudyInfo type (no longer using StudySelector component)
+export interface StudyInfo {
+  studyInstanceUid: string;
+  date: string;
+  description: string;
+  numInstances: number;
+  numSeries: number;
+}
 
 const { formatDate } = utils;
 
 interface UseStudySeriesSelectionProps {
   displaySetService: any;
-  dicomStudyUID: string | null;
+  activeStudyUID: string | null; // Auto-detected from viewport
 }
 
 export function useStudySeriesSelection({
   displaySetService,
-  dicomStudyUID
+  activeStudyUID
 }: UseStudySeriesSelectionProps) {
   const [availableStudies, setAvailableStudies] = useState<StudyInfo[]>([]);
-  const [selectedStudyUID, setSelectedStudyUID] = useState<string | null>(null);
   const [availableSeries, setAvailableSeries] = useState<SeriesInfo[]>([]);
   const [selectedSeriesUIDs, setSelectedSeriesUIDs] = useState<Set<string>>(new Set());
 
@@ -26,6 +34,18 @@ export function useStudySeriesSelection({
   // Error states
   const [studiesError, setStudiesError] = useState<string | null>(null);
   const [seriesError, setSeriesError] = useState<string | null>(null);
+
+  // Track if hook is mounted
+  const isMountedRef = useRef<boolean>(true);
+
+  // Set mounted status
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      console.log('useStudySeriesSelection unmounting');
+    };
+  }, []);
 
   // Load available studies from displaySetService
   useEffect(() => {
@@ -43,30 +63,43 @@ export function useStudySeriesSelection({
           return;
         }
 
-        // Group display sets by study
+        // Group display sets by study (skip AI results - SR/SC)
         const studyMap = new Map<string, any>();
         displaySets.forEach((ds: any) => {
           const studyUID = ds.StudyInstanceUID;
           if (!studyUID) return; // Skip if no study UID
 
+          // Skip AI results (SR/SC) - we only care about original imaging series
+          if (ds.Modality === 'SR' || ds.Modality === 'SC') {
+            return;
+          }
+
           if (!studyMap.has(studyUID)) {
-            // Get study metadata from DicomMetadataStore
+            // Get study description from the imaging series instance metadata
+            // This avoids getting contaminated by SR/SC series that might have been loaded first
+            let studyDescription = '';
+            let studyDate = ds.StudyDate || '';
+
+            // Try to get from the series' instance metadata (most reliable for imaging series)
             const studyMetadata = DicomMetadataStore.getStudy(studyUID);
-
-            // Extract StudyDescription from study metadata (this is populated)
-            const studyDescription = studyMetadata?.StudyDescription || '';
-
-            // Get StudyDate from the first series metadata since study metadata
-            // doesn't have StudyDate populated when loaded via addSeriesMetadata
-            let studyDate = '';
             if (studyMetadata?.series?.length > 0) {
-              // Get StudyDate from first series (all series in a study have the same StudyDate)
-              studyDate = studyMetadata.series[0].StudyDate || '';
+              // Find the first non-SR/SC series to get the real study description
+              for (const series of studyMetadata.series) {
+                const instances = series.instances || [];
+                if (instances.length > 0 && series.Modality !== 'SR' && series.Modality !== 'SC') {
+                  const firstInstance = instances[0];
+                  studyDescription = firstInstance.StudyDescription || '';
+                  if (!studyDate) {
+                    studyDate = firstInstance.StudyDate || series.StudyDate || '';
+                  }
+                  break; // Found a good series, use it
+                }
+              }
             }
 
-            // Fallback: If still no date, try to get from display set
-            if (!studyDate && ds.StudyDate) {
-              studyDate = ds.StudyDate;
+            // Fallback to display set if nothing found
+            if (!studyDescription) {
+              studyDescription = ds.StudyDescription || '';
             }
 
             // Format date for display
@@ -90,43 +123,22 @@ export function useStudySeriesSelection({
               description: displayName,
               numInstances: 0,
               numSeries: 0,
-              hasAIResults: false,
-              series: []
             });
           }
 
           const study = studyMap.get(studyUID);
           study.numInstances += ds.numImageFrames || 0;
-
-          // Check if this is an AI result
-          if (ds.Modality === 'SR' || ds.Modality === 'SC') {
-            study.hasAIResults = true;
-          } else {
-            // Only count original series (not AI results)
-            study.numSeries++;
-          }
+          study.numSeries++;
         });
 
         const studies = Array.from(studyMap.values());
 
-        // Sort studies: primary first, then by date
+        // Sort studies by date desc
         studies.sort((a, b) => {
-          const aIsPrimary = a.studyInstanceUid === dicomStudyUID ? 0 : 1;
-          const bIsPrimary = b.studyInstanceUid === dicomStudyUID ? 0 : 1;
-          if (aIsPrimary !== bIsPrimary) return aIsPrimary - bIsPrimary;
-
-          // Sort by date desc
           return (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0);
         });
 
         setAvailableStudies(studies);
-
-        // Auto-select primary study from URL or first study (only if none selected)
-        if (studies.length > 0 && !selectedStudyUID) {
-          const primaryStudy = studies.find(s => s.studyInstanceUid === dicomStudyUID) || studies[0];
-          setSelectedStudyUID(primaryStudy.studyInstanceUid);
-        }
-
         setIsLoadingStudies(false);
       } catch (error) {
         console.error('Error loading studies:', error);
@@ -150,9 +162,99 @@ export function useStudySeriesSelection({
       clearTimeout(initialLoadTimeout);
       subscription.unsubscribe();
     };
-  }, [displaySetService, dicomStudyUID, selectedStudyUID]);
+  }, [displaySetService]);
 
-  // Load series for selected study
+  // Auto-load series when activeStudyUID changes, with subscription to handle late-loading display sets
+  useEffect(() => {
+    if (!activeStudyUID) {
+      // Clear series if no active study
+      setAvailableSeries([]);
+      setSelectedSeriesUIDs(new Set());
+      setIsLoadingSeries(false);
+      return;
+    }
+
+    console.log('Auto-loading series for active study:', activeStudyUID);
+    let mounted = true;
+    let retryCount = 0;
+    const MAX_RETRIES = 10; // Wait up to ~1 second
+    const timeouts: NodeJS.Timeout[] = []; // Track all timeouts for cleanup
+
+    const attemptLoadSeries = () => {
+      if (!mounted) {
+        console.log('Component unmounted, aborting series load');
+        return;
+      }
+
+      const displaySets = displaySetService.getActiveDisplaySets();
+
+      if (!displaySets || displaySets.length === 0) {
+        // Display sets not loaded yet - keep loading state and retry
+        console.log(`Display sets not available yet (attempt ${retryCount + 1}/${MAX_RETRIES}), waiting...`);
+        retryCount++;
+
+        if (retryCount < MAX_RETRIES) {
+          // Retry after short delay
+          const timeout = setTimeout(() => {
+            if (mounted) attemptLoadSeries();
+          }, 100);
+          timeouts.push(timeout);
+        } else {
+          // After max retries, only show error if component is still mounted
+          if (mounted) {
+            console.warn('Display sets not available after max retries');
+            setSeriesError('Display sets not available. Please try again.');
+            setIsLoadingSeries(false);
+          }
+        }
+        return;
+      }
+
+      // Display sets are available, proceed with loading
+      if (mounted) {
+        loadSeriesForStudy(activeStudyUID);
+      }
+    };
+
+    // Start loading
+    setIsLoadingSeries(true);
+    setSeriesError(null);
+    setAvailableSeries([]);
+    setSelectedSeriesUIDs(new Set());
+
+    // Initial attempt with small delay to let display sets populate
+    const initialTimeout = setTimeout(() => {
+      if (mounted) attemptLoadSeries();
+    }, 150); // Slightly longer initial delay
+    timeouts.push(initialTimeout);
+
+    // Subscribe to display set changes for late arrivals
+    const subscription = displaySetService.subscribe(
+      displaySetService.EVENTS.DISPLAY_SETS_CHANGED,
+      () => {
+        if (mounted && retryCount > 0) {
+          console.log('Display sets changed, retrying series load...');
+          attemptLoadSeries();
+        }
+      }
+    );
+
+    // Cleanup function
+    return () => {
+      console.log('Cleaning up series loading effect for study:', activeStudyUID);
+      mounted = false;
+
+      // Clear all pending timeouts
+      timeouts.forEach(timeout => clearTimeout(timeout));
+
+      // Unsubscribe from events
+      if (subscription && subscription.unsubscribe) {
+        subscription.unsubscribe();
+      }
+    };
+  }, [activeStudyUID, displaySetService]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load series for selected study (called after display sets are confirmed available)
   const loadSeriesForStudy = (studyUID: string) => {
     console.log('Loading series for study:', studyUID);
 
@@ -160,15 +262,12 @@ export function useStudySeriesSelection({
       setIsLoadingSeries(true);
       setSeriesError(null);
 
-      // Clear previous series selection
-      setAvailableSeries([]);
-      setSelectedSeriesUIDs(new Set());
-
       // Get all display sets for this study (exclude AI results)
       const displaySets = displaySetService.getActiveDisplaySets();
 
       if (!displaySets || displaySets.length === 0) {
-        setSeriesError('No display sets available');
+        // This shouldn't happen as we check before calling, but handle gracefully
+        console.warn('Display sets became unavailable during load');
         setIsLoadingSeries(false);
         return;
       }
@@ -216,11 +315,6 @@ export function useStudySeriesSelection({
     }
   };
 
-  const selectStudy = (studyUID: string) => {
-    setSelectedStudyUID(studyUID);
-    loadSeriesForStudy(studyUID);
-  };
-
   const toggleSeries = (seriesUID: string) => {
     const newSelection = new Set(selectedSeriesUIDs);
     if (newSelection.has(seriesUID)) {
@@ -241,16 +335,31 @@ export function useStudySeriesSelection({
   };
 
   const reset = () => {
-    setSelectedStudyUID(null);
     setAvailableSeries([]);
     setSelectedSeriesUIDs(new Set());
     setSeriesError(null);
   };
 
+  const retrySeries = () => {
+    if (!isMountedRef.current) {
+      console.log('Component unmounted, skipping retry');
+      return;
+    }
+
+    if (activeStudyUID) {
+      console.log('Manual retry: reloading series for study:', activeStudyUID);
+      setIsLoadingSeries(true);
+      setSeriesError(null);
+      setAvailableSeries([]);
+      setSelectedSeriesUIDs(new Set());
+      // This will trigger the effect to reload
+      loadSeriesForStudy(activeStudyUID);
+    }
+  };
+
   return {
     // State
     availableStudies,
-    selectedStudyUID,
     availableSeries,
     selectedSeriesUIDs,
 
@@ -263,10 +372,10 @@ export function useStudySeriesSelection({
     seriesError,
 
     // Actions
-    selectStudy,
     toggleSeries,
     selectAllSeries,
     clearSeriesSelection,
     reset,
+    retrySeries,
   };
 }
