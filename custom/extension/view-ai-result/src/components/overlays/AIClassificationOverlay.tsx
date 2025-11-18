@@ -7,23 +7,35 @@ const AIClassificationOverlay: React.FC<AIClassificationOverlayProps> = ({ aiRes
   const leftBreast = aiResult.classifications.find(c => c.side === 'Left');
   const rightBreast = aiResult.classifications.find(c => c.side === 'Right');
 
-  const renderClassification = (breast: any, side: string) => (
-    <div className="flex flex-row items-center mt-1">
-      <span className="mr-1 shrink-0">{side} Breast:</span>
-      {breast ? (
-        <>
-          <span className={`ml-1 shrink-0 ${breast.isMalignant ? 'text-red-400' : 'text-green-400'}`}>
-            {breast.isMalignant ? 'Malignant' : 'Benign'}
-          </span>
-          <span className="ml-2 shrink-0">
-            ({breast.confidence ? (breast.confidence * 100).toFixed(1) : 'N/A'}%)
-          </span>
-        </>
-      ) : (
-        <span className="ml-1 shrink-0 text-gray-400">No data</span>
-      )}
-    </div>
-  );
+  const renderClassification = (breast: any, side: string) => {
+    // Determine color based on classification result
+    let colorClass = 'text-gray-400';
+    if (breast?.result === 'Malignant') {
+      colorClass = 'text-red-400';
+    } else if (breast?.result === 'Benign') {
+      colorClass = 'text-green-400';
+    } else if (breast?.result === 'No lesion') {
+      colorClass = 'text-blue-400';
+    }
+
+    return (
+      <div className="flex flex-row items-center mt-1">
+        <span className="mr-1 shrink-0">{side} Breast:</span>
+        {breast?.result ? (
+          <>
+            <span className={`ml-1 shrink-0 ${colorClass}`}>
+              {breast.result}
+            </span>
+            <span className="ml-2 shrink-0">
+              ({breast.confidence ? breast.confidence.toFixed(1) : 'N/A'}%)
+            </span>
+          </>
+        ) : (
+          <span className="ml-1 shrink-0 text-gray-400">No data</span>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="overlay-item flex flex-col max-w-xs" style={{ fontSize: '11px', lineHeight: '1.25' }}>

@@ -927,9 +927,9 @@ function _mapDisplaySets(
             if (classification.errorMessage) {
               // Handle error cases
               lines.push(`${side}: ${classification.errorMessage}`);
-            } else if (classification.isMalignant !== null) {
-              // Handle successful classification
-              const result = classification.isMalignant ? 'Malignant' : 'Benign';
+            } else if (classification.result !== null) {
+              // Handle successful classification (3-class: Malignant, Benign, No lesion)
+              const result = classification.result;
               const confidence = classification.confidence
                 ? ` ${classification.confidence.toFixed(1)}%`
                 : '';

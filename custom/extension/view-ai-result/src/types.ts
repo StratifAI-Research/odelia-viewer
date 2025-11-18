@@ -2,7 +2,7 @@ import type { DisplaySet } from '@ohif/core';
 
 export interface Classification {
   side: 'Left' | 'Right';
-  isMalignant: boolean | null;
+  result: 'Malignant' | 'Benign' | 'No lesion' | null;
   confidence: number | null;
   errorMessage?: string;
 }

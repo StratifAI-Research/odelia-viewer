@@ -8,13 +8,13 @@ const mockAIResults: MockAIResults = {
     classifications: [
       {
         side: 'Left' as const,
-        isMalignant: true,
-        confidence: 0.85
+        result: 'Malignant',
+        confidence: 85
       },
       {
         side: 'Right' as const,
-        isMalignant: false,
-        confidence: 0.92
+        result: 'Benign',
+        confidence: 92
       }
     ],
     hasHeatmap: true
@@ -24,13 +24,13 @@ const mockAIResults: MockAIResults = {
     classifications: [
       {
         side: 'Left' as const,
-        isMalignant: false,
-        confidence: 0.78
+        result: 'No lesion',
+        confidence: 78
       },
       {
         side: 'Right' as const,
-        isMalignant: false,
-        confidence: 0.95
+        result: 'Benign',
+        confidence: 95
       }
     ],
     hasHeatmap: false

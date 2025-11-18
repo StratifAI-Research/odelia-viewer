@@ -10,7 +10,7 @@ export function extractAIResultData(displaySet) {
   if (!displaySet || !displaySet.instance?.ContentSequence) {
     return null;
   }
-  
+
   const modality = displaySet.Modality;
   if (modality !== 'SR' && modality !== 'SC') {
     return null;
@@ -44,13 +44,23 @@ export function extractAIResultData(displaySet) {
     // Handle successful classification results (Side Probability)
     if (conceptMeaning.includes('Side Probability')) {
       const side = conceptMeaning.includes('Left') ? 'Left' : 'Right';
-      const malignancyCode = item.ConceptCodeSequence?.[0]?.CodeMeaning;
+      const codeMeaning = item.ConceptCodeSequence?.[0]?.CodeMeaning;
       const confidence = item.MeasuredValueSequence?.[0]?.NumericValue;
 
-      if (malignancyCode) {
+      if (codeMeaning) {
+        // Map SNOMED CT code meanings to result values
+        let result: 'Malignant' | 'Benign' | 'No lesion' | null = null;
+        if (codeMeaning === 'Malignant') {
+          result = 'Malignant';
+        } else if (codeMeaning === 'Benign') {
+          result = 'Benign';
+        } else if (codeMeaning === 'Clinical finding absent') {
+          result = 'No lesion';
+        }
+
         const classification: Classification = {
           side: side as 'Left' | 'Right',
-          isMalignant: malignancyCode === 'Malignant',
+          result: result,
           confidence: confidence ? parseFloat(confidence) : null
         };
 
@@ -66,7 +76,7 @@ export function extractAIResultData(displaySet) {
 
       const classification: Classification = {
         side: side as 'Left' | 'Right',
-        isMalignant: null,
+        result: null,
         confidence: null,
         errorMessage: errorMessage
       };
@@ -102,7 +112,7 @@ export function formatClassificationPreview(classifications: Classification[]) {
       return `${classification.side}: Error`;
     }
 
-    const result = classification.isMalignant ? 'Malignant' : 'Benign';
+    const result = classification.result || 'Unknown';
     const confidence = classification.confidence !== null ?
       ` (${classification.confidence.toFixed(1)}%)` : '';
     return `${classification.side}: ${result}${confidence}`;

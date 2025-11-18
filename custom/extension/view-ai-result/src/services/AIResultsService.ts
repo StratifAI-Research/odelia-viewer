@@ -149,13 +149,13 @@ export class AIResultsService {
             classifications: [
               {
                 side: 'Left',
-                isMalignant: null,
+                result: null,
                 confidence: null,
                 errorMessage: 'AI results could not be parsed'
               },
               {
                 side: 'Right',
-                isMalignant: null,
+                result: null,
                 confidence: null,
                 errorMessage: 'AI results could not be parsed'
               }

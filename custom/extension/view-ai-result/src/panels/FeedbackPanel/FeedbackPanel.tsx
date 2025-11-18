@@ -559,7 +559,7 @@ const FeedbackPanel: React.FC = () => {
   const renderSideSection = (side: 'Left' | 'Right') => {
     if (!currentResult) return null;
     const classification = currentResult.classifications?.find((c: any) => c.side === side);
-    const aiLabel = classification?.isMalignant === null ? 'Unknown' : classification?.isMalignant ? 'Malignant' : 'Benign';
+    const aiLabel = classification?.result || 'Unknown';
     return (
       <div key={side} className="border rounded p-2 mb-3">
         <div className="font-semibold mb-1">{side} Breast</div>
