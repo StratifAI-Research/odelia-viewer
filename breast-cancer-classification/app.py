@@ -11,6 +11,7 @@ from monai.networks import nets
 from typing import Union, Tuple
 from torchio.transforms.transform import TypeMaskingMethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 
 from dicom2nfti_onthefly import dicom_to_unilateral_nifti
 
@@ -151,6 +152,7 @@ def get_preprocessing():
 
 @app.route("/analyze/mri", methods=["POST"])
 def analyze_mri():
+    overall_start = time.time()
     series_uid = str(request.json.get("seriesInstanceUID", ""))
     if not series_uid:
         logger.error("No seriesInstanceUID provided in request")
@@ -161,7 +163,11 @@ def analyze_mri():
 
         # Step 1: Find series in Orthanc
         logger.info("Step 1: Looking up series in Orthanc...")
+        step_start = time.time()
         series_id = get_series_id_by_uid(series_uid)
+        step_duration = (time.time() - step_start) * 1000
+        logger.info(f"TIMING: lookup_series_in_orthanc: {step_duration:.2f}ms")
+
         if not series_id:
             logger.error(f"SeriesInstanceUID not found in Orthanc: {series_uid}")
             return jsonify({"error": "SeriesInstanceUID not found in Orthanc"}), 404
@@ -169,7 +175,11 @@ def analyze_mri():
 
         # Step 2: Download DICOM files
         logger.info("Step 2: Downloading DICOM files...")
+        step_start = time.time()
         dicom_folder = download_series_dicom(series_id, series_uid)
+        step_duration = (time.time() - step_start) * 1000
+        logger.info(f"TIMING: download_dicom_files: {step_duration:.2f}ms")
+
         if not dicom_folder:
             logger.error("No instances found for the given SeriesInstanceUID")
             return jsonify({"error": "No instances found for the given SeriesInstanceUID"}), 404
@@ -177,8 +187,11 @@ def analyze_mri():
 
         # Step 3: Convert DICOM to NIfTI
         logger.info("Step 3: Converting DICOM to NIfTI...")
+        step_start = time.time()
         try:
             nifties = dicom_to_unilateral_nifti(Path(dicom_folder), Path(f"{dicom_folder}/nifti/Dynamic_T1"))
+            step_duration = (time.time() - step_start) * 1000
+            logger.info(f"TIMING: dicom_to_nifti_conversion: {step_duration:.2f}ms")
             logger.info(f"Successfully converted to NIfTI. Available images: {list(nifties.keys())}")
         except Exception as e:
             logger.error(f"Failed to convert DICOM to NIfTI: {str(e)}", exc_info=True)
@@ -186,12 +199,16 @@ def analyze_mri():
 
         # Step 4: Prepare preprocessing
         logger.info("Step 4: Preparing preprocessing transforms...")
+        step_start = time.time()
         transform = get_preprocessing()
+        step_duration = (time.time() - step_start) * 1000
+        logger.info(f"TIMING: prepare_preprocessing: {step_duration:.2f}ms")
 
         # Step 5: Process each side
         results = {}
         for side in ["left", "right"]:
             logger.info(f"Step 5.{side}: Processing {side} breast...")
+            side_start = time.time()
             try:
                 # Check if required images exist
                 pre_key = f"Pre_{side}"
@@ -212,30 +229,45 @@ def analyze_mri():
                 logger.info(f"  {side}: Pre shape={pre.data.shape}, Post shape={post.data.shape}")
 
                 # Concatenate and preprocess
+                preprocess_start = time.time()
                 model_input = torch.cat((pre.data, post.data), dim=0)
                 logger.info(f"  {side}: Combined input shape={model_input.shape}")
 
                 model_input = transform(model_input)[None].to(DEVICE)
+                preprocess_duration = (time.time() - preprocess_start) * 1000
+                logger.info(f"TIMING: {side}_preprocessing: {preprocess_duration:.2f}ms")
                 logger.info(f"  {side}: After preprocessing shape={model_input.shape}")
 
                 # Run inference
+                inference_start = time.time()
                 with torch.inference_mode():
                     prob = torch.sigmoid(mri_model(model_input)).item()
+                inference_duration = (time.time() - inference_start) * 1000
+                logger.info(f"TIMING: {side}_inference: {inference_duration:.2f}ms")
 
                 logger.info(f"  {side}: Model output probability={prob:.4f}")
                 results[side] = {
                     "prediction": "Cancerous" if prob > 0.5 else "Not Cancerous",
                     "confidence": round(prob if prob > 0.5 else 1 - prob, 4)*100,
                 }
+
+                side_duration = (time.time() - side_start) * 1000
+                logger.info(f"TIMING: {side}_total: {side_duration:.2f}ms")
                 logger.info(f"  {side}: Result={results[side]}")
 
             except KeyError as e:
+                side_duration = (time.time() - side_start) * 1000
+                logger.info(f"TIMING: {side}_total_error: {side_duration:.2f}ms")
                 logger.error(f"Missing data for {side} side: {e}", exc_info=True)
                 results[side] = {"error": f"Missing data for {side} side: {e}"}
             except Exception as e:
+                side_duration = (time.time() - side_start) * 1000
+                logger.info(f"TIMING: {side}_total_error: {side_duration:.2f}ms")
                 logger.error(f"Error processing {side} side: {e}", exc_info=True)
                 results[side] = {"error": f"Processing error for {side} side: {str(e)}"}
 
+        overall_duration = (time.time() - overall_start) * 1000
+        logger.info(f"TIMING: total_analysis: {overall_duration:.2f}ms")
         logger.info(f"Analysis complete. Final results: {results}")
         return jsonify(results)
 

@@ -13,6 +13,7 @@ import tempfile
 import numpy as np
 import torch
 import base64
+import time
 
 from model_loader import download_model_files, load_model
 from dicom_utils import dicom_to_nifti
@@ -206,6 +207,8 @@ def analyze_mri():
         ]
     }
     """
+    overall_start = time.time()
+
     if model is None:
         return jsonify({"error": "Model not loaded"}), 503
 
@@ -218,22 +221,33 @@ def analyze_mri():
 
     try:
         # 1. Get series ID from Orthanc
+        step_start = time.time()
         series_id = get_series_id_by_uid(series_uid)
+        step_duration = (time.time() - step_start) * 1000
+        logger.info(f"TIMING: lookup_series_in_orthanc: {step_duration:.2f}ms")
+
         if not series_id:
             return jsonify({"error": "SeriesInstanceUID not found in Orthanc"}), 404
 
         logger.info(f"Found series ID: {series_id}")
 
         # 2. Download DICOM files
+        step_start = time.time()
         dicom_folder = download_series_dicom(series_id, series_uid)
+        step_duration = (time.time() - step_start) * 1000
+        logger.info(f"TIMING: download_dicom_files: {step_duration:.2f}ms")
 
         # 3. Convert DICOM to NIfTI
         logger.info("Converting DICOM to NIfTI...")
+        step_start = time.time()
         nifti_path = dicom_to_nifti(dicom_folder)
+        step_duration = (time.time() - step_start) * 1000
+        logger.info(f"TIMING: dicom_to_nifti_conversion: {step_duration:.2f}ms")
         logger.info(f"NIfTI created: {nifti_path}")
 
         # 4. Run inference using aligned implementation
         logger.info("Running MST inference...")
+        inference_total_start = time.time()
 
         # Add model path to sys.path to import the reference implementation
         if MODEL_PATH not in sys.path:
@@ -243,11 +257,20 @@ def analyze_mri():
         from predict_attention import run_prediction, minmax_norm, tensor_cam2image
 
         # Load image as TorchIO ScalarImage
+        step_start = time.time()
         img = tio.ScalarImage(nifti_path)
+        step_duration = (time.time() - step_start) * 1000
+        logger.info(f"TIMING: load_nifti_as_torchio: {step_duration:.2f}ms")
 
         # Run prediction - returns probs dict and weight ScalarImage (aligned with HF repo)
+        step_start = time.time()
         with torch.no_grad():
             probs, weight = run_prediction(img, model)
+        step_duration = (time.time() - step_start) * 1000
+        logger.info(f"TIMING: model_inference: {step_duration:.2f}ms")
+
+        inference_total_duration = (time.time() - inference_total_start) * 1000
+        logger.info(f"TIMING: inference_total: {inference_total_duration:.2f}ms")
 
         logger.info(f"Inference complete")
         logger.info(f"  Left breast probabilities: {probs['left']}")
@@ -255,19 +278,20 @@ def analyze_mri():
 
         # 5. Format output for server.py - bilateral classification format
         # Extract left/right probabilities (probabilities are already softmaxed in run_prediction)
-        # Format: [benign_prob, malignant_prob]
-        left_malignant_prob = float(probs['left'][1])
-        right_malignant_prob = float(probs['right'][1])
+        # Format: [no_lesion_prob, benign_lesion_prob, malignant_lesion_prob]
+        # We use the last element (malignant) and create binary: [1-malignant, malignant]
+        left_malignant_prob = float(probs['left'][2])  # Last element = malignant lesion
+        right_malignant_prob = float(probs['right'][2])  # Last element = malignant lesion
 
         # Create bilateral classification format matching the viewer's expectations
         # Each side gets its own classification with prediction and confidence
         left_classification = {
-            "prediction": "Cancerous" if left_malignant_prob > 0.5 else "Not Cancerous",
+            "prediction": "Malignant" if left_malignant_prob > 0.5 else "Benign",
             "confidence": left_malignant_prob * 100.0  # Convert to percentage
         }
 
         right_classification = {
-            "prediction": "Cancerous" if right_malignant_prob > 0.5 else "Not Cancerous",
+            "prediction": "Malignant" if right_malignant_prob > 0.5 else "Benign",
             "confidence": right_malignant_prob * 100.0  # Convert to percentage
         }
 
@@ -279,17 +303,25 @@ def analyze_mri():
         }
 
         # 6. Generate RGB overlay images using tensor_cam2image from HF reference
+        overlay_start = time.time()
+
         # Prepare tensors in the format expected by tensor_cam2image
         # Input format: [B, C, D, H, W] for both img and weight
+        step_start = time.time()
         img_tensor = img.data.swapaxes(1, -1).unsqueeze(0)  # [1, C, D, H, W]
         weight_tensor = weight.data.swapaxes(1, -1).unsqueeze(0)  # [1, C, D, H, W]
 
         # Normalize image to [0, 1] for visualization (weight already normalized)
         img_tensor = minmax_norm(img_tensor)
         weight_tensor = minmax_norm(weight_tensor)
+        step_duration = (time.time() - step_start) * 1000
+        logger.info(f"TIMING: prepare_tensors_for_overlay: {step_duration:.2f}ms")
 
         # Generate RGB overlay images
+        step_start = time.time()
         overlay = tensor_cam2image(img_tensor, weight_tensor, batch=0, alpha=0.5)
+        step_duration = (time.time() - step_start) * 1000
+        logger.info(f"TIMING: generate_rgb_overlay: {step_duration:.2f}ms")
 
         logger.info(f"Generated {overlay.shape[0]} RGB overlay images with shape {overlay.shape}")
 
@@ -297,6 +329,7 @@ def analyze_mri():
         # overlay is [num_slices, 3, H, W] from tensor_cam2image
         # Transpose to [num_slices, rows, cols, 3] for DICOM pixel data
         # H should map to rows (vertical), W should map to cols (horizontal)
+        step_start = time.time()
         overlay_np = overlay.cpu().numpy()
         overlay_np = np.transpose(overlay_np, (0, 2, 3, 1))  # [D, 3, H, W] -> [D, H, W, 3]
 
@@ -315,6 +348,11 @@ def analyze_mri():
             "shape": overlay_uint8.shape,  # [num_slices, rows, cols, 3]
             "dtype": "uint8"
         }
+        step_duration = (time.time() - step_start) * 1000
+        logger.info(f"TIMING: encode_overlay_to_base64: {step_duration:.2f}ms")
+
+        overlay_duration = (time.time() - overlay_start) * 1000
+        logger.info(f"TIMING: generate_attention_maps_total: {overlay_duration:.2f}ms")
 
         logger.info(f"Prepared {overlay_uint8.shape[0]} RGB overlay slices (base64 encoded)")
 
@@ -325,6 +363,9 @@ def analyze_mri():
             "model_metadata": model_metadata,
             "attention_maps": attention_maps
         }
+
+        overall_duration = (time.time() - overall_start) * 1000
+        logger.info(f"TIMING: total_analysis: {overall_duration:.2f}ms")
 
         logger.info(f"Analysis complete - Bilateral Classification:")
         logger.info(f"  Left: {left_classification['prediction']} ({left_classification['confidence']:.1f}%)")
