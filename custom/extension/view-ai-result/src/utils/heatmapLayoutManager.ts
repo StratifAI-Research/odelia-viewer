@@ -6,6 +6,7 @@ interface LayoutConfig {
   viewportOptions: any;
   aiResult: AIResult;
   viewportGridService: any;
+  servicesManager: any;
 }
 
 export class HeatmapLayoutManager {

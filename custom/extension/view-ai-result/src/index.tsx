@@ -39,8 +39,15 @@ export default {
       console.log('📝 Registering AIResultsService...');
       servicesManager.registerService(aiResultsServiceDefinition);
       console.log('✅ AIResultsService registered successfully');
+
+      // Register custom heatmap synchronizer type
+      const { syncGroupService } = servicesManager.services;
+      const { default: createHeatmapImageSliceSynchronizer } = require('./utils/createHeatmapImageSliceSynchronizer');
+
+      syncGroupService.addSynchronizerType('heatmapImageSlice', createHeatmapImageSliceSynchronizer);
+      console.log('✅ Custom heatmap synchronizer registered');
     } catch (error) {
-      console.error('❌ Error during AIResultsService registration:', error);
+      console.error('❌ Error during registration:', error);
     }
   },
 
@@ -91,7 +98,22 @@ export default {
    * {name, defaultComponent, clickHandler }. Examples include radioGroupIcons and
    * splitButton toolButton that the default extension is providing.
    */
-  getToolbarModule: ({ servicesManager, commandsManager, extensionManager }) => {},
+  getToolbarModule: ({ servicesManager, commandsManager, extensionManager }) => {
+    return [
+      {
+        name: 'evaluate.heatmapSync',
+        evaluate: () => {
+          const { syncGroupService } = servicesManager.services;
+          const synchronizer = syncGroupService.getSynchronizer('HEATMAP_IMAGE_SLICE_SYNC');
+          const isActive = synchronizer && synchronizer._enabled;
+
+          return {
+            className: isActive ? 'text-primary-active' : '',
+          };
+        },
+      },
+    ];
+  },
   /**
    * LayoutTemplateMOdule should provide a list of layout templates that will be
    * available in OHIF for Modes to consume and use to layout the viewer.
@@ -124,18 +146,25 @@ export default {
    * options, and defaultContext is the default context for the command to run against.
    */
   getCommandsModule: ({ servicesManager, commandsManager, extensionManager }) => {
-    // Provide a no-op implementation of the resetCrosshairs command to silence
-    // warnings when the tool is not registered. This overrides the one
-    // registered by the Cornerstone extension.
+    const { toggleHeatmapImageSliceSync } = require('./utils/toggleHeatmapImageSliceSync');
+
     const actions = {
       resetCrosshairs: () => {
         // Intentionally empty – crosshairs tool not used in this extension
+      },
+      toggleHeatmapImageSliceSync: () => {
+        toggleHeatmapImageSliceSync({ servicesManager });
       },
     };
 
     const definitions = {
       resetCrosshairs: {
         commandFn: actions.resetCrosshairs,
+        storeContexts: [],
+        options: {},
+      },
+      toggleHeatmapImageSliceSync: {
+        commandFn: actions.toggleHeatmapImageSliceSync,
         storeContexts: [],
         options: {},
       },

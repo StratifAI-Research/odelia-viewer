@@ -79,6 +79,7 @@ const AITrackedViewportInner = ({
         viewportOptions: enhancedViewportOptions, // Use memoized options
         aiResult: currentAIResult,
         viewportGridService,
+        servicesManager,
       });
     }
   }, [showHeatmap, currentAIResult, viewportId, primaryDisplaySets, enhancedViewportOptions, viewportGridService, isHeatmapViewport, setupHeatmapActionCorner]);

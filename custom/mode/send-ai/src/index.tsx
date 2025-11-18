@@ -110,7 +110,7 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
       toolbarService?.addButtons?.(toolbarButtons);
 
       // Ensure buttons appear in primary section
-      toolbarService?.createButtonSection?.('primary', ['Zoom', 'WindowLevel', 'Pan', 'Reset']);
+      toolbarService?.createButtonSection?.('primary', ['Zoom', 'WindowLevel', 'Pan', 'Reset', 'ImageSliceSync']);
     },
     onModeExit: ({ servicesManager }: ModeFactoryParams) => {
       const {

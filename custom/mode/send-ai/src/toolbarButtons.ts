@@ -72,6 +72,17 @@ const toolbarButtons: Button[] = [
       evaluate: 'evaluate.action',
     },
   },
+  {
+    id: 'ImageSliceSync',
+    uiType: 'ohif.toolButton',
+    props: {
+      icon: 'link',
+      label: 'Slice Sync',
+      tooltip: 'Toggle scroll synchronization between viewports',
+      commands: 'toggleHeatmapImageSliceSync',
+      evaluate: 'evaluate.heatmapSync',
+    },
+  },
 ];
 
 export default toolbarButtons;
