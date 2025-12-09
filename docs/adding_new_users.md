@@ -19,7 +19,7 @@ Open your Keycloak admin interface, for example:
 - `http://<ip>:<port>/keycloak/`
 - `https://<host>/keycloak/`
 
-Log in using your admin credentials.
+Log in using your admin credentials (default are admin/admin).
 
 ---
 
