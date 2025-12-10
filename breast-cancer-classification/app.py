@@ -152,38 +152,100 @@ def get_preprocessing():
 
 @app.route("/analyze/mri", methods=["POST"])
 def analyze_mri():
-    overall_start = time.time()
-    series_uid = str(request.json.get("seriesInstanceUID", ""))
-    if not series_uid:
-        logger.error("No seriesInstanceUID provided in request")
-        return jsonify({"error": "No seriesInstanceUID provided"}), 400
+    """
+    Analyze MRI series using breast cancer classification model
 
+    Supports two input formats:
+    1. Legacy format: {"seriesInstanceUID": "1.2.3..."}
+    2. UPS-RS format: {"wado_rs_retrieval": [...], "study_uid": "1.2.3..."}
+    """
+    overall_start = time.time()
+
+    # Check input format
+    wado_rs_retrieval = request.json.get("wado_rs_retrieval")
+    series_uid_legacy = request.json.get("seriesInstanceUID")
+
+    if wado_rs_retrieval:
+        # NEW UPS-RS format with WADO-RS retrieval
+        logger.info("Using UPS-RS format with WADO-RS retrieval")
+        from wado_helper import retrieve_via_wado_rs
+
+        try:
+            # Retrieve DICOM datasets via WADO-RS
+            step_start = time.time()
+            datasets = retrieve_via_wado_rs(wado_rs_retrieval)
+            step_duration = (time.time() - step_start) * 1000
+            logger.info(f"TIMING: wado_rs_retrieval: {step_duration:.2f}ms")
+
+            if not datasets:
+                logger.error("No DICOM instances retrieved via WADO-RS")
+                return jsonify({"error": "No DICOM instances retrieved via WADO-RS"}), 404
+
+            # Extract series UID from first dataset
+            series_uid = str(datasets[0].SeriesInstanceUID)
+
+            # Save datasets to folder for processing
+            dicom_folder = os.path.join(IMAGE_FOLDER, series_uid)
+            if os.path.exists(dicom_folder):
+                import shutil
+                shutil.rmtree(dicom_folder)
+            os.makedirs(dicom_folder, exist_ok=True)
+
+            # Save each dataset as DICOM file
+            for idx, ds in enumerate(datasets):
+                dicom_path = os.path.join(dicom_folder, f"instance_{idx:04d}.dcm")
+                ds.save_as(dicom_path)
+
+            logger.info(f"Saved {len(datasets)} DICOM files to {dicom_folder}")
+
+        except Exception as e:
+            logger.error(f"Error with WADO-RS retrieval: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": f"WADO-RS retrieval failed: {str(e)}"}), 500
+
+    elif series_uid_legacy:
+        # LEGACY format with direct Orthanc retrieval
+        series_uid = str(series_uid_legacy)
+        logger.info(f"Using legacy format with seriesInstanceUID: {series_uid}")
+
+        try:
+            # Step 1: Find series in Orthanc
+            logger.info("Step 1: Looking up series in Orthanc...")
+            step_start = time.time()
+            series_id = get_series_id_by_uid(series_uid)
+            step_duration = (time.time() - step_start) * 1000
+            logger.info(f"TIMING: lookup_series_in_orthanc: {step_duration:.2f}ms")
+
+            if not series_id:
+                logger.error(f"SeriesInstanceUID not found in Orthanc: {series_uid}")
+                return jsonify({"error": "SeriesInstanceUID not found in Orthanc"}), 404
+            logger.info(f"Found series ID: {series_id}")
+
+            # Step 2: Download DICOM files
+            logger.info("Step 2: Downloading DICOM files...")
+            step_start = time.time()
+            dicom_folder = download_series_dicom(series_id, series_uid)
+            step_duration = (time.time() - step_start) * 1000
+            logger.info(f"TIMING: download_dicom_files: {step_duration:.2f}ms")
+
+            if not dicom_folder:
+                logger.error("No instances found for the given SeriesInstanceUID")
+                return jsonify({"error": "No instances found for the given SeriesInstanceUID"}), 404
+            logger.info(f"DICOM files downloaded to: {dicom_folder}")
+
+        except Exception as e:
+            logger.error(f"Error with legacy retrieval: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return jsonify({"error": f"Legacy retrieval failed: {str(e)}"}), 500
+    else:
+        logger.error("No seriesInstanceUID or wado_rs_retrieval provided")
+        return jsonify({"error": "No seriesInstanceUID or wado_rs_retrieval provided"}), 400
+
+    # Continue with processing (common for both formats)
     try:
         logger.info(f"Starting MRI analysis for series: {series_uid}")
-
-        # Step 1: Find series in Orthanc
-        logger.info("Step 1: Looking up series in Orthanc...")
-        step_start = time.time()
-        series_id = get_series_id_by_uid(series_uid)
-        step_duration = (time.time() - step_start) * 1000
-        logger.info(f"TIMING: lookup_series_in_orthanc: {step_duration:.2f}ms")
-
-        if not series_id:
-            logger.error(f"SeriesInstanceUID not found in Orthanc: {series_uid}")
-            return jsonify({"error": "SeriesInstanceUID not found in Orthanc"}), 404
-        logger.info(f"Found series ID: {series_id}")
-
-        # Step 2: Download DICOM files
-        logger.info("Step 2: Downloading DICOM files...")
-        step_start = time.time()
-        dicom_folder = download_series_dicom(series_id, series_uid)
-        step_duration = (time.time() - step_start) * 1000
-        logger.info(f"TIMING: download_dicom_files: {step_duration:.2f}ms")
-
-        if not dicom_folder:
-            logger.error("No instances found for the given SeriesInstanceUID")
-            return jsonify({"error": "No instances found for the given SeriesInstanceUID"}), 404
-        logger.info(f"DICOM files downloaded to: {dicom_folder}")
 
         # Step 3: Convert DICOM to NIfTI
         logger.info("Step 3: Converting DICOM to NIfTI...")

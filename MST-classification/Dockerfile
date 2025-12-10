@@ -1,7 +1,10 @@
-# Use Python 3.10+ for transformers compatibility
+# Dockerfile for MST Classification Service
+# Build from MLIntegration directory:
+#   cd MLIntegration
+#   docker build -f MST-classification/Dockerfile -t mst-classification .
+
 FROM python:3.10-slim
 
-# Set working directory
 WORKDIR /app
 
 # Install system dependencies
@@ -10,20 +13,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
+# Copy and install shared package
+COPY shared/ ./shared/
+COPY setup.py pyproject.toml ./
+RUN pip install --no-cache-dir -e .
+
+# Copy MST service code
+COPY MST-classification/ ./mst-service/
+
+# Install service dependencies
+WORKDIR /app/mst-service
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the app code
-COPY app.py .
-COPY model_loader.py .
-COPY dicom_utils.py .
+# Create directories
+RUN mkdir -p mst_model images
 
-# Create directories for model and images
-RUN mkdir -p /app/mst_model /app/images
-
-# Expose the port Flask runs on
+# Expose port
 EXPOSE 5556
 
-# Run the Flask app (model will be downloaded on first start)
-CMD ["python", "app.py"]
+# Run service
+CMD ["python", "app_refactored.py"]
