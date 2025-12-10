@@ -113,14 +113,18 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
     orthancAIService,
     uiNotificationService,
     onComplete: () => {
-      // Keep on progress screen when complete
+      // Reload the page to fetch new AI results (SR/SC instances)
+      console.log('AI analysis complete, reloading page to display new results...');
+      setTimeout(() => {
+        window.location.reload();
+      }, 1000); // Wait 2 seconds so user can see the completion notification
     },
   });
 
   // Clean up when component unmounts
   useEffect(() => {
     return () => {
-      orthancAIService.stopRefreshCheck();
+      orthancAIService.stopWorkitemPolling();
     };
   }, [orthancAIService]);
 
@@ -196,6 +200,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
             status={routing.status}
             progress={routing.progress}
             error={routing.error}
+            progressDescription={routing.progressDescription}
             onReset={handleReset}
             ProgressLoadingBar={ProgressLoadingBar}
           />

@@ -5,6 +5,7 @@ interface ProgressStepProps {
   status: 'idle' | 'routing' | 'checking' | 'refreshing';
   progress: number;
   error?: string | null;
+  progressDescription?: string | null;
   onReset: () => void;
   ProgressLoadingBar: React.ComponentType<{ progress: number }>;
 }
@@ -13,6 +14,7 @@ export const ProgressStep: React.FC<ProgressStepProps> = ({
   status,
   progress,
   error,
+  progressDescription,
   onReset,
   ProgressLoadingBar,
 }) => {
@@ -30,6 +32,13 @@ export const ProgressStep: React.FC<ProgressStepProps> = ({
 
   const getStatusMessage = () => {
     if (error) return null;
+
+    // Use progressDescription if available (from workitem)
+    if (progressDescription) {
+      return progressDescription;
+    }
+
+    // Fallback to default messages
     if (status === 'routing') return 'Uploading series to AI server...';
     if (status === 'checking') return 'AI analysis in progress. Results will appear automatically.';
     if (status === 'refreshing') return 'Fetching AI results...';

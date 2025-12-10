@@ -15,16 +15,6 @@ interface OrthancStudy {
   [key: string]: any;
 }
 
-// Define DICOM tag structure
-interface DicomTagValue {
-  Value?: any[];
-  vr?: string;
-}
-
-interface DicomTags {
-  [tag: string]: DicomTagValue;
-}
-
 interface RoutingRequest {
   study_id: string;
   target: string;
@@ -39,12 +29,30 @@ interface RoutingResponse {
   message: string;
   study_id?: string;
   target?: string;
+  workitem_uid?: string;
 }
 
 interface OrthancAIServiceConfig {
   orthancUrl?: string;
   aiServerName?: string;
   aiServerUrl?: string;
+}
+
+// UPS Workitem interfaces
+interface WorkitemStatus {
+  state: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELED' | 'UNKNOWN';
+  progress?: number;
+  progressDescription?: string;
+  cancellationReason?: string;
+}
+
+interface DicomTagValue {
+  vr: string;
+  Value?: any[];
+}
+
+interface WorkitemDicomJson {
+  [tag: string]: DicomTagValue;
 }
 
 /**
@@ -60,11 +68,8 @@ class OrthancAIService {
   private orthancUrl: string;
   private aiServerName: string;
   private aiServerUrl: string;
-  private refreshInterval: number | null = null;
-  private initialSeriesCount: number = 0;
-  private dicomStudyUID: string | null = null;
-  private refreshCallback: Function | null = null;
   private currentEndpoint: AIEndpoint | null = null;
+  private workitemPollingInterval: number | null = null;
 
   constructor({ configuration = {} }: { configuration?: OrthancAIServiceConfig }) {
     this.orthancUrl = configuration.orthancUrl || 'http://localhost:45821';
@@ -212,111 +217,6 @@ class OrthancAIService {
     }
   }
 
-  /**
-   * Get the current series count for a study
-   * @param orthancStudyId The Orthanc study ID
-   * @returns The number of series in the study
-   */
-  async getStudySeriesCount(orthancStudyId: string): Promise<number> {
-    try {
-      const response = await fetch(`${this.orthancUrl}/studies/${orthancStudyId}`);
-
-      if (!response.ok) {
-        // Try to extract error message from response body
-        let errorMessage = `Failed to get study info (${response.status})`;
-        try {
-          const errorText = await response.text();
-          if (errorText) {
-            errorMessage = `Failed to get study info: ${errorText}`;
-          }
-        } catch (parseError) {
-          console.warn('Could not parse study info error response:', parseError);
-        }
-        console.error(errorMessage);
-        throw new Error(errorMessage);
-      }
-
-      const studyInfo: OrthancStudy = await response.json();
-      console.log('Study info:', studyInfo);
-
-      return studyInfo.Series?.length || 0;
-    } catch (error) {
-      console.error('Error getting study series count:', error);
-      return 0;
-    }
-  }
-
-  /**
-   * Refresh the current page
-   */
-  private refreshPage(): void {
-    console.log('Refreshing page...');
-    window.location.reload();
-  }
-
-  /**
-   * Start polling for new series in the study
-   * @param callback Function to call when new series are detected
-   * @param interval Polling interval in milliseconds
-   * @param autoRefresh Whether to automatically refresh the page when new series are detected
-   */
-  async startRefreshCheck(callback?: Function, interval: number = 5000, autoRefresh: boolean = true): Promise<void> {
-    // Stop any existing refresh check
-    this.stopRefreshCheck();
-
-    this.refreshCallback = callback || null;
-    this.dicomStudyUID = this.getDicomStudyInstanceUIDFromURL();
-
-    if (!this.dicomStudyUID) {
-      console.error('Cannot start refresh check: No StudyInstanceUID found in URL');
-      return;
-    }
-
-    try {
-      // Get the Orthanc study ID
-      const orthancStudyId = await this.getOrthancStudyId(this.dicomStudyUID);
-
-      // Get the initial series count
-      this.initialSeriesCount = await this.getStudySeriesCount(orthancStudyId);
-      console.log(`Initial series count: ${this.initialSeriesCount}`);
-
-      // Start polling
-      this.refreshInterval = window.setInterval(async () => {
-        try {
-          const currentSeriesCount = await this.getStudySeriesCount(orthancStudyId);
-          console.log(`Current series count: ${currentSeriesCount}, Initial: ${this.initialSeriesCount}`);
-
-          if (currentSeriesCount > this.initialSeriesCount) {
-            console.log('New series detected! Triggering refresh...');
-            this.initialSeriesCount = currentSeriesCount;
-
-            if (this.refreshCallback) {
-              this.refreshCallback();
-            }
-
-            if (autoRefresh) {
-              this.refreshPage();
-            }
-          }
-        } catch (error) {
-          console.error('Error during refresh check:', error);
-        }
-      }, interval);
-    } catch (error) {
-      console.error('Failed to start refresh check:', error);
-    }
-  }
-
-  /**
-   * Stop polling for new series
-   */
-  stopRefreshCheck(): void {
-    if (this.refreshInterval !== null) {
-      window.clearInterval(this.refreshInterval);
-      this.refreshInterval = null;
-      console.log('Refresh check stopped');
-    }
-  }
 
   /**
    * Routes the current study to the AI server
@@ -512,6 +412,144 @@ class OrthancAIService {
       study_id: studyId,
       target: this.aiServerName
     };
+  }
+
+  /**
+   * Parse DICOM JSON workitem to extract status information
+   * @param workitemJson The DICOM JSON workitem object
+   * @returns Parsed workitem status
+   */
+  private parseWorkitemStatus(workitemJson: WorkitemDicomJson): WorkitemStatus {
+    const status: WorkitemStatus = {
+      state: 'UNKNOWN'
+    };
+
+    try {
+      // Extract ProcedureStepState (00741000)
+      const stateTag = workitemJson['00741000'];
+      if (stateTag?.Value?.[0]) {
+        status.state = stateTag.Value[0] as WorkitemStatus['state'];
+      }
+
+      // Extract Progress Information Sequence (00741002) for IN_PROGRESS state
+      const progressSeq = workitemJson['00741002'];
+      if (progressSeq?.Value?.[0]) {
+        const progressItem = progressSeq.Value[0];
+
+        // Extract Procedure Step Progress (00741004)
+        const progressTag = progressItem['00741004'];
+        if (progressTag?.Value?.[0]) {
+          status.progress = parseFloat(progressTag.Value[0]);
+        }
+
+        // Extract Procedure Step Progress Description (00741006)
+        const progressDescTag = progressItem['00741006'];
+        if (progressDescTag?.Value?.[0]) {
+          status.progressDescription = progressDescTag.Value[0];
+        }
+      }
+
+      // Extract Reason For Cancellation (00741238) for CANCELED state
+      const cancellationTag = workitemJson['00741238'];
+      if (cancellationTag?.Value?.[0]) {
+        status.cancellationReason = cancellationTag.Value[0];
+      }
+
+      console.log('Parsed workitem status:', status);
+      return status;
+    } catch (error) {
+      console.error('Error parsing workitem status:', error);
+      return status;
+    }
+  }
+
+  /**
+   * Get workitem status from the UPS-RS endpoint
+   * @param workitemUid The workitem UID to retrieve
+   * @returns Parsed workitem status
+   */
+  async getWorkitemStatus(workitemUid: string): Promise<WorkitemStatus> {
+    try {
+      console.log('Fetching workitem status for:', workitemUid);
+
+      const response = await fetch(`${this.orthancUrl}/ups-rs/workitems/${workitemUid}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/dicom+json, application/json',
+        },
+      });
+
+      if (!response.ok) {
+        console.error(`Failed to get workitem status: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`Response body: ${errorText}`);
+        throw new Error(`Failed to get workitem status: ${response.status}`);
+      }
+
+      // Get the response as text first to debug
+      const responseText = await response.text();
+      console.log('Workitem response text:', responseText);
+
+      // Parse the JSON
+      let workitemJson: WorkitemDicomJson;
+      try {
+        workitemJson = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('Failed to parse workitem JSON:', parseError);
+        console.error('Response text was:', responseText);
+        throw new Error(`Failed to parse workitem JSON: ${parseError}`);
+      }
+
+      return this.parseWorkitemStatus(workitemJson);
+    } catch (error) {
+      console.error('Error getting workitem status:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Start polling for workitem status updates
+   * @param workitemUid The workitem UID to poll
+   * @param callback Function to call with status updates
+   * @param interval Polling interval in milliseconds (default: 2000ms)
+   */
+  async startWorkitemPolling(
+    workitemUid: string,
+    callback: (status: WorkitemStatus) => void,
+    interval: number = 500
+  ): Promise<void> {
+    // Stop any existing polling
+    this.stopWorkitemPolling();
+
+    console.log(`Starting workitem polling for ${workitemUid} every ${interval}ms`);
+
+    // Start polling
+    this.workitemPollingInterval = window.setInterval(async () => {
+      try {
+        const status = await this.getWorkitemStatus(workitemUid);
+        callback(status);
+
+        // Stop polling if workitem reached a terminal state
+        if (status.state === 'COMPLETED' || status.state === 'CANCELED') {
+          console.log(`Workitem reached terminal state: ${status.state}. Stopping polling.`);
+          this.stopWorkitemPolling();
+        }
+      } catch (error) {
+        console.error('Error during workitem polling:', error);
+        // Don't stop polling on error, continue trying
+      }
+    }, interval);
+  }
+
+  /**
+   * Stop polling for workitem status
+   */
+  stopWorkitemPolling(): void {
+    if (this.workitemPollingInterval !== null) {
+      window.clearInterval(this.workitemPollingInterval);
+      this.workitemPollingInterval = null;
+      console.log('Workitem polling stopped');
+    }
   }
 }
 
