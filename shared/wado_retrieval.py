@@ -4,68 +4,28 @@ Single Responsibility: Retrieve DICOM instances via DICOMweb WADO-RS protocol
 """
 import io
 import logging
-import requests
-from email import message_from_bytes
-from pydicom import dcmread
 from pydicom.dataset import Dataset
 from typing import List
+from dicomweb_client.api import DICOMwebClient
 
 from .exceptions import DicomRetrievalError
 
 logger = logging.getLogger(__name__)
 
 
-def parse_multipart_dicom(response_content: bytes, boundary: str) -> List[Dataset]:
-    """
-    Parse multipart/related response containing DICOM instances
-
-    Args:
-        response_content: Raw bytes from WADO-RS response
-        boundary: Boundary string from Content-Type header
-
-    Returns:
-        List of DICOM datasets
-    """
-    # Parse multipart message
-    msg = message_from_bytes(
-        b'Content-Type: multipart/related; boundary="' + boundary.encode() + b'"\r\n\r\n' + response_content
-    )
-
-    dicom_datasets = []
-
-    if msg.is_multipart():
-        for part in msg.get_payload():
-            # Get the content type of this part
-            content_type = part.get_content_type()
-
-            # Check if this part contains DICOM data
-            if 'application/dicom' in content_type:
-                # Get the binary content
-                part_content = part.get_payload(decode=True)
-
-                # Parse DICOM
-                try:
-                    ds = dcmread(io.BytesIO(part_content))
-                    dicom_datasets.append(ds)
-                except Exception as e:
-                    logger.error(f"Error parsing DICOM part: {str(e)}")
-
-    return dicom_datasets
-
-
 def retrieve_via_wado_rs(wado_rs_retrieval: List[dict], orthanc_url: str = None) -> List[Dataset]:
     """
-    Retrieve DICOM instances via WADO-RS
+    Retrieve DICOM instances via WADO-RS using dicomweb-client
 
     Args:
         wado_rs_retrieval: List of dicts with:
-            - retrieval_url: Full WADO-RS URL
+            - retrieval_url: Full WADO-RS URL or base DICOMweb URL
             - study_uid: StudyInstanceUID
             - series_uid: SeriesInstanceUID
         orthanc_url: Optional Orthanc URL for fallback (not used for WADO-RS)
 
     Returns:
-        List of DICOM datasets
+        List of DICOM datasets (pydicom.Dataset instances)
 
     Raises:
         DicomRetrievalError: If retrieval fails
@@ -73,42 +33,29 @@ def retrieve_via_wado_rs(wado_rs_retrieval: List[dict], orthanc_url: str = None)
     all_datasets = []
 
     for retrieval_info in wado_rs_retrieval:
-        retrieval_url = retrieval_info["retrieval_url"]
-        series_uid = retrieval_info["series_uid"]
+        retrieval_url = retrieval_info.get("retrieval_url", "")
+        study_uid = retrieval_info.get("study_uid", "")
+        series_uid = retrieval_info.get("series_uid", "")
 
-        logger.info(f"Retrieving series {series_uid} via WADO-RS from {retrieval_url}")
+        # Extract base URL from retrieval_url if it's a full WADO-RS URL
+        # Expected format: http://host/dicom-web/studies/{study}/series/{series}
+        base_url = retrieval_url
+        if "/studies/" in retrieval_url:
+            base_url = retrieval_url.split("/studies/")[0]
+
+        logger.info(f"Retrieving series {series_uid} via WADO-RS from {base_url}")
 
         try:
-            # WADO-RS request with proper Accept header
-            response = requests.get(
-                retrieval_url,
-                headers={
-                    "Accept": "multipart/related; type=application/dicom; transfer-syntax=*"
-                },
-                timeout=300  # 5 minutes timeout for large series
+            # Create DICOMweb client
+            client = DICOMwebClient(url=base_url)
+
+            # Retrieve all instances in the series
+            # Returns List[pydicom.Dataset]
+            datasets = client.retrieve_series(
+                study_instance_uid=study_uid,
+                series_instance_uid=series_uid
             )
 
-            if response.status_code != 200:
-                logger.error(f"Error retrieving via WADO-RS: {response.status_code} - {response.text}")
-                continue
-
-            # Extract boundary from Content-Type header
-            content_type = response.headers.get('Content-Type', '')
-            boundary = None
-            if 'boundary=' in content_type:
-                # Properly parse boundary by splitting on semicolons first
-                for part in content_type.split(';'):
-                    part = part.strip()
-                    if part.startswith('boundary='):
-                        boundary = part.split('boundary=')[1].strip().strip('"')
-                        break
-
-            if not boundary:
-                logger.error(f"No boundary found in Content-Type: {content_type}")
-                continue
-
-            # Parse multipart response
-            datasets = parse_multipart_dicom(response.content, boundary)
             logger.info(f"Retrieved {len(datasets)} instances for series {series_uid}")
             all_datasets.extend(datasets)
 
@@ -136,6 +83,9 @@ def fallback_to_orthanc_rest(series_uid: str, orthanc_url: str) -> List[Dataset]
     Raises:
         DicomRetrievalError: If retrieval fails
     """
+    import requests
+    from pydicom import dcmread
+
     logger.info(f"Falling back to Orthanc REST API for series {series_uid}")
 
     try:

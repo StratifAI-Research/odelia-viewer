@@ -9,6 +9,7 @@ pydicom>=2.4.3
 nibabel>=5.2.0
 numpy>=1.24.3
 requests>=2.31.0
+dicomweb-client>=0.59.0
 Pillow>=10.1.0
 matplotlib>=3.8.2
 opencv-python-headless>=4.8.1.78
