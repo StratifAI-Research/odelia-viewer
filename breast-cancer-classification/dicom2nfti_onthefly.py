@@ -91,12 +91,20 @@ def dicom2nii(item, path_data_dicom):
 
         # Read DICOM files (assuming the paths are for DICOM files)
         img = tio.ScalarImage(path_temp_folder)  # torchio.Image or ScalarImage for medical imaging
-        img.load()  # Load into memory - files can be deleted
+        img.load()  # Load into memory
+
+        # Force load tensor into memory and create new image without file references
+        # This ensures data persists after temp directory is deleted
+        tensor_data = img.data.clone()  # Clone the tensor to memory
+        affine = img.affine.clone() if isinstance(img.affine, torch.Tensor) else torch.tensor(img.affine)
+
+    # Create new image from in-memory tensor (no file dependencies)
+    img_in_memory = tio.ScalarImage(tensor=tensor_data, affine=affine)
 
     # Create output folder
     study_uid, series_name = series_instance_uid.split('_', 1)  # WARNING: Assumes no "_" in study_uid
 
-    return series_name, img
+    return series_name, img_in_memory
 
 
 def dicom_to_unilateral_nifti(dicom_folder: Path, nifti_output_folder=None):
