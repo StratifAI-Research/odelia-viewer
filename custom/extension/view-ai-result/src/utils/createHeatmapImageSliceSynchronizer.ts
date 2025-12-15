@@ -26,14 +26,11 @@ async function imageSliceSyncCallback(
   }
 
   // Get source image position
-  // Volume viewports report indices in display order, but imageIds array is in reverse
   let sourceImageIndex = sViewport.getCurrentImageIdIndex();
   const sourceImageIds = sViewport.getImageIds();
 
-  if (sViewport instanceof VolumeViewport) {
-    const reversedSourceIndex = sourceImageIds.length - sourceImageIndex - 1;
-    sourceImageIndex = reversedSourceIndex;
-  }
+  // Note: We rely on spatial position matching (imagePositionPatient) rather than manual index reversal
+  // The volume→stack reversal is handled later (line ~104) when setting the target index
 
   const sourceImageId = sourceImageIds[sourceImageIndex];
   const imagePlaneModule1 = metaData.get('imagePlaneModule', sourceImageId);
