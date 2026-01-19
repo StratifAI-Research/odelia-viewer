@@ -2,18 +2,10 @@
 Shared utilities for ML Integration services
 """
 
-from .exceptions import (
-    DicomRetrievalError,
-    OrthancCommunicationError,
-    SeriesNotFoundError
-)
-
-from .config import OrthancConfig, StorageConfig
+from .exceptions import DicomRetrievalError
+from .config import StorageConfig
 
 __all__ = [
     'DicomRetrievalError',
-    'OrthancCommunicationError',
-    'SeriesNotFoundError',
-    'OrthancConfig',
     'StorageConfig',
 ]

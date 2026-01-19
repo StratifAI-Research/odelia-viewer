@@ -6,14 +6,6 @@ from pathlib import Path
 
 
 @dataclass
-class OrthancConfig:
-    """Configuration for Orthanc server communication"""
-    url: str
-    verify_ssl: bool = False
-    timeout: int = 30
-
-
-@dataclass
 class StorageConfig:
     """Configuration for DICOM file storage"""
     image_folder: Path

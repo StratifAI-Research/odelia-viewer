@@ -8,7 +8,7 @@ from pathlib import Path
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-from shared.config import OrthancConfig, StorageConfig
+from shared.config import StorageConfig
 from config import BreastCancerConfig
 from model_service import BreastCancerModelService
 from exceptions import ModelNotLoadedError, InferenceError
@@ -32,12 +32,6 @@ def initialize_service():
     # Load configurations from environment
     bc_config = BreastCancerConfig.from_env()
 
-    orthanc_config = OrthancConfig(
-        url=os.getenv("ORTHANC_URL", "http://orthanc:8042"),
-        verify_ssl=False,
-        timeout=30
-    )
-
     storage_config = StorageConfig(
         image_folder=Path(os.getenv("IMAGE_FOLDER", "./images")),
         cleanup_on_start=True
@@ -47,7 +41,7 @@ def initialize_service():
     os.makedirs(storage_config.image_folder, exist_ok=True)
 
     # Initialize model service
-    model_service = BreastCancerModelService(bc_config, orthanc_config, storage_config)
+    model_service = BreastCancerModelService(bc_config, storage_config)
     model_service.initialize_model()
 
 
@@ -62,16 +56,15 @@ def analyze_mri():
     """
     Analyze MRI series using breast cancer classification model
 
-    Supports two input formats:
-
-    1. Legacy format:
+    Input format:
     {
-        "seriesInstanceUID": "1.2.3..."
-    }
-
-    2. UPS-RS format:
-    {
-        "wado_rs_retrieval": [...],
+        "wado_rs_retrieval": [
+            {
+                "retrieval_url": "http://orthanc-viewer:8042/dicom-web/studies/{study}/series/{series}",
+                "study_uid": "1.2.3...",
+                "series_uid": "1.2.3..."
+            }
+        ],
         "study_uid": "1.2.3..."
     }
 

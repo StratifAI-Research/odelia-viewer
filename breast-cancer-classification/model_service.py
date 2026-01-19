@@ -8,14 +8,14 @@ from pathlib import Path
 from monai.networks import nets
 
 from shared.timing_utils import time_operation
-from shared.config import OrthancConfig, StorageConfig
+from shared.config import StorageConfig
 
 from config import BreastCancerConfig
 from exceptions import ModelNotLoadedError, InferenceError
 from dicom_converter import convert_to_unilateral_nifti
 from preprocessing import get_preprocessing_pipeline, preprocess_for_side
 from response_builder import build_bilateral_classification
-from retrieval_strategy import RetrievalStrategy, WadoRSRetrieval, LegacyOrthancRetrieval
+from retrieval_strategy import RetrievalStrategy, WadoRSRetrieval
 
 logger = logging.getLogger(__name__)
 
@@ -23,17 +23,15 @@ logger = logging.getLogger(__name__)
 class BreastCancerModelService:
     """Service for breast cancer model inference"""
 
-    def __init__(self, bc_config: BreastCancerConfig, orthanc_config: OrthancConfig, storage_config: StorageConfig):
+    def __init__(self, bc_config: BreastCancerConfig, storage_config: StorageConfig):
         """
         Initialize breast cancer model service
 
         Args:
             bc_config: Breast cancer service configuration
-            orthanc_config: Orthanc connection configuration
             storage_config: Storage configuration
         """
         self.bc_config = bc_config
-        self.orthanc_config = orthanc_config
         self.storage_config = storage_config
         self.model = None
 
@@ -78,9 +76,8 @@ class BreastCancerModelService:
         Analyze MRI series using breast cancer classification model
 
         Args:
-            request_data: Request dictionary with either:
-                - wado_rs_retrieval: List of WADO-RS retrieval info (preferred)
-                - seriesInstanceUID: Legacy format
+            request_data: Request dictionary with:
+                - wado_rs_retrieval: List of WADO-RS retrieval info
 
         Returns:
             Analysis result dictionary with bilateral classification
@@ -140,22 +137,14 @@ class BreastCancerModelService:
             RetrievalStrategy instance
         """
         wado_rs_retrieval = request_data.get("wado_rs_retrieval")
-        series_uid_legacy = request_data.get("seriesInstanceUID")
 
-        if wado_rs_retrieval:
-            return WadoRSRetrieval(
-                wado_rs_retrieval,
-                self.orthanc_config,
-                self.storage_config
-            )
-        elif series_uid_legacy:
-            return LegacyOrthancRetrieval(
-                series_uid_legacy,
-                self.orthanc_config,
-                self.storage_config
-            )
-        else:
-            raise ValueError("No seriesInstanceUID or wado_rs_retrieval provided")
+        if not wado_rs_retrieval:
+            raise ValueError("Missing required field 'wado_rs_retrieval'. Legacy 'seriesInstanceUID' format is no longer supported.")
+
+        return WadoRSRetrieval(
+            wado_rs_retrieval,
+            self.storage_config
+        )
 
     def _process_side(self, side: str, nifties: dict, transform) -> dict:
         """

@@ -51,15 +51,21 @@ class WadoRSRetrieval(RetrievalStrategy):
         """
         logger.info("Using WADO-RS retrieval")
 
-        # Retrieve DICOM datasets
-        datasets = retrieve_via_wado_rs(self.wado_rs_retrieval)
+        if len(self.wado_rs_retrieval) > 1:
+            logger.warning(f"Multiple series detected ({len(self.wado_rs_retrieval)}). Only the first series will be processed.")
+
+        # Process only the first series
+        first_series = [self.wado_rs_retrieval[0]]
+        series_uid = first_series[0].get("series_uid", "unknown")
+
+        # Use wado_helper to retrieve DICOM datasets
+        logger.info(f"Retrieving series {series_uid} via WADO-RS")
+        datasets = retrieve_via_wado_rs(first_series)
 
         if not datasets:
-            raise ValueError("No DICOM instances retrieved via WADO-RS")
+            raise ValueError(f"No DICOM instances retrieved for series {series_uid}")
 
-        # Extract series UID from first dataset
-        series_uid = str(datasets[0].SeriesInstanceUID)
-        logger.info(f"Retrieved {len(datasets)} DICOM instances for series {series_uid}")
+        logger.info(f"Retrieved {len(datasets)} DICOM instances")
 
         # Save datasets to disk
         dicom_folder = save_datasets_to_folder(datasets, series_uid, self.storage_config)
