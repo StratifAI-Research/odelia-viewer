@@ -15,9 +15,10 @@ const viewAIResult = {
   viewport: 'view-ai-result.viewportModule.ai-tracked-viewport',
 };
 
-// New Feedback Panel from view-ai-result extension
+// Panels from view-ai-result extension
 const viewAIResultPanel = {
   feedback: 'view-ai-result.panelModule.aiFeedback',
+  chat: 'view-ai-result.panelModule.aiChat',
 };
 
 const orthancAI = {
@@ -161,7 +162,7 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
             id: ohif.layout,
             props: {
               leftPanels: [ohif.leftPanel],
-              rightPanels: [orthancAI.panel, viewAIResultPanel.feedback],
+              rightPanels: [orthancAI.panel, viewAIResultPanel.feedback, viewAIResultPanel.chat],
               viewports: [
                 {
                   namespace: viewAIResult.viewport,

@@ -6,6 +6,7 @@ import { useSystem } from '@ohif/core';
 import { requestDisplaySetCreationForStudy } from '@ohif/extension-default';
 import getImageSrcFromImageId from './panels/PanelStudyBrowserTracking/getImageSrcFromImageId';
 import FeedbackPanel from './panels/FeedbackPanel/FeedbackPanel';
+import ChatPanel from './panels/ChatPanel/ChatPanel';
 
 function _getStudyForPatientUtility(extensionManager) {
   const utilityModule = extensionManager.getModuleEntry(
@@ -69,6 +70,13 @@ function getPanelModule({ commandsManager, extensionManager, servicesManager }):
       iconLabel: 'Feedback',
       label: 'Feedback',
       component: props => <FeedbackPanel {...props} />,
+    },
+    {
+      name: 'aiChat',
+      iconName: 'tab-patient-info',
+      iconLabel: 'AI Chat',
+      label: 'AI Chat',
+      component: props => <ChatPanel {...props} />,
     },
   ];
 }

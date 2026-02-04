@@ -5,6 +5,7 @@ import AITrackedViewport from './components/AITrackedViewport';
 import getPanelModule from './getPanelModule';
 import getHangingProtocolModule from './getHangingProtocolModule';
 import { AIResultsService } from './services/AIResultsService';
+import { ChatService } from './services/ChatService';
 
 /**
  * You can remove any of the following modules if you don't need them.
@@ -46,6 +47,17 @@ export default {
 
       syncGroupService.addSynchronizerType('heatmapImageSlice', createHeatmapImageSliceSynchronizer);
       console.log('✅ Custom heatmap synchronizer registered');
+
+      // Register ChatService for AI Chat panel
+      const chatServiceDefinition = {
+        name: 'chatService',
+        create: ({ configuration = {} }) => {
+          console.log('🔧 Creating ChatService instance');
+          return new ChatService();
+        },
+      };
+      servicesManager.registerService(chatServiceDefinition);
+      console.log('✅ ChatService registered successfully');
     } catch (error) {
       console.error('❌ Error during registration:', error);
     }
