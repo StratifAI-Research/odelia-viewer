@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 60)
     logger.info("Chat Middleware Service - Starting")
     logger.info("=" * 60)
-    
+
     # Initialize configuration
     config = init_config()
     logger.info(f"Ollama URL: {config.ollama_url}")
@@ -43,12 +43,12 @@ async def lifespan(app: FastAPI):
     logger.info(f"WADO-RS Base URL: {config.wado_base_url}")
     logger.info(f"Image folder: {config.image_folder}")
     logger.info(f"Max cache entries: {config.max_cache_entries}")
-    
+
     # Initialize singletons
     get_runtime_config()
     get_session_manager()
     get_image_cache(max_entries=config.max_cache_entries)
-    
+
     # Initialize Ollama client and check connectivity
     ollama_client = get_ollama_client()
     ollama_healthy = await ollama_client.health_check()
@@ -58,15 +58,15 @@ async def lifespan(app: FastAPI):
         logger.info(f"Available models: {models}")
     else:
         logger.warning("Ollama connection: FAILED - service may be unavailable")
-    
+
     logger.info("=" * 60)
     logger.info(f"Service ready on http://{config.host}:{config.port}")
     logger.info(f"WebSocket endpoint: ws://{config.host}:{config.port}/ws/chat/{{session_id}}")
     logger.info(f"Debug API: http://{config.host}:{config.port}/debug")
     logger.info("=" * 60)
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Chat Middleware Service - Shutting down")
 
@@ -102,7 +102,7 @@ async def health_check():
 async def websocket_endpoint(websocket: WebSocket, session_id: str):
     """
     WebSocket endpoint for chat sessions.
-    
+
     Args:
         session_id: Session identifier. Use 'new' to create a new session.
     """
@@ -111,9 +111,9 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     config = init_config()
-    
+
     uvicorn.run(
         "app:app",
         host=config.host,

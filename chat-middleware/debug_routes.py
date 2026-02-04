@@ -30,7 +30,7 @@ async def get_debug_config() -> DebugConfigResponse:
     """
     config = get_config()
     runtime_config = get_runtime_config()
-    
+
     return DebugConfigResponse(
         system_prompt=runtime_config.system_prompt,
         preprocessing=runtime_config.to_dict()["preprocessing"],
@@ -47,32 +47,32 @@ async def get_debug_config() -> DebugConfigResponse:
 async def update_debug_config(update: DebugConfigUpdate) -> DebugConfigResponse:
     """
     Update configuration at runtime.
-    
+
     Accepts partial updates - only provided fields are changed.
     """
     runtime_config = get_runtime_config()
-    
+
     # Convert preprocessing config to dict if provided
     preprocessing_dict = None
     if update.preprocessing:
         preprocessing_dict = update.preprocessing.model_dump(exclude_none=True)
-    
+
     # Convert ollama_options config to dict if provided
     ollama_options_dict = None
     if update.ollama_options:
         ollama_options_dict = update.ollama_options.model_dump(exclude_none=True)
-    
+
     # Apply updates
     runtime_config.update(
         system_prompt=update.system_prompt,
         preprocessing=preprocessing_dict,
         ollama_options=ollama_options_dict
     )
-    
+
     logger.info(f"Updated runtime config: system_prompt={'changed' if update.system_prompt else 'unchanged'}, "
                 f"preprocessing={'changed' if preprocessing_dict else 'unchanged'}, "
                 f"ollama_options={'changed' if ollama_options_dict else 'unchanged'}")
-    
+
     # Return updated config
     config = get_config()
     return DebugConfigResponse(
@@ -91,14 +91,14 @@ async def update_debug_config(update: DebugConfigUpdate) -> DebugConfigResponse:
 async def clear_cache() -> CacheClearResponse:
     """
     Clear the image cache.
-    
+
     Useful when testing preprocessing changes.
     """
     image_cache = get_image_cache()
     cleared = image_cache.clear()
-    
+
     logger.info(f"Cleared image cache: {cleared} entries removed")
-    
+
     return CacheClearResponse(
         cleared_entries=cleared,
         message=f"Cleared {cleared} cached series"
@@ -121,7 +121,7 @@ async def list_sessions() -> SessionListResponse:
     """
     session_manager = get_session_manager()
     sessions_data = session_manager.list_sessions()
-    
+
     sessions = [
         SessionInfo(
             session_id=s["session_id"],
@@ -131,7 +131,7 @@ async def list_sessions() -> SessionListResponse:
         )
         for s in sessions_data
     ]
-    
+
     return SessionListResponse(sessions=sessions)
 
 
@@ -141,7 +141,7 @@ async def delete_session(session_id: str) -> dict:
     Delete a specific session.
     """
     session_manager = get_session_manager()
-    
+
     if session_manager.remove_session(session_id):
         logger.info(f"Deleted session via debug API: {session_id}")
         return {"message": f"Session {session_id} deleted"}
@@ -153,15 +153,15 @@ async def delete_session(session_id: str) -> dict:
 async def cleanup_sessions(max_age_minutes: int = 60) -> dict:
     """
     Clean up stale sessions.
-    
+
     Args:
         max_age_minutes: Maximum session age in minutes (default: 60)
     """
     session_manager = get_session_manager()
     removed = session_manager.cleanup_stale(max_age_minutes)
-    
+
     logger.info(f"Cleaned up {removed} stale sessions (max age: {max_age_minutes} min)")
-    
+
     return {
         "removed_sessions": removed,
         "max_age_minutes": max_age_minutes
@@ -177,13 +177,13 @@ async def debug_health() -> dict:
     ollama_client = get_ollama_client()
     image_cache = get_image_cache()
     session_manager = get_session_manager()
-    
+
     # Check Ollama
     ollama_healthy = await ollama_client.health_check()
     ollama_models = []
     if ollama_healthy:
         ollama_models = await ollama_client.list_models()
-    
+
     return {
         "status": "healthy" if ollama_healthy else "degraded",
         "ollama": {
