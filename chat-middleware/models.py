@@ -35,7 +35,7 @@ class SliceStrategy(str, Enum):
 
 # =============================================================================
 # WebSocket Messages
-# =============================================================================
+# =============================================================================cd 
 
 class ClientMessage(BaseModel):
     """Message sent from client to server via WebSocket"""
@@ -64,10 +64,23 @@ class PreprocessingConfig(BaseModel):
     central_percentage: Optional[int] = None
 
 
+class OllamaOptionsConfig(BaseModel):
+    """Ollama generation options for debug API"""
+    # Context and token limits
+    num_ctx: Optional[int] = None           # Context window size
+    num_predict: Optional[int] = None       # Max tokens to generate (-1 = infinite, -2 = fill context)
+
+    # Thinking models (e.g., deepseek-r1)
+    think: Optional[bool] = None            # Enable thinking before responding
+
+    suffix: Optional[str] = None            # Text after model response
+
+
 class DebugConfigUpdate(BaseModel):
     """Request body for updating debug configuration"""
     system_prompt: Optional[str] = None
     preprocessing: Optional[PreprocessingConfig] = None
+    ollama_options: Optional[OllamaOptionsConfig] = None
 
 
 class DebugConfigResponse(BaseModel):
@@ -75,6 +88,7 @@ class DebugConfigResponse(BaseModel):
     system_prompt: str
     preprocessing: dict
     ollama: dict
+    ollama_options: dict
 
 
 class SessionInfo(BaseModel):

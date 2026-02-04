@@ -19,11 +19,34 @@ class Session:
     created_at: datetime = field(default_factory=datetime.now)
     last_activity: datetime = field(default_factory=datetime.now)
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
+    generation_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    active_task: Optional[asyncio.Task] = field(default=None)
     
     def __post_init__(self):
         # Ensure cancel_event is created if not provided
         if self.cancel_event is None:
             self.cancel_event = asyncio.Event()
+        if self.generation_lock is None:
+            self.generation_lock = asyncio.Lock()
+    
+    async def cancel_active_generation(self) -> None:
+        """Cancel any active generation task"""
+        if self.active_task and not self.active_task.done():
+            logger.info(f"Cancelling active generation for session {self.session_id}")
+            self.cancel_event.set()
+            # Give the task a moment to notice cancellation
+            try:
+                await asyncio.wait_for(asyncio.shield(self.active_task), timeout=0.5)
+            except (asyncio.TimeoutError, asyncio.CancelledError):
+                # If it doesn't stop gracefully, force cancel
+                self.active_task.cancel()
+                try:
+                    await self.active_task
+                except asyncio.CancelledError:
+                    pass
+            self.active_task = None
+        # Reset cancel event for next generation
+        self.cancel_event.clear()
 
 
 class SessionManager:

@@ -26,7 +26,7 @@ router = APIRouter(prefix="/debug", tags=["debug"])
 @router.get("/config", response_model=DebugConfigResponse)
 async def get_debug_config() -> DebugConfigResponse:
     """
-    Get current configuration including system prompt and preprocessing settings.
+    Get current configuration including system prompt, preprocessing, and Ollama settings.
     """
     config = get_config()
     runtime_config = get_runtime_config()
@@ -36,8 +36,10 @@ async def get_debug_config() -> DebugConfigResponse:
         preprocessing=runtime_config.to_dict()["preprocessing"],
         ollama={
             "model": config.ollama_model,
-            "url": config.ollama_url
-        }
+            "url": config.ollama_url,
+            "num_ctx": config.ollama_num_ctx
+        },
+        ollama_options=runtime_config.ollama_options.to_full_dict()
     )
 
 
@@ -55,14 +57,21 @@ async def update_debug_config(update: DebugConfigUpdate) -> DebugConfigResponse:
     if update.preprocessing:
         preprocessing_dict = update.preprocessing.model_dump(exclude_none=True)
     
+    # Convert ollama_options config to dict if provided
+    ollama_options_dict = None
+    if update.ollama_options:
+        ollama_options_dict = update.ollama_options.model_dump(exclude_none=True)
+    
     # Apply updates
     runtime_config.update(
         system_prompt=update.system_prompt,
-        preprocessing=preprocessing_dict
+        preprocessing=preprocessing_dict,
+        ollama_options=ollama_options_dict
     )
     
     logger.info(f"Updated runtime config: system_prompt={'changed' if update.system_prompt else 'unchanged'}, "
-                f"preprocessing={'changed' if preprocessing_dict else 'unchanged'}")
+                f"preprocessing={'changed' if preprocessing_dict else 'unchanged'}, "
+                f"ollama_options={'changed' if ollama_options_dict else 'unchanged'}")
     
     # Return updated config
     config = get_config()
@@ -71,8 +80,10 @@ async def update_debug_config(update: DebugConfigUpdate) -> DebugConfigResponse:
         preprocessing=runtime_config.to_dict()["preprocessing"],
         ollama={
             "model": config.ollama_model,
-            "url": config.ollama_url
-        }
+            "url": config.ollama_url,
+            "num_ctx": config.ollama_num_ctx
+        },
+        ollama_options=runtime_config.ollama_options.to_full_dict()
     )
 
 

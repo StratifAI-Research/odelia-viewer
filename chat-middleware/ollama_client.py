@@ -33,7 +33,8 @@ class OllamaClient:
     async def chat_stream(
         self,
         messages: List[dict],
-        cancel_event: Optional[asyncio.Event] = None
+        cancel_event: Optional[asyncio.Event] = None,
+        runtime_options: Optional[dict] = None
     ) -> AsyncGenerator[str, None]:
         """
         Stream chat completion tokens from Ollama.
@@ -41,6 +42,7 @@ class OllamaClient:
         Args:
             messages: List of message dicts with role, content, and optional images
             cancel_event: Event to signal cancellation (optional)
+            runtime_options: Optional dict with runtime options (num_ctx, think, suffix)
             
         Yields:
             Token strings as they are generated
@@ -51,14 +53,29 @@ class OllamaClient:
         """
         url = f"{self.base_url}/api/chat"
         
+        # Build options - start with static config
+        options = {"num_ctx": self.num_ctx}
+        
+        # Merge runtime options if provided
+        if runtime_options:
+            if runtime_options.get("num_ctx") is not None:
+                options["num_ctx"] = runtime_options["num_ctx"]
+        
+        # Build payload
         payload = {
             "model": self.model,
             "messages": messages,
             "stream": True,
-            "options": {
-                "num_ctx": self.num_ctx
-            }
+            "options": options
         }
+        
+        # Add think parameter if specified (for thinking models like deepseek-r1)
+        if runtime_options and runtime_options.get("think") is not None:
+            payload["think"] = runtime_options["think"]
+        
+        # Add suffix if specified
+        if runtime_options and runtime_options.get("suffix") is not None:
+            payload["suffix"] = runtime_options["suffix"]
         
         logger.info(f"Starting Ollama chat stream to {url} with model {self.model}")
         logger.debug(f"Messages count: {len(messages)}")
@@ -74,36 +91,44 @@ class OllamaClient:
                         raise Exception(f"Ollama API error: {response.status} - {error_text}")
                     
                     logger.debug("Ollama stream connected, receiving tokens...")
+                    cancelled = False
                     
-                    async for line in response.content:
-                        # Check for cancellation
-                        if cancel_event and cancel_event.is_set():
-                            logger.info("Chat stream cancelled by user")
-                            break
-                        
-                        if not line:
-                            continue
-                        
-                        try:
-                            # Ollama returns JSON lines
-                            chunk = json.loads(line.decode('utf-8'))
-                            
-                            # Extract content from message
-                            if "message" in chunk and "content" in chunk["message"]:
-                                content = chunk["message"]["content"]
-                                if content:
-                                    yield content
-                            
-                            # Check if generation is done
-                            if chunk.get("done", False):
-                                logger.debug("Ollama stream completed (done=true)")
+                    try:
+                        async for line in response.content:
+                            # Check for cancellation
+                            if cancel_event and cancel_event.is_set():
+                                logger.info("Chat stream cancelled by user")
+                                cancelled = True
                                 break
+                            
+                            if not line:
+                                continue
+                            
+                            try:
+                                # Ollama returns JSON lines
+                                chunk = json.loads(line.decode('utf-8'))
                                 
-                        except json.JSONDecodeError as e:
-                            logger.warning(f"Failed to parse Ollama response line: {e}")
-                            continue
+                                # Extract content from message
+                                if "message" in chunk and "content" in chunk["message"]:
+                                    content = chunk["message"]["content"]
+                                    if content:
+                                        yield content
+                                
+                                # Check if generation is done
+                                if chunk.get("done", False):
+                                    logger.debug("Ollama stream completed (done=true)")
+                                    break
+                                    
+                            except json.JSONDecodeError as e:
+                                logger.warning(f"Failed to parse Ollama response line: {e}")
+                                continue
+                    finally:
+                        # Ensure we close/release the response to abort the HTTP connection
+                        if cancelled:
+                            logger.debug("Releasing HTTP response due to cancellation")
+                            response.close()
                     
-                    logger.info("Ollama chat stream finished")
+                    logger.info(f"Ollama chat stream finished (cancelled={cancelled})")
                     
         except asyncio.CancelledError:
             logger.info("Ollama chat stream cancelled")

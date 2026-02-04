@@ -1,6 +1,7 @@
 """
 WebSocket handler for chat sessions
 """
+import asyncio
 import logging
 from datetime import datetime
 from typing import List
@@ -49,22 +50,67 @@ async def handle_websocket(websocket: WebSocket, session_id: str) -> None:
             session_id=session.session_id
         )
         
-        # Process incoming messages
+        # Process incoming messages - DO NOT await tasks here to allow cancellation
         async for message in websocket.iter_json():
             try:
                 msg = ClientMessage(**message)
                 
                 if msg.type == ClientMessageType.CHAT:
-                    await handle_chat(
-                        websocket,
-                        session,
-                        msg.content or "",
-                        msg.study_uid or "",
-                        msg.series_uids or []
+                    # Cancel any existing generation before starting new one
+                    if session.active_task and not session.active_task.done():
+                        logger.info(f"Cancelling previous generation for session {session.session_id}")
+                        session.cancel_event.set()
+                        # Wait briefly for task to notice cancellation
+                        try:
+                            await asyncio.wait_for(session.active_task, timeout=1.0)
+                        except (asyncio.TimeoutError, asyncio.CancelledError):
+                            session.active_task.cancel()
+                            try:
+                                await session.active_task
+                            except asyncio.CancelledError:
+                                pass
+                        session.active_task = None
+                    
+                    # Reset cancel event for new generation
+                    session.cancel_event.clear()
+                    
+                    # Create task but DON'T await it - let it run in background
+                    task = asyncio.create_task(
+                        handle_chat(
+                            websocket,
+                            session,
+                            msg.content or "",
+                            msg.study_uid or "",
+                            msg.series_uids or []
+                        )
                     )
+                    session.active_task = task
+                    
+                    # Add callback to clean up when task completes
+                    def task_done_callback(t):
+                        if session.active_task == t:
+                            session.active_task = None
+                        if t.exception():
+                            logger.error(f"Chat task failed: {t.exception()}")
+                    
+                    task.add_done_callback(task_done_callback)
+                    # Don't await - continue processing messages immediately
+                            
                 elif msg.type == ClientMessageType.CANCEL:
                     logger.info(f"Cancellation requested for session {session.session_id}")
-                    session.cancel_event.set()
+                    if session.active_task and not session.active_task.done():
+                        session.cancel_event.set()
+                        # Wait briefly for graceful cancellation
+                        try:
+                            await asyncio.wait_for(session.active_task, timeout=1.0)
+                        except (asyncio.TimeoutError, asyncio.CancelledError):
+                            session.active_task.cancel()
+                            try:
+                                await session.active_task
+                            except asyncio.CancelledError:
+                                pass
+                        session.active_task = None
+                        await send_message(websocket, ServerMessageType.DONE, content="Cancelled")
                     
             except Exception as e:
                 logger.error(f"Error processing message: {e}")
@@ -79,7 +125,10 @@ async def handle_websocket(websocket: WebSocket, session_id: str) -> None:
     except Exception as e:
         logger.error(f"WebSocket error for session {session.session_id}: {e}")
     finally:
-        # Don't remove session on disconnect - allow reconnection
+        # Cancel any running task on disconnect
+        if session.active_task and not session.active_task.done():
+            session.cancel_event.set()
+            session.active_task.cancel()
         logger.debug(f"WebSocket handler finished for session: {session.session_id}")
 
 
@@ -107,8 +156,11 @@ async def handle_chat(
     ollama_client = get_ollama_client()
     session_manager = get_session_manager()
     
-    # Reset cancel event for new generation
-    session.cancel_event.clear()
+    # Check if cancelled before we even start
+    if session.cancel_event.is_set():
+        logger.info(f"Chat already cancelled for session {session.session_id}")
+        return
+    
     session.last_activity = datetime.now()
     
     try:
@@ -181,7 +233,14 @@ async def handle_chat(
         # 3. Stream response from Ollama
         full_response = ""
         try:
-            async for token in ollama_client.chat_stream(messages, session.cancel_event):
+            # Get runtime options for Ollama
+            ollama_runtime_options = runtime_config.ollama_options.to_dict()
+            
+            async for token in ollama_client.chat_stream(
+                messages,
+                session.cancel_event,
+                runtime_options=ollama_runtime_options
+            ):
                 # Check for cancellation
                 if session.cancel_event.is_set():
                     logger.info("Chat cancelled during generation")
