@@ -71,3 +71,7 @@ class WadoRSRetrieval(RetrievalStrategy):
         dicom_folder = save_datasets_to_folder(datasets, series_uid, self.storage_config)
 
         return dicom_folder, series_uid
+
+
+
+

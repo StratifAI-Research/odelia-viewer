@@ -3,7 +3,6 @@ Response parser for MedGemma text output
 Single Responsibility: Parse generated JSON into structured classification
 """
 import json
-import re
 import logging
 from typing import Dict, Any
 
@@ -15,37 +14,34 @@ logger = logging.getLogger(__name__)
 VALID_CLASSIFICATIONS = ["No lesion", "Benign", "Malignant"]
 
 
-def extract_json_from_text(text: str) -> str:
+def clean_json_text(text: str) -> str:
     """
-    Extract JSON object from text that may contain markdown code blocks.
+    Clean raw text to extract JSON content.
+
+    Handles:
+    - Leading/trailing whitespace
+    - Markdown code blocks (```json ... ```)
 
     Args:
         text: Raw text output from MedGemma
 
     Returns:
-        JSON string
-
-    Raises:
-        ResponseParsingError: If no valid JSON found
+        Cleaned JSON string
     """
-    # Try to find JSON in markdown code blocks first
-    code_block_pattern = r'```(?:json)?\s*(\{[\s\S]*?\})\s*```'
-    match = re.search(code_block_pattern, text)
-    if match:
-        return match.group(1)
+    cleaned = text.strip()
 
-    # Try to find standalone JSON object
-    json_pattern = r'\{[\s\S]*?"left"[\s\S]*?"right"[\s\S]*?\}'
-    match = re.search(json_pattern, text)
-    if match:
-        return match.group(0)
+    # Remove markdown code block wrapper if present
+    if cleaned.startswith("```"):
+        # Find the end of opening fence
+        first_newline = cleaned.find('\n')
+        if first_newline != -1:
+            cleaned = cleaned[first_newline + 1:]
 
-    # If text starts with { assume it's JSON
-    stripped = text.strip()
-    if stripped.startswith('{'):
-        return stripped
+        # Remove closing fence
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3].strip()
 
-    raise ResponseParsingError("No JSON object found in response", raw_response=text)
+    return cleaned
 
 
 def validate_classification(value: str) -> str:
@@ -114,16 +110,14 @@ def parse_bilateral_response(text: str) -> Dict[str, Any]:
         ResponseParsingError: If parsing fails
     """
     logger.info(f"Parsing MedGemma response ({len(text)} chars)")
-    logger.debug(f"Raw response: {text[:500]}...")
 
-    # Extract JSON from text
-    json_str = extract_json_from_text(text)
+    # Clean and parse JSON directly
+    json_str = clean_json_text(text)
 
-    # Parse JSON
     try:
         parsed = json.loads(json_str)
     except json.JSONDecodeError as e:
-        raise ResponseParsingError(f"Invalid JSON: {e}", raw_response=text)
+        raise ResponseParsingError(f"Invalid JSON: {e}", raw_response=json_str)
 
     # Validate structure
     if "left" not in parsed or "right" not in parsed:

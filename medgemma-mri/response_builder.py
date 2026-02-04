@@ -46,3 +46,7 @@ def build_bilateral_response(parsed_result: Dict[str, Any], model_info: Dict[str
     logger.info(f"  Right: {response['right']['prediction']} ({response['right']['confidence']}%)")
 
     return response
+
+
+
+
