@@ -19,6 +19,7 @@ interface UseChatServiceReturn {
   error: string | null;
   sessionId: string | null;
   preprocessingStatus: string | null;
+  preprocessingProgress: number | null;
 
   // Actions
   connect: () => Promise<void>;
@@ -39,10 +40,46 @@ export function useChatService(): UseChatServiceReturn {
   const [error, setError] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [preprocessingStatus, setPreprocessingStatus] = useState<string | null>(null);
+  const [preprocessingProgress, setPreprocessingProgress] = useState<number | null>(null);
 
   // Ref to track current streaming message
   const currentStreamingMessageRef = useRef<string | null>(null);
   const streamingContentRef = useRef<string>('');
+  const streamingThinkingRef = useRef<string>('');
+  const rawStreamingRef = useRef<string>('');
+
+  const THINK_START_MARKER = '<unused94>thought';
+  const THINK_END_MARKER = '<unused95>';
+
+  const splitThinkingFromContent = useCallback((raw: string) => {
+    let visibleText = raw;
+    let thinkingText = '';
+
+    const startIdx = raw.indexOf(THINK_START_MARKER);
+    if (startIdx === -1) {
+      return { visibleText, thinkingText };
+    }
+
+    const afterStart = startIdx + THINK_START_MARKER.length;
+    const endIdx = raw.indexOf(THINK_END_MARKER, afterStart);
+
+    if (endIdx === -1) {
+      // We are inside the thinking section but haven't seen the end marker yet
+      const rawThinking = raw.slice(afterStart);
+      thinkingText = rawThinking;
+      visibleText = raw.slice(0, startIdx);
+      return { visibleText, thinkingText };
+    }
+
+    const rawThinking = raw.slice(afterStart, endIdx);
+    // Strip optional “Thinking Process:” label and surrounding whitespace
+    const cleanedThinking = rawThinking.replace(/^\s*Thinking Process:\s*/i, '').trim();
+
+    thinkingText = cleanedThinking;
+    visibleText = raw.slice(0, startIdx) + raw.slice(endIdx + THINK_END_MARKER.length);
+
+    return { visibleText, thinkingText };
+  }, []);
 
   // Connect to WebSocket
   const connect = useCallback(async () => {
@@ -78,6 +115,7 @@ export function useChatService(): UseChatServiceReturn {
       // Clear any previous error
       setError(null);
       setPreprocessingStatus(null);
+      setPreprocessingProgress(null);
 
       // Add user message to history
       const userMessage: ChatMessage = {
@@ -103,6 +141,8 @@ export function useChatService(): UseChatServiceReturn {
       // Track streaming state
       currentStreamingMessageRef.current = assistantMessageId;
       streamingContentRef.current = '';
+      streamingThinkingRef.current = '';
+      rawStreamingRef.current = '';
       setIsStreaming(true);
 
       // Send to service
@@ -117,16 +157,19 @@ export function useChatService(): UseChatServiceReturn {
     chatService.cancelGeneration();
 
     // Mark current message as complete
-    if (currentStreamingMessageRef.current) {
+    const messageId = currentStreamingMessageRef.current;
+    if (messageId) {
+      currentStreamingMessageRef.current = null;
+      streamingContentRef.current = '';
+      streamingThinkingRef.current = '';
+      rawStreamingRef.current = '';
       setMessages((prev) =>
         prev.map((msg) =>
-          msg.id === currentStreamingMessageRef.current
+          msg.id === messageId
             ? { ...msg, isStreaming: false, content: msg.content + ' [cancelled]' }
             : msg
         )
       );
-      currentStreamingMessageRef.current = null;
-      streamingContentRef.current = '';
     }
     setIsStreaming(false);
   }, [chatService]);
@@ -136,6 +179,11 @@ export function useChatService(): UseChatServiceReturn {
     setMessages([]);
     setError(null);
     setPreprocessingStatus(null);
+    setPreprocessingProgress(null);
+    currentStreamingMessageRef.current = null;
+    streamingContentRef.current = '';
+    streamingThinkingRef.current = '';
+    rawStreamingRef.current = '';
   }, []);
 
   // Subscribe to service events
@@ -166,11 +214,23 @@ export function useChatService(): UseChatServiceReturn {
     subscriptions.push(
       chatService.subscribe(CHAT_EVENTS.TOKEN, (data) => {
         if (currentStreamingMessageRef.current && data.content) {
-          streamingContentRef.current += data.content;
+          // Clear preprocessing status on first token (transition to generating)
+          if (rawStreamingRef.current.length === 0) {
+            setPreprocessingStatus(null);
+            setPreprocessingProgress(null);
+          }
+          rawStreamingRef.current += data.content;
+          const { visibleText, thinkingText } = splitThinkingFromContent(rawStreamingRef.current);
+          streamingContentRef.current = visibleText;
+          streamingThinkingRef.current = thinkingText;
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === currentStreamingMessageRef.current
-                ? { ...msg, content: streamingContentRef.current }
+                ? {
+                    ...msg,
+                    content: streamingContentRef.current,
+                    thinking: streamingThinkingRef.current || undefined,
+                  }
                 : msg
             )
           );
@@ -181,19 +241,23 @@ export function useChatService(): UseChatServiceReturn {
     // Message complete event
     subscriptions.push(
       chatService.subscribe(CHAT_EVENTS.MESSAGE_COMPLETE, () => {
-        if (currentStreamingMessageRef.current) {
+        const messageId = currentStreamingMessageRef.current;
+        if (messageId) {
+          currentStreamingMessageRef.current = null;
+          streamingContentRef.current = '';
+          streamingThinkingRef.current = '';
+          rawStreamingRef.current = '';
           setMessages((prev) =>
             prev.map((msg) =>
-              msg.id === currentStreamingMessageRef.current
+              msg.id === messageId
                 ? { ...msg, isStreaming: false }
                 : msg
             )
           );
-          currentStreamingMessageRef.current = null;
-          streamingContentRef.current = '';
         }
         setIsStreaming(false);
         setPreprocessingStatus(null);
+        setPreprocessingProgress(null);
       })
     );
 
@@ -203,12 +267,16 @@ export function useChatService(): UseChatServiceReturn {
         setError(data.error || 'Unknown error');
         setIsStreaming(false);
         setPreprocessingStatus(null);
+        setPreprocessingProgress(null);
 
         // Update streaming message with error
-        if (currentStreamingMessageRef.current) {
+        const messageId = currentStreamingMessageRef.current;
+        if (messageId) {
+          currentStreamingMessageRef.current = null;
+          streamingContentRef.current = '';
           setMessages((prev) =>
             prev.map((msg) =>
-              msg.id === currentStreamingMessageRef.current
+              msg.id === messageId
                 ? {
                     ...msg,
                     isStreaming: false,
@@ -217,8 +285,6 @@ export function useChatService(): UseChatServiceReturn {
                 : msg
             )
           );
-          currentStreamingMessageRef.current = null;
-          streamingContentRef.current = '';
         }
       })
     );
@@ -227,6 +293,7 @@ export function useChatService(): UseChatServiceReturn {
     subscriptions.push(
       chatService.subscribe(CHAT_EVENTS.PREPROCESSING, (data) => {
         setPreprocessingStatus(data.status);
+        setPreprocessingProgress(data.progress ?? null);
       })
     );
 
@@ -258,6 +325,7 @@ export function useChatService(): UseChatServiceReturn {
     error,
     sessionId,
     preprocessingStatus,
+    preprocessingProgress,
     connect,
     disconnect,
     sendMessage,

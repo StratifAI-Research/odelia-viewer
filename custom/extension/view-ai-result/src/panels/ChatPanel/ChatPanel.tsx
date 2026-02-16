@@ -1,13 +1,22 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { marked } from 'marked';
 import { useSystem } from '@ohif/core';
 import { useImageViewer } from '@ohif/ui';
 import { useViewportGrid } from '@ohif/ui-next';
 import { useChatService } from '../../hooks/useChatService';
 import { ChatMessage, ChatSeriesInfo } from '../../types/chatTypes';
 
-// Debug API base URL - same origin as chat middleware
-const DEBUG_API_BASE = 'http://localhost:5560';
+// Configure marked for safe, synchronous rendering
+marked.setOptions({
+  breaks: true,   // Convert \n to <br> (matches chat UX expectations)
+  gfm: true,      // GitHub Flavored Markdown (tables, strikethrough, etc.)
+});
+
+// Debug API base URL - use relative path when proxied through nginx, fallback to localhost for dev
+const DEBUG_API_BASE = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+  ? '/chat-api'
+  : 'http://localhost:5560';
 
 // Slice strategy options
 const SLICE_STRATEGIES = [
@@ -35,6 +44,7 @@ const ChatPanel: React.FC = () => {
     error,
     sessionId,
     preprocessingStatus,
+    preprocessingProgress,
     connect,
     sendMessage,
     cancelGeneration,
@@ -57,6 +67,13 @@ const ChatPanel: React.FC = () => {
   const [sliceStrategy, setSliceStrategy] = useState('central');
   const [centralPercentage, setCentralPercentage] = useState(60);
 
+  // Ollama options state
+  const [ollamaThink, setOllamaThink] = useState<boolean | null>(null);
+  const [ollamaSuffix, setOllamaSuffix] = useState('');
+
+  // Thinking section expansion state (per-message)
+  const [expandedThinkingIds, setExpandedThinkingIds] = useState<Set<string>>(new Set());
+
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -73,6 +90,9 @@ const ChatPanel: React.FC = () => {
       setNumSlices(data.preprocessing?.num_slices || 5);
       setSliceStrategy(data.preprocessing?.slice_strategy || 'central');
       setCentralPercentage(data.preprocessing?.central_percentage || 60);
+      // Ollama options
+      setOllamaThink(data.ollama_options?.think ?? null);
+      setOllamaSuffix(data.ollama_options?.suffix || '');
     } catch (e: any) {
       setSettingsError(e.message || 'Failed to load settings');
     } finally {
@@ -95,6 +115,10 @@ const ChatPanel: React.FC = () => {
             slice_strategy: sliceStrategy,
             central_percentage: centralPercentage,
           },
+          ollama_options: {
+            think: ollamaThink,
+            suffix: ollamaSuffix || null,
+          },
         }),
       });
       if (!res.ok) throw new Error(`Failed to save: ${res.status}`);
@@ -104,7 +128,7 @@ const ChatPanel: React.FC = () => {
     } finally {
       setSettingsLoading(false);
     }
-  }, [systemPrompt, numSlices, sliceStrategy, centralPercentage]);
+  }, [systemPrompt, numSlices, sliceStrategy, centralPercentage, ollamaThink, ollamaSuffix]);
 
   // Clear image cache
   const clearCache = useCallback(async () => {
@@ -343,10 +367,24 @@ const ChatPanel: React.FC = () => {
     );
   };
 
+  const toggleThinking = (messageId: string) => {
+    setExpandedThinkingIds(prev => {
+      const next = new Set(prev);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
+  };
+
   // Render a single message
   const renderMessage = (message: ChatMessage) => {
     const isUser = message.role === 'user';
     const isAssistant = message.role === 'assistant';
+    const hasThinking = isAssistant && !!message.thinking;
+    const isThinkingExpanded = hasThinking && expandedThinkingIds.has(message.id);
 
     return (
       <div
@@ -366,18 +404,57 @@ const ChatPanel: React.FC = () => {
             </div>
           )}
 
+          {/* Assistant thinking (collapsible) */}
+          {hasThinking && (
+            <div className="mb-2 text-xs">
+              <button
+                type="button"
+                onClick={() => toggleThinking(message.id)}
+                className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-200"
+              >
+                <span>{isThinkingExpanded ? 'Hide thinking' : 'Show thinking'}</span>
+                <span>{isThinkingExpanded ? '▲' : '▼'}</span>
+              </button>
+              {isThinkingExpanded && (
+                <div className="mt-1 rounded bg-gray-900/60 px-2 py-1 max-h-40 overflow-y-auto">
+                  <div className="text-[11px] break-words">
+                    <span dangerouslySetInnerHTML={{ __html: marked.parse(message.thinking || '') }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Message content */}
-          <div className="text-sm whitespace-pre-wrap break-words">
-            {message.content || (message.isStreaming ? '...' : '')}
+          <div className="text-sm break-words">
+            {isAssistant ? (
+              <span
+                dangerouslySetInnerHTML={{
+                  __html: marked.parse(message.content || (message.isStreaming ? '...' : '')),
+                }}
+              />
+            ) : (
+              message.content || (message.isStreaming ? '...' : '')
+            )}
           </div>
 
           {/* Streaming indicator */}
           {message.isStreaming && (
-            <div className="flex items-center gap-1 mt-1">
-              <div className="w-1.5 h-1.5 bg-primary-light rounded-full animate-pulse" />
-              <span className="text-xs text-gray-400">
-                {preprocessingStatus || 'Generating...'}
-              </span>
+            <div className="mt-1">
+              <div className="flex items-center gap-1">
+                <div className="w-1.5 h-1.5 bg-primary-light rounded-full animate-pulse" />
+                <span className="text-xs text-gray-400">
+                  {preprocessingStatus || 'Generating...'}
+                </span>
+              </div>
+              {preprocessingStatus && preprocessingProgress != null && (
+                <div className="mt-1 w-full bg-gray-700 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="bg-primary-light h-1.5 rounded-full transition-all duration-300"
+                    style={{ width: `${Math.round(preprocessingProgress * 100)}%` }}
+                  />
+                </div>
+              )}
             </div>
           )}
 
@@ -492,6 +569,42 @@ const ChatPanel: React.FC = () => {
               )}
             </div>
 
+            {/* Ollama Options Section */}
+            <div className="border-t border-gray-700 pt-4">
+              <h4 className="text-xs font-semibold text-gray-300 mb-3">Ollama Options</h4>
+
+              {/* Think (for thinking models like deepseek-r1) */}
+              <div className="mb-3">
+                <label className="block text-xs text-gray-400 mb-1">Think Mode (for thinking models)</label>
+                <select
+                  value={ollamaThink === null ? 'default' : ollamaThink ? 'true' : 'false'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setOllamaThink(val === 'default' ? null : val === 'true');
+                  }}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm
+                    focus:outline-none focus:border-primary-light"
+                >
+                  <option value="default">Default</option>
+                  <option value="true">Enabled</option>
+                  <option value="false">Disabled</option>
+                </select>
+              </div>
+
+              {/* Suffix */}
+              <div className="mb-3">
+                <label className="block text-xs text-gray-400 mb-1">Suffix (text after response)</label>
+                <input
+                  type="text"
+                  value={ollamaSuffix}
+                  onChange={(e) => setOllamaSuffix(e.target.value)}
+                  className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm
+                    focus:outline-none focus:border-primary-light"
+                  placeholder="Optional suffix..."
+                />
+              </div>
+            </div>
+
             {/* Cache Section */}
             <div className="border-t border-gray-700 pt-4">
               <h4 className="text-xs font-semibold text-gray-300 mb-3">Cache</h4>
@@ -529,104 +642,109 @@ const ChatPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-black text-white relative">
+    <div className="flex flex-col h-full min-h-0 bg-black text-white relative">
       {/* Settings Modal */}
       {renderSettingsModal()}
 
-      {/* Header with settings button */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700">
-        <span className="text-xs text-gray-400">
-          {isConnected ? `Session: ${sessionId?.slice(0, 8)}...` : 'Disconnected'}
-        </span>
-        <button
-          onClick={openSettings}
-          className="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white"
-          title="Settings"
-        >
-          {/* Wrench icon */}
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            className="w-4 h-4"
+      <div className="flex flex-col h-full min-h-0">
+        {/* Header with settings button */}
+        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-700">
+          <span className="text-xs text-gray-400">
+            {isConnected ? `Session: ${sessionId?.slice(0, 8)}...` : 'Disconnected'}
+          </span>
+          <button
+            onClick={openSettings}
+            className="p-1.5 hover:bg-gray-700 rounded text-gray-400 hover:text-white"
+            title="Settings"
           >
-            <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-          </svg>
-        </button>
-      </div>
-
-      {/* Connection status */}
-      {renderConnectionStatus()}
-
-      {/* Context selector */}
-      {renderContextSelector()}
-
-      {/* Messages area */}
-      <div className="flex-1 overflow-y-auto p-3">
-        {messages.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500 text-sm">
-            <div className="mb-2">No messages yet</div>
-            <div className="text-xs text-center">
-              Select series above for context, then ask questions about your study.
-            </div>
-          </div>
-        ) : (
-          <>
-            {messages.map(renderMessage)}
-            <div ref={messagesEndRef} />
-          </>
-        )}
-      </div>
-
-      {/* Error display */}
-      {renderError()}
-
-      {/* Input area */}
-      <div className="border-t border-gray-700 p-3">
-        <div className="flex gap-2">
-          <textarea
-            ref={inputRef}
-            value={inputValue}
-            onChange={(e) => setInputValue(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={isConnected ? 'Ask about this study...' : 'Connecting...'}
-            disabled={!isConnected}
-            rows={2}
-            className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm resize-none
-              focus:outline-none focus:border-primary-light disabled:opacity-50"
-          />
-          <div className="flex flex-col gap-1">
-            {isStreaming ? (
-              <button
-                onClick={cancelGeneration}
-                className="px-3 py-2 bg-red-700 hover:bg-red-600 rounded text-sm"
-                title="Cancel"
-              >
-                ■
-              </button>
-            ) : (
-              <button
-                onClick={handleSend}
-                disabled={!isConnected || !inputValue.trim()}
-                className="px-3 py-2 bg-primary-main hover:bg-primary-light rounded text-sm
-                  disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Send"
-              >
-                ▶
-              </button>
-            )}
-            <button
-              onClick={clearHistory}
-              disabled={messages.length === 0}
-              className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs
-                disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Clear history"
+            {/* Wrench icon */}
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="w-4 h-4"
             >
-              Clear
-            </button>
+              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
+            </svg>
+          </button>
+        </div>
+
+        {/* Connection status */}
+        {renderConnectionStatus()}
+
+        {/* Context selector */}
+        {renderContextSelector()}
+
+        {/* Scrollable messages + fixed input */}
+        <div className="flex flex-col flex-1 min-h-0">
+          {/* Messages area */}
+          <div className="flex-1 overflow-y-auto p-3">
+            {messages.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-full text-gray-500 text-sm">
+                <div className="mb-2">No messages yet</div>
+                <div className="text-xs text-center">
+                  Select series above for context, then ask questions about your study.
+                </div>
+              </div>
+            ) : (
+              <>
+                {messages.map(renderMessage)}
+                <div ref={messagesEndRef} />
+              </>
+            )}
+          </div>
+
+          {/* Error display */}
+          {renderError()}
+
+          {/* Input area */}
+          <div className="border-t border-gray-700 p-3">
+            <div className="flex gap-2">
+              <textarea
+                ref={inputRef}
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={isConnected ? 'Ask about this study...' : 'Connecting...'}
+                disabled={!isConnected}
+                rows={2}
+                className="flex-1 bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm resize-none
+              focus:outline-none focus:border-primary-light disabled:opacity-50"
+              />
+              <div className="flex flex-col gap-1">
+                {isStreaming ? (
+                  <button
+                    onClick={cancelGeneration}
+                    className="px-3 py-2 bg-red-700 hover:bg-red-600 rounded text-sm"
+                    title="Cancel"
+                  >
+                    ■
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleSend}
+                    disabled={!isConnected || !inputValue.trim()}
+                    className="px-3 py-2 bg-primary-main hover:bg-primary-light rounded text-sm
+                  disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Send"
+                  >
+                    ▶
+                  </button>
+                )}
+                <button
+                  onClick={clearHistory}
+                  disabled={messages.length === 0}
+                  className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded text-xs
+                disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Clear history"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

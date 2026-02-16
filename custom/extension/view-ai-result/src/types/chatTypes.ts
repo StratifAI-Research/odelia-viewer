@@ -58,6 +58,8 @@ export interface ChatMessage {
   role: ChatRole;
   content: string;
   timestamp: Date;
+  /** Optional internal reasoning / thinking trace (assistant messages only) */
+  thinking?: string;
   /** Series UIDs included as context for this message (user messages only) */
   seriesContext?: string[];
   /** Whether this message is still being streamed */
@@ -85,6 +87,7 @@ export interface ChatSession {
   isConnected: boolean;
   isStreaming: boolean;
   preprocessingStatus?: string;
+  preprocessingProgress?: number;
 }
 
 /**

@@ -11,9 +11,6 @@ import {
   ChatEventType,
 } from '../types/chatTypes';
 
-// Default WebSocket URL - can be overridden via window.config
-const DEFAULT_WS_URL = 'ws://localhost:5560/ws/chat/new';
-
 // Reconnection settings
 const RECONNECT_INITIAL_DELAY = 1000;
 const RECONNECT_MAX_DELAY = 30000;
@@ -33,31 +30,36 @@ export class ChatService {
   EVENTS = CHAT_EVENTS;
 
   constructor() {
-    // Try to get WebSocket URL from config, fallback to default
+    // Try to get WebSocket URL from config, fallback to derived URL
     this.wsUrl = this.getWebSocketUrl();
   }
 
   /**
-   * Get WebSocket URL from config or use default
+   * Get WebSocket URL - derives from current location for proxied deployments
    */
   private getWebSocketUrl(): string {
     try {
       const config = (window as any)?.config;
+      // Allow explicit override via config
       if (config?.chatMiddleware?.wsUrl) {
         return config.chatMiddleware.wsUrl;
-      }
-      // Try to derive from current location for production
-      if (config?.dataSources?.[0]?.configuration?.qidoRoot) {
-        const origin = window.location.origin;
-        // In production, chat middleware might be proxied
-        if (config.chatMiddleware?.wsPath) {
-          return `${origin.replace('http', 'ws')}${config.chatMiddleware.wsPath}`;
-        }
       }
     } catch (e) {
       console.warn('[ChatService] Error getting config:', e);
     }
-    return DEFAULT_WS_URL;
+
+    // Derive WebSocket URL from current origin
+    // This works for both development (localhost) and production (proxied through nginx)
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+
+    // In development on localhost, use direct connection to chat-middleware
+    if (window.location.hostname === 'localhost' && window.location.port === '3000') {
+      return 'ws://localhost:5560/ws/chat/new';
+    }
+
+    // In production/proxied environment, use the proxied path
+    return `${protocol}//${host}/ws/chat/new`;
   }
 
   /**
