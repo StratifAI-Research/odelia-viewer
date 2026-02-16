@@ -1,104 +1,101 @@
 """
-Prompt builder for assembling Ollama-compatible message arrays
+Prompt builder for assembling OpenAI-compatible message arrays
+with interleaved image_url and text content parts.
 """
 import logging
-from typing import Dict, List
+from typing import Dict, List, Tuple, Union
 
 from runtime_config import RuntimeConfig, get_runtime_config
 
 logger = logging.getLogger(__name__)
 
+ContentType = Union[str, List[dict]]
+
 
 class PromptBuilder:
     """
-    Builds Ollama-compatible message arrays from conversation history
+    Builds OpenAI-compatible message arrays from conversation history
     and current request with images.
+
+    Produces interleaved content arrays with explicit slice labels,
+    matching the format expected by MedGemma via Ollama's
+    /v1/chat/completions endpoint.
     """
-    
+
     def __init__(self, runtime_config: RuntimeConfig = None):
-        """
-        Initialize the prompt builder.
-        
-        Args:
-            runtime_config: RuntimeConfig instance. If None, uses global singleton.
-        """
         self._config = runtime_config
-    
+
     @property
     def config(self) -> RuntimeConfig:
-        """Get the runtime config, using global if not set"""
         if self._config is None:
             return get_runtime_config()
         return self._config
-    
-    def build_ollama_messages(
+
+    def _build_user_content(
         self,
-        conversation_history: List[dict],
-        new_user_message: str,
+        user_text: str,
         series_images: Dict[str, List[str]]
-    ) -> List[dict]:
+    ) -> ContentType:
         """
-        Build messages array for Ollama API.
-        
-        Format for multimodal:
-        [
-            {"role": "system", "content": "You are a radiology assistant..."},
-            {"role": "user", "content": "...", "images": ["base64...", "base64..."]},
-            {"role": "assistant", "content": "..."},
-            ...
-        ]
-        
-        Images are attached to the current user message only.
-        Previous conversation history is included for context (without images).
-        
-        Args:
-            conversation_history: List of previous messages [{"role": "...", "content": "..."}]
-            new_user_message: The new message from the user
-            series_images: Dict mapping series_uid to list of base64 images
-            
-        Returns:
-            List of message dicts formatted for Ollama API
+        Build the content value for a user message.
+
+        With images: returns an interleaved content array:
+            [image_url, "SLICE 1", image_url, "SLICE 2", ..., user_text]
+        Without images: returns the plain text string.
         """
-        messages = []
-        
-        # 1. System prompt (from RuntimeConfig - allows debug override)
-        messages.append({
-            "role": "system",
-            "content": self.config.system_prompt
-        })
-        
-        # 2. Replay conversation history (without images - Ollama maintains context)
-        for msg in conversation_history:
-            messages.append({
-                "role": msg["role"],
-                "content": msg["content"]
-            })
-        
-        # 3. Current user message with images
-        # Flatten all images from all requested series
         all_images = []
         for series_uid, images in series_images.items():
             all_images.extend(images)
             logger.debug(f"Added {len(images)} images from series {series_uid}")
-        
-        user_message = {
-            "role": "user",
-            "content": new_user_message
-        }
-        
-        # Only add images key if we have images
-        if all_images:
-            user_message["images"] = all_images
-            logger.info(f"Built prompt with {len(all_images)} total images")
-        else:
-            logger.info("Built prompt with no images (text-only)")
-        
-        messages.append(user_message)
-        
-        logger.debug(f"Total messages in prompt: {len(messages)} "
-                    f"(1 system + {len(conversation_history)} history + 1 current)")
-        
-        return messages
+
+        if not all_images:
+            logger.info("Built user content with no images (text-only)")
+            return user_text
+
+        content: List[dict] = []
+        for idx, data_uri in enumerate(all_images, start=1):
+            content.append({"type": "image_url", "image_url": {"url": data_uri}})
+            content.append({"type": "text", "text": f"SLICE {idx}"})
+
+        content.append({"type": "text", "text": user_text})
+
+        logger.info(f"Built user content with {len(all_images)} images (interleaved)")
+        return content
+
+    def build_messages(
+        self,
+        conversation_history: List[dict],
+        new_user_message: str,
+        series_images: Dict[str, List[str]]
+    ) -> Tuple[List[dict], ContentType]:
+        """
+        Build OpenAI-format messages array for /v1/chat/completions.
+
+        Returns:
+            Tuple of (messages_for_api, user_content_to_store_in_history)
+        """
+        messages = []
+
+        # 1. System prompt
+        messages.append({
+            "role": "system",
+            "content": self.config.system_prompt
+        })
+
+        # 2. Replay conversation history as-is
+        for msg in conversation_history:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+
+        # 3. Current user message (interleaved content array or plain text)
+        user_content = self._build_user_content(new_user_message, series_images)
+        messages.append({"role": "user", "content": user_content})
+
+        logger.debug(
+            f"Total messages in prompt: {len(messages)} "
+            f"(1 system + {len(conversation_history)} history + 1 current)"
+        )
+
+        return messages, user_content
 
 
 # Global prompt builder instance

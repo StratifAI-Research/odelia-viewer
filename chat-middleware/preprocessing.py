@@ -189,7 +189,7 @@ def slices_to_base64(slice_arrays: List[np.ndarray]) -> List[str]:
 
         buffer = io.BytesIO()
         pil_image.save(buffer, format="PNG")
-        base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+        base64_str = f"data:image/png;base64,{base64.b64encode(buffer.getvalue()).decode('utf-8')}"
         base64_images.append(base64_str)
 
     return base64_images

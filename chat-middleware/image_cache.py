@@ -155,6 +155,11 @@ def get_image_cache(max_entries: int = 100) -> ImageCache:
     global _image_cache
     if _image_cache is None:
         _image_cache = ImageCache(max_entries=max_entries)
+    elif _image_cache.max_entries != max_entries:
+        logger.warning(
+            f"ImageCache already initialized with max_entries={_image_cache.max_entries}, "
+            f"ignoring requested max_entries={max_entries}"
+        )
     return _image_cache
 
 

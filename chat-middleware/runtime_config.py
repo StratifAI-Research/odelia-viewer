@@ -1,5 +1,8 @@
 """
-Mutable runtime configuration that can be updated via debug API
+Mutable runtime configuration that can be updated via debug API.
+
+This module provides runtime-adjustable settings that can be changed via the debug API
+without restarting the service. Default values are initialized from static config (env vars).
 """
 from dataclasses import dataclass, field
 from typing import Optional
@@ -14,41 +17,52 @@ confidence, say so clearly."""
 
 @dataclass
 class PreprocessingParams:
-    """Preprocessing parameters that can be adjusted at runtime"""
-    num_slices: int = 5
+    """Preprocessing parameters that can be adjusted at runtime.
+    
+    Defaults are set from static config (env vars) at initialization time.
+    """
+    num_slices: int = 5  # Default, overridden by config.num_slices at init
     slice_strategy: SliceStrategy = SliceStrategy.CENTRAL
     central_percentage: int = 60  # For central strategy, % of volume to use
 
 
 @dataclass
 class OllamaOptions:
-    """Ollama generation options that can be adjusted at runtime"""
-    # Context window
-    num_ctx: Optional[int] = None           # Context window size (use config default if None)
+    """
+    OpenAI-compatible generation options adjustable at runtime.
 
-    # Thinking models (e.g., deepseek-r1)
-    think: Optional[bool] = None            # Enable thinking before responding
-
-    # Suffix
-    suffix: Optional[str] = None            # Text after model response
+    Only fields supported by Ollama's /v1/chat/completions endpoint.
+    num_ctx is NOT supported here — set it via a Modelfile instead.
+    """
+    max_tokens: Optional[int] = None        # Max tokens to generate
+    temperature: Optional[float] = None     # Sampling temperature
+    top_p: Optional[float] = None           # Top-p (nucleus) sampling
+    stop: Optional[list] = None             # Stop sequences
+    seed: Optional[int] = None              # Random seed for reproducibility
 
     def to_dict(self) -> dict:
-        """Convert to dict, excluding None values"""
+        """Convert to dict, excluding None values (used as runtime_options for OllamaClient)"""
         result = {}
-        if self.num_ctx is not None:
-            result["num_ctx"] = self.num_ctx
-        if self.think is not None:
-            result["think"] = self.think
-        if self.suffix is not None:
-            result["suffix"] = self.suffix
+        if self.max_tokens is not None:
+            result["max_tokens"] = self.max_tokens
+        if self.temperature is not None:
+            result["temperature"] = self.temperature
+        if self.top_p is not None:
+            result["top_p"] = self.top_p
+        if self.stop is not None:
+            result["stop"] = self.stop
+        if self.seed is not None:
+            result["seed"] = self.seed
         return result
 
     def to_full_dict(self) -> dict:
         """Convert to dict including None values for display"""
         return {
-            "num_ctx": self.num_ctx,
-            "think": self.think,
-            "suffix": self.suffix,
+            "max_tokens": self.max_tokens,
+            "temperature": self.temperature,
+            "top_p": self.top_p,
+            "stop": self.stop,
+            "seed": self.seed,
         }
 
 
@@ -56,11 +70,22 @@ class RuntimeConfig:
     """
     Singleton holding runtime-adjustable configuration.
     Can be modified via debug API without restarting the service.
+    
+    Default values are initialized from static config (env vars).
     """
 
     def __init__(self):
+        # Import here to avoid circular imports
+        from config import get_config
+        config = get_config()
+        
         self.system_prompt: str = DEFAULT_SYSTEM_PROMPT
-        self.preprocessing: PreprocessingParams = PreprocessingParams()
+        
+        # Initialize preprocessing from static config (env vars)
+        self.preprocessing: PreprocessingParams = PreprocessingParams(
+            num_slices=config.num_slices,  # From NUM_SLICES env var
+        )
+        
         self.ollama_options: OllamaOptions = OllamaOptions()
 
     def update(
@@ -93,10 +118,9 @@ class RuntimeConfig:
                 self.preprocessing.central_percentage = preprocessing["central_percentage"]
 
         if ollama_options is not None:
-            # Update each option if provided
-            for key in ["num_ctx", "think", "suffix"]:
-                if key in ollama_options:
-                    setattr(self.ollama_options, key, ollama_options[key])
+            for key, value in ollama_options.items():
+                if hasattr(self.ollama_options, key):
+                    setattr(self.ollama_options, key, value)
 
     def to_dict(self) -> dict:
         """Convert configuration to dictionary for API response"""

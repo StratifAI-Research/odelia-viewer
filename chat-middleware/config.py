@@ -13,7 +13,6 @@ class ChatMiddlewareConfig:
     # Ollama (external instance)
     ollama_url: str = "http://host.docker.internal:11434"
     ollama_model: str = "MedAIBase/MedGemma1.5:4b"
-    ollama_num_ctx: int = 8192  # Context window size
     
     # WADO-RS
     wado_base_url: str = "http://orthanc-viewer:8042/dicom-web"
@@ -35,7 +34,6 @@ class ChatMiddlewareConfig:
         return cls(
             ollama_url=os.getenv("OLLAMA_URL", "http://host.docker.internal:11434"),
             ollama_model=os.getenv("OLLAMA_MODEL", "MedAIBase/MedGemma1.5:4b"),
-            ollama_num_ctx=int(os.getenv("OLLAMA_NUM_CTX", "8192")),
             wado_base_url=os.getenv("WADO_BASE_URL", "http://orthanc-viewer:8042/dicom-web"),
             num_slices=int(os.getenv("NUM_SLICES", "5")),
             image_folder=Path(os.getenv("IMAGE_FOLDER", "/tmp/chat-middleware-images")),

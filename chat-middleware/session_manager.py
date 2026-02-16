@@ -110,24 +110,22 @@ class SessionManager:
         # Session doesn't exist, create it with the provided ID
         return self.create_session(session_id)
 
-    def append_message(self, session_id: str, role: str, content: str) -> None:
+    def append_message(self, session_id: str, role: str, content) -> None:
         """
         Append a message to a session's conversation history.
 
         Args:
             session_id: The session ID
             role: Message role ('user' or 'assistant')
-            content: Message content
+            content: Message content — either a plain string (text-only / assistant)
+                     or a content array (user messages with interleaved images)
         """
         session = self.get_session(session_id)
         if session is None:
             logger.warning(f"Attempted to append message to non-existent session: {session_id}")
             return
 
-        session.conversation_history.append({
-            "role": role,
-            "content": content
-        })
+        session.conversation_history.append({"role": role, "content": content})
         session.last_activity = datetime.now()
         logger.debug(f"Appended {role} message to session {session_id}")
 

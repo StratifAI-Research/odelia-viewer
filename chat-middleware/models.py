@@ -65,15 +65,13 @@ class PreprocessingConfig(BaseModel):
 
 
 class OllamaOptionsConfig(BaseModel):
-    """Ollama generation options for debug API"""
-    # Context and token limits
-    num_ctx: Optional[int] = None           # Context window size
-    num_predict: Optional[int] = None       # Max tokens to generate (-1 = infinite, -2 = fill context)
-
-    # Thinking models (e.g., deepseek-r1)
-    think: Optional[bool] = None            # Enable thinking before responding
-
-    suffix: Optional[str] = None            # Text after model response
+    """OpenAI-compatible generation options for debug API.
+    Only fields supported by /v1/chat/completions."""
+    max_tokens: Optional[int] = None        # Max tokens to generate
+    temperature: Optional[float] = None     # Sampling temperature
+    top_p: Optional[float] = None           # Top-p (nucleus) sampling
+    stop: Optional[List[str]] = None        # Stop sequences
+    seed: Optional[int] = None              # Random seed for reproducibility
 
 
 class DebugConfigUpdate(BaseModel):
@@ -87,8 +85,8 @@ class DebugConfigResponse(BaseModel):
     """Response body for debug configuration endpoint"""
     system_prompt: str
     preprocessing: dict
-    ollama: dict
-    ollama_options: dict
+    ollama_static: dict      # Read-only: model, url (from env vars)
+    ollama_options: dict     # Adjustable: max_tokens, temperature, top_p, stop, seed
 
 
 class SessionInfo(BaseModel):

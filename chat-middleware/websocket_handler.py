@@ -223,8 +223,8 @@ async def handle_chat(
                 progress=1.0
             )
         
-        # 2. Build Ollama messages (uses RuntimeConfig for system prompt)
-        messages = prompt_builder.build_ollama_messages(
+        # 2. Build messages and get user content for history storage
+        messages, user_content_for_history = prompt_builder.build_messages(
             session.conversation_history,
             content,
             series_images
@@ -233,7 +233,6 @@ async def handle_chat(
         # 3. Stream response from Ollama
         full_response = ""
         try:
-            # Get runtime options for Ollama
             ollama_runtime_options = runtime_config.ollama_options.to_dict()
             
             async for token in ollama_client.chat_stream(
@@ -241,7 +240,6 @@ async def handle_chat(
                 session.cancel_event,
                 runtime_options=ollama_runtime_options
             ):
-                # Check for cancellation
                 if session.cancel_event.is_set():
                     logger.info("Chat cancelled during generation")
                     break
@@ -263,7 +261,7 @@ async def handle_chat(
         
         # 4. Store in conversation history (only if not cancelled and has content)
         if not session.cancel_event.is_set() and full_response:
-            session_manager.append_message(session.session_id, "user", content)
+            session_manager.append_message(session.session_id, "user", user_content_for_history)
             session_manager.append_message(session.session_id, "assistant", full_response)
         
         # 5. Signal completion

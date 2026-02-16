@@ -34,10 +34,9 @@ async def get_debug_config() -> DebugConfigResponse:
     return DebugConfigResponse(
         system_prompt=runtime_config.system_prompt,
         preprocessing=runtime_config.to_dict()["preprocessing"],
-        ollama={
+        ollama_static={
             "model": config.ollama_model,
             "url": config.ollama_url,
-            "num_ctx": config.ollama_num_ctx
         },
         ollama_options=runtime_config.ollama_options.to_full_dict()
     )
@@ -69,6 +68,11 @@ async def update_debug_config(update: DebugConfigUpdate) -> DebugConfigResponse:
         ollama_options=ollama_options_dict
     )
 
+    # Auto-clear image cache when preprocessing params change
+    if preprocessing_dict:
+        cleared = get_image_cache().clear()
+        logger.info(f"Auto-cleared {cleared} cache entries after preprocessing config change")
+
     logger.info(f"Updated runtime config: system_prompt={'changed' if update.system_prompt else 'unchanged'}, "
                 f"preprocessing={'changed' if preprocessing_dict else 'unchanged'}, "
                 f"ollama_options={'changed' if ollama_options_dict else 'unchanged'}")
@@ -78,10 +82,9 @@ async def update_debug_config(update: DebugConfigUpdate) -> DebugConfigResponse:
     return DebugConfigResponse(
         system_prompt=runtime_config.system_prompt,
         preprocessing=runtime_config.to_dict()["preprocessing"],
-        ollama={
+        ollama_static={
             "model": config.ollama_model,
             "url": config.ollama_url,
-            "num_ctx": config.ollama_num_ctx
         },
         ollama_options=runtime_config.ollama_options.to_full_dict()
     )
