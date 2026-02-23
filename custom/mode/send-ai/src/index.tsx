@@ -4,7 +4,7 @@ import { ModeFactoryParams } from './types';
 import toolbarButtons from './toolbarButtons';
 
 const ohif = {
-  layout: '@ohif/extension-default.layoutTemplateModule.viewerLayout',
+  layout: 'view-ai-result.layoutTemplateModule.odeliaViewerLayout',
   sopClassHandler: '@ohif/extension-default.sopClassHandlerModule.stack',
   hangingProtocol: '@ohif/extension-default.hangingProtocolModule.default',
   leftPanel: 'view-ai-result.panelModule.seriesList',
@@ -162,7 +162,9 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
             id: ohif.layout,
             props: {
               leftPanels: [ohif.leftPanel],
+              leftPanelResizable: true,
               rightPanels: [orthancAI.panel, viewAIResultPanel.feedback, viewAIResultPanel.chat],
+              rightPanelResizable: true,
               viewports: [
                 {
                   namespace: viewAIResult.viewport,

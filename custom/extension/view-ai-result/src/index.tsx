@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { utils } from '@ohif/extension-cornerstone';
 import { id } from './id.js';
 import AITrackedViewport from './components/AITrackedViewport';
+import DisclaimerBanner from './components/DisclaimerBanner';
 import getPanelModule from './getPanelModule';
 import getHangingProtocolModule from './getHangingProtocolModule';
 import { AIResultsService } from './services/AIResultsService';
@@ -134,7 +135,32 @@ export default {
    * a Header, left and right sidebars, and a viewport section in the middle
    * of the viewer.
    */
-  getLayoutTemplateModule: ({ servicesManager, commandsManager, extensionManager }) => {},
+  getLayoutTemplateModule: ({ servicesManager, commandsManager, extensionManager, hotkeysManager }) => {
+    function OdeliaViewerLayout(props) {
+      const DefaultLayout = useMemo(() => {
+        const entry = extensionManager.getModuleEntry(
+          '@ohif/extension-default.layoutTemplateModule.viewerLayout'
+        );
+        return entry.component;
+      }, []);
+
+      return (
+        <>
+          <style>{`.fixed:has([data-cy="confirm-and-hide-button"]) { display: none !important; }`}</style>
+          <DefaultLayout {...props} />
+          <DisclaimerBanner />
+        </>
+      );
+    }
+
+    return [
+      {
+        name: 'odeliaViewerLayout',
+        id: 'odeliaViewerLayout',
+        component: OdeliaViewerLayout,
+      },
+    ];
+  },
   /**
    * SopClassHandlerModule should provide a list of sop class handlers that will be
    * available in OHIF for Modes to consume and use to create displaySets from Series.
