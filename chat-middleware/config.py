@@ -10,9 +10,10 @@ from pathlib import Path
 class ChatMiddlewareConfig:
     """Static configuration for the chat middleware service"""
     
-    # Ollama (external instance)
+    # LLM backend (external instance)
     ollama_url: str = "http://host.docker.internal:11434"
     ollama_model: str = "MedAIBase/MedGemma1.5:4b"
+    backend_type: str = "ollama"  # "ollama" or "llamacpp"
     
     # WADO-RS
     wado_base_url: str = "http://orthanc-viewer:8042/dicom-web"
@@ -34,6 +35,7 @@ class ChatMiddlewareConfig:
         return cls(
             ollama_url=os.getenv("OLLAMA_URL", "http://host.docker.internal:11434"),
             ollama_model=os.getenv("OLLAMA_MODEL", "MedAIBase/MedGemma1.5:4b"),
+            backend_type=os.getenv("BACKEND_TYPE", "ollama").lower(),
             wado_base_url=os.getenv("WADO_BASE_URL", "http://orthanc-viewer:8042/dicom-web"),
             num_slices=int(os.getenv("NUM_SLICES", "5")),
             image_folder=Path(os.getenv("IMAGE_FOLDER", "/tmp/chat-middleware-images")),

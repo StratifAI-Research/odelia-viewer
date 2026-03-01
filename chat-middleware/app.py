@@ -38,8 +38,9 @@ async def lifespan(app: FastAPI):
 
     # Initialize configuration
     config = init_config()
-    logger.info(f"Ollama URL: {config.ollama_url}")
-    logger.info(f"Ollama Model: {config.ollama_model}")
+    logger.info(f"Backend type: {config.backend_type}")
+    logger.info(f"LLM URL: {config.ollama_url}")
+    logger.info(f"LLM Model: {config.ollama_model}")
     logger.info(f"WADO-RS Base URL: {config.wado_base_url}")
     logger.info(f"Image folder: {config.image_folder}")
     logger.info(f"Max cache entries: {config.max_cache_entries}")

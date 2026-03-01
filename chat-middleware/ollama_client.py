@@ -1,5 +1,6 @@
 """
-Async streaming client for Ollama's OpenAI-compatible /v1/chat/completions endpoint
+Async streaming client for OpenAI-compatible /v1/chat/completions endpoint.
+Supports both Ollama and llama.cpp backends.
 """
 import json
 import asyncio
@@ -13,20 +14,20 @@ logger = logging.getLogger(__name__)
 
 class OllamaClient:
     """
-    Async streaming client for Ollama's /v1/chat/completions endpoint.
-    Supports cancellation via asyncio.Event.
+    Async streaming client for /v1/chat/completions endpoint.
+    Supports both Ollama and llama.cpp backends via backend_type.
     """
 
-    def __init__(self, base_url: str, model: str):
+    def __init__(self, base_url: str, model: str, backend_type: str = "ollama"):
         """
-        Initialize the Ollama client.
-
         Args:
-            base_url: Base URL for Ollama API (e.g., "http://localhost:11434")
+            base_url: Base URL for the LLM server (e.g., "http://localhost:11434")
             model: Model name to use (e.g., "medgemma-128k")
+            backend_type: "ollama" or "llamacpp"
         """
         self.base_url = base_url.rstrip('/')
         self.model = model
+        self.backend_type = backend_type
 
     async def chat_stream(
         self,
@@ -134,33 +135,41 @@ class OllamaClient:
 
     async def health_check(self) -> bool:
         """
-        Check if Ollama is reachable and responding.
-        Uses /api/tags (native endpoint, always available).
+        Check if the LLM backend is reachable.
+        Ollama: GET /api/tags  |  llama.cpp: GET /health
         """
+        endpoint = "/health" if self.backend_type == "llamacpp" else "/api/tags"
         try:
             timeout = aiohttp.ClientTimeout(total=5)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(f"{self.base_url}/api/tags") as response:
+                async with session.get(f"{self.base_url}{endpoint}") as response:
                     return response.status == 200
         except Exception as e:
-            logger.warning(f"Ollama health check failed: {e}")
+            logger.warning(f"Health check failed ({self.backend_type}): {e}")
             return False
 
     async def list_models(self) -> List[str]:
         """
-        List available models in Ollama.
-        Uses /api/tags (native endpoint, always available).
+        List available models.
+        Ollama: GET /api/tags  |  llama.cpp: GET /v1/models
         """
         try:
             timeout = aiohttp.ClientTimeout(total=10)
             async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(f"{self.base_url}/api/tags") as response:
-                    if response.status != 200:
-                        return []
-                    data = await response.json()
-                    return [m["name"] for m in data.get("models", [])]
+                if self.backend_type == "llamacpp":
+                    async with session.get(f"{self.base_url}/v1/models") as response:
+                        if response.status != 200:
+                            return []
+                        data = await response.json()
+                        return [m["id"] for m in data.get("data", [])]
+                else:
+                    async with session.get(f"{self.base_url}/api/tags") as response:
+                        if response.status != 200:
+                            return []
+                        data = await response.json()
+                        return [m["name"] for m in data.get("models", [])]
         except Exception as e:
-            logger.warning(f"Failed to list Ollama models: {e}")
+            logger.warning(f"Failed to list models ({self.backend_type}): {e}")
             return []
 
 
@@ -186,6 +195,7 @@ def get_ollama_client(base_url: str = None, model: str = None) -> OllamaClient:
         _ollama_client = OllamaClient(
             base_url=base_url or config.ollama_url,
             model=model or config.ollama_model,
+            backend_type=config.backend_type,
         )
     else:
         effective_url = base_url or ""
