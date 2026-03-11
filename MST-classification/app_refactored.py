@@ -58,36 +58,24 @@ def health_check():
 @app.route("/analyze/mri", methods=["POST"])
 def analyze_mri():
     """
-    Analyze MRI series using MST model
+    Analyze MRI series using MST model.
 
-    Input format:
-    {
-        "wado_rs_retrieval": [
-            {
-                "retrieval_url": "http://orthanc-viewer:8042/dicom-web/studies/{study}/series/{series}",
-                "study_uid": "1.2.3...",
-                "series_uid": "1.2.3..."
-            }
-        ],
-        "study_uid": "1.2.3..."
-    }
+    Supports three input modes via input_configuration_id:
+      - pre_post:    Two series (pre + post contrast), subtraction computed
+      - subtraction: Single pre-computed subtraction volume
+      - multiphase:  Single multi-phase series, temporal subtraction computed
 
-    Returns:
+    Falls back to flat single-series retrieval when no configuration is specified.
+
+    Input format (manifest-based):
     {
-        "left": {
-            "prediction": "Cancerous" | "Not Cancerous",
-            "confidence": 87.5
-        },
-        "right": {
-            "prediction": "Cancerous" | "Not Cancerous",
-            "confidence": 65.2
-        },
-        "model_metadata": {
-            "model_name": "MST",
-            "architecture": "Vision Transformer",
-            "version": "1.0"
-        },
-        "attention_maps": {...}
+        "wado_rs_retrieval": [...],
+        "study_uid": "1.2.3...",
+        "input_configuration_id": "pre_post",
+        "input_mapping": {
+            "pre":  {"series_uid": "...", "wado_rs_url": "..."},
+            "post": {"series_uid": "...", "wado_rs_url": "..."}
+        }
     }
     """
     try:
