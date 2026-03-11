@@ -13,6 +13,7 @@ export interface AIEndpoint {
 interface AIEndpointConfigProps {
   onEndpointChange: (endpoint: AIEndpoint) => void;
   currentEndpoint: AIEndpoint | null;
+  compact?: boolean;
 }
 
 // Default AI endpoint configuration
@@ -25,6 +26,7 @@ const DEFAULT_ENDPOINT: AIEndpoint = {
 const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   onEndpointChange,
   currentEndpoint,
+  compact = false,
 }) => {
   const [endpoints, setEndpoints] = useState<AIEndpoint[]>([]);
   const [isFormVisible, setIsFormVisible] = useState(false);
@@ -214,30 +216,33 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
                 ))}
               </select>
             </div>
-            <div className="flex space-x-2">
-              <Button
-                onClick={() => handleOpenForm()}
-                className="flex-1"
-              >
-                Add New
-              </Button>
-              <Button
-                onClick={() => currentEndpoint && handleOpenForm(currentEndpoint)}
-                disabled={!currentEndpoint}
-                className="flex-1"
-              >
-                Edit
-              </Button>
-            </div>
+            {!compact && (
+              <>
+                <div className="flex space-x-2">
+                  <Button
+                    onClick={() => handleOpenForm()}
+                    className="flex-1"
+                  >
+                    Add New
+                  </Button>
+                  <Button
+                    onClick={() => currentEndpoint && handleOpenForm(currentEndpoint)}
+                    disabled={!currentEndpoint}
+                    className="flex-1"
+                  >
+                    Edit
+                  </Button>
+                </div>
+                {currentEndpoint && (
+                  <div className="text-xs text-muted-foreground mt-2">
+                    <div>Name: {currentEndpoint.name}</div>
+                    <div>URL: {currentEndpoint.url}</div>
+                    {currentEndpoint.username && <div>Username: {currentEndpoint.username}</div>}
+                  </div>
+                )}
+              </>
+            )}
           </div>
-
-          {currentEndpoint && (
-            <div className="text-xs text-muted-foreground mb-2">
-              <div>Name: {currentEndpoint.name}</div>
-              <div>URL: {currentEndpoint.url}</div>
-              {currentEndpoint.username && <div>Username: {currentEndpoint.username}</div>}
-            </div>
-          )}
         </>
       ) : (
         <div className="border rounded p-4 bg-gray-50">

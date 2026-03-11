@@ -335,7 +335,6 @@ export function useStudySeriesSelection({
   };
 
   const reset = () => {
-    setAvailableSeries([]);
     setSelectedSeriesUIDs(new Set());
     setSeriesError(null);
   };

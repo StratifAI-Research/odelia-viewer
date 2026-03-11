@@ -38,6 +38,34 @@ interface OrthancAIServiceConfig {
   aiServerUrl?: string;
 }
 
+// Model Input Manifest interfaces
+
+export interface InputSpec {
+  key: string;
+  label: string;
+  required: boolean;
+  modality?: string;
+  auto_detect_patterns?: string[];
+}
+
+export interface InputConfiguration {
+  id: string;
+  name: string;
+  description?: string;
+  inputs: InputSpec[];
+}
+
+export interface ModelManifest {
+  model_id: string;
+  model_name: string;
+  version: string;
+  input_configurations: InputConfiguration[];
+}
+
+export interface InputMapping {
+  [roleKey: string]: string; // role key -> SeriesInstanceUID
+}
+
 // UPS Workitem interfaces
 interface WorkitemStatus {
   state: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELED' | 'UNKNOWN';
@@ -70,6 +98,7 @@ class OrthancAIService {
   private aiServerUrl: string;
   private currentEndpoint: AIEndpoint | null = null;
   private workitemPollingInterval: number | null = null;
+  private manifestCache: Map<string, ModelManifest | null> = new Map();
 
   constructor({ configuration = {} }: { configuration?: OrthancAIServiceConfig }) {
     this.orthancUrl = configuration.orthancUrl || 'http://localhost:45821';
@@ -219,6 +248,55 @@ class OrthancAIService {
 
 
   /**
+   * Fetch the model input manifest for a given AI endpoint URL.
+   * Returns null when the model does not provide a manifest (fallback to flat selection).
+   * Results are cached per endpoint URL.
+   */
+  async getModelManifest(endpointUrl: string): Promise<ModelManifest | null> {
+    if (this.manifestCache.has(endpointUrl)) {
+      return this.manifestCache.get(endpointUrl)!;
+    }
+
+    try {
+      const url = `${this.orthancUrl}/ai-manifest?target_url=${encodeURIComponent(endpointUrl)}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        console.warn(`Manifest fetch failed (${response.status}), falling back`);
+        this.manifestCache.set(endpointUrl, null);
+        return null;
+      }
+
+      const data = await response.json();
+
+      if (data.manifest === null || data.manifest === undefined) {
+        if (data.model_id) {
+          const manifest = data as ModelManifest;
+          this.manifestCache.set(endpointUrl, manifest);
+          return manifest;
+        }
+        this.manifestCache.set(endpointUrl, null);
+        return null;
+      }
+
+      const manifest = data.manifest as ModelManifest;
+      this.manifestCache.set(endpointUrl, manifest);
+      return manifest;
+    } catch (error) {
+      console.warn('Error fetching model manifest:', error);
+      this.manifestCache.set(endpointUrl, null);
+      return null;
+    }
+  }
+
+  /**
+   * Clear the manifest cache (e.g. when endpoints change)
+   */
+  clearManifestCache(): void {
+    this.manifestCache.clear();
+  }
+
+  /**
    * Routes the current study to the AI server
    * Uses the StudyInstanceUID from the URL
    */
@@ -321,32 +399,47 @@ class OrthancAIService {
    * @param dicomStudyUID The DICOM StudyInstanceUID
    * @param seriesUIDs Array of DICOM SeriesInstanceUIDs to route
    */
-  async routeSeriesToAI(dicomStudyUID: string, seriesUIDs: string[]): Promise<RoutingResponse> {
+  async routeSeriesToAI(
+    dicomStudyUID: string,
+    seriesUIDs: string[],
+    inputMapping?: InputMapping,
+    inputConfigurationId?: string
+  ): Promise<RoutingResponse> {
     try {
       console.log('Starting AI routing for study:', dicomStudyUID);
       console.log('Selected series UIDs:', seriesUIDs);
+      if (inputMapping) {
+        console.log('Input mapping:', inputMapping);
+        console.log('Input configuration ID:', inputConfigurationId);
+      }
 
-      // Check if we have a valid AI endpoint
       if (!this.currentEndpoint) {
         throw new Error('No AI endpoint configured. Please add an AI endpoint first.');
       }
 
-      // Validate series UIDs
       if (!seriesUIDs || seriesUIDs.length === 0) {
         throw new Error('No series selected. Please select at least one series.');
       }
 
-      // Get the Orthanc study ID using the lookup API
       const orthancStudyId = await this.getOrthancStudyId(dicomStudyUID);
       console.log('Found Orthanc study ID:', orthancStudyId);
 
-      // Create the routing request with series UIDs
-      const routingRequest: RoutingRequest = {
+      const routingRequest: RoutingRequest & {
+        input_mapping?: InputMapping;
+        input_configuration_id?: string;
+      } = {
         study_id: orthancStudyId,
         target: this.currentEndpoint.name,
         target_url: this.currentEndpoint.url,
-        series_uids: seriesUIDs
+        series_uids: seriesUIDs,
       };
+
+      if (inputMapping) {
+        routingRequest.input_mapping = inputMapping;
+      }
+      if (inputConfigurationId) {
+        routingRequest.input_configuration_id = inputConfigurationId;
+      }
 
       console.log('Routing request:', routingRequest);
 

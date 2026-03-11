@@ -1,12 +1,12 @@
 import { useState } from 'react';
 
-export type WizardStep = 1 | 2 | 3 | 4;
+export type WizardStep = 1 | 2 | 3 | 4 | 5;
 
 export function useWizardState(initialStep: WizardStep = 1) {
   const [currentStep, setCurrentStep] = useState<WizardStep>(initialStep);
 
   const goToNextStep = () => {
-    if (currentStep < 4) {
+    if (currentStep < 5) {
       setCurrentStep((currentStep + 1) as WizardStep);
     }
   };

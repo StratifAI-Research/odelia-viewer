@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import OrthancAIService from '../services/OrthancAIService';
+import type { InputMapping } from '../services/OrthancAIService';
 import { AIEndpoint } from '../components/AIEndpointConfig';
 
 interface UseAIRoutingProps {
@@ -99,7 +100,12 @@ export function useAIRouting({
     }
   };
 
-  const sendToAI = async (studyUID: string, seriesUIDs: string[]) => {
+  const sendToAI = async (
+    studyUID: string,
+    seriesUIDs: string[],
+    inputMapping?: InputMapping,
+    inputConfigurationId?: string
+  ) => {
     if (!currentEndpoint) {
       setError('No AI endpoint configured. Please add an AI endpoint first.');
       return false;
@@ -116,8 +122,12 @@ export function useAIRouting({
       setProgress(10);
       setProgressDescription('Sending study to AI endpoint...');
 
-      // Send selected series to AI
-      const response = await orthancAIService.routeSeriesToAI(studyUID, seriesUIDs);
+      const response = await orthancAIService.routeSeriesToAI(
+        studyUID,
+        seriesUIDs,
+        inputMapping,
+        inputConfigurationId
+      );
 
       if (response.status === 'success') {
         // Capture workitem UID from response

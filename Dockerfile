@@ -59,7 +59,7 @@ COPY package.json yarn.lock preinstall.js lerna.json ./
 COPY --parents ./addOns/package.json ./addOns/*/*/package.json ./extensions/*/package.json ./modes/*/package.json ./platform/*/package.json ./
 COPY --parents ./custom/mode/*/package.json ./custom/extension/*/package.json ./
 # Copy the local directory
-COPY  --exclude=**/.venv/** --exclude=yarn.lock --exclude=package.json --exclude=Dockerfile . .
+COPY  --exclude=custom/deploy --exclude=**/.venv/** --exclude=yarn.lock --exclude=package.json --exclude=Dockerfile . .
 
 # Run the install after copying all files for complete workspace context
 RUN rm -rf node_modules */*/node_modules .cache .turbo bun.lockb && \
