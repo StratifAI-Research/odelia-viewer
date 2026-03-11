@@ -43,7 +43,8 @@
   },
   "dependencies": {
     "@babel/runtime": "^7.20.13",
-    "react-resize-detector": "^7.0.0"
+    "react-resize-detector": "^7.0.0",
+    "marked": "^4.3.0"
   },
   "devDependencies": {
     "@babel/core": "7.24.7",

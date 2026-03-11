@@ -34,7 +34,7 @@ Follow these steps for a complete local deployment:
     > **Note:** Initial run warnings about not being able to pull images for `odelia-orthanc-router`, `odelia-orthanc-viewer`, and the AI models (`odelia-breast-cancer-classification`, `odelia-mst-classifier`) are **normal**. These images will be built automatically from source.
 
 3.  **Access the Viewer:**
-    Open your web browser and navigate to:
+    Open your web browser and navigate to (use viewer/viewer as default credentials):
     ```
     http://localhost:8081
     ```
@@ -110,7 +110,138 @@ Please see the documentation: [Adding New Users](docs/adding_new_users.md)
 
 ---
 
-## Architecture Components 🔄
+## Updating 🔄
+
+This section covers how to update an existing Odelia Viewer deployment to the latest version.
+
+<details>
+<summary>View Full Update Procedure</summary>
+
+#### 1. Back Up Persistent Data
+
+Before updating, back up your persistent data. The `volumes/` directory contains DICOM images and the feedback database. The `postgres_data` named Docker volume holds the Keycloak database.
+
+```bash
+# Back up the volumes directory
+cp -r volumes/ volumes-backup-$(date +%F)/
+
+# Back up the Keycloak Postgres database
+docker run --rm -v postgres_data:/data -v $(pwd):/backup alpine tar czf /backup/postgres-backup.tar.gz /data
+```
+
+#### 2. Stop Running Containers
+
+```bash
+docker compose down
+```
+
+> **Note:** `docker compose down` does **not** delete volumes. Your data remains intact.
+
+#### 3. Pull Latest Deployment Repository
+
+```bash
+git pull origin main
+```
+
+Replace `main` with the branch you are tracking if different.
+
+#### 4. Update Submodules
+
+The deployment uses **nested submodules** (two levels deep), so the `--recursive` flag is required:
+
+```bash
+git submodule update --init --recursive
+```
+
+This updates:
+- `orthanc-routing-example/` — Orthanc router and viewer configurations
+- `orthanc-routing-example/MLIntegration/` — all AI model services (breast-cancer-classification, MST, MedGemma, chat-middleware)
+
+#### 5. Review Configuration Changes
+
+If you have customized any configuration files, check for upstream changes before restarting:
+
+```bash
+git diff HEAD@{1} -- docker-compose.yml config/
+```
+
+Files to watch for changes:
+- `docker-compose.yml` — new environment variables, ports, or services
+- `config/nginx.conf` — reverse proxy routes
+- `config/app-config.js` — OHIF viewer settings
+- `config/orthanc-router.json` — Orthanc routing configuration
+
+> **Important:** Re-apply any custom settings (e.g., `HF_TOKEN`, production domain URLs) after pulling, as they may be overwritten by the update.
+
+#### 6. Rebuild Docker Images
+
+Rebuild all images that are built from source:
+
+```bash
+docker compose build --no-cache
+```
+
+Or rebuild only specific services:
+
+```bash
+docker compose build <service-name>
+```
+
+**Services built from source** (require rebuild): `orthanc-viewer`, `orthanc-router`, `orthanc-router-mst`, `orthanc-router-medgemma`, `breast-cancer-classification`, `mst-classifier`, `medgemma-mri`, `chat-middleware`
+
+**Pre-built images** (update via pull): `viewer`, `grafana`, `keycloak`, `postgres`
+
+```bash
+docker compose pull viewer grafana keycloak postgres
+```
+
+#### 7. Update Ollama Model (if applicable)
+
+If you use the Chat AI feature, update the Ollama model on the host machine:
+
+```bash
+ollama pull thiagomoraes/medgemma-1.5-4b-it:F16
+```
+
+#### 8. Start Services
+
+```bash
+docker compose up -d
+```
+
+#### 9. Verify Deployment
+
+```bash
+# Check all containers are running
+docker compose ps
+
+# Check logs for errors
+docker compose logs --tail=50
+```
+
+Then open `http://localhost:8081` in your browser to confirm the viewer loads correctly.
+
+</details>
+
+<details>
+<summary>Quick-Reference Commands</summary>
+
+For experienced users, here is the condensed update sequence:
+
+```bash
+docker compose down
+git pull origin main
+git submodule update --init --recursive
+docker compose build --no-cache
+docker compose up -d
+docker compose ps
+```
+
+</details>
+
+---
+
+## Architecture Components 🏗️
 The Odelia Viewer deployment consists of several interconnected components, each serving a specific purpose:
 
 | Component | Purpose |
@@ -178,6 +309,274 @@ The **MST Classification model** requires a Hugging Face token for access. The d
         docker compose up -d
         ```
     > ⚠️ **Security Warning:** Never commit your actual token to a version control system like Git. Use environment variables or a `.env` file that is in your `.gitignore`.
+</details>
+
+### Ollama + MedGemma Setup (Chat AI) 💬
+<details>
+<summary>View Ollama Installation and MedGemma Configuration</summary>
+
+The **Chat AI** panel in the viewer uses a local [Ollama](https://ollama.com/) instance running the **MedGemma** vision-language model. Ollama runs on the **host machine** (not inside Docker) and is accessed by the `chat-middleware` container via `host.docker.internal`.
+
+#### 1. Install Ollama
+
+**Linux:**
+```bash
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+**macOS / Windows:**
+Download the installer from [https://ollama.com/download](https://ollama.com/download).
+
+Verify the installation:
+```bash
+ollama --version
+```
+
+#### 2. Pull the MedGemma Model
+
+Pull the MedGemma model that the chat middleware expects by default:
+```bash
+ollama pull thiagomoraes/medgemma-1.5-4b-it:F16
+```
+
+> **Note:** This model is ~8 GB. Ensure you have sufficient disk space and a GPU with enough VRAM for acceptable performance. Smaller quantizations (e.g., `Q8_0`, `Q4_K_M`) are available if resources are limited — adjust the `OLLAMA_MODEL` variable accordingly.
+
+Verify the model is available:
+```bash
+ollama list
+```
+
+#### 3. Start Ollama
+
+Make sure the Ollama server is running before starting the Docker stack:
+```bash
+ollama serve
+```
+
+By default, Ollama listens on `http://localhost:11434`. You can confirm it is running:
+```bash
+curl http://localhost:11434/api/tags
+```
+
+#### 4. Docker Compose Configuration
+
+The `chat-middleware` service in `docker-compose.yml` is pre-configured to connect to Ollama on the host:
+
+```yaml
+chat-middleware:
+  environment:
+    OLLAMA_URL: "http://host.docker.internal:11434"
+    OLLAMA_MODEL: "thiagomoraes/medgemma-1.5-4b-it:F16"
+    OLLAMA_NUM_CTX: "128000"  # 128k context window
+    NUM_SLICES: "5"
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+```
+
+**Key variables you may want to adjust:**
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `OLLAMA_URL` | `http://host.docker.internal:11434` | URL of the Ollama API. Change if Ollama runs on a remote machine. |
+| `OLLAMA_MODEL` | `thiagomoraes/medgemma-1.5-4b-it:F16` | Model tag in Ollama. Change if you pulled a different quantization or model. |
+| `OLLAMA_NUM_CTX` | `128000` | Context window size in tokens. Reduce if you run into memory issues. |
+| `NUM_SLICES` | `5` | Number of DICOM slices sent to the model per study for analysis. |
+
+> **Linux note:** The `extra_hosts` mapping (`host.docker.internal:host-gateway`) is required on Linux to allow containers to reach the host network. This is included in the default `docker-compose.yml` and should not be removed.
+
+#### 5. Using a Different Model
+
+To use a different Ollama-compatible model:
+
+1. Pull the desired model:
+    ```bash
+    ollama pull <model_name>:<tag>
+    ```
+2. Update the `OLLAMA_MODEL` variable in `docker-compose.yml`:
+    ```yaml
+    OLLAMA_MODEL: "<model_name>:<tag>"
+    ```
+3. Restart the chat middleware:
+    ```bash
+    docker compose up -d chat-middleware
+    ```
+
+</details>
+
+### llama.cpp Alternative Backend (Chat AI) 🦙
+<details>
+<summary>View llama.cpp Setup and Configuration</summary>
+
+[llama.cpp](https://github.com/ggerganov/llama.cpp) is an alternative backend for the Chat AI feature. It runs the same MedGemma model but uses the GGUF format and runs entirely inside Docker — no host-level installation required.
+
+**Why choose llama.cpp over Ollama?**
+* Typically **faster inference** (lower time-to-first-token and higher tokens/sec) on the same hardware.
+* Runs in a Docker container — nothing to install on the host besides the NVIDIA driver.
+* Supports quantized models (Q4, Q8, etc.) for reduced VRAM usage.
+
+**Trade-offs:**
+* You need to download the GGUF model file manually (Ollama handles downloads automatically).
+* Configuration is done via environment variables rather than a CLI tool.
+
+#### 1. Prerequisites
+
+* **NVIDIA GPU** with compatible drivers installed on the host.
+* **NVIDIA Container Toolkit** — required so Docker containers can access the GPU. Follow the official installation guide: [Installing the NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+
+  Verify it works:
+  ```bash
+  docker run --rm --gpus all nvidia/cuda:12.4.0-base-ubuntu22.04 nvidia-smi
+  ```
+
+#### 2. Download the Model Files
+
+The Chat AI uses MedGemma 1.5 4B. You need two files — the main model and the vision (multimodal) projector:
+
+```bash
+# Create the models directory
+sudo mkdir -p custom/deploy/volumes/models
+
+# Download the main model (~7.8 GB)
+sudo wget -P custom/deploy/volumes/models/ \
+  https://huggingface.co/unsloth/medgemma-1.5-4b-it-GGUF/resolve/main/medgemma-1.5-4b-it-BF16.gguf
+
+# Download the multimodal projector (~812 MB)
+sudo wget -P custom/deploy/volumes/models/ \
+  https://huggingface.co/unsloth/medgemma-1.5-4b-it-GGUF/resolve/main/mmproj-BF16.gguf
+```
+
+> **Disk space:** You need approximately **9 GB** of free space for both files. Smaller quantized models (e.g., `Q8_0` at 4.1 GB, `Q4_K_M` at 2.5 GB) are available from the same repository if space or VRAM is limited.
+
+Verify the files are in place:
+```bash
+ls -lh custom/deploy/volumes/models/
+# Expected output:
+#   medgemma-1.5-4b-it-BF16.gguf   (~7.8G)
+#   mmproj-BF16.gguf                (~812M)
+```
+
+#### 3. Switch from Ollama to llama.cpp
+
+Edit the `chat-middleware` section in `docker-compose.yml`. Change the three highlighted variables:
+
+```yaml
+chat-middleware:
+    environment:
+      OLLAMA_URL: "http://llamacpp-server:8090"          # was: http://host.docker.internal:11434
+      OLLAMA_MODEL: "medgemma-1.5-4b-it-BF16"            # was: thiagomoraes/medgemma-1.5-4b-it:F16
+      BACKEND_TYPE: "llamacpp"                            # was: ollama
+      # ... leave the rest unchanged
+```
+
+Then start both the chat middleware and the llama.cpp server:
+```bash
+docker compose --profile llamacpp up -d chat-middleware llamacpp-server
+```
+
+> **Important:** The `--profile llamacpp` flag is required to start the `llamacpp-server` container. Without it, only the `chat-middleware` will start and it won't be able to reach the llama.cpp server.
+
+Verify both containers are running:
+```bash
+docker compose --profile llamacpp ps
+```
+
+You should see both `odelia-chat-middleware` and `odelia-llamacpp-server` with status `Up`.
+
+#### 4. Switch Back to Ollama
+
+Revert the three variables in `docker-compose.yml` to their original values:
+
+```yaml
+chat-middleware:
+    environment:
+      OLLAMA_URL: "http://host.docker.internal:11434"
+      OLLAMA_MODEL: "thiagomoraes/medgemma-1.5-4b-it:F16"
+      BACKEND_TYPE: "ollama"
+      # ... leave the rest unchanged
+```
+
+Then restart without the llama.cpp profile:
+```bash
+docker compose down chat-middleware llamacpp-server
+docker compose up -d chat-middleware
+```
+
+#### 5. Configuration Reference
+
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `BACKEND_TYPE` | `ollama` | Backend to use: `ollama` or `llamacpp`. |
+| `OLLAMA_URL` | `http://host.docker.internal:11434` | URL of the LLM server. For llama.cpp: `http://llamacpp-server:8090`. |
+| `OLLAMA_MODEL` | `thiagomoraes/medgemma-1.5-4b-it:F16` | Model identifier. For llama.cpp: `medgemma-1.5-4b-it-BF16`. |
+| `GGUF_MODEL_FILE` | `medgemma-1.5-4b-it-BF16.gguf` | GGUF model filename inside `volumes/models/`. Only used by `llamacpp-server`. |
+| `MMPROJ_FILE` | `mmproj-BF16.gguf` | Vision projector filename. Only used by `llamacpp-server`. |
+| `LLAMA_CTX_SIZE` | `131072` | Context window size in tokens. Reduce if you run into VRAM issues. |
+| `LLAMA_N_GPU_LAYERS` | `99` | Number of model layers to offload to GPU. `99` means all layers. |
+
+#### 6. Using a Remote llama.cpp Server
+
+The llama.cpp server does not have to run on the same machine. If you have a remote GPU server running `llama-server`, simply point `OLLAMA_URL` to it:
+
+```bash
+# In .env:
+BACKEND_TYPE=llamacpp
+OLLAMA_URL=http://192.168.1.50:8090
+OLLAMA_MODEL=medgemma-1.5-4b-it-BF16
+```
+
+Then start the chat middleware **without** the `llamacpp` profile (since the server is remote):
+```bash
+docker compose up -d chat-middleware
+```
+
+#### 7. Using a Different Quantization
+
+To use a smaller (faster, less VRAM) or larger model variant:
+
+1. Download the desired GGUF from [unsloth/medgemma-1.5-4b-it-GGUF](https://huggingface.co/unsloth/medgemma-1.5-4b-it-GGUF). For example, `Q8_0` (~4.1 GB):
+    ```bash
+    sudo wget -P custom/deploy/volumes/models/ \
+      https://huggingface.co/unsloth/medgemma-1.5-4b-it-GGUF/resolve/main/medgemma-1.5-4b-it-Q8_0.gguf
+    ```
+
+2. Set the filename via environment variable:
+    ```bash
+    # In .env:
+    GGUF_MODEL_FILE=medgemma-1.5-4b-it-Q8_0.gguf
+    OLLAMA_MODEL=medgemma-1.5-4b-it-Q8_0
+    ```
+
+3. Restart the llama.cpp server:
+    ```bash
+    docker compose --profile llamacpp up -d llamacpp-server
+    ```
+
+> **Note:** The `mmproj-BF16.gguf` vision projector is the same regardless of which quantization you choose for the main model.
+
+#### 8. Benchmarking Ollama vs llama.cpp
+
+A benchmark script is included to compare performance between backends:
+
+```bash
+# Install the only dependency
+pip install requests
+
+# Run against both backends (requires both to be running)
+python orthanc-routing-example/MLIntegration/chat-middleware/benchmark.py \
+  --ollama http://localhost:11434 \
+  --llamacpp http://localhost:8090 \
+  --show-responses
+
+# With real DICOM images from Orthanc
+python orthanc-routing-example/MLIntegration/chat-middleware/benchmark.py \
+  --ollama http://localhost:11434 \
+  --llamacpp http://localhost:8090 \
+  --series-uid <SeriesInstanceUID> \
+  --show-responses
+```
+
+The script measures time-to-first-token (TTFT), tokens per second, and total generation time across text and multimodal prompts.
+
 </details>
 
 ---

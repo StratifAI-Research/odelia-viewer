@@ -1,10 +1,12 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { utils } from '@ohif/extension-cornerstone';
 import { id } from './id.js';
 import AITrackedViewport from './components/AITrackedViewport';
+import DisclaimerBanner from './components/DisclaimerBanner';
 import getPanelModule from './getPanelModule';
 import getHangingProtocolModule from './getHangingProtocolModule';
 import { AIResultsService } from './services/AIResultsService';
+import { ChatService } from './services/ChatService';
 
 /**
  * You can remove any of the following modules if you don't need them.
@@ -46,6 +48,17 @@ export default {
 
       syncGroupService.addSynchronizerType('heatmapImageSlice', createHeatmapImageSliceSynchronizer);
       console.log('✅ Custom heatmap synchronizer registered');
+
+      // Register ChatService for AI Chat panel
+      const chatServiceDefinition = {
+        name: 'chatService',
+        create: ({ configuration = {} }) => {
+          console.log('🔧 Creating ChatService instance');
+          return new ChatService();
+        },
+      };
+      servicesManager.registerService(chatServiceDefinition);
+      console.log('✅ ChatService registered successfully');
     } catch (error) {
       console.error('❌ Error during registration:', error);
     }
@@ -122,7 +135,32 @@ export default {
    * a Header, left and right sidebars, and a viewport section in the middle
    * of the viewer.
    */
-  getLayoutTemplateModule: ({ servicesManager, commandsManager, extensionManager }) => {},
+  getLayoutTemplateModule: ({ servicesManager, commandsManager, extensionManager, hotkeysManager }) => {
+    function OdeliaViewerLayout(props) {
+      const DefaultLayout = useMemo(() => {
+        const entry = extensionManager.getModuleEntry(
+          '@ohif/extension-default.layoutTemplateModule.viewerLayout'
+        );
+        return entry.component;
+      }, []);
+
+      return (
+        <>
+          <style>{`.fixed:has([data-cy="confirm-and-hide-button"]) { display: none !important; }`}</style>
+          <DefaultLayout {...props} />
+          <DisclaimerBanner />
+        </>
+      );
+    }
+
+    return [
+      {
+        name: 'odeliaViewerLayout',
+        id: 'odeliaViewerLayout',
+        component: OdeliaViewerLayout,
+      },
+    ];
+  },
   /**
    * SopClassHandlerModule should provide a list of sop class handlers that will be
    * available in OHIF for Modes to consume and use to create displaySets from Series.

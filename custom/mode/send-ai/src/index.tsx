@@ -4,7 +4,7 @@ import { ModeFactoryParams } from './types';
 import toolbarButtons from './toolbarButtons';
 
 const ohif = {
-  layout: '@ohif/extension-default.layoutTemplateModule.viewerLayout',
+  layout: 'view-ai-result.layoutTemplateModule.odeliaViewerLayout',
   sopClassHandler: '@ohif/extension-default.sopClassHandlerModule.stack',
   hangingProtocol: '@ohif/extension-default.hangingProtocolModule.default',
   leftPanel: 'view-ai-result.panelModule.seriesList',
@@ -15,9 +15,10 @@ const viewAIResult = {
   viewport: 'view-ai-result.viewportModule.ai-tracked-viewport',
 };
 
-// New Feedback Panel from view-ai-result extension
+// Panels from view-ai-result extension
 const viewAIResultPanel = {
   feedback: 'view-ai-result.panelModule.aiFeedback',
+  chat: 'view-ai-result.panelModule.aiChat',
 };
 
 const orthancAI = {
@@ -161,7 +162,9 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
             id: ohif.layout,
             props: {
               leftPanels: [ohif.leftPanel],
-              rightPanels: [orthancAI.panel, viewAIResultPanel.feedback],
+              leftPanelResizable: true,
+              rightPanels: [orthancAI.panel, viewAIResultPanel.feedback, viewAIResultPanel.chat],
+              rightPanelResizable: true,
               viewports: [
                 {
                   namespace: viewAIResult.viewport,
