@@ -1,6 +1,7 @@
 # Packages
 node_modules
 .cursor/
+custom/deploy/.venv/
 
 # Output
 build
@@ -68,3 +69,8 @@ tests/playwright-report/
 custom/deploy/volumes/*
 custom/deploy/logs/*
 design_docs/
+
+# Python test artifacts
+.coverage
+__pycache__/
+*.pyc

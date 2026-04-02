@@ -23,6 +23,16 @@ export default defineConfig({
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'], deviceScaleFactor: 1 },
+      testIgnore: /custom\//,
+    },
+    {
+      name: 'odelia',
+      testDir: './tests/custom',
+      use: {
+        ...devices['Desktop Chrome'],
+        deviceScaleFactor: 1,
+        baseURL: process.env.ODELIA_BASE_URL || 'http://localhost:8081',
+      },
     },
     // TODO: Fix firefox tests
     // {

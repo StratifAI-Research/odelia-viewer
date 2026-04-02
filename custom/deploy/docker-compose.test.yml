@@ -1,0 +1,92 @@
+version: '3.8'
+
+# Lightweight test stack for E2E and integration tests.
+# No GPU, no real ML models — ML services return canned responses.
+#
+# Usage:
+#   docker compose -f custom/deploy/docker-compose.test.yml up -d
+#   # wait for health checks, then run tests
+#   docker compose -f custom/deploy/docker-compose.test.yml down -v
+
+services:
+  orthanc-viewer-test:
+    image: orthancteam/orthanc:24.6.2
+    hostname: orthanc-viewer
+    container_name: odelia-test-orthanc-viewer
+    volumes:
+      - ./orthanc-routing-example/orthanc-viewer/orthanc.json:/etc/orthanc/orthanc.json:ro
+      - ./orthanc-routing-example/orthanc-viewer/router.py:/python/router.py:ro
+      - ./orthanc-routing-example/orthanc-viewer/feedback_routes.py:/python/feedback_routes.py:ro
+      - ./orthanc-routing-example/orthanc-viewer/feedback_db.py:/python/feedback_db.py:ro
+      - ./orthanc-routing-example/orthanc-viewer/ups:/python/ups:ro
+    ports:
+      - '${TEST_ORTHANC_VIEWER_PORT:-18000}:8042'
+    environment:
+      - ORTHANC__NAME=orthanc-viewer-test
+      - VERBOSE_ENABLED=true
+      - ORTHANC__PYTHON_SCRIPT=/python/router.py
+      - ORTHANC__PYTHON_VERBOSE=true
+      - ORTHANC_FEEDBACK_DB_DIR=/tmp/feedback-test
+      - ORTHANC_FEEDBACK_ENABLE_WAL=1
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8042/system || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  orthanc-router-test:
+    image: orthancteam/orthanc:24.6.2
+    hostname: orthanc-router
+    container_name: odelia-test-orthanc-router
+    volumes:
+      - ./config/orthanc-router.json:/etc/orthanc/orthanc.json:ro
+      - ./orthanc-routing-example/orthanc-router/server.py:/python/server.py:ro
+    ports:
+      - '${TEST_ORTHANC_ROUTER_PORT:-18042}:8042'
+    environment:
+      - ORTHANC__NAME=orthanc-router-test
+      - VERBOSE_ENABLED=true
+      - ORTHANC__PYTHON_SCRIPT=/python/server.py
+      - ORTHANC__PYTHON_VERBOSE=true
+      - MODEL_BACKEND_URL=http://ml-stub:5555
+      - AI_TEXT=TEST AI RESULT
+      - AI_COLOR=green
+      - AI_NAME=Test stub model
+    depends_on:
+      ml-stub:
+        condition: service_healthy
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8042/system || exit 1"]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # Lightweight ML stub that returns canned inference results.
+  # Mimics the real ML service HTTP API without any model or GPU.
+  ml-stub:
+    image: python:3.11-slim
+    container_name: odelia-test-ml-stub
+    working_dir: /app
+    volumes:
+      - ./test-fixtures/ml_stub.py:/app/ml_stub.py:ro
+    command: ["python", "/app/ml_stub.py"]
+    ports:
+      - '${TEST_ML_STUB_PORT:-15555}:5555'
+    networks:
+      - test-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5555/health')\""]
+      interval: 3s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+networks:
+  test-network:
+    driver: bridge

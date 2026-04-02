@@ -1,0 +1,34 @@
+[tool.pytest.ini_options]
+testpaths = [
+    "orthanc-routing-example/tests",
+    "orthanc-routing-example/MLIntegration/tests",
+]
+addopts = "-q --strict-markers"
+markers = [
+    "unit: fast tests with no external I/O (mocked dependencies)",
+    "integration: tests that require running Docker services",
+]
+
+[tool.coverage.run]
+source = [
+    "orthanc-routing-example/orthanc-viewer",
+    "orthanc-routing-example/orthanc-router",
+    "orthanc-routing-example/MLIntegration/shared",
+    "orthanc-routing-example/MLIntegration/breast-cancer-classification",
+    "orthanc-routing-example/MLIntegration/MST-classification",
+    "orthanc-routing-example/MLIntegration/medgemma-mri",
+    "orthanc-routing-example/MLIntegration/chat-middleware",
+]
+omit = [
+    "*/tests/*",
+    "*/__pycache__/*",
+    "*/node_modules/*",
+]
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+fail_under = 0
+
+[tool.coverage.xml]
+output = "coverage-python.xml"

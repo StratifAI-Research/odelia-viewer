@@ -1,0 +1,188 @@
+name: Custom Code Tests
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'custom/**'
+      - 'jest.config.*'
+      - 'playwright.config.ts'
+      - '.github/workflows/custom-tests.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'custom/**'
+      - 'jest.config.*'
+      - 'playwright.config.ts'
+      - '.github/workflows/custom-tests.yml'
+
+jobs:
+  unit-js:
+    name: JS/TS Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run Jest for custom packages
+        run: |
+          npx jest \
+            --projects \
+              custom/extension/view-ai-result/jest.config.js \
+              custom/extension/orthanc-ai-routing/jest.config.js \
+              custom/extension/labeling/jest.config.js \
+              custom/mode/send-ai/jest.config.js \
+              custom/mode/labeling-mode/jest.config.js \
+            --ci --runInBand \
+            --collectCoverage \
+            --coverageReporters=json --coverageReporters=text-summary \
+            --coverageDirectory=coverage/custom-js \
+            --passWithNoTests
+
+      - name: Upload JS coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-js
+          path: coverage/custom-js/
+          retention-days: 7
+
+  unit-python:
+    name: Python Unit Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: custom/deploy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install test dependencies
+        run: pip install -r requirements-test.txt
+
+      - name: Install shared package
+        run: pip install -e orthanc-routing-example/MLIntegration[dev] || true
+
+      - name: Run pytest (unit only)
+        run: |
+          python -m pytest -m "unit or not integration" \
+            --cov --cov-report=xml:coverage-python.xml --cov-report=term \
+            --junitxml=junit-python.xml \
+            -q || true
+
+      - name: Upload Python coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python
+          path: custom/deploy/coverage-python.xml
+          retention-days: 7
+
+      - name: Upload Python test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-python
+          path: custom/deploy/junit-python.xml
+          retention-days: 7
+
+  e2e-custom:
+    name: Custom E2E Tests
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.53.2-noble
+    needs: [unit-js, unit-python]
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install unzip
+        run: apt-get update && apt-get install -y unzip docker-compose-plugin || true
+
+      - uses: oven-sh/setup-bun@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Run Playwright custom tests
+        run: |
+          npx playwright test --project=odelia || true
+        env:
+          ODELIA_BASE_URL: http://localhost:8081
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-custom-report
+          path: tests/playwright-report/
+          retention-days: 14
+
+      - name: Upload test traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-custom-traces
+          path: tests/test-results/
+          retention-days: 7
+
+  coverage-report:
+    name: Coverage Summary
+    runs-on: ubuntu-latest
+    needs: [unit-js, unit-python]
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download JS coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-js
+          path: coverage/js
+        continue-on-error: true
+
+      - name: Download Python coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-python
+          path: coverage/python
+        continue-on-error: true
+
+      - name: Coverage summary
+        run: |
+          echo "## Custom Code Coverage" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage/js/coverage-summary.json ]; then
+            echo "### JS/TS (Jest)" >> $GITHUB_STEP_SUMMARY
+            cat coverage/js/coverage-summary.json | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin).get('total', {})
+          for k in ('lines','statements','functions','branches'):
+            v = d.get(k, {})
+            print(f'- **{k}**: {v.get(\"pct\", \"N/A\")}%')
+          " >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "- JS coverage data not available" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- JS coverage data not available" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f coverage/python/coverage-python.xml ]; then
+            echo "### Python (pytest-cov)" >> $GITHUB_STEP_SUMMARY
+            echo "- XML report uploaded (integrate with Codecov or similar)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- Python coverage data not available" >> $GITHUB_STEP_SUMMARY
+          fi
