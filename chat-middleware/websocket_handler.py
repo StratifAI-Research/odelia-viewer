@@ -219,7 +219,7 @@ async def handle_chat(
             await send_message(
                 websocket,
                 ServerMessageType.PREPROCESSING,
-                content="Preprocessing complete",
+                content="Series ready, generating response...",
                 progress=1.0
             )
         
