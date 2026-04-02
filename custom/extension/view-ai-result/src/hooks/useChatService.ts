@@ -47,6 +47,7 @@ export function useChatService(): UseChatServiceReturn {
   const streamingContentRef = useRef<string>('');
   const streamingThinkingRef = useRef<string>('');
   const rawStreamingRef = useRef<string>('');
+  const hasReceivedThinkingTokenRef = useRef<boolean>(false);
 
   const THINK_START_MARKER = '<unused94>thought';
   const THINK_END_MARKER = '<unused95>';
@@ -143,6 +144,7 @@ export function useChatService(): UseChatServiceReturn {
       streamingContentRef.current = '';
       streamingThinkingRef.current = '';
       rawStreamingRef.current = '';
+      hasReceivedThinkingTokenRef.current = false;
       setIsStreaming(true);
 
       // Send to service
@@ -163,6 +165,7 @@ export function useChatService(): UseChatServiceReturn {
       streamingContentRef.current = '';
       streamingThinkingRef.current = '';
       rawStreamingRef.current = '';
+      hasReceivedThinkingTokenRef.current = false;
       setMessages((prev) =>
         prev.map((msg) =>
           msg.id === messageId
@@ -184,6 +187,7 @@ export function useChatService(): UseChatServiceReturn {
     streamingContentRef.current = '';
     streamingThinkingRef.current = '';
     rawStreamingRef.current = '';
+    hasReceivedThinkingTokenRef.current = false;
   }, []);
 
   // Subscribe to service events
@@ -220,9 +224,17 @@ export function useChatService(): UseChatServiceReturn {
             setPreprocessingProgress(null);
           }
           rawStreamingRef.current += data.content;
-          const { visibleText, thinkingText } = splitThinkingFromContent(rawStreamingRef.current);
-          streamingContentRef.current = visibleText;
-          streamingThinkingRef.current = thinkingText;
+
+          if (hasReceivedThinkingTokenRef.current) {
+            // Backend is separating thinking via dedicated channel -- use content as-is
+            streamingContentRef.current = rawStreamingRef.current;
+          } else {
+            // Legacy fallback: parse thinking markers from the content stream
+            const { visibleText, thinkingText } = splitThinkingFromContent(rawStreamingRef.current);
+            streamingContentRef.current = visibleText;
+            streamingThinkingRef.current = thinkingText;
+          }
+
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === currentStreamingMessageRef.current
@@ -231,6 +243,28 @@ export function useChatService(): UseChatServiceReturn {
                     content: streamingContentRef.current,
                     thinking: streamingThinkingRef.current || undefined,
                   }
+                : msg
+            )
+          );
+        }
+      })
+    );
+
+    // Thinking token event - dedicated thinking/reasoning channel from backend
+    subscriptions.push(
+      chatService.subscribe(CHAT_EVENTS.THINKING_TOKEN, (data) => {
+        if (currentStreamingMessageRef.current && data.content) {
+          hasReceivedThinkingTokenRef.current = true;
+          // Clear preprocessing status on first thinking token too
+          if (rawStreamingRef.current.length === 0 && streamingThinkingRef.current.length === 0) {
+            setPreprocessingStatus(null);
+            setPreprocessingProgress(null);
+          }
+          streamingThinkingRef.current += data.content;
+          setMessages((prev) =>
+            prev.map((msg) =>
+              msg.id === currentStreamingMessageRef.current
+                ? { ...msg, thinking: streamingThinkingRef.current }
                 : msg
             )
           );
@@ -247,6 +281,7 @@ export function useChatService(): UseChatServiceReturn {
           streamingContentRef.current = '';
           streamingThinkingRef.current = '';
           rawStreamingRef.current = '';
+          hasReceivedThinkingTokenRef.current = false;
           setMessages((prev) =>
             prev.map((msg) =>
               msg.id === messageId

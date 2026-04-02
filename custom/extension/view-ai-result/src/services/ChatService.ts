@@ -136,6 +136,10 @@ export class ChatService {
         this.publish(CHAT_EVENTS.TOKEN, { content: message.content });
         break;
 
+      case ServerMessageType.THINKING_TOKEN:
+        this.publish(CHAT_EVENTS.THINKING_TOKEN, { content: message.content });
+        break;
+
       case ServerMessageType.DONE:
         this.publish(CHAT_EVENTS.MESSAGE_COMPLETE, {});
         break;

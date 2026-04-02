@@ -15,6 +15,7 @@ export enum ClientMessageType {
 export enum ServerMessageType {
   CONNECTED = 'connected',
   TOKEN = 'token',
+  THINKING_TOKEN = 'thinking_token',
   DONE = 'done',
   ERROR = 'error',
   PREPROCESSING = 'preprocessing',
@@ -97,6 +98,7 @@ export const CHAT_EVENTS = {
   CONNECTED: 'CHAT_CONNECTED',
   DISCONNECTED: 'CHAT_DISCONNECTED',
   TOKEN: 'CHAT_TOKEN',
+  THINKING_TOKEN: 'CHAT_THINKING_TOKEN',
   MESSAGE_COMPLETE: 'CHAT_MESSAGE_COMPLETE',
   ERROR: 'CHAT_ERROR',
   PREPROCESSING: 'CHAT_PREPROCESSING',

@@ -67,6 +67,9 @@ const ChatPanel: React.FC = () => {
   const [sliceStrategy, setSliceStrategy] = useState('central');
   const [centralPercentage, setCentralPercentage] = useState(60);
 
+  // Model state
+  const [ollamaModel, setOllamaModel] = useState('');
+
   // Ollama options state
   const [ollamaThink, setOllamaThink] = useState<boolean | null>(null);
   const [ollamaSuffix, setOllamaSuffix] = useState('');
@@ -87,6 +90,7 @@ const ChatPanel: React.FC = () => {
       if (!res.ok) throw new Error(`Failed to load: ${res.status}`);
       const data = await res.json();
       setSystemPrompt(data.system_prompt || '');
+      setOllamaModel(data.model || '');
       setNumSlices(data.preprocessing?.num_slices || 5);
       setSliceStrategy(data.preprocessing?.slice_strategy || 'central');
       setCentralPercentage(data.preprocessing?.central_percentage || 60);
@@ -110,6 +114,7 @@ const ChatPanel: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           system_prompt: systemPrompt,
+          model: ollamaModel || undefined,
           preprocessing: {
             num_slices: numSlices,
             slice_strategy: sliceStrategy,
@@ -128,7 +133,7 @@ const ChatPanel: React.FC = () => {
     } finally {
       setSettingsLoading(false);
     }
-  }, [systemPrompt, numSlices, sliceStrategy, centralPercentage, ollamaThink, ollamaSuffix]);
+  }, [systemPrompt, ollamaModel, numSlices, sliceStrategy, centralPercentage, ollamaThink, ollamaSuffix]);
 
   // Clear image cache
   const clearCache = useCallback(async () => {
@@ -513,6 +518,19 @@ const ChatPanel: React.FC = () => {
                 className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm resize-none
                   focus:outline-none focus:border-primary-light"
                 placeholder="Enter system prompt..."
+              />
+            </div>
+
+            {/* Model */}
+            <div>
+              <label className="block text-xs text-gray-400 mb-1">Model</label>
+              <input
+                type="text"
+                value={ollamaModel}
+                onChange={(e) => setOllamaModel(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded px-3 py-2 text-sm
+                  focus:outline-none focus:border-primary-light"
+                placeholder="e.g. MedAIBase/MedGemma1.5:4b"
               />
             </div>
 
