@@ -39,6 +39,7 @@ class OllamaOptions:
     top_p: Optional[float] = None           # Top-p (nucleus) sampling
     stop: Optional[list] = None             # Stop sequences
     seed: Optional[int] = None              # Random seed for reproducibility
+    think: Optional[bool] = None            # Enable thinking/reasoning mode (for models like DeepSeek R1, QwQ)
 
     def to_dict(self) -> dict:
         """Convert to dict, excluding None values (used as runtime_options for OllamaClient)"""
@@ -53,6 +54,8 @@ class OllamaOptions:
             result["stop"] = self.stop
         if self.seed is not None:
             result["seed"] = self.seed
+        if self.think is not None:
+            result["think"] = self.think
         return result
 
     def to_full_dict(self) -> dict:
@@ -63,6 +66,7 @@ class OllamaOptions:
             "top_p": self.top_p,
             "stop": self.stop,
             "seed": self.seed,
+            "think": self.think,
         }
 
 
@@ -80,6 +84,7 @@ class RuntimeConfig:
         config = get_config()
         
         self.system_prompt: str = DEFAULT_SYSTEM_PROMPT
+        self.model: str = config.ollama_model
         
         # Initialize preprocessing from static config (env vars)
         self.preprocessing: PreprocessingParams = PreprocessingParams(
@@ -91,6 +96,7 @@ class RuntimeConfig:
     def update(
         self,
         system_prompt: Optional[str] = None,
+        model: Optional[str] = None,
         preprocessing: Optional[dict] = None,
         ollama_options: Optional[dict] = None
     ) -> None:
@@ -99,11 +105,15 @@ class RuntimeConfig:
 
         Args:
             system_prompt: New system prompt for the LLM
+            model: Model name override for the LLM
             preprocessing: Dict with preprocessing params to update
             ollama_options: Dict with Ollama generation options to update
         """
         if system_prompt is not None:
             self.system_prompt = system_prompt
+
+        if model is not None:
+            self.model = model
 
         if preprocessing is not None:
             if "num_slices" in preprocessing and preprocessing["num_slices"] is not None:
@@ -126,6 +136,7 @@ class RuntimeConfig:
         """Convert configuration to dictionary for API response"""
         return {
             "system_prompt": self.system_prompt,
+            "model": self.model,
             "preprocessing": {
                 "num_slices": self.preprocessing.num_slices,
                 "slice_strategy": self.preprocessing.slice_strategy.value,

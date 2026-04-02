@@ -33,9 +33,9 @@ async def get_debug_config() -> DebugConfigResponse:
 
     return DebugConfigResponse(
         system_prompt=runtime_config.system_prompt,
+        model=runtime_config.model,
         preprocessing=runtime_config.to_dict()["preprocessing"],
         ollama_static={
-            "model": config.ollama_model,
             "url": config.ollama_url,
         },
         ollama_options=runtime_config.ollama_options.to_full_dict()
@@ -64,6 +64,7 @@ async def update_debug_config(update: DebugConfigUpdate) -> DebugConfigResponse:
     # Apply updates
     runtime_config.update(
         system_prompt=update.system_prompt,
+        model=update.model,
         preprocessing=preprocessing_dict,
         ollama_options=ollama_options_dict
     )
@@ -74,6 +75,7 @@ async def update_debug_config(update: DebugConfigUpdate) -> DebugConfigResponse:
         logger.info(f"Auto-cleared {cleared} cache entries after preprocessing config change")
 
     logger.info(f"Updated runtime config: system_prompt={'changed' if update.system_prompt else 'unchanged'}, "
+                f"model={'changed' if update.model else 'unchanged'}, "
                 f"preprocessing={'changed' if preprocessing_dict else 'unchanged'}, "
                 f"ollama_options={'changed' if ollama_options_dict else 'unchanged'}")
 
@@ -81,9 +83,9 @@ async def update_debug_config(update: DebugConfigUpdate) -> DebugConfigResponse:
     config = get_config()
     return DebugConfigResponse(
         system_prompt=runtime_config.system_prompt,
+        model=runtime_config.model,
         preprocessing=runtime_config.to_dict()["preprocessing"],
         ollama_static={
-            "model": config.ollama_model,
             "url": config.ollama_url,
         },
         ollama_options=runtime_config.ollama_options.to_full_dict()

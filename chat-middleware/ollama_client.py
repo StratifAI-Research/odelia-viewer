@@ -5,7 +5,7 @@ Supports both Ollama and llama.cpp backends.
 import json
 import asyncio
 import logging
-from typing import List, AsyncGenerator, Optional
+from typing import List, Dict, AsyncGenerator, Optional
 
 import aiohttp
 
@@ -34,12 +34,9 @@ class OllamaClient:
         messages: List[dict],
         cancel_event: Optional[asyncio.Event] = None,
         runtime_options: Optional[dict] = None
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[Dict[str, str], None]:
         """
         Stream chat completion tokens from Ollama's OpenAI-compatible endpoint.
-
-        Only passes parameters supported by /v1/chat/completions:
-        model, messages, stream, max_tokens, temperature, top_p, stop, seed
 
         Args:
             messages: List of message dicts with role and content (string or content array)
@@ -47,7 +44,7 @@ class OllamaClient:
             runtime_options: Optional dict with supported OpenAI params (max_tokens, temperature, etc.)
 
         Yields:
-            Token strings as they are generated
+            Dicts with "type" ("content" | "thinking") and "text" keys
         """
         url = f"{self.base_url}/v1/chat/completions"
 
@@ -60,7 +57,7 @@ class OllamaClient:
         # Only add supported OpenAI-compatible parameters
         if runtime_options:
             for key in ("max_tokens", "temperature", "top_p", "stop", "seed",
-                        "presence_penalty", "frequency_penalty"):
+                        "presence_penalty", "frequency_penalty", "think"):
                 if runtime_options.get(key) is not None:
                     payload[key] = runtime_options[key]
 
@@ -110,9 +107,12 @@ class OllamaClient:
                                 choices = chunk.get("choices", [])
                                 if choices:
                                     delta = choices[0].get("delta", {})
+                                    reasoning = delta.get("reasoning_content")
+                                    if reasoning:
+                                        yield {"type": "thinking", "text": reasoning}
                                     content = delta.get("content")
                                     if content:
-                                        yield content
+                                        yield {"type": "content", "text": content}
                             except json.JSONDecodeError as e:
                                 logger.warning(f"Failed to parse SSE chunk: {e}")
                                 continue

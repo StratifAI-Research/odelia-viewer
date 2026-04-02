@@ -233,9 +233,10 @@ async def handle_chat(
         # 3. Stream response from Ollama
         full_response = ""
         try:
+            ollama_client.model = runtime_config.model
             ollama_runtime_options = runtime_config.ollama_options.to_dict()
             
-            async for token in ollama_client.chat_stream(
+            async for chunk in ollama_client.chat_stream(
                 messages,
                 session.cancel_event,
                 runtime_options=ollama_runtime_options
@@ -244,12 +245,19 @@ async def handle_chat(
                     logger.info("Chat cancelled during generation")
                     break
                 
-                full_response += token
-                await send_message(
-                    websocket,
-                    ServerMessageType.TOKEN,
-                    content=token
-                )
+                if chunk["type"] == "thinking":
+                    await send_message(
+                        websocket,
+                        ServerMessageType.THINKING_TOKEN,
+                        content=chunk["text"]
+                    )
+                else:
+                    full_response += chunk["text"]
+                    await send_message(
+                        websocket,
+                        ServerMessageType.TOKEN,
+                        content=chunk["text"]
+                    )
         except Exception as e:
             logger.error(f"Ollama streaming error: {e}")
             await send_message(

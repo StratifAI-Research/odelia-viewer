@@ -20,6 +20,7 @@ class ServerMessageType(str, Enum):
     """Types of messages the server can send"""
     CONNECTED = "connected"           # Connection established, includes session_id
     TOKEN = "token"                   # Streaming token
+    THINKING_TOKEN = "thinking_token" # Streaming reasoning/thinking token
     DONE = "done"                     # Generation complete
     ERROR = "error"                   # Error occurred
     PREPROCESSING = "preprocessing"   # Status during preprocessing
@@ -77,6 +78,7 @@ class OllamaOptionsConfig(BaseModel):
 class DebugConfigUpdate(BaseModel):
     """Request body for updating debug configuration"""
     system_prompt: Optional[str] = None
+    model: Optional[str] = None
     preprocessing: Optional[PreprocessingConfig] = None
     ollama_options: Optional[OllamaOptionsConfig] = None
 
@@ -84,8 +86,9 @@ class DebugConfigUpdate(BaseModel):
 class DebugConfigResponse(BaseModel):
     """Response body for debug configuration endpoint"""
     system_prompt: str
+    model: str               # Active model name (runtime-adjustable)
     preprocessing: dict
-    ollama_static: dict      # Read-only: model, url (from env vars)
+    ollama_static: dict      # Read-only: url, backend_type (from env vars)
     ollama_options: dict     # Adjustable: max_tokens, temperature, top_p, stop, seed
 
 
