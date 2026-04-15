@@ -50,10 +50,3 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/odelia-orthanc-router:latest
 
-      - name: Build and push breast-cancer-classification image
-        uses: docker/build-push-action@v4
-        with:
-          context: ./custom/deploy/orthanc-routing-example/MLIntegration/breast-cancer-classification
-          file: Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/odelia-breast-cancer-classification:latest
