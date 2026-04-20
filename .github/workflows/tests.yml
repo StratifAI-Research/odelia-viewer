@@ -43,14 +43,12 @@ jobs:
               custom/extension/labeling/jest.config.js \
               custom/mode/labeling-mode/jest.config.js \
             --coverage \
+            --coverageProvider=v8 \
             --ci \
             --runInBand \
             --json --outputFile=outputs/jest-results.json \
             --coverageDirectory=outputs/jest-coverage \
-            --coverageReporters=lcov --coverageReporters=json-summary \
-            --collectCoverageFrom='<rootDir>/src/**/*.{js,jsx,ts,tsx}' \
-            --collectCoverageFrom='!<rootDir>/src/**/*.test.{js,ts,tsx}' \
-            --collectCoverageFrom='!<rootDir>/src/__mocks__/**'
+            --coverageReporters=lcov --coverageReporters=json-summary --coverageReporters=text
 
       - name: Render summary (fails if no tests ran)
         run: |
