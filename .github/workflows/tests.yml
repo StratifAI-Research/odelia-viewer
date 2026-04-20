@@ -39,10 +39,13 @@ jobs:
         continue-on-error: true
         run: |
           bun x jest \
+            --projects \
+              custom/extension/labeling/jest.config.js \
+              custom/mode/labeling-mode/jest.config.js \
             --coverage \
             --ci \
+            --runInBand \
             --json --outputFile=outputs/jest-results.json \
-            --testPathPattern='custom/(extension|mode)/' \
             --coverageDirectory=outputs/jest-coverage \
             --coverageReporters=lcov --coverageReporters=json-summary
 
@@ -117,7 +120,10 @@ jobs:
           file_covs.sort(key=lambda x: x[1])
           lowest = file_covs[:10]
 
-          includes = ["custom/(extension|mode)/**/*.{ts,tsx,js}"]
+          includes = [
+              "custom/extension/labeling/jest.config.js",
+              "custom/mode/labeling-mode/jest.config.js",
+          ]
           scope_str = "|".join(sorted(includes))
           metadata = {
               "sha": os.environ.get("GITHUB_SHA", ""),
