@@ -30,7 +30,7 @@ jobs:
       - uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: bun install
 
       - name: Prepare outputs dir
         run: mkdir -p outputs
@@ -148,7 +148,6 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-          cache: pip
 
       - name: Install pytest and coverage
         run: |
