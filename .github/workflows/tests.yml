@@ -1,0 +1,266 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTEST_VERSION: '8.3.4'
+  PYTEST_COV_VERSION: '6.0.0'
+  COVERAGE_VERSION: '7.6.10'
+
+jobs:
+  test-js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Prepare outputs dir
+        run: mkdir -p outputs
+
+      - name: Run Jest
+        continue-on-error: true
+        run: |
+          bun x jest \
+            --coverage \
+            --ci \
+            --json --outputFile=outputs/jest-results.json \
+            --testPathPattern='custom/(extension|mode)/' \
+            --coverageDirectory=outputs/jest-coverage \
+            --coverageReporters=lcov --coverageReporters=json-summary
+
+      - name: Render summary
+        run: |
+          python3 <<'PYEOF'
+          import hashlib, json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          OUT = Path("outputs")
+          results_path = OUT / "jest-results.json"
+          cov_path = OUT / "jest-coverage" / "coverage-summary.json"
+
+          results = {}
+          if results_path.exists() and results_path.stat().st_size > 0:
+              try:
+                  results = json.loads(results_path.read_text())
+              except json.JSONDecodeError:
+                  results = {}
+
+          cov = {}
+          if cov_path.exists() and cov_path.stat().st_size > 0:
+              try:
+                  cov = json.loads(cov_path.read_text())
+              except json.JSONDecodeError:
+                  cov = {}
+
+          num_suites = results.get("numTotalTestSuites", 0)
+          num_tests = results.get("numTotalTests", 0)
+          num_passed = results.get("numPassedTests", 0)
+          num_failed = results.get("numFailedTests", 0)
+          num_pending = results.get("numPendingTests", 0)
+
+          total_cov = cov.get("total", {}) if isinstance(cov, dict) else {}
+          lines_pct = (total_cov.get("lines", {}) or {}).get("pct", 0)
+          stmts_pct = (total_cov.get("statements", {}) or {}).get("pct", 0)
+          branches_pct = (total_cov.get("branches", {}) or {}).get("pct", 0)
+          funcs_pct = (total_cov.get("functions", {}) or {}).get("pct", 0)
+
+          file_covs = []
+          for fp, vals in cov.items():
+              if fp == "total" or not isinstance(vals, dict):
+                  continue
+              pct = (vals.get("lines", {}) or {}).get("pct")
+              if pct is None:
+                  continue
+              file_covs.append((fp, pct))
+          file_covs.sort(key=lambda x: x[1])
+          lowest = file_covs[:10]
+
+          includes = ["custom/(extension|mode)/**/*.{ts,tsx,js}"]
+          scope_str = "|".join(sorted(includes))
+          metadata = {
+              "sha": os.environ.get("GITHUB_SHA", ""),
+              "ref": os.environ.get("GITHUB_REF", ""),
+              "event": os.environ.get("GITHUB_EVENT_NAME", ""),
+              "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+              "tool": "jest",
+              "tool_version": "lockfile",
+              "scope_checksum": hashlib.sha256(scope_str.encode()).hexdigest(),
+          }
+          (OUT / "metadata.json").write_text(json.dumps(metadata, indent=2))
+
+          short_sha = metadata["sha"][:7]
+          lines = [f"## Test JS (Jest) — `{short_sha}` — `{metadata['event']}`\n"]
+          lines.append("### Tests\n")
+          lines.append(f"- Suites: **{num_suites}** — Tests: **{num_tests}**")
+          lines.append(f"- Passed: **{num_passed}** — Failed: **{num_failed}** — Pending: **{num_pending}**")
+          lines.append("\n### Coverage\n")
+          lines.append(f"- Lines: **{lines_pct}%** — Statements: **{stmts_pct}%** — Branches: **{branches_pct}%** — Functions: **{funcs_pct}%**")
+          if lowest:
+              lines.append("\n**Lowest-coverage files (top 10):**\n")
+              lines.append("| File | Line % |")
+              lines.append("|---|---:|")
+              for fp, pct in lowest:
+                  lines.append(f"| `{fp}` | {pct}% |")
+
+          summary = "\n".join(lines) + "\n"
+          (OUT / "summary.md").write_text(summary)
+          step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if step_summary:
+              with open(step_summary, "a") as f:
+                  f.write(summary)
+          PYEOF
+
+      - name: Upload artifact (main push only)
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-js-${{ github.sha }}
+          path: outputs/
+          retention-days: 90
+
+  test-py:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install pytest and coverage
+        run: |
+          pip install \
+            "pytest==${PYTEST_VERSION}" \
+            "pytest-cov==${PYTEST_COV_VERSION}" \
+            "coverage==${COVERAGE_VERSION}"
+
+      - name: Install submodule test dependencies
+        continue-on-error: true
+        run: |
+          if [ -f custom/deploy/orthanc-routing-example/requirements-tests.txt ]; then
+            pip install -r custom/deploy/orthanc-routing-example/requirements-tests.txt
+          fi
+
+      - name: Prepare outputs dir
+        run: mkdir -p outputs
+
+      - name: Run pytest
+        continue-on-error: true
+        run: |
+          pytest custom/deploy/orthanc-routing-example/tests \
+            --cov=custom/deploy/orthanc-routing-example \
+            --cov-report=xml:outputs/pytest-coverage.xml \
+            --cov-report=term \
+            --junitxml=outputs/pytest.xml
+
+      - name: Render summary
+        env:
+          PYTEST_VER: ${{ env.PYTEST_VERSION }}
+        run: |
+          python3 <<'PYEOF'
+          import hashlib, json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          OUT = Path("outputs")
+          junit_path = OUT / "pytest.xml"
+          cov_path = OUT / "pytest-coverage.xml"
+
+          collected = passed = failed = errors = skipped = 0
+          if junit_path.exists() and junit_path.stat().st_size > 0:
+              try:
+                  root = ET.parse(junit_path).getroot()
+                  suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+                  for s in suites:
+                      collected += int(s.get("tests", 0))
+                      failed += int(s.get("failures", 0))
+                      errors += int(s.get("errors", 0))
+                      skipped += int(s.get("skipped", 0))
+                  passed = collected - failed - errors - skipped
+              except ET.ParseError:
+                  pass
+
+          lines_covered = lines_valid = 0
+          file_covs = []
+          if cov_path.exists() and cov_path.stat().st_size > 0:
+              try:
+                  root = ET.parse(cov_path).getroot()
+                  lines_covered = int(float(root.get("lines-covered", 0) or 0))
+                  lines_valid = int(float(root.get("lines-valid", 0) or 0))
+                  for cls in root.iter("class"):
+                      fn = cls.get("filename", "")
+                      rate = float(cls.get("line-rate", 0) or 0)
+                      file_covs.append((fn, round(rate * 100, 1)))
+              except (ET.ParseError, ValueError):
+                  pass
+
+          line_pct = (lines_covered / lines_valid * 100) if lines_valid else 0
+          file_covs.sort(key=lambda x: x[1])
+          lowest = file_covs[:10]
+
+          includes = ["custom/deploy/orthanc-routing-example/tests/**/*.py"]
+          scope_str = "|".join(sorted(includes))
+          metadata = {
+              "sha": os.environ.get("GITHUB_SHA", ""),
+              "ref": os.environ.get("GITHUB_REF", ""),
+              "event": os.environ.get("GITHUB_EVENT_NAME", ""),
+              "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+              "tool": "pytest+pytest-cov",
+              "tool_version": os.environ.get("PYTEST_VER", ""),
+              "scope_checksum": hashlib.sha256(scope_str.encode()).hexdigest(),
+          }
+          (OUT / "metadata.json").write_text(json.dumps(metadata, indent=2))
+
+          short_sha = metadata["sha"][:7]
+          out_lines = [f"## Test PY (pytest) — `{short_sha}` — `{metadata['event']}`\n"]
+          out_lines.append("### Tests\n")
+          out_lines.append(f"- Collected: **{collected}**")
+          out_lines.append(f"- Passed: **{passed}** — Failed: **{failed}** — Errors: **{errors}** — Skipped: **{skipped}**")
+          out_lines.append("\n### Coverage\n")
+          out_lines.append(f"- Lines covered: **{lines_covered}/{lines_valid}** → **{line_pct:.1f}%**")
+          if lowest:
+              out_lines.append("\n**Lowest-coverage files (top 10):**\n")
+              out_lines.append("| File | Line % |")
+              out_lines.append("|---|---:|")
+              for fp, pct in lowest:
+                  out_lines.append(f"| `{fp}` | {pct}% |")
+
+          summary = "\n".join(out_lines) + "\n"
+          (OUT / "summary.md").write_text(summary)
+          step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if step_summary:
+              with open(step_summary, "a") as f:
+                  f.write(summary)
+          PYEOF
+
+      - name: Upload artifact (main push only)
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-py-${{ github.sha }}
+          path: outputs/
+          retention-days: 90
