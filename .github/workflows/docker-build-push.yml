@@ -2,51 +2,78 @@ name: Docker Build and Push
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+    tags:
+      - 'v*.*.*'
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
-env:
-  DOCKER_HUB_USERNAME: ${{ secrets.DOCKER_HUB_USERNAME }}
-  DOCKER_HUB_TOKEN: ${{ secrets.DOCKER_HUB_TOKEN }}
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build-and-push:
+  nightly:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v2
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
-
-      - name: Build and push viewer image
-        uses: docker/build-push-action@v4
+      - uses: docker/build-push-action@v5
         with:
           context: .
           file: Dockerfile
           push: true
           tags: ${{ secrets.DOCKER_HUB_USERNAME }}/odelia-viewer:latest
+          cache-from: type=gha,scope=odelia-viewer
+          cache-to: type=gha,mode=max,scope=odelia-viewer
 
-      - name: Build and push orthanc-viewer image
-        uses: docker/build-push-action@v4
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
         with:
-          context: ./custom/deploy/orthanc-routing-example/server
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ secrets.DOCKER_HUB_USERNAME }}/odelia-viewer
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
           file: Dockerfile
           push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/odelia-orthanc-viewer:latest
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=odelia-viewer
+          cache-to: type=gha,mode=max,scope=odelia-viewer
 
-      - name: Build and push orthanc-router image
-        uses: docker/build-push-action@v4
+  pr-smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v5
         with:
-          context: ./custom/deploy/orthanc-routing-example/orthanc-ai-router
+          context: .
           file: Dockerfile
-          push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/odelia-orthanc-router:latest
-
+          push: false
+          load: false
+          cache-from: type=gha,scope=odelia-viewer
+          cache-to: type=gha,mode=min,scope=odelia-viewer
