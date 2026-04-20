@@ -1,0 +1,187 @@
+name: Code Stats
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stats-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  TOKEI_VERSION: '12.1.2'
+  LIZARD_VERSION: '1.17.10'
+
+jobs:
+  stats:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install tokei
+        uses: taiki-e/install-action@v2
+        with:
+          tool: tokei@${{ env.TOKEI_VERSION }}
+
+      - name: Install lizard
+        run: pip install "lizard==${LIZARD_VERSION}"
+
+      - name: Prepare outputs dir
+        run: mkdir -p outputs
+
+      - name: Run tokei
+        run: |
+          tokei --output json \
+            custom \
+            --exclude node_modules \
+            --exclude .venv \
+            --exclude .webpack \
+            --exclude coverage \
+            --exclude .pytest_cache \
+            --exclude __pycache__ \
+            --exclude volumes \
+            --exclude tests \
+            --exclude sample_data \
+            --exclude screenshots \
+            --exclude dist \
+            --exclude build \
+            > outputs/tokei.json
+
+      - name: Run lizard
+        run: |
+          lizard --csv \
+            -x "*/node_modules/*" \
+            -x "*/.venv/*" \
+            -x "*/.webpack/*" \
+            -x "*/coverage/*" \
+            -x "*/.pytest_cache/*" \
+            -x "*/__pycache__/*" \
+            -x "*/volumes/*" \
+            -x "*/tests/*" \
+            -x "*/sample_data/*" \
+            -x "*/screenshots/*" \
+            -x "*/dist/*" \
+            -x "*/build/*" \
+            custom \
+            > outputs/lizard.csv
+
+      - name: Render summary and metadata
+        run: |
+          python3 <<'PYEOF'
+          import csv, hashlib, json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          OUT = Path("outputs")
+          tokei = json.loads((OUT / "tokei.json").read_text())
+
+          includes = ["custom/**/*"]
+          excludes = [
+              "node_modules", ".venv", ".webpack", "coverage", ".pytest_cache",
+              "__pycache__", "volumes", "tests", "sample_data", "screenshots",
+              "dist", "build",
+          ]
+          scope_str = "|".join(sorted(includes) + ["!" + e for e in sorted(excludes)])
+          scope_checksum = hashlib.sha256(scope_str.encode()).hexdigest()
+
+          metadata = {
+              "sha": os.environ.get("GITHUB_SHA", ""),
+              "ref": os.environ.get("GITHUB_REF", ""),
+              "event": os.environ.get("GITHUB_EVENT_NAME", ""),
+              "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+              "tokei_version": os.environ.get("TOKEI_VERSION", ""),
+              "lizard_version": os.environ.get("LIZARD_VERSION", ""),
+              "scope_checksum": scope_checksum,
+          }
+          (OUT / "metadata.json").write_text(json.dumps(metadata, indent=2))
+
+          lines = []
+          short_sha = metadata["sha"][:7]
+          lines.append(f"## Code Stats — `{short_sha}` — `{metadata['event']}`\n")
+          lines.append("### LOC by language\n")
+          lines.append("| Language | Files | Code | Comments | Blanks | Total |")
+          lines.append("|---|---:|---:|---:|---:|---:|")
+
+          def files_count(entry):
+              for key in ("reports", "stats", "children"):
+                  val = entry.get(key)
+                  if isinstance(val, list):
+                      return len(val)
+              return 0
+
+          langs = sorted(k for k in tokei if k != "Total")
+          for lang in langs:
+              e = tokei[lang] or {}
+              code = e.get("code", 0)
+              comments = e.get("comments", 0)
+              blanks = e.get("blanks", 0)
+              total = code + comments + blanks
+              lines.append(f"| {lang} | {files_count(e)} | {code} | {comments} | {blanks} | {total} |")
+          if "Total" in tokei:
+              t = tokei["Total"] or {}
+              code = t.get("code", 0)
+              comments = t.get("comments", 0)
+              blanks = t.get("blanks", 0)
+              total = code + comments + blanks
+              lines.append(f"| **Total** |  | **{code}** | **{comments}** | **{blanks}** | **{total}** |")
+
+          lines.append("\n### Complexity (lizard)\n")
+          rows = []
+          csv_path = OUT / "lizard.csv"
+          if csv_path.exists():
+              with csv_path.open() as f:
+                  for r in csv.reader(f):
+                      if len(r) < 6:
+                          continue
+                      try:
+                          nloc = int(r[0]); ccn = int(r[1])
+                      except ValueError:
+                          continue
+                      rows.append({"nloc": nloc, "ccn": ccn, "loc": r[5]})
+
+          if rows:
+              total_fns = len(rows)
+              avg_ccn = sum(r["ccn"] for r in rows) / total_fns
+              max_ccn = max(r["ccn"] for r in rows)
+              hot = sum(1 for r in rows if r["ccn"] >= 10)
+              lines.append(f"- Total functions: **{total_fns}**")
+              lines.append(f"- Average CCN: **{avg_ccn:.2f}**")
+              lines.append(f"- Max CCN: **{max_ccn}**")
+              lines.append(f"- Functions with CCN ≥ 10: **{hot}** (reported, not gated)")
+              lines.append("\n**Top 10 by CCN:**\n")
+              lines.append("| Location | CCN | NLOC |")
+              lines.append("|---|---:|---:|")
+              for r in sorted(rows, key=lambda x: -x["ccn"])[:10]:
+                  lines.append(f"| `{r['loc']}` | {r['ccn']} | {r['nloc']} |")
+          else:
+              lines.append("- No functions detected by lizard in scope.")
+
+          summary = "\n".join(lines) + "\n"
+          (OUT / "summary.md").write_text(summary)
+
+          step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if step_summary:
+              with open(step_summary, "a") as f:
+                  f.write(summary)
+          PYEOF
+
+      - name: Upload artifact (main push only)
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: code-stats-${{ github.sha }}
+          path: outputs/
+          retention-days: 90
