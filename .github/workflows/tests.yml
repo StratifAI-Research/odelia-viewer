@@ -41,11 +41,15 @@ jobs:
           bun x jest \
             --projects \
               custom/extension/labeling/jest.config.js \
+              custom/extension/view-ai-result/jest.config.js \
+              custom/extension/orthanc-ai-routing/jest.config.js \
               custom/mode/labeling-mode/jest.config.js \
+              custom/mode/send-ai/jest.config.js \
             --coverage \
             --coverageProvider=v8 \
             --ci \
             --runInBand \
+            --passWithNoTests \
             --json --outputFile=outputs/jest-results.json \
             --coverageDirectory=outputs/jest-coverage \
             --coverageReporters=lcov --coverageReporters=json-summary --coverageReporters=text
@@ -198,6 +202,18 @@ jobs:
 
       - name: Prepare outputs dir
         run: mkdir -p outputs
+
+      - name: Ensure coverage can walk non-package dirs
+        run: |
+          find custom/deploy/orthanc-routing-example -type f -name '*.py' \
+            ! -path '*/tests/*' \
+            ! -path '*/MLIntegration/tests/*' \
+            ! -path '*/.venv/*' \
+            ! -path '*/__pycache__/*' \
+            ! -path '*/.pytest_cache/*' \
+            -printf '%h\n' | sort -u | while read d; do
+              [ -f "$d/__init__.py" ] || touch "$d/__init__.py"
+            done
 
       - name: Run pytest via coverage (full source scan)
         continue-on-error: true
