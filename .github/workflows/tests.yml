@@ -46,10 +46,10 @@ jobs:
             --coverageDirectory=outputs/jest-coverage \
             --coverageReporters=lcov --coverageReporters=json-summary
 
-      - name: Render summary
+      - name: Render summary (fails if no tests ran)
         run: |
           python3 <<'PYEOF'
-          import hashlib, json, os
+          import hashlib, json, os, sys
           from datetime import datetime, timezone
           from pathlib import Path
 
@@ -57,12 +57,35 @@ jobs:
           results_path = OUT / "jest-results.json"
           cov_path = OUT / "jest-coverage" / "coverage-summary.json"
 
-          results = {}
-          if results_path.exists() and results_path.stat().st_size > 0:
-              try:
-                  results = json.loads(results_path.read_text())
-              except json.JSONDecodeError:
-                  results = {}
+          def write_and_maybe_fail(summary, fail_reason=None):
+              (OUT / "summary.md").write_text(summary)
+              step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+              if step_summary:
+                  with open(step_summary, "a") as f:
+                      f.write(summary)
+              if fail_reason:
+                  print(f"::error::{fail_reason}")
+                  sys.exit(1)
+
+          short_sha = (os.environ.get("GITHUB_SHA", "") or "")[:7]
+          event = os.environ.get("GITHUB_EVENT_NAME", "")
+
+          if not results_path.exists() or results_path.stat().st_size == 0:
+              write_and_maybe_fail(
+                  f"## Test JS (Jest) — `{short_sha}` — `{event}`\n\n"
+                  "**Failed:** Jest did not produce `jest-results.json`. "
+                  "Likely causes: install failure, config error, or Jest crashed before writing output.\n",
+                  "Jest produced no results file",
+              )
+
+          try:
+              results = json.loads(results_path.read_text())
+          except json.JSONDecodeError as e:
+              write_and_maybe_fail(
+                  f"## Test JS (Jest) — `{short_sha}` — `{event}`\n\n"
+                  f"**Failed:** `jest-results.json` is not valid JSON: {e}\n",
+                  "Jest results file is malformed",
+              )
 
           cov = {}
           if cov_path.exists() and cov_path.stat().st_size > 0:
@@ -99,7 +122,7 @@ jobs:
           metadata = {
               "sha": os.environ.get("GITHUB_SHA", ""),
               "ref": os.environ.get("GITHUB_REF", ""),
-              "event": os.environ.get("GITHUB_EVENT_NAME", ""),
+              "event": event,
               "timestamp_utc": datetime.now(timezone.utc).isoformat(),
               "tool": "jest",
               "tool_version": "lockfile",
@@ -107,8 +130,7 @@ jobs:
           }
           (OUT / "metadata.json").write_text(json.dumps(metadata, indent=2))
 
-          short_sha = metadata["sha"][:7]
-          lines = [f"## Test JS (Jest) — `{short_sha}` — `{metadata['event']}`\n"]
+          lines = [f"## Test JS (Jest) — `{short_sha}` — `{event}`\n"]
           lines.append("### Tests\n")
           lines.append(f"- Suites: **{num_suites}** — Tests: **{num_tests}**")
           lines.append(f"- Passed: **{num_passed}** — Failed: **{num_failed}** — Pending: **{num_pending}**")
@@ -122,11 +144,15 @@ jobs:
                   lines.append(f"| `{fp}` | {pct}% |")
 
           summary = "\n".join(lines) + "\n"
-          (OUT / "summary.md").write_text(summary)
-          step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
-          if step_summary:
-              with open(step_summary, "a") as f:
-                  f.write(summary)
+
+          if num_tests == 0:
+              write_and_maybe_fail(
+                  summary + "\n**Failed:** zero tests discovered. "
+                  "Check the `--testPathPattern` matches real test files.\n",
+                  "Jest discovered zero tests",
+              )
+
+          write_and_maybe_fail(summary)
           PYEOF
 
       - name: Upload artifact (main push only)
@@ -166,21 +192,23 @@ jobs:
       - name: Prepare outputs dir
         run: mkdir -p outputs
 
-      - name: Run pytest
+      - name: Run pytest via coverage (full source scan)
         continue-on-error: true
         run: |
-          pytest custom/deploy/orthanc-routing-example/tests \
-            --cov=custom/deploy/orthanc-routing-example \
-            --cov-report=xml:outputs/pytest-coverage.xml \
-            --cov-report=term \
+          coverage run \
+            --source=custom/deploy/orthanc-routing-example \
+            --omit='*/tests/*,*/MLIntegration/tests/*,*/sample_data/*,*/screenshots/*,*/.venv/*,*/__pycache__/*,*/.pytest_cache/*' \
+            -m pytest custom/deploy/orthanc-routing-example/tests \
             --junitxml=outputs/pytest.xml
+          coverage xml -o outputs/pytest-coverage.xml
+          coverage report --skip-covered --skip-empty || true
 
-      - name: Render summary
+      - name: Render summary (fails if no tests ran)
         env:
           PYTEST_VER: ${{ env.PYTEST_VERSION }}
         run: |
           python3 <<'PYEOF'
-          import hashlib, json, os
+          import hashlib, json, os, sys
           from datetime import datetime, timezone
           from pathlib import Path
           import xml.etree.ElementTree as ET
@@ -189,28 +217,52 @@ jobs:
           junit_path = OUT / "pytest.xml"
           cov_path = OUT / "pytest-coverage.xml"
 
+          def write_and_maybe_fail(summary, fail_reason=None):
+              (OUT / "summary.md").write_text(summary)
+              step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+              if step_summary:
+                  with open(step_summary, "a") as f:
+                      f.write(summary)
+              if fail_reason:
+                  print(f"::error::{fail_reason}")
+                  sys.exit(1)
+
+          short_sha = (os.environ.get("GITHUB_SHA", "") or "")[:7]
+          event = os.environ.get("GITHUB_EVENT_NAME", "")
+
+          if not junit_path.exists() or junit_path.stat().st_size == 0:
+              write_and_maybe_fail(
+                  f"## Test PY (pytest) — `{short_sha}` — `{event}`\n\n"
+                  "**Failed:** pytest did not produce `pytest.xml`. "
+                  "Likely causes: install failure or pytest crashed before writing output.\n",
+                  "pytest produced no junit XML",
+              )
+
           collected = passed = failed = errors = skipped = 0
-          if junit_path.exists() and junit_path.stat().st_size > 0:
-              try:
-                  root = ET.parse(junit_path).getroot()
-                  suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
-                  for s in suites:
-                      collected += int(s.get("tests", 0))
-                      failed += int(s.get("failures", 0))
-                      errors += int(s.get("errors", 0))
-                      skipped += int(s.get("skipped", 0))
-                  passed = collected - failed - errors - skipped
-              except ET.ParseError:
-                  pass
+          try:
+              root = ET.parse(junit_path).getroot()
+              suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+              for s in suites:
+                  collected += int(s.get("tests", 0))
+                  failed += int(s.get("failures", 0))
+                  errors += int(s.get("errors", 0))
+                  skipped += int(s.get("skipped", 0))
+              passed = collected - failed - errors - skipped
+          except ET.ParseError as e:
+              write_and_maybe_fail(
+                  f"## Test PY (pytest) — `{short_sha}` — `{event}`\n\n"
+                  f"**Failed:** `pytest.xml` is not valid XML: {e}\n",
+                  "pytest junit XML is malformed",
+              )
 
           lines_covered = lines_valid = 0
           file_covs = []
           if cov_path.exists() and cov_path.stat().st_size > 0:
               try:
-                  root = ET.parse(cov_path).getroot()
-                  lines_covered = int(float(root.get("lines-covered", 0) or 0))
-                  lines_valid = int(float(root.get("lines-valid", 0) or 0))
-                  for cls in root.iter("class"):
+                  cov_root = ET.parse(cov_path).getroot()
+                  lines_covered = int(float(cov_root.get("lines-covered", 0) or 0))
+                  lines_valid = int(float(cov_root.get("lines-valid", 0) or 0))
+                  for cls in cov_root.iter("class"):
                       fn = cls.get("filename", "")
                       rate = float(cls.get("line-rate", 0) or 0)
                       file_covs.append((fn, round(rate * 100, 1)))
@@ -221,21 +273,24 @@ jobs:
           file_covs.sort(key=lambda x: x[1])
           lowest = file_covs[:10]
 
-          includes = ["custom/deploy/orthanc-routing-example/tests/**/*.py"]
-          scope_str = "|".join(sorted(includes))
+          includes = ["custom/deploy/orthanc-routing-example/**/*.py"]
+          excludes = [
+              "tests", "MLIntegration/tests", "sample_data", "screenshots",
+              ".venv", "__pycache__", ".pytest_cache",
+          ]
+          scope_str = "|".join(sorted(includes) + ["!" + e for e in sorted(excludes)])
           metadata = {
               "sha": os.environ.get("GITHUB_SHA", ""),
               "ref": os.environ.get("GITHUB_REF", ""),
-              "event": os.environ.get("GITHUB_EVENT_NAME", ""),
+              "event": event,
               "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-              "tool": "pytest+pytest-cov",
+              "tool": "pytest+coverage",
               "tool_version": os.environ.get("PYTEST_VER", ""),
               "scope_checksum": hashlib.sha256(scope_str.encode()).hexdigest(),
           }
           (OUT / "metadata.json").write_text(json.dumps(metadata, indent=2))
 
-          short_sha = metadata["sha"][:7]
-          out_lines = [f"## Test PY (pytest) — `{short_sha}` — `{metadata['event']}`\n"]
+          out_lines = [f"## Test PY (pytest) — `{short_sha}` — `{event}`\n"]
           out_lines.append("### Tests\n")
           out_lines.append(f"- Collected: **{collected}**")
           out_lines.append(f"- Passed: **{passed}** — Failed: **{failed}** — Errors: **{errors}** — Skipped: **{skipped}**")
@@ -249,11 +304,15 @@ jobs:
                   out_lines.append(f"| `{fp}` | {pct}% |")
 
           summary = "\n".join(out_lines) + "\n"
-          (OUT / "summary.md").write_text(summary)
-          step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
-          if step_summary:
-              with open(step_summary, "a") as f:
-                  f.write(summary)
+
+          if collected == 0:
+              write_and_maybe_fail(
+                  summary + "\n**Failed:** zero tests collected. "
+                  "Check that test files exist under `custom/deploy/orthanc-routing-example/tests/`.\n",
+                  "pytest collected zero tests",
+              )
+
+          write_and_maybe_fail(summary)
           PYEOF
 
       - name: Upload artifact (main push only)
