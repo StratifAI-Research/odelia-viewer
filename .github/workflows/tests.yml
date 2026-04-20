@@ -47,7 +47,10 @@ jobs:
             --runInBand \
             --json --outputFile=outputs/jest-results.json \
             --coverageDirectory=outputs/jest-coverage \
-            --coverageReporters=lcov --coverageReporters=json-summary
+            --coverageReporters=lcov --coverageReporters=json-summary \
+            --collectCoverageFrom='<rootDir>/src/**/*.{js,jsx,ts,tsx}' \
+            --collectCoverageFrom='!<rootDir>/src/**/*.test.{js,ts,tsx}' \
+            --collectCoverageFrom='!<rootDir>/src/__mocks__/**'
 
       - name: Render summary (fails if no tests ran)
         run: |
@@ -202,12 +205,11 @@ jobs:
         continue-on-error: true
         run: |
           coverage run \
-            --source=custom/deploy/orthanc-routing-example \
-            --omit='*/tests/*,*/MLIntegration/tests/*,*/sample_data/*,*/screenshots/*,*/.venv/*,*/__pycache__/*,*/.pytest_cache/*' \
+            --rcfile=.github/coverage.cfg \
             -m pytest custom/deploy/orthanc-routing-example/tests \
             --junitxml=outputs/pytest.xml
-          coverage xml -o outputs/pytest-coverage.xml
-          coverage report --skip-covered --skip-empty || true
+          coverage xml --rcfile=.github/coverage.cfg -o outputs/pytest-coverage.xml
+          coverage report --rcfile=.github/coverage.cfg || true
 
       - name: Render summary (fails if no tests ran)
         env:
