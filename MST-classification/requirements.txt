@@ -3,7 +3,7 @@ Flask-Cors>=4.0.0
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch>=2.5.0
 torchvision>=0.21.0
-git+https://github.com/huggingface/transformers.git
+transformers==5.3.0
 huggingface_hub>=0.26.0
 pydicom>=2.4.3
 nibabel>=5.2.0
