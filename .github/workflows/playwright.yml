@@ -1,9 +1,14 @@
 name: Playwright Tests
+
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
+
+permissions:
+  contents: read
+
 jobs:
   playwright-tests:
     timeout-minutes: 60
@@ -16,11 +21,11 @@ jobs:
         shardIndex: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
         shardTotal: [10]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
       - name: Install unzip
         run: apt-get update && apt-get install -y unzip
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
       - name: Install dependencies
@@ -28,13 +33,13 @@ jobs:
       - name: Set up Git safe directory
         run: git config --global --add safe.directory /__w/Viewers/Viewers
       - name: Run Playwright tests
-        run:
-          export NODE_OPTIONS="--max_old_space_size=8192" && bun x playwright test --shard=${{
-          matrix.shardIndex }}/${{ matrix.shardTotal }}
+        run: |
+          export NODE_OPTIONS="--max_old_space_size=8192"
+          bun x playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
 
       - name: Upload blob report to GitHub Actions Artifacts
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: blob-report-${{ matrix.shardIndex }}
           path: blob-report
@@ -49,9 +54,9 @@ jobs:
     steps:
       - name: Install unzip
         run: apt-get update && apt-get install -y unzip
-      - uses: oven-sh/setup-bun@v2
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
       - name: Install dependencies
@@ -59,7 +64,7 @@ jobs:
       - name: Set up Git safe directory
         run: git config --global --add safe.directory /__w/Viewers/Viewers
       - name: Download blob reports from GitHub Actions Artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: all-blob-reports
           pattern: blob-report-*
@@ -69,7 +74,7 @@ jobs:
         run: bun x playwright merge-reports --reporter html ./all-blob-reports
 
       - name: Upload HTML report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: html-report--attempt-${{ github.run_attempt }}
           path: playwright-report
