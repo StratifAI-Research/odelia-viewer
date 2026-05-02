@@ -31,7 +31,7 @@ jobs:
           context: .
           file: Dockerfile
           push: true
-          tags: ${{ secrets.DOCKER_HUB_USERNAME }}/odelia-viewer:latest
+          tags: stratifai/odelia-viewer:latest
           cache-from: type=gha,scope=odelia-viewer
           cache-to: type=gha,mode=max,scope=odelia-viewer
 
@@ -48,7 +48,8 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ secrets.DOCKER_HUB_USERNAME }}/odelia-viewer
+          images: stratifai/odelia-viewer
+          flavor: latest=false
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
