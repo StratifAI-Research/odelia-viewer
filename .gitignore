@@ -64,6 +64,11 @@ tests/playwright-report/
 /blob-report/
 /playwright/.cache/
 
+# Python
+.venv/
+__pycache__/
+.coverage
+
 # Docker volume mounts
 custom/deploy/volumes/*
 custom/deploy/logs/*
