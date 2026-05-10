@@ -84,7 +84,7 @@ RUN ./.docker/compressDist.sh
 
 # Stage 3: Bundle the built application into a Docker container
 # which runs Nginx using Alpine Linux
-FROM nginxinc/nginx-unprivileged:1.27-alpine as final
+FROM nginxinc/nginx-unprivileged:1.29-alpine as final
 
 USER root
 # Download and install oauth2-proxy
