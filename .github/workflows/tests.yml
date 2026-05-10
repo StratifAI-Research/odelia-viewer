@@ -36,7 +36,6 @@ jobs:
         run: mkdir -p outputs
 
       - name: Run Jest
-        continue-on-error: true
         run: |
           bun x jest \
             --projects \
@@ -55,6 +54,7 @@ jobs:
             --coverageReporters=lcov --coverageReporters=json-summary --coverageReporters=text
 
       - name: Render summary (fails if no tests ran)
+        if: always()
         run: |
           python3 <<'PYEOF'
           import hashlib, json, os, sys
@@ -204,7 +204,6 @@ jobs:
         run: mkdir -p outputs
 
       - name: Run pytest via coverage (full source scan)
-        continue-on-error: true
         run: |
           coverage run \
             --rcfile=.github/coverage.cfg \
@@ -214,6 +213,7 @@ jobs:
           coverage report --rcfile=.github/coverage.cfg || true
 
       - name: Render summary (fails if no tests ran)
+        if: always()
         env:
           PYTEST_VER: ${{ env.PYTEST_VERSION }}
         run: |
