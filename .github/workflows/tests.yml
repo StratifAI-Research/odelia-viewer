@@ -203,18 +203,6 @@ jobs:
       - name: Prepare outputs dir
         run: mkdir -p outputs
 
-      - name: Ensure coverage can walk non-package dirs
-        run: |
-          find custom/deploy/orthanc-routing-example -type f -name '*.py' \
-            ! -path '*/tests/*' \
-            ! -path '*/MLIntegration/tests/*' \
-            ! -path '*/.venv/*' \
-            ! -path '*/__pycache__/*' \
-            ! -path '*/.pytest_cache/*' \
-            -printf '%h\n' | sort -u | while read d; do
-              [ -f "$d/__init__.py" ] || touch "$d/__init__.py"
-            done
-
       - name: Run pytest via coverage (full source scan)
         continue-on-error: true
         run: |
