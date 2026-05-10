@@ -8,6 +8,7 @@ module.exports = {
           {
             modules: 'commonjs',
             debug: false,
+            targets: { node: 'current' },
           },
         ],
         '@babel/preset-react',
@@ -16,7 +17,6 @@ module.exports = {
       plugins: [
         '@babel/plugin-proposal-object-rest-spread',
         '@babel/plugin-syntax-dynamic-import',
-        '@babel/plugin-transform-regenerator',
         '@babel/plugin-transform-runtime',
       ],
     },
