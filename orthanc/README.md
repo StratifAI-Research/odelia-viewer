@@ -7,11 +7,13 @@ Orthanc Routing Server: The Orthanc server that routes studies to the AI server.
 Orthanc AI Server: The Orthanc server that performs the AI inference. i.e. processes the images into format suitable for AI models and wraps AI results in DICOM SR/SC format. 
 ODELIA Viewer: The viewer application that allows you to send studies to the AI server and view the results.
 ## Quick Test Guide
-### 0. Clone and start containers
+### 0. Start containers
+
+This directory was historically a standalone repo (`orthanc-routing-example`); it is now part of the deployment. Build and run from the deployment root:
+
 ```bash
-git clone https://github.com/Luab/orthanc-routing-example
-cd orthanc-routing-example
-docker-compose up --build
+cd ..   # if you are inside orthanc/
+docker compose up --build
 ```
 ### 1. Upload Studies to Routing Server
 
