@@ -1,0 +1,334 @@
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTEST_VERSION: '8.3.4'
+  PYTEST_COV_VERSION: '6.0.0'
+  COVERAGE_VERSION: '7.6.10'
+
+jobs:
+  test-js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Prepare outputs dir
+        run: mkdir -p outputs
+
+      - name: Run Jest
+        run: |
+          bun x jest \
+            --projects \
+              custom/extension/labeling/jest.config.js \
+              custom/extension/view-ai-result/jest.config.js \
+              custom/extension/orthanc-ai-routing/jest.config.js \
+              custom/mode/labeling-mode/jest.config.js \
+              custom/mode/send-ai/jest.config.js \
+            --coverage \
+            --coverageProvider=v8 \
+            --ci \
+            --runInBand \
+            --passWithNoTests \
+            --json --outputFile=outputs/jest-results.json \
+            --coverageDirectory=outputs/jest-coverage \
+            --coverageReporters=lcov --coverageReporters=json-summary --coverageReporters=text
+
+      - name: Render summary (fails if no tests ran)
+        if: always()
+        run: |
+          python3 <<'PYEOF'
+          import hashlib, json, os, sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          OUT = Path("outputs")
+          results_path = OUT / "jest-results.json"
+          cov_path = OUT / "jest-coverage" / "coverage-summary.json"
+
+          def write_and_maybe_fail(summary, fail_reason=None):
+              (OUT / "summary.md").write_text(summary)
+              step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+              if step_summary:
+                  with open(step_summary, "a") as f:
+                      f.write(summary)
+              if fail_reason:
+                  print(f"::error::{fail_reason}")
+                  sys.exit(1)
+
+          short_sha = (os.environ.get("GITHUB_SHA", "") or "")[:7]
+          event = os.environ.get("GITHUB_EVENT_NAME", "")
+
+          if not results_path.exists() or results_path.stat().st_size == 0:
+              write_and_maybe_fail(
+                  f"## Test JS (Jest) — `{short_sha}` — `{event}`\n\n"
+                  "**Failed:** Jest did not produce `jest-results.json`. "
+                  "Likely causes: install failure, config error, or Jest crashed before writing output.\n",
+                  "Jest produced no results file",
+              )
+
+          try:
+              results = json.loads(results_path.read_text())
+          except json.JSONDecodeError as e:
+              write_and_maybe_fail(
+                  f"## Test JS (Jest) — `{short_sha}` — `{event}`\n\n"
+                  f"**Failed:** `jest-results.json` is not valid JSON: {e}\n",
+                  "Jest results file is malformed",
+              )
+
+          cov = {}
+          if cov_path.exists() and cov_path.stat().st_size > 0:
+              try:
+                  cov = json.loads(cov_path.read_text())
+              except json.JSONDecodeError:
+                  cov = {}
+
+          num_suites = results.get("numTotalTestSuites", 0)
+          num_tests = results.get("numTotalTests", 0)
+          num_passed = results.get("numPassedTests", 0)
+          num_failed = results.get("numFailedTests", 0)
+          num_pending = results.get("numPendingTests", 0)
+
+          total_cov = cov.get("total", {}) if isinstance(cov, dict) else {}
+          lines_pct = (total_cov.get("lines", {}) or {}).get("pct", 0)
+          stmts_pct = (total_cov.get("statements", {}) or {}).get("pct", 0)
+          branches_pct = (total_cov.get("branches", {}) or {}).get("pct", 0)
+          funcs_pct = (total_cov.get("functions", {}) or {}).get("pct", 0)
+
+          file_covs = []
+          for fp, vals in cov.items():
+              if fp == "total" or not isinstance(vals, dict):
+                  continue
+              pct = (vals.get("lines", {}) or {}).get("pct")
+              if pct is None:
+                  continue
+              file_covs.append((fp, pct))
+          file_covs.sort(key=lambda x: x[1])
+          lowest = file_covs[:10]
+
+          includes = [
+              "custom/extension/labeling/jest.config.js",
+              "custom/mode/labeling-mode/jest.config.js",
+          ]
+          scope_str = "|".join(sorted(includes))
+          metadata = {
+              "sha": os.environ.get("GITHUB_SHA", ""),
+              "ref": os.environ.get("GITHUB_REF", ""),
+              "event": event,
+              "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+              "tool": "jest",
+              "tool_version": "lockfile",
+              "scope_checksum": hashlib.sha256(scope_str.encode()).hexdigest(),
+          }
+          (OUT / "metadata.json").write_text(json.dumps(metadata, indent=2))
+
+          lines = [f"## Test JS (Jest) — `{short_sha}` — `{event}`\n"]
+          lines.append("### Tests\n")
+          lines.append(f"- Suites: **{num_suites}** — Tests: **{num_tests}**")
+          lines.append(f"- Passed: **{num_passed}** — Failed: **{num_failed}** — Pending: **{num_pending}**")
+          lines.append("\n### Coverage\n")
+          lines.append(f"- Lines: **{lines_pct}%** — Statements: **{stmts_pct}%** — Branches: **{branches_pct}%** — Functions: **{funcs_pct}%**")
+          if lowest:
+              lines.append("\n**Lowest-coverage files (top 10):**\n")
+              lines.append("| File | Line % |")
+              lines.append("|---|---:|")
+              for fp, pct in lowest:
+                  lines.append(f"| `{fp}` | {pct}% |")
+
+          summary = "\n".join(lines) + "\n"
+
+          if num_tests == 0:
+              write_and_maybe_fail(
+                  summary + "\n**Failed:** zero tests discovered. "
+                  "Check the `--testPathPattern` matches real test files.\n",
+                  "Jest discovered zero tests",
+              )
+
+          write_and_maybe_fail(summary)
+          PYEOF
+
+      - name: Upload artifact (main push only)
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-js-${{ github.sha }}
+          path: outputs/
+          retention-days: 90
+
+  test-py:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install pytest and coverage
+        run: |
+          pip install \
+            "pytest==${PYTEST_VERSION}" \
+            "pytest-cov==${PYTEST_COV_VERSION}" \
+            "coverage==${COVERAGE_VERSION}"
+
+      - name: Install submodule test dependencies
+        continue-on-error: true
+        run: |
+          if [ -f custom/deploy/orthanc-routing-example/requirements-tests.txt ]; then
+            pip install -r custom/deploy/orthanc-routing-example/requirements-tests.txt
+          fi
+
+      - name: Prepare outputs dir
+        run: mkdir -p outputs
+
+      - name: Run pytest via coverage (full source scan)
+        run: |
+          coverage run \
+            --rcfile=.github/coverage.cfg \
+            -m pytest custom/deploy/orthanc-routing-example/tests \
+            --junitxml=outputs/pytest.xml
+          coverage xml --rcfile=.github/coverage.cfg -o outputs/pytest-coverage.xml
+          coverage report --rcfile=.github/coverage.cfg || true
+
+      - name: Render summary (fails if no tests ran)
+        if: always()
+        env:
+          PYTEST_VER: ${{ env.PYTEST_VERSION }}
+        run: |
+          python3 <<'PYEOF'
+          import hashlib, json, os, sys
+          from datetime import datetime, timezone
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+
+          OUT = Path("outputs")
+          junit_path = OUT / "pytest.xml"
+          cov_path = OUT / "pytest-coverage.xml"
+
+          def write_and_maybe_fail(summary, fail_reason=None):
+              (OUT / "summary.md").write_text(summary)
+              step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+              if step_summary:
+                  with open(step_summary, "a") as f:
+                      f.write(summary)
+              if fail_reason:
+                  print(f"::error::{fail_reason}")
+                  sys.exit(1)
+
+          short_sha = (os.environ.get("GITHUB_SHA", "") or "")[:7]
+          event = os.environ.get("GITHUB_EVENT_NAME", "")
+
+          if not junit_path.exists() or junit_path.stat().st_size == 0:
+              write_and_maybe_fail(
+                  f"## Test PY (pytest) — `{short_sha}` — `{event}`\n\n"
+                  "**Failed:** pytest did not produce `pytest.xml`. "
+                  "Likely causes: install failure or pytest crashed before writing output.\n",
+                  "pytest produced no junit XML",
+              )
+
+          collected = passed = failed = errors = skipped = 0
+          try:
+              root = ET.parse(junit_path).getroot()
+              suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
+              for s in suites:
+                  collected += int(s.get("tests", 0))
+                  failed += int(s.get("failures", 0))
+                  errors += int(s.get("errors", 0))
+                  skipped += int(s.get("skipped", 0))
+              passed = collected - failed - errors - skipped
+          except ET.ParseError as e:
+              write_and_maybe_fail(
+                  f"## Test PY (pytest) — `{short_sha}` — `{event}`\n\n"
+                  f"**Failed:** `pytest.xml` is not valid XML: {e}\n",
+                  "pytest junit XML is malformed",
+              )
+
+          lines_covered = lines_valid = 0
+          file_covs = []
+          if cov_path.exists() and cov_path.stat().st_size > 0:
+              try:
+                  cov_root = ET.parse(cov_path).getroot()
+                  lines_covered = int(float(cov_root.get("lines-covered", 0) or 0))
+                  lines_valid = int(float(cov_root.get("lines-valid", 0) or 0))
+                  for cls in cov_root.iter("class"):
+                      fn = cls.get("filename", "")
+                      rate = float(cls.get("line-rate", 0) or 0)
+                      file_covs.append((fn, round(rate * 100, 1)))
+              except (ET.ParseError, ValueError):
+                  pass
+
+          line_pct = (lines_covered / lines_valid * 100) if lines_valid else 0
+          file_covs.sort(key=lambda x: x[1])
+          lowest = file_covs[:10]
+
+          includes = ["custom/deploy/orthanc-routing-example/**/*.py"]
+          excludes = [
+              "tests", "MLIntegration/tests", "sample_data", "screenshots",
+              ".venv", "__pycache__", ".pytest_cache",
+          ]
+          scope_str = "|".join(sorted(includes) + ["!" + e for e in sorted(excludes)])
+          metadata = {
+              "sha": os.environ.get("GITHUB_SHA", ""),
+              "ref": os.environ.get("GITHUB_REF", ""),
+              "event": event,
+              "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+              "tool": "pytest+coverage",
+              "tool_version": os.environ.get("PYTEST_VER", ""),
+              "scope_checksum": hashlib.sha256(scope_str.encode()).hexdigest(),
+          }
+          (OUT / "metadata.json").write_text(json.dumps(metadata, indent=2))
+
+          out_lines = [f"## Test PY (pytest) — `{short_sha}` — `{event}`\n"]
+          out_lines.append("### Tests\n")
+          out_lines.append(f"- Collected: **{collected}**")
+          out_lines.append(f"- Passed: **{passed}** — Failed: **{failed}** — Errors: **{errors}** — Skipped: **{skipped}**")
+          out_lines.append("\n### Coverage\n")
+          out_lines.append(f"- Lines covered: **{lines_covered}/{lines_valid}** → **{line_pct:.1f}%**")
+          if lowest:
+              out_lines.append("\n**Lowest-coverage files (top 10):**\n")
+              out_lines.append("| File | Line % |")
+              out_lines.append("|---|---:|")
+              for fp, pct in lowest:
+                  out_lines.append(f"| `{fp}` | {pct}% |")
+
+          summary = "\n".join(out_lines) + "\n"
+
+          if collected == 0:
+              write_and_maybe_fail(
+                  summary + "\n**Failed:** zero tests collected. "
+                  "Check that test files exist under `custom/deploy/orthanc-routing-example/tests/`.\n",
+                  "pytest collected zero tests",
+              )
+
+          write_and_maybe_fail(summary)
+          PYEOF
+
+      - name: Upload artifact (main push only)
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-py-${{ github.sha }}
+          path: outputs/
+          retention-days: 90

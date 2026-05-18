@@ -6,7 +6,7 @@
 module.exports = {
   verbose: true,
   // roots: ['<rootDir>/src'],
-  testMatch: ['<rootDir>/src/**/*.test.js'],
+  testMatch: ['<rootDir>/src/**/*.test.js', '<rootDir>/src/**/*.test.ts', '<rootDir>/src/**/*.test.tsx'],
   testPathIgnorePatterns: ['<rootDir>/node_modules/'],
   testEnvironment: 'jsdom',
   moduleFileExtensions: ['js', 'jsx', 'ts', 'tsx'],
@@ -30,9 +30,8 @@ module.exports = {
   ],
   collectCoverage: false,
   collectCoverageFrom: [
-    '<rootDir>/src/**/*.{js,jsx}',
-    // Not
-    '!<rootDir>/src/**/*.test.js',
+    '<rootDir>/src/**/*.{js,jsx,ts,tsx}',
+    '!<rootDir>/src/**/*.test.{js,ts,tsx}',
     '!**/node_modules/**',
     '!**/__tests__/**',
     '!<rootDir>/dist/**',
