@@ -149,7 +149,7 @@ jobs:
       - name: Run ruff
         continue-on-error: true
         run: |
-          ruff check custom/deploy/orthanc-routing-example \
+          ruff check custom/deploy/orthanc \
             --output-format=json \
             --exclude .venv,__pycache__,.pytest_cache,tests,sample_data,screenshots \
             > outputs/ruff.json
@@ -184,7 +184,7 @@ jobs:
           top_files = sorted(file_counts.items(), key=lambda x: -x[1])[:10]
           top_rules = sorted(rule_counts.items(), key=lambda x: -x[1])[:10]
 
-          includes = ["custom/deploy/orthanc-routing-example/**/*.py"]
+          includes = ["custom/deploy/orthanc/**/*.py"]
           excludes = [".venv", "__pycache__", ".pytest_cache", "tests", "sample_data", "screenshots"]
           scope_str = "|".join(sorted(includes) + ["!" + e for e in sorted(excludes)])
           metadata = {
