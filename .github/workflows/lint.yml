@@ -1,0 +1,320 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  RUFF_VERSION: '0.8.4'
+  YAMLLINT_VERSION: '1.35.1'
+
+jobs:
+  lint-js:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Prepare outputs dir
+        run: mkdir -p outputs
+
+      - name: Run ESLint
+        continue-on-error: true
+        run: |
+          bun x eslint custom/extension custom/mode \
+            --ext .ts,.tsx,.js \
+            -f json -o outputs/eslint.json \
+            --no-error-on-unmatched-pattern
+
+      - name: Render summary
+        run: |
+          python3 <<'PYEOF'
+          import hashlib, json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          OUT = Path("outputs")
+          path = OUT / "eslint.json"
+          data = []
+          if path.exists() and path.stat().st_size > 0:
+              try:
+                  data = json.loads(path.read_text())
+              except json.JSONDecodeError:
+                  data = []
+
+          files_linted = len(data)
+          total_errors = sum(f.get("errorCount", 0) for f in data)
+          total_warnings = sum(f.get("warningCount", 0) for f in data)
+          total_fixable = sum(
+              f.get("fixableErrorCount", 0) + f.get("fixableWarningCount", 0) for f in data
+          )
+
+          file_issues = [
+              (f.get("filePath", ""), f.get("errorCount", 0) + f.get("warningCount", 0))
+              for f in data
+              if (f.get("errorCount", 0) + f.get("warningCount", 0)) > 0
+          ]
+          file_issues.sort(key=lambda x: -x[1])
+          file_issues = file_issues[:10]
+
+          rule_counts = {}
+          for f in data:
+              for m in f.get("messages", []):
+                  r = m.get("ruleId") or "(syntax)"
+                  rule_counts[r] = rule_counts.get(r, 0) + 1
+          top_rules = sorted(rule_counts.items(), key=lambda x: -x[1])[:10]
+
+          includes = ["custom/extension/**/*.{ts,tsx,js}", "custom/mode/**/*.{ts,tsx,js}"]
+          scope_str = "|".join(sorted(includes))
+          metadata = {
+              "sha": os.environ.get("GITHUB_SHA", ""),
+              "ref": os.environ.get("GITHUB_REF", ""),
+              "event": os.environ.get("GITHUB_EVENT_NAME", ""),
+              "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+              "tool": "eslint",
+              "tool_version": "lockfile",
+              "scope_checksum": hashlib.sha256(scope_str.encode()).hexdigest(),
+          }
+          (OUT / "metadata.json").write_text(json.dumps(metadata, indent=2))
+
+          short_sha = metadata["sha"][:7]
+          lines = [f"## Lint JS — `{short_sha}` — `{metadata['event']}`\n"]
+          lines.append(f"- Files linted: **{files_linted}**")
+          lines.append(f"- Errors: **{total_errors}**")
+          lines.append(f"- Warnings: **{total_warnings}**")
+          lines.append(f"- Fixable: **{total_fixable}**")
+          if file_issues:
+              lines.append("\n**Top 10 files by issue count:**\n")
+              lines.append("| File | Issues |")
+              lines.append("|---|---:|")
+              for fp, n in file_issues:
+                  lines.append(f"| `{fp}` | {n} |")
+          if top_rules:
+              lines.append("\n**Top 10 rules by frequency:**\n")
+              lines.append("| Rule | Count |")
+              lines.append("|---|---:|")
+              for r, n in top_rules:
+                  lines.append(f"| `{r}` | {n} |")
+
+          summary = "\n".join(lines) + "\n"
+          (OUT / "summary.md").write_text(summary)
+          step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if step_summary:
+              with open(step_summary, "a") as f:
+                  f.write(summary)
+          PYEOF
+
+      - name: Upload artifact (main push only)
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-js-${{ github.sha }}
+          path: outputs/
+          retention-days: 90
+
+  lint-py:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install ruff
+        run: pip install "ruff==${RUFF_VERSION}"
+
+      - name: Prepare outputs dir
+        run: mkdir -p outputs
+
+      - name: Run ruff
+        continue-on-error: true
+        run: |
+          ruff check custom/deploy/orthanc-routing-example \
+            --output-format=json \
+            --exclude .venv,__pycache__,.pytest_cache,tests,sample_data,screenshots \
+            > outputs/ruff.json
+
+      - name: Render summary
+        env:
+          TOOL_VERSION: ${{ env.RUFF_VERSION }}
+        run: |
+          python3 <<'PYEOF'
+          import hashlib, json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          OUT = Path("outputs")
+          path = OUT / "ruff.json"
+          data = []
+          if path.exists() and path.stat().st_size > 0:
+              try:
+                  data = json.loads(path.read_text())
+              except json.JSONDecodeError:
+                  data = []
+
+          violations = len(data)
+          file_counts = {}
+          rule_counts = {}
+          for v in data:
+              fn = v.get("filename", "") or (v.get("location", {}) or {}).get("file", "")
+              file_counts[fn] = file_counts.get(fn, 0) + 1
+              code = v.get("code") or "(unknown)"
+              rule_counts[code] = rule_counts.get(code, 0) + 1
+
+          top_files = sorted(file_counts.items(), key=lambda x: -x[1])[:10]
+          top_rules = sorted(rule_counts.items(), key=lambda x: -x[1])[:10]
+
+          includes = ["custom/deploy/orthanc-routing-example/**/*.py"]
+          excludes = [".venv", "__pycache__", ".pytest_cache", "tests", "sample_data", "screenshots"]
+          scope_str = "|".join(sorted(includes) + ["!" + e for e in sorted(excludes)])
+          metadata = {
+              "sha": os.environ.get("GITHUB_SHA", ""),
+              "ref": os.environ.get("GITHUB_REF", ""),
+              "event": os.environ.get("GITHUB_EVENT_NAME", ""),
+              "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+              "tool": "ruff",
+              "tool_version": os.environ.get("TOOL_VERSION", ""),
+              "scope_checksum": hashlib.sha256(scope_str.encode()).hexdigest(),
+          }
+          (OUT / "metadata.json").write_text(json.dumps(metadata, indent=2))
+
+          short_sha = metadata["sha"][:7]
+          lines = [f"## Lint PY (ruff) — `{short_sha}` — `{metadata['event']}`\n"]
+          lines.append(f"- Files with violations: **{len(file_counts)}**")
+          lines.append(f"- Total violations: **{violations}**")
+          if top_rules:
+              lines.append("\n**Top 10 rules:**\n")
+              lines.append("| Rule | Count |")
+              lines.append("|---|---:|")
+              for r, n in top_rules:
+                  lines.append(f"| `{r}` | {n} |")
+          if top_files:
+              lines.append("\n**Top 10 files:**\n")
+              lines.append("| File | Violations |")
+              lines.append("|---|---:|")
+              for fp, n in top_files:
+                  lines.append(f"| `{fp}` | {n} |")
+
+          summary = "\n".join(lines) + "\n"
+          (OUT / "summary.md").write_text(summary)
+          step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if step_summary:
+              with open(step_summary, "a") as f:
+                  f.write(summary)
+          PYEOF
+
+      - name: Upload artifact (main push only)
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-py-${{ github.sha }}
+          path: outputs/
+          retention-days: 90
+
+  lint-yaml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install yamllint
+        run: pip install "yamllint==${YAMLLINT_VERSION}"
+
+      - name: Prepare outputs dir
+        run: mkdir -p outputs
+
+      - name: Run yamllint
+        continue-on-error: true
+        run: |
+          yamllint -f parsable .github/workflows > outputs/yamllint.txt || true
+
+      - name: Render summary
+        env:
+          TOOL_VERSION: ${{ env.YAMLLINT_VERSION }}
+        run: |
+          python3 <<'PYEOF'
+          import hashlib, json, os, re
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          OUT = Path("outputs")
+          path = OUT / "yamllint.txt"
+          lines_raw = []
+          if path.exists() and path.stat().st_size > 0:
+              lines_raw = [l for l in path.read_text().splitlines() if l.strip()]
+
+          problems = len(lines_raw)
+          files = set()
+          rule_counts = {}
+          pattern = re.compile(r"^([^:]+):(\d+):(\d+):\s+\[(\w+)\]\s+(.+?)(?:\s+\((\S+)\))?$")
+          for line in lines_raw:
+              m = pattern.match(line)
+              if not m:
+                  continue
+              files.add(m.group(1))
+              rule = m.group(6) or "(unknown)"
+              rule_counts[rule] = rule_counts.get(rule, 0) + 1
+          top_rules = sorted(rule_counts.items(), key=lambda x: -x[1])[:10]
+
+          includes = [".github/workflows/**/*.{yml,yaml}"]
+          scope_str = "|".join(sorted(includes))
+          metadata = {
+              "sha": os.environ.get("GITHUB_SHA", ""),
+              "ref": os.environ.get("GITHUB_REF", ""),
+              "event": os.environ.get("GITHUB_EVENT_NAME", ""),
+              "timestamp_utc": datetime.now(timezone.utc).isoformat(),
+              "tool": "yamllint",
+              "tool_version": os.environ.get("TOOL_VERSION", ""),
+              "scope_checksum": hashlib.sha256(scope_str.encode()).hexdigest(),
+          }
+          (OUT / "metadata.json").write_text(json.dumps(metadata, indent=2))
+
+          short_sha = metadata["sha"][:7]
+          out_lines = [f"## Lint YAML — `{short_sha}` — `{metadata['event']}`\n"]
+          out_lines.append(f"- Files with problems: **{len(files)}**")
+          out_lines.append(f"- Total problems: **{problems}**")
+          if top_rules:
+              out_lines.append("\n**Rule counts:**\n")
+              out_lines.append("| Rule | Count |")
+              out_lines.append("|---|---:|")
+              for r, n in top_rules:
+                  out_lines.append(f"| `{r}` | {n} |")
+
+          summary = "\n".join(out_lines) + "\n"
+          (OUT / "summary.md").write_text(summary)
+          step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
+          if step_summary:
+              with open(step_summary, "a") as f:
+                  f.write(summary)
+          PYEOF
+
+      - name: Upload artifact (main push only)
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-yaml-${{ github.sha }}
+          path: outputs/
+          retention-days: 90

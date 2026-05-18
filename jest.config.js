@@ -11,6 +11,8 @@ module.exports = {
   projects: [
     '<rootDir>/platform/*/jest.config.js',
     '<rootDir>/extensions/*/jest.config.js',
+    '<rootDir>/custom/extension/*/jest.config.js',
+    '<rootDir>/custom/mode/*/jest.config.js',
     //'<rootDir>/modes/*/jest.config.js' // Enable if any mode definitions start including tests
   ],
   coverageDirectory: '<rootDir>/coverage/',
