@@ -78,11 +78,46 @@ def build_sitk_stub():
 
 
 def build_torchio_stub():
-    """Return a fake torchio module — extended as Phase 7+ uses more APIs."""
+    """Return a fake torchio module.
+
+    Phase 7 extension: adds ZNormalization, CropOrPad, and Compose as real
+    subclassable Python classes.  breast-cancer-classification/preprocessing.py
+    subclasses tio.ZNormalization and tio.CropOrPad at class-definition time,
+    so those attributes must be actual classes (not MagicMock instances).
+    """
     m = types.ModuleType('torchio')
     m.Image = MagicMock()
     m.Subject = MagicMock()
     m.ScalarImage = MagicMock(return_value=MagicMock())
+
+    # Real base classes required by BC preprocessing subclassing
+    class _ZNormalizationBase:
+        """Minimal torchio.ZNormalization stand-in."""
+        def __init__(self, masking_method=None, **kwargs):
+            self.masking_method = masking_method
+
+        def znorm(self, image_data, mask):
+            return image_data
+
+    class _CropOrPadBase:
+        """Minimal torchio.CropOrPad stand-in."""
+        def __init__(self, target_shape=None, padding_mode=None, **kwargs):
+            self.target_shape = target_shape
+            self.padding_mode = padding_mode
+
+    class _ComposeBase:
+        """Minimal torchio.Compose stand-in."""
+        def __init__(self, transforms):
+            self.transforms = transforms
+
+        def __call__(self, x):
+            return x
+
+    m.ZNormalization = _ZNormalizationBase
+    m.CropOrPad = _CropOrPadBase
+    m.Compose = _ComposeBase
+    m.Crop = MagicMock(return_value=MagicMock())
+
     m.transforms = types.ModuleType('torchio.transforms')
     m.transforms.transform = types.ModuleType('torchio.transforms.transform')
     m.transforms.transform.TypeMaskingMethod = MagicMock()
