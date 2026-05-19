@@ -6,3 +6,9 @@ numpy==2.4.6
 pydicom==3.0.2
 Pillow==12.2.0
 dicomweb-client==0.61.0
+# MLIntegration service deps (Flask from MST/medgemma-mri; fastapi+pydantic from chat-middleware)
+Flask==3.1.1
+Flask-Cors==6.0.0
+fastapi==0.136.1
+httpx==0.28.1
+pydantic==2.13.4
