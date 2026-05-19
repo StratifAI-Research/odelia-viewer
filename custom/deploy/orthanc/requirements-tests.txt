@@ -2,7 +2,7 @@ pytest==8.2.1
 requests==2.32.3
 jq==1.6.0
 # Runtime deps imported at module top-level by the smoke tests (and future unit tests)
-numpy>=1.24.3
-pydicom>=2.4.3
-Pillow>=10.1.0
-dicomweb-client>=0.59.0
+numpy==2.4.6
+pydicom==3.0.2
+Pillow==12.2.0
+dicomweb-client==0.61.0

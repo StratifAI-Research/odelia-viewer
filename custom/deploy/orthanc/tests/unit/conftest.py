@@ -5,11 +5,25 @@ imports it. Provides FakeOutput, opt-in REST/DICOM fakes, and per-test reset.
 """
 import os
 import sys
+import tempfile
 from types import ModuleType
 import pytest
 
 # Allow feedback_db to initialize its SQLite store in a writable temp location.
-os.environ.setdefault("ORTHANC_FEEDBACK_DB_DIR", "/tmp/odv133_test_feedback")
+# PYTEST_ODV133_FEEDBACK_DIR lets a caller pin a specific directory; otherwise
+# we create a fresh per-process tmp dir so parallel test runs on the same host
+# don't share SQLite state.
+os.environ.setdefault(
+    "ORTHANC_FEEDBACK_DB_DIR",
+    os.environ.get("PYTEST_ODV133_FEEDBACK_DIR") or tempfile.mkdtemp(prefix="odv133_fb_"),
+)
+
+
+def _no_orthanc_handler(*a, **kw):
+    raise RuntimeError(
+        'orthanc REST/DICOM call from a test that did not request the rest_fake '
+        'or dicom_fake fixture; bind responses explicitly'
+    )
 
 
 def _install_orthanc_stub():
@@ -49,21 +63,35 @@ def _install_orthanc_stub():
         return m._kv.get((bucket, key))
     def _del(bucket, key):
         m._kv.pop((bucket, key), None)
+
+    class _KVIterator:
+        """Mirrors Orthanc's iterator API: Next() -> bool, GetKey() -> str, GetValue() -> bytes."""
+        def __init__(self, items):
+            self._items = items   # list of (key, value)
+            self._idx = -1
+
+        def Next(self):
+            self._idx += 1
+            return self._idx < len(self._items)
+
+        def GetKey(self):
+            return self._items[self._idx][0]
+
+        def GetValue(self):
+            return self._items[self._idx][1]
+
     def _iter(bucket):
-        return iter([(k, v) for (b, k), v in sorted(m._kv.items()) if b == bucket])
+        items = [(k, v) for (b, k), v in sorted(m._kv.items()) if b == bucket]
+        return _KVIterator(items)
+
     m.StoreKeyValue = _put
     m.GetKeyValue = _get
     m.DeleteKeyValue = _del
     m.CreateKeysValuesIterator = _iter
 
     # ---- REST + DICOM: default raises; tests bind via fixtures ----
-    def _no_handler(*a, **kw):
-        raise RuntimeError(
-            'orthanc REST/DICOM call from a test that did not request the rest_fake or '
-            'dicom_fake fixture; bind responses explicitly'
-        )
-    m.RestApiGet = m.RestApiPost = m.RestApiPut = m.RestApiDelete = _no_handler
-    m.GetDicomForInstance = _no_handler
+    m.RestApiGet = m.RestApiPost = m.RestApiPut = m.RestApiDelete = _no_orthanc_handler
+    m.GetDicomForInstance = _no_orthanc_handler
 
     # ---- Logging: no-op ----
     m.LogInfo = m.LogWarning = m.LogError = lambda msg: None
@@ -109,14 +137,11 @@ def _reset_orthanc_state():
     orthanc._rest_callbacks.clear()
     orthanc._onchange_callbacks.clear()
     # restore default raisers in case a prior test bound a fake
-    def _no_handler(*a, **kw):
-        raise RuntimeError('orthanc REST/DICOM call without rest_fake/dicom_fake fixture')
-    orthanc.RestApiGet = lambda uri: _no_handler('GET', uri)
-    orthanc.RestApiPost = lambda uri, body=b'': _no_handler('POST', uri, body)
-    orthanc.RestApiPut = lambda uri, body=b'': _no_handler('PUT', uri, body)
-    orthanc.RestApiDelete = lambda uri: _no_handler('DELETE', uri)
-    orthanc.GetDicomForInstance = _no_handler
-    # Drop path-local package caches so viewer/ups and router/ups don't collide.
+    orthanc.RestApiGet = orthanc.RestApiPost = orthanc.RestApiPut = orthanc.RestApiDelete = _no_orthanc_handler
+    orthanc.GetDicomForInstance = _no_orthanc_handler
+    # Drop ALL `ups`-prefixed entries — both viewer/ups and router/ups land in
+    # sys.modules under the bare `ups` name once their side imports first; evict
+    # between tests so the second side imports cleanly.
     for key in [k for k in sys.modules if k == 'ups' or k.startswith('ups.')]:
         del sys.modules[key]
     yield
