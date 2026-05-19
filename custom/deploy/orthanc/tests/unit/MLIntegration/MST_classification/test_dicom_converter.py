@@ -2,7 +2,8 @@
 
 dicom_converter.py imports dicom_utils at module level (not lazy),
 and dicom_utils imports SimpleITK at module level.
-We stub SimpleITK + dicom_utils before importing dicom_converter.
+We stub SimpleITK (via sitk_stub fixture) and dicom_utils before importing
+dicom_converter.
 """
 import sys
 import types
@@ -12,16 +13,7 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _stub_dicom_utils(monkeypatch):
-    sitk_stub = types.ModuleType("SimpleITK")
-    sitk_stub.ImageFileReader = MagicMock()
-    sitk_stub.ImageSeriesReader = MagicMock()
-    sitk_stub.WriteImage = MagicMock()
-    sitk_stub.ReadImage = MagicMock()
-    sitk_stub.GetArrayFromImage = MagicMock()
-    sitk_stub.GetImageFromArray = MagicMock()
-    monkeypatch.setitem(sys.modules, "SimpleITK", sitk_stub)
-
+def _stub_dicom_utils(sitk_stub, monkeypatch):
     du_stub = types.ModuleType("dicom_utils")
     du_stub.dicom_to_nifti = MagicMock(return_value="/tmp/mri_series.nii.gz")
     du_stub.dicom_to_nifti_subtraction = MagicMock(return_value="/tmp/mri_subtraction.nii.gz")
