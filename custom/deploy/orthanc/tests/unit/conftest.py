@@ -65,19 +65,29 @@ def _install_orthanc_stub():
         m._kv.pop((bucket, key), None)
 
     class _KVIterator:
-        """Mirrors Orthanc's iterator API: Next() -> bool, GetKey() -> str, GetValue() -> bytes."""
+        """Mirrors Orthanc's iterator API: Next() -> bool, GetKey() -> str, GetValue() -> bytes.
+
+        GetKey/GetValue raise RuntimeError if called outside a valid Next() position
+        (i.e., before the first Next() or after Next() returned False).
+        """
         def __init__(self, items):
             self._items = items   # list of (key, value)
             self._idx = -1
+            self._valid = False
 
         def Next(self):
             self._idx += 1
-            return self._idx < len(self._items)
+            self._valid = self._idx < len(self._items)
+            return self._valid
 
         def GetKey(self):
+            if not self._valid:
+                raise RuntimeError('_KVIterator: GetKey() called outside a valid Next() position')
             return self._items[self._idx][0]
 
         def GetValue(self):
+            if not self._valid:
+                raise RuntimeError('_KVIterator: GetValue() called outside a valid Next() position')
             return self._items[self._idx][1]
 
     def _iter(bucket):
