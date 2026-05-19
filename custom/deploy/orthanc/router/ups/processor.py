@@ -9,7 +9,6 @@ import time
 import requests
 from datetime import datetime
 
-import orthanc
 from pydicom import dcmread
 from pydicom.uid import generate_uid
 
