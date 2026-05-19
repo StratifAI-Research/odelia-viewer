@@ -3,4 +3,6 @@ testpaths = [
   "tests"
 ]
 addopts = "-q"
-
+markers = [
+  "integration: tests requiring a live Orthanc instance (skipped automatically if unreachable)",
+]
