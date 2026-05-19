@@ -193,11 +193,11 @@ jobs:
             "pytest-cov==${PYTEST_COV_VERSION}" \
             "coverage==${COVERAGE_VERSION}"
 
-      - name: Install submodule test dependencies
+      - name: Install subtree test dependencies
         continue-on-error: true
         run: |
-          if [ -f custom/deploy/orthanc-routing-example/requirements-tests.txt ]; then
-            pip install -r custom/deploy/orthanc-routing-example/requirements-tests.txt
+          if [ -f custom/deploy/orthanc/requirements-tests.txt ]; then
+            pip install -r custom/deploy/orthanc/requirements-tests.txt
           fi
 
       - name: Prepare outputs dir
@@ -207,7 +207,7 @@ jobs:
         run: |
           coverage run \
             --rcfile=.github/coverage.cfg \
-            -m pytest custom/deploy/orthanc-routing-example/tests \
+            -m pytest custom/deploy/orthanc/tests \
             --junitxml=outputs/pytest.xml
           coverage xml --rcfile=.github/coverage.cfg -o outputs/pytest-coverage.xml
           coverage report --rcfile=.github/coverage.cfg || true
@@ -283,7 +283,7 @@ jobs:
           file_covs.sort(key=lambda x: x[1])
           lowest = file_covs[:10]
 
-          includes = ["custom/deploy/orthanc-routing-example/**/*.py"]
+          includes = ["custom/deploy/orthanc/**/*.py"]
           excludes = [
               "tests", "MLIntegration/tests", "sample_data", "screenshots",
               ".venv", "__pycache__", ".pytest_cache",
@@ -318,7 +318,7 @@ jobs:
           if collected == 0:
               write_and_maybe_fail(
                   summary + "\n**Failed:** zero tests collected. "
-                  "Check that test files exist under `custom/deploy/orthanc-routing-example/tests/`.\n",
+                  "Check that test files exist under `custom/deploy/orthanc/tests/`.\n",
                   "pytest collected zero tests",
               )
 
