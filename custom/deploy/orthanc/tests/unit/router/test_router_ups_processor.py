@@ -180,8 +180,8 @@ def test_process_workitem_transitions_state_to_in_progress(proc, fake_workitem, 
     )
     monkeypatch.setattr('ups.processor.requests.post', lambda *a, **kw: mock_model_resp)
 
-    # Mock notify so no real HTTP calls happen
-    monkeypatch.setattr(proc, 'notify_subscriber', lambda *a, **kw: None)
+    # Patch notify_all_subscribers — the actual symbol process_workitem calls
+    monkeypatch.setattr(proc, 'notify_all_subscribers', lambda *a, **kw: None)
 
     initial_state = fake_workitem.get_state()
     assert initial_state == 'SCHEDULED'
@@ -209,7 +209,7 @@ def test_process_workitem_cancels_on_model_network_error(proc, fake_workitem, mo
         'ups.processor.requests.post',
         mock.Mock(side_effect=req_lib.exceptions.ConnectionError("refused"))
     )
-    monkeypatch.setattr(proc, 'notify_subscriber', lambda *a, **kw: None)
+    monkeypatch.setattr(proc, 'notify_all_subscribers', lambda *a, **kw: None)
 
     try:
         proc.process_workitem(fake_workitem)
@@ -217,8 +217,7 @@ def test_process_workitem_cancels_on_model_network_error(proc, fake_workitem, mo
         pass
 
     final_state = fake_workitem.get_state()
-    # On network failure the processor should set CANCELED or at minimum not SCHEDULED
-    assert final_state != 'SCHEDULED'
+    assert final_state == 'CANCELED'
 
 
 def test_process_workitem_stores_updated_workitem(proc, fake_workitem, monkeypatch):
