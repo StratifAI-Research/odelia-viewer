@@ -101,7 +101,7 @@ def test_register_ups_routes_registers_all_six_uris(routes):
 # ---------------------------------------------------------------------------
 
 def test_create_workitem_wrong_method_returns_405(out, routes):
-    with mock.patch('ups.processor.process_workitem'):
+    with mock.patch('ups.routes.process_workitem'):
         routes.CreateWorkitem(out, '/ups-rs/workitems', method='GET', body=b'{}', groups=[])
     assert out.status == 405
 
@@ -118,7 +118,7 @@ def test_create_workitem_happy_path_returns_200(out, routes):
         "series_uids": ["1.2.3.1"],
         "wado_rs_base": "http://viewer:8042/dicom-web",
     }).encode()
-    with mock.patch('ups.processor.process_workitem'):
+    with mock.patch('ups.routes.process_workitem'):
         routes.CreateWorkitem(out, '/ups-rs/workitems', method='POST', body=body, groups=[])
     assert out.status == 200
     result = json.loads(out.body)
@@ -135,7 +135,7 @@ def test_create_workitem_starts_background_thread(out, routes):
         "series_uids": ["1.2.3.1"],
     }).encode()
     calls = []
-    with mock.patch('ups.processor.process_workitem', side_effect=lambda w: calls.append(w.workitem_uid)):
+    with mock.patch('ups.routes.process_workitem', side_effect=lambda w: calls.append(w.workitem_uid)):
         with mock.patch('threading.Thread') as mock_thread:
             mock_thread.return_value.start = lambda: None
             routes.CreateWorkitem(out, '/ups-rs/workitems', method='POST', body=body, groups=[])
