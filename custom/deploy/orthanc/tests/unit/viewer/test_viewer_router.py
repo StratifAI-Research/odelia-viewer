@@ -193,6 +193,7 @@ def test_get_ai_manifest_wrong_method_returns_405(out, router):
 def test_get_ai_manifest_missing_target_url_returns_400(out, router):
     router.GetAIManifest(out, "/ai-manifest", method="GET", get={})
     assert out.status == 400
+    assert "target_url" in out.body
 
 
 def test_get_ai_manifest_returns_manifest_on_200(out, router):
@@ -272,6 +273,7 @@ def test_send_to_ai_dicom_missing_fields_returns_400(out, rest_fake, router):
         body=json.dumps({"target": "mst"}),  # no study_id
     )
     assert out.status == 400
+    assert "study_id" in out.body
 
 
 def test_send_to_ai_dicom_empty_body_returns_400(out, router):
@@ -281,6 +283,7 @@ def test_send_to_ai_dicom_empty_body_returns_400(out, router):
         body=json.dumps({}),
     )
     assert out.status == 400
+    assert "study_id" in out.body
 
 
 # ---------------------------------------------------------------------------
@@ -299,6 +302,7 @@ def test_send_to_ai_dicomweb_missing_study_id_returns_400(out, router):
         body=json.dumps({"target": "mst", "target_url": "http://x"}),
     )
     assert out.status == 400
+    assert "study_id" in out.body
 
 
 def test_send_to_ai_dicomweb_missing_target_url_returns_400(out, router):
@@ -308,6 +312,7 @@ def test_send_to_ai_dicomweb_missing_target_url_returns_400(out, router):
         body=json.dumps({"study_id": "abc", "target": "mst"}),
     )
     assert out.status == 400
+    assert "target_url" in out.body
 
 
 # ---------------------------------------------------------------------------
@@ -326,3 +331,4 @@ def test_send_to_ai_missing_study_id_returns_400(out, router):
         body=json.dumps({"target": "mst", "target_url": "http://x"}),
     )
     assert out.status == 400
+    assert "study_id" in out.body

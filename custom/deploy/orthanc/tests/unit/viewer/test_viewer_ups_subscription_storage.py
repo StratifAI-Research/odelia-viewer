@@ -95,9 +95,16 @@ def test_global_and_local_subscription_merged(sub_storage):
 
 def test_deletion_lock_stored(sub_storage):
     sub_storage.add_subscription("wuid.lock", "http://sub-lock", deletion_lock=True)
-    import orthanc
-    stored = orthanc._kv.get(("ups_subscriptions", "subscription:wuid.lock:http://sub-lock"))
-    assert stored is not None
     import json
-    data = json.loads(stored)
-    assert data["deletion_lock"] is True
+    import orthanc
+    # Use the public Orthanc iterator API to find the stored record and verify
+    # the deletion_lock field — avoids coupling to the stub's internal _kv key tuple.
+    it = orthanc.CreateKeysValuesIterator("ups_subscriptions")
+    lock_record = None
+    while it.Next():
+        key = it.GetKey()
+        if "wuid.lock" in key and "http://sub-lock" in key:
+            lock_record = json.loads(it.GetValue().decode("utf-8"))
+            break
+    assert lock_record is not None, "subscription record for wuid.lock not found in KV store"
+    assert lock_record["deletion_lock"] is True
