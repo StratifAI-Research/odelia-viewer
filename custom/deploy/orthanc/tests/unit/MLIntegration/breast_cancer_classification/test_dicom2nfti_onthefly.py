@@ -82,7 +82,6 @@ def test_sort_dyn_assigns_trigger_index_and_sequence_names():
     })
     df.name = 'test_series'
     result = dicom2nfti_onthefly.sort_dyn(df)
-    assert result is not None
     assert '_SequenceName' in result.columns
     assert set(result['_SequenceName'].unique()) == {'Pre', 'Post_1'}
 

@@ -74,24 +74,22 @@ def test_read_dicom_volume_raises_on_missing_dcm(tmp_path):
         preprocessing.read_dicom_volume(tmp_path)
 
 
-def _patch_read_dicom_volume(volume_array):
+def _patch_read_dicom_volume(volume_array, sitk_stub, monkeypatch):
     """Return a context manager patching read_dicom_volume in the preprocessing module."""
-    import SimpleITK as sitk
     mock_img = MagicMock()
     mock_img.GetSize.return_value = (volume_array.shape[2], volume_array.shape[1], volume_array.shape[0])
     mock_img.GetSpacing.return_value = (1.0, 1.0, 2.0)
-    sitk.GetArrayFromImage = MagicMock(return_value=volume_array)
+    monkeypatch.setattr(sitk_stub, 'GetArrayFromImage', MagicMock(return_value=volume_array))
     return patch('preprocessing.read_dicom_volume', return_value=mock_img)
 
 
-def test_extract_central_slices_returns_list_of_pil_images():
+def test_extract_central_slices_returns_list_of_pil_images(sitk_stub, monkeypatch):
     from PIL import Image as PILImage
     import preprocessing
-    import SimpleITK as sitk
 
     vol = np.ones((10, 64, 64), dtype=np.float32) * 50.0
     mock_img = MagicMock()
-    sitk.GetArrayFromImage.return_value = vol
+    monkeypatch.setattr(sitk_stub, 'GetArrayFromImage', MagicMock(return_value=vol))
 
     with patch('preprocessing.read_dicom_volume', return_value=mock_img):
         result = preprocessing.extract_central_slices('/fake/dicom', num_slices=3)
@@ -103,50 +101,46 @@ def test_extract_central_slices_returns_list_of_pil_images():
         assert img.mode == 'RGB'
 
 
-def test_extract_central_slices_returns_correct_count():
+def test_extract_central_slices_returns_correct_count(sitk_stub, monkeypatch):
     import preprocessing
-    import SimpleITK as sitk
 
     vol = np.ones((10, 64, 64), dtype=np.float32)
-    sitk.GetArrayFromImage.return_value = vol
+    monkeypatch.setattr(sitk_stub, 'GetArrayFromImage', MagicMock(return_value=vol))
 
     with patch('preprocessing.read_dicom_volume', return_value=MagicMock()):
         result = preprocessing.extract_central_slices('/fake/dicom', num_slices=5)
     assert len(result) == 5
 
 
-def test_extract_central_slices_fewer_slices_than_volume():
+def test_extract_central_slices_fewer_slices_than_volume(sitk_stub, monkeypatch):
     """When volume has fewer slices than requested, num_slices is clamped."""
     import preprocessing
-    import SimpleITK as sitk
 
     vol = np.ones((10, 64, 64), dtype=np.float32)
-    sitk.GetArrayFromImage.return_value = vol
+    monkeypatch.setattr(sitk_stub, 'GetArrayFromImage', MagicMock(return_value=vol))
 
     with patch('preprocessing.read_dicom_volume', return_value=MagicMock()):
         result = preprocessing.extract_central_slices('/fake/dicom', num_slices=20)
     assert len(result) <= 10
 
 
-def test_extract_central_slices_single_slice():
+def test_extract_central_slices_single_slice(sitk_stub, monkeypatch):
     import preprocessing
-    import SimpleITK as sitk
 
     vol = np.ones((10, 64, 64), dtype=np.float32)
-    sitk.GetArrayFromImage.return_value = vol
+    monkeypatch.setattr(sitk_stub, 'GetArrayFromImage', MagicMock(return_value=vol))
 
     with patch('preprocessing.read_dicom_volume', return_value=MagicMock()):
         result = preprocessing.extract_central_slices('/fake/dicom', num_slices=1)
     assert len(result) == 1
 
 
-def test_extract_central_slices_image_size():
+def test_extract_central_slices_image_size(sitk_stub, monkeypatch):
     """Each PIL image has dimensions matching the volume's Y, X axes."""
     import preprocessing
-    import SimpleITK as sitk
 
     vol = np.ones((10, 64, 64), dtype=np.float32)
-    sitk.GetArrayFromImage.return_value = vol
+    monkeypatch.setattr(sitk_stub, 'GetArrayFromImage', MagicMock(return_value=vol))
 
     with patch('preprocessing.read_dicom_volume', return_value=MagicMock()):
         result = preprocessing.extract_central_slices('/fake/dicom', num_slices=1)
