@@ -1,0 +1,513 @@
+"""Unit tests for router/server.py — pure helpers + SR/SC pipeline.
+
+Covers:
+  - detect_response_format: bilateral, bilateral_with_heatmap, unknown raises ValueError
+  - create_code_sequence: Dataset structure (CodeValue, CodingSchemeDesignator, CodeMeaning)
+  - create_measurement: Dataset structure (NumericValue, MeasurementUnitsCodeSequence)
+  - add_text_overlay: single-frame and multi-frame pixel modification
+  - create_bilateral_sr: smoke + asserts on Modality, ContentSequence, ReferencedImageSequence
+  - create_mst_sr: smoke + asserts on Modality, ContentSequence
+  - create_multiframe_attention_sc: smoke returns bytes with SC Modality
+  - create_text_overlay_sc: smoke test (requires pixel_array on original_ds)
+
+Note: OnStableStudy is registered but REMOVED from the orthanc callback in the
+running server. It is still importable; we do not test it because it requires
+real Orthanc REST calls that are deeply coupled to Orthanc internals (study
+instances, series metadata, etc.). The UPS workflow (router/ups/) covers the
+same logic via dedicated tests.
+"""
+import base64
+import io
+import json
+import sys
+from unittest import mock
+
+import numpy as np
+import pytest
+from pydicom import Dataset, FileDataset
+from pydicom.dataset import FileMetaDataset
+from pydicom.uid import ExplicitVRLittleEndian, generate_uid
+
+
+# ---------------------------------------------------------------------------
+# Module loader
+# ---------------------------------------------------------------------------
+
+import os as _os
+_ROUTER_DIR = _os.path.abspath(
+    _os.path.join(_os.path.dirname(__file__), '..', '..', '..', 'router')
+)
+
+
+def _evict_ups():
+    for key in [k for k in sys.modules if k == "ups" or k.startswith("ups.")]:
+        del sys.modules[key]
+    # Also evict server so it re-imports fresh
+    for key in [k for k in sys.modules if k == "server"]:
+        del sys.modules[key]
+
+
+def _load_server():
+    # Ensure router/ is at the front of sys.path so 'ups.routes' resolves to
+    # router/ups/routes.py even if viewer conftest has prepended viewer/ first.
+    if _ROUTER_DIR not in sys.path:
+        sys.path.insert(0, _ROUTER_DIR)
+    else:
+        # Move to front if already present
+        sys.path.remove(_ROUTER_DIR)
+        sys.path.insert(0, _ROUTER_DIR)
+    _evict_ups()
+    import server
+    return server
+
+
+@pytest.fixture(autouse=True)
+def _router_path_guard():
+    """Ensure router/ is at sys.path[0] for each test; restore after.
+
+    Both viewer and router conftest files run at collection time. This fixture
+    keeps router/ at the front during each test so imports resolve to router/ups/,
+    then restores sys.path so viewer tests that follow find viewer/ups/ first.
+    """
+    saved = list(sys.path)
+    # Ensure router/ is first
+    if _ROUTER_DIR in sys.path:
+        sys.path.remove(_ROUTER_DIR)
+    sys.path.insert(0, _ROUTER_DIR)
+    yield
+    sys.path[:] = saved
+
+
+@pytest.fixture
+def srv():
+    return _load_server()
+
+
+# ---------------------------------------------------------------------------
+# Minimal DICOM Dataset helper
+# ---------------------------------------------------------------------------
+
+def _minimal_dicom():
+    ds = Dataset()
+    ds.PatientName = "Test^Patient"
+    ds.PatientID = "T001"
+    ds.PatientBirthDate = "19800101"
+    ds.PatientSex = "O"
+    ds.StudyInstanceUID = generate_uid()
+    ds.SeriesInstanceUID = generate_uid()
+    ds.SOPInstanceUID = generate_uid()
+    ds.SOPClassUID = "1.2.840.10008.5.1.4.1.1.4"  # MR Image Storage
+    ds.StudyDate = "20260101"
+    ds.StudyTime = "120000"
+    ds.AccessionNumber = "12345"
+    ds.Modality = "MR"
+    ds.Manufacturer = "TEST"
+    ds.StudyID = "1"
+    ds.SeriesNumber = 1
+    ds.InstanceNumber = 1
+    ds.file_meta = FileMetaDataset()
+    ds.file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+    return ds
+
+
+def _minimal_dicom_with_pixels(rows=64, cols=64):
+    """Minimal DICOM with a fake RGB pixel_array attribute for SC tests."""
+    ds = _minimal_dicom()
+    # Attach a fake pixel_array property (avoids needing real encoded pixel data)
+    arr = np.zeros((rows, cols, 3), dtype=np.uint8)
+    ds._pixel_array = arr
+    # Monkey-patch pixel_array as a property
+    type(ds).pixel_array = property(lambda self: self._pixel_array)
+    return ds
+
+
+# ---------------------------------------------------------------------------
+# detect_response_format
+# ---------------------------------------------------------------------------
+
+def test_detect_response_format_bilateral(srv):
+    result = srv.detect_response_format({
+        "left": {"prediction": "Benign", "confidence": 80.0},
+        "right": {"prediction": "Malignant", "confidence": 95.0},
+    })
+    assert result == "bilateral"
+
+
+def test_detect_response_format_bilateral_with_heatmap(srv):
+    result = srv.detect_response_format({
+        "left": {"prediction": "Benign", "confidence": 80.0},
+        "right": {"prediction": "Malignant", "confidence": 95.0},
+        "attention_maps": {"data": "...", "shape": [10, 64, 64, 3]},
+    })
+    assert result == "bilateral_with_heatmap"
+
+
+def test_detect_response_format_unknown_raises_value_error(srv):
+    with pytest.raises(ValueError, match="Unknown response format"):
+        srv.detect_response_format({"model_output": [0.1, 0.9]})
+
+
+def test_detect_response_format_only_left_is_bilateral(srv):
+    result = srv.detect_response_format({"left": {"prediction": "Benign", "confidence": 60.0}})
+    assert result == "bilateral"
+
+
+def test_detect_response_format_only_right_is_bilateral(srv):
+    result = srv.detect_response_format({"right": {"prediction": "Malignant", "confidence": 90.0}})
+    assert result == "bilateral"
+
+
+# ---------------------------------------------------------------------------
+# create_code_sequence
+# ---------------------------------------------------------------------------
+
+def test_create_code_sequence_structure(srv):
+    item = srv.create_code_sequence("12345", "SCT", "Some Concept")
+    assert hasattr(item, "CodeValue")
+    assert hasattr(item, "CodingSchemeDesignator")
+    assert hasattr(item, "CodeMeaning")
+    assert item.CodeValue == "12345"
+    assert item.CodingSchemeDesignator == "SCT"
+    assert item.CodeMeaning == "Some Concept"
+
+
+def test_create_code_sequence_returns_dataset(srv):
+    item = srv.create_code_sequence("R-00339", "SRT", "Classification Result")
+    assert isinstance(item, Dataset)
+
+
+def test_create_code_sequence_loinc(srv):
+    item = srv.create_code_sequence("18748-4", "LN", "Diagnostic Imaging Report")
+    assert item.CodeValue == "18748-4"
+    assert item.CodingSchemeDesignator == "LN"
+
+
+# ---------------------------------------------------------------------------
+# create_measurement
+# ---------------------------------------------------------------------------
+
+def test_create_measurement_numeric_value(srv):
+    m = srv.create_measurement(85.5, "%", "%", "UCUM")
+    assert hasattr(m, "NumericValue")
+    assert float(m.NumericValue) == pytest.approx(85.5)
+
+
+def test_create_measurement_units_sequence_present(srv):
+    m = srv.create_measurement(42.0, "%", "%", "UCUM")
+    assert hasattr(m, "MeasurementUnitsCodeSequence")
+    assert len(m.MeasurementUnitsCodeSequence) == 1
+
+
+def test_create_measurement_units_code_value(srv):
+    m = srv.create_measurement(99.0, "percent", "%", "UCUM")
+    units_item = m.MeasurementUnitsCodeSequence[0]
+    assert units_item.CodeValue == "%"
+    assert units_item.CodingSchemeDesignator == "UCUM"
+    assert units_item.CodeMeaning == "percent"
+
+
+def test_create_measurement_returns_dataset(srv):
+    m = srv.create_measurement(0.0, "%", "%", "UCUM")
+    assert isinstance(m, Dataset)
+
+
+# ---------------------------------------------------------------------------
+# add_text_overlay
+# ---------------------------------------------------------------------------
+
+def test_add_text_overlay_single_frame_modifies_pixels(srv):
+    arr = np.zeros((64, 64, 3), dtype=np.uint8)
+    result = srv.add_text_overlay(arr, text="TEST", color="red")
+    assert result.shape[0] == 64
+    assert result.shape[1] == 64
+    # Some pixels should be non-zero (text was drawn)
+    assert result.sum() > 0
+
+
+def test_add_text_overlay_single_frame_greyscale_converts_to_rgb(srv):
+    arr = np.zeros((64, 64), dtype=np.uint8)
+    result = srv.add_text_overlay(arr, text="TEST", color="red")
+    # Greyscale input becomes RGB output (3 channels)
+    assert len(result.shape) == 3
+    assert result.shape[2] == 3
+
+
+def test_add_text_overlay_multi_frame_preserves_frame_count(srv):
+    arr = np.zeros((4, 32, 32, 3), dtype=np.uint8)
+    result = srv.add_text_overlay(arr, text="X", color="white")
+    assert result.shape[0] == 4
+
+
+def test_add_text_overlay_multi_frame_modifies_pixels(srv):
+    arr = np.zeros((3, 64, 64, 3), dtype=np.uint8)
+    result = srv.add_text_overlay(arr, text="AI", color="green")
+    assert result.sum() > 0
+
+
+# ---------------------------------------------------------------------------
+# create_bilateral_sr
+# ---------------------------------------------------------------------------
+
+_BILATERAL_RESULTS = {
+    "left": {"prediction": "Malignant", "confidence": 92.5},
+    "right": {"prediction": "Benign", "confidence": 67.0},
+}
+
+
+def test_create_bilateral_sr_returns_bytes(srv):
+    ds = _minimal_dicom()
+    sr_bytes, date, time_str, uid = srv.create_bilateral_sr(ds, _BILATERAL_RESULTS)
+    assert isinstance(sr_bytes, bytes)
+    assert len(sr_bytes) > 0
+
+
+def test_create_bilateral_sr_modality_is_sr(srv):
+    ds = _minimal_dicom()
+    sr_bytes, _, _, _ = srv.create_bilateral_sr(ds, _BILATERAL_RESULTS)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sr_bytes))
+    assert parsed.Modality == "SR"
+
+
+def test_create_bilateral_sr_content_sequence_present(srv):
+    ds = _minimal_dicom()
+    sr_bytes, _, _, _ = srv.create_bilateral_sr(ds, _BILATERAL_RESULTS)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sr_bytes))
+    assert hasattr(parsed, "ContentSequence")
+    assert len(parsed.ContentSequence) > 0
+
+
+def test_create_bilateral_sr_references_original_sop(srv):
+    ds = _minimal_dicom()
+    sr_bytes, _, _, _ = srv.create_bilateral_sr(ds, _BILATERAL_RESULTS)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sr_bytes))
+    assert hasattr(parsed, "ReferencedImageSequence")
+    assert len(parsed.ReferencedImageSequence) > 0
+    assert parsed.ReferencedImageSequence[0].ReferencedSOPInstanceUID == ds.SOPInstanceUID
+
+
+def test_create_bilateral_sr_preserves_patient_info(srv):
+    ds = _minimal_dicom()
+    sr_bytes, _, _, _ = srv.create_bilateral_sr(ds, _BILATERAL_RESULTS)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sr_bytes))
+    assert str(parsed.PatientID) == "T001"
+    assert str(parsed.StudyInstanceUID) == str(ds.StudyInstanceUID)
+
+
+def test_create_bilateral_sr_returns_sop_uid(srv):
+    ds = _minimal_dicom()
+    _, date, time_str, uid = srv.create_bilateral_sr(ds, _BILATERAL_RESULTS)
+    assert uid  # non-empty UID
+    assert isinstance(uid, str)
+
+
+def test_create_bilateral_sr_content_contains_measurements(srv):
+    """Root container ContentSequence should contain measurement items for left/right sides."""
+    ds = _minimal_dicom()
+    sr_bytes, _, _, _ = srv.create_bilateral_sr(ds, _BILATERAL_RESULTS)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sr_bytes))
+    # The root container is the only item in ContentSequence
+    root_container = parsed.ContentSequence[0]
+    assert hasattr(root_container, "ContentSequence")
+    # Should contain items for left, right, and model metadata — at least 2
+    assert len(root_container.ContentSequence) >= 2
+
+
+def test_create_bilateral_sr_error_side_uses_text_type(srv):
+    """When a side has an error key, value type should be TEXT, not CODE."""
+    ds = _minimal_dicom()
+    results_with_error = {
+        "left": {"error": "No series found"},
+        "right": {"prediction": "Benign", "confidence": 60.0},
+    }
+    sr_bytes, _, _, _ = srv.create_bilateral_sr(ds, results_with_error)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sr_bytes))
+    root_items = parsed.ContentSequence[0].ContentSequence
+    text_items = [i for i in root_items if i.ValueType == "TEXT"]
+    assert len(text_items) >= 1
+
+
+# ---------------------------------------------------------------------------
+# create_mst_sr
+# ---------------------------------------------------------------------------
+
+_MST_RESULTS = {
+    "classification": {
+        "prediction": "Malignant",
+        "probability": 0.87,
+        "model_name": "MST-v2",
+        "architecture": "Vision Transformer",
+        "version": "2.0",
+    }
+}
+
+
+def test_create_mst_sr_returns_bytes(srv):
+    ds = _minimal_dicom()
+    sr_bytes, _, _, _ = srv.create_mst_sr(ds, _MST_RESULTS)
+    assert isinstance(sr_bytes, bytes)
+    assert len(sr_bytes) > 0
+
+
+def test_create_mst_sr_modality_is_sr(srv):
+    ds = _minimal_dicom()
+    sr_bytes, _, _, _ = srv.create_mst_sr(ds, _MST_RESULTS)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sr_bytes))
+    assert parsed.Modality == "SR"
+
+
+def test_create_mst_sr_content_sequence_present(srv):
+    ds = _minimal_dicom()
+    sr_bytes, _, _, _ = srv.create_mst_sr(ds, _MST_RESULTS)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sr_bytes))
+    assert hasattr(parsed, "ContentSequence")
+    assert len(parsed.ContentSequence) > 0
+
+
+def test_create_mst_sr_references_original(srv):
+    ds = _minimal_dicom()
+    sr_bytes, _, _, _ = srv.create_mst_sr(ds, _MST_RESULTS)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sr_bytes))
+    assert parsed.ReferencedImageSequence[0].ReferencedSOPInstanceUID == ds.SOPInstanceUID
+
+
+def test_create_mst_sr_classification_probability_in_content(srv):
+    """The classification probability (87%) should appear in a MeasuredValueSequence."""
+    ds = _minimal_dicom()
+    sr_bytes, _, _, _ = srv.create_mst_sr(ds, _MST_RESULTS)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sr_bytes))
+    root_items = parsed.ContentSequence[0].ContentSequence
+    measured_items = [i for i in root_items if hasattr(i, "MeasuredValueSequence")]
+    assert len(measured_items) >= 1
+    # Value should be ~87 (probability * 100)
+    val = float(measured_items[0].MeasuredValueSequence[0].NumericValue)
+    assert abs(val - 87.0) < 0.01
+
+
+def test_create_mst_sr_empty_classification_does_not_raise(srv):
+    """Empty classification dict should not crash the SR builder."""
+    ds = _minimal_dicom()
+    sr_bytes, _, _, _ = srv.create_mst_sr(ds, {"classification": {}})
+    assert isinstance(sr_bytes, bytes)
+
+
+# ---------------------------------------------------------------------------
+# create_multiframe_attention_sc
+# ---------------------------------------------------------------------------
+
+def _make_fake_attention_maps(num_frames=4, rows=32, cols=32):
+    """Create a fake base64-encoded attention map payload like the MST model returns."""
+    arr = np.random.randint(0, 255, (num_frames, rows, cols, 3), dtype=np.uint8)
+    encoded = base64.b64encode(arr.tobytes()).decode("utf-8")
+    return {
+        "data": encoded,
+        "shape": [num_frames, rows, cols, 3],
+        "dtype": "uint8",
+    }
+
+
+def test_create_multiframe_attention_sc_returns_bytes(srv):
+    ds = _minimal_dicom()
+    attention_maps = _make_fake_attention_maps()
+    sc_bytes = srv.create_multiframe_attention_sc(ds, attention_maps)
+    assert isinstance(sc_bytes, bytes)
+    assert len(sc_bytes) > 0
+
+
+def test_create_multiframe_attention_sc_modality_is_sc(srv):
+    ds = _minimal_dicom()
+    attention_maps = _make_fake_attention_maps()
+    sc_bytes = srv.create_multiframe_attention_sc(ds, attention_maps)
+    from pydicom import dcmread
+    # SC objects are written as bare Datasets (no preamble); force=True is required
+    parsed = dcmread(io.BytesIO(sc_bytes), force=True)
+    assert parsed.Modality == "SC"
+
+
+def test_create_multiframe_attention_sc_frame_count_matches(srv):
+    ds = _minimal_dicom()
+    num_frames = 6
+    attention_maps = _make_fake_attention_maps(num_frames=num_frames)
+    sc_bytes = srv.create_multiframe_attention_sc(ds, attention_maps)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sc_bytes), force=True)
+    assert int(parsed.NumberOfFrames) == num_frames
+
+
+def test_create_multiframe_attention_sc_references_original(srv):
+    ds = _minimal_dicom()
+    attention_maps = _make_fake_attention_maps()
+    sc_bytes = srv.create_multiframe_attention_sc(ds, attention_maps)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sc_bytes), force=True)
+    assert parsed.ReferencedImageSequence[0].ReferencedSOPInstanceUID == ds.SOPInstanceUID
+
+
+def test_create_multiframe_attention_sc_references_sr_when_given(srv):
+    ds = _minimal_dicom()
+    attention_maps = _make_fake_attention_maps()
+    fake_sr_uid = generate_uid()
+    sc_bytes = srv.create_multiframe_attention_sc(ds, attention_maps, sr_sop_instance_uid=fake_sr_uid)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sc_bytes), force=True)
+    assert hasattr(parsed, "ReferencedInstanceSequence")
+    ref_uid = parsed.ReferencedInstanceSequence[0].ReferencedSOPInstanceUID
+    assert str(ref_uid) == str(fake_sr_uid)
+
+
+def test_create_multiframe_attention_sc_photometric_rgb(srv):
+    ds = _minimal_dicom()
+    attention_maps = _make_fake_attention_maps()
+    sc_bytes = srv.create_multiframe_attention_sc(ds, attention_maps)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sc_bytes), force=True)
+    assert parsed.PhotometricInterpretation == "RGB"
+
+
+# ---------------------------------------------------------------------------
+# create_text_overlay_sc  (smoke — requires pixel_array on original_ds)
+# ---------------------------------------------------------------------------
+
+def test_create_text_overlay_sc_returns_bytes(srv):
+    ds = _minimal_dicom_with_pixels()
+    sc_bytes = srv.create_text_overlay_sc(ds, text="AI", color="red")
+    assert isinstance(sc_bytes, bytes)
+    assert len(sc_bytes) > 0
+
+
+def test_create_text_overlay_sc_modality_is_sc(srv):
+    ds = _minimal_dicom_with_pixels()
+    sc_bytes = srv.create_text_overlay_sc(ds, text="TEST")
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sc_bytes), force=True)
+    assert parsed.Modality == "SC"
+
+
+def test_create_text_overlay_sc_has_content_sequence(srv):
+    """SC includes a ContentSequence with model metadata mirroring the SR."""
+    ds = _minimal_dicom_with_pixels()
+    sc_bytes = srv.create_text_overlay_sc(ds, text="TEST")
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sc_bytes), force=True)
+    assert hasattr(parsed, "ContentSequence")
+    assert len(parsed.ContentSequence) >= 1
+
+
+def test_create_text_overlay_sc_references_sr_when_given(srv):
+    ds = _minimal_dicom_with_pixels()
+    fake_sr_uid = generate_uid()
+    sc_bytes = srv.create_text_overlay_sc(ds, text="TEST", sr_sop_instance_uid=fake_sr_uid)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sc_bytes), force=True)
+    assert hasattr(parsed, "ReferencedInstanceSequence")
+    ref_uid = parsed.ReferencedInstanceSequence[0].ReferencedSOPInstanceUID
+    assert str(ref_uid) == str(fake_sr_uid)
