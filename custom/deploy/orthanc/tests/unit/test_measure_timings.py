@@ -6,18 +6,10 @@ Functions that require docker, network I/O, or running Orthanc instances
 (get_study_info, send_to_ai_and_profile, fetch_component_logs, etc.) are
 excluded deliberately.
 """
-import os
-import sys
 import pytest
 import requests
 
 
-@pytest.fixture(autouse=True)
-def _add_orthanc_to_path():
-    here = os.path.dirname(os.path.abspath(__file__))
-    orthanc_dir = os.path.abspath(os.path.join(here, '..', '..'))
-    if orthanc_dir not in sys.path:
-        sys.path.insert(0, orthanc_dir)
 
 
 # ---------------------------------------------------------------------------

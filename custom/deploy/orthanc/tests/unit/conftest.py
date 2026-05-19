@@ -111,6 +111,12 @@ def _install_orthanc_stub():
 
 _install_orthanc_stub()
 
+# Make the orthanc/ directory importable for sibling-module tests at this level
+_HERE = os.path.dirname(os.path.abspath(__file__))
+_ORTHANC_DIR = os.path.abspath(os.path.join(_HERE, "..", ".."))
+if _ORTHANC_DIR not in sys.path:
+    sys.path.insert(0, _ORTHANC_DIR)
+
 
 # =====================================================================
 # Helpers & fixtures

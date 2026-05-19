@@ -5,18 +5,10 @@ Tests the library helpers with tight assertions based on the actual return shape
 """
 import csv
 import json
-import os
-import sys
 
 import pytest
 
 
-@pytest.fixture(autouse=True)
-def _add_orthanc_to_path():
-    here = os.path.dirname(os.path.abspath(__file__))
-    orthanc_dir = os.path.abspath(os.path.join(here, '..', '..'))
-    if orthanc_dir not in sys.path:
-        sys.path.insert(0, orthanc_dir)
 
 
 # ---------------------------------------------------------------------------
