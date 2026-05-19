@@ -21,7 +21,7 @@ jobs:
   lint-js:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.2
         with:
           submodules: recursive
           fetch-depth: 1
@@ -131,7 +131,7 @@ jobs:
   lint-py:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.2
         with:
           submodules: recursive
           fetch-depth: 1
@@ -234,7 +234,7 @@ jobs:
   lint-yaml:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.2
 
       - uses: actions/setup-python@v6
         with:
