@@ -29,7 +29,7 @@ cd <service>
 uv pip compile pyproject.toml -o requirements.txt --generate-hashes
 ```
 
-3. Commit both `pyproject.toml` and `requirements.txt`. CI's lockfile-sync job will block the PR if these drift.
+3. Commit both `pyproject.toml` and `requirements.txt`. A CI lockfile-sync job will block the PR if these drift (lands later in ODV-191 — until then, eyeball the diff before committing).
 
 ## Why not `uv.lock`?
 

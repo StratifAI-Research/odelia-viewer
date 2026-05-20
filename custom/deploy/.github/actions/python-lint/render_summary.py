@@ -82,7 +82,7 @@ def _render_ruff_format(text: str) -> str:
 
 
 def _render_mypy(text: str) -> str:
-    error_lines = [l for l in text.splitlines() if ": error:" in l]
+    error_lines = [line for line in text.splitlines() if ": error:" in line]
     file_counts: dict[str, int] = {}
     code_counts: dict[str, int] = {}
     pattern = re.compile(r"^([^:]+):\d+:\s+error:\s+.+?\[(\S+)\]\s*$")
