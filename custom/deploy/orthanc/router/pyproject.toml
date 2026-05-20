@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "odelia-router-service"
+version = "0.1.0"
+description = "DICOM routing service for Odelia"
+requires-python = ">=3.12"
+dependencies = [
+  "pydicom",
+  "dicomweb-client",
+  "matplotlib",
+  "numpy",
+  "opencv-python",
+  "Pillow",
+  "requests",
+]
+
+[tool.setuptools.packages.find]
+include = []
