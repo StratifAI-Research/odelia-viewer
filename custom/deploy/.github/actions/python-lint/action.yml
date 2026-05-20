@@ -1,0 +1,54 @@
+name: Python lint
+description: Ruff check + ruff format + mypy across the platform's Python services
+inputs:
+  working-directory:
+    description: 'Directory containing pyproject.toml + requirements-dev.txt and service subdirs'
+    required: true
+  python-version:
+    default: '3.12'
+  fail-on-error:
+    description: 'When false, runs continue-on-error (warn-only). Flip to true after ODV-199/195 land.'
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install dev tools
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: pip install -r requirements-dev.txt
+
+    - name: Prepare outputs dir
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: mkdir -p outputs
+
+    - name: Ruff check
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      continue-on-error: ${{ inputs.fail-on-error == 'false' }}
+      run: |
+        ruff check . \
+          --output-format=json \
+          --exclude .venv,__pycache__,.pytest_cache,tests,sample_data,screenshots \
+          > outputs/ruff.json
+
+    - name: Ruff format --check
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      continue-on-error: ${{ inputs.fail-on-error == 'false' }}
+      run: ruff format --check . > outputs/ruff-format.txt 2>&1
+
+    - name: mypy
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      continue-on-error: ${{ inputs.fail-on-error == 'false' }}
+      run: mypy viewer router MLIntegration/shared > outputs/mypy.txt 2>&1
+
+    - name: Render summary
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: python3 ${{ github.action_path }}/render_summary.py
