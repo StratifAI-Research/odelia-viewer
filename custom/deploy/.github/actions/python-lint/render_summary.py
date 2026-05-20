@@ -6,6 +6,10 @@ Reads ./outputs/{ruff.json,ruff-format.txt,mypy.txt} and writes:
 
 Appends summary.md to GITHUB_STEP_SUMMARY when that env var is set.
 Pure function on file contents — no network, no GH API calls.
+
+Exit code:
+  0  — no violations, or PYTHON_LINT_WARN_ONLY=true (warn-only mode)
+  1  — one or more violations AND PYTHON_LINT_WARN_ONLY != 'true' (gating mode)
 """
 
 from __future__ import annotations
@@ -15,6 +19,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -161,6 +166,21 @@ def main() -> None:
     if step_summary:
         with open(step_summary, "a") as f:
             f.write(body)
+
+    # --- Exit-code logic ---
+    total_ruff = len(ruff_data)
+    total_ruff_format = len(re.findall(r"^Would reformat:", ruff_format_text, re.MULTILINE))
+    total_mypy = len([line for line in mypy_text.splitlines() if ": error:" in line])
+
+    warn_only = os.environ.get("PYTHON_LINT_WARN_ONLY") == "true"
+    mode_label = "warn-only" if warn_only else "gating"
+    print(
+        f"Lint PY: ruff={total_ruff} format={total_ruff_format} mypy={total_mypy} ({mode_label})",
+        file=sys.stderr,
+    )
+
+    if not warn_only and (total_ruff > 0 or total_ruff_format > 0 or total_mypy > 0):
+        sys.exit(1)
 
 
 if __name__ == "__main__":

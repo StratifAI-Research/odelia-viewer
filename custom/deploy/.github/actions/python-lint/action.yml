@@ -7,8 +7,8 @@ inputs:
   python-version:
     default: '3.12'
   fail-on-error:
-    description: 'When false, runs continue-on-error (warn-only). Flip to true after ODV-199/195 land.'
-    default: 'false'
+    description: 'When true (default), render_summary.py exits 1 if any tool reports violations and the job goes red. Set to false for warn-only runs where violations are surfaced but do not block.'
+    default: 'true'
 runs:
   using: composite
   steps:
@@ -29,7 +29,7 @@ runs:
     - name: Ruff check
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      continue-on-error: ${{ inputs.fail-on-error == 'false' }}
+      continue-on-error: true
       run: |
         ruff check . \
           --output-format=json \
@@ -39,16 +39,18 @@ runs:
     - name: Ruff format --check
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      continue-on-error: ${{ inputs.fail-on-error == 'false' }}
+      continue-on-error: true
       run: ruff format --check . > outputs/ruff-format.txt 2>&1
 
     - name: mypy
       shell: bash
       working-directory: ${{ inputs.working-directory }}
-      continue-on-error: ${{ inputs.fail-on-error == 'false' }}
+      continue-on-error: true
       run: mypy --explicit-package-bases viewer router MLIntegration/shared > outputs/mypy.txt 2>&1
 
     - name: Render summary
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        PYTHON_LINT_WARN_ONLY: ${{ inputs.fail-on-error == 'false' && 'true' || 'false' }}
       run: python3 ${{ github.action_path }}/render_summary.py
