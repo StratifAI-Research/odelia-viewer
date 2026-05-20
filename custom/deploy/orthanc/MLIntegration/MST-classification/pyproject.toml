@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mlintegration-mst-classification"
+version = "0.1.0"
+description = "MST classification service for Odelia ML Integration"
+requires-python = ">=3.12"
+dependencies = [
+  "Flask>=3.0.0",
+  "Flask-Cors>=4.0.0",
+  "torch>=2.5.0",
+  "torchvision>=0.21.0",
+  "transformers @ git+https://github.com/huggingface/transformers.git",
+  "huggingface_hub>=0.26.0",
+  "pydicom>=2.4.3",
+  "nibabel>=5.2.0",
+  "numpy>=1.24.3",
+  "requests>=2.31.0",
+  "dicomweb-client>=0.59.0",
+  "Pillow>=10.1.0",
+  "matplotlib>=3.8.2",
+  "opencv-python-headless>=4.8.1.78",
+  "scipy>=1.11.4",
+  "torchio>=0.19.6",
+  "einops>=0.7.0",
+  "x-transformers>=1.27.0",
+  "SimpleITK>=2.3.1",
+  "timm>=0.9.12",
+  "fvcore>=0.1.5.post20221221",
+  "omegaconf>=2.3.0",
+]
+
+[tool.setuptools.packages.find]
+include = []
