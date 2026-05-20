@@ -26,7 +26,7 @@ SERVICES = [
 
 # A dep line is "pinned" if it has `==<version>` (with optional whitespace)
 # OR is a git URL with a commit SHA: `pkg @ git+url@<sha>`.
-PINNED_PYPI = re.compile(r"^[A-Za-z0-9_.\-]+\s*==\s*[^\s]+$")
+PINNED_PYPI = re.compile(r"^[A-Za-z0-9_.\-]+(\[[A-Za-z0-9_,\-]+\])?\s*==\s*[^\s]+$")
 PINNED_GIT = re.compile(r"^[A-Za-z0-9_.\-]+\s*@\s*git\+\S+@[0-9a-f]{7,}$")
 
 
@@ -45,7 +45,9 @@ def read_requirements(path: Path) -> list[str]:
     return [
         line.strip()
         for line in path.read_text().splitlines()
-        if line.strip() and not line.strip().startswith("#")
+        if line.strip()
+        and not line.strip().startswith("#")
+        and not line.strip().startswith("-")
     ]
 
 
