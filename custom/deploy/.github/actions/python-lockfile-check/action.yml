@@ -42,6 +42,8 @@ runs:
           uv pip compile "$svc/pyproject.toml" \
             -o /tmp/compiled.txt \
             --generate-hashes \
+            --index-strategy unsafe-best-match \
+            --no-header \
             --quiet
           if ! diff -u "$svc/requirements.txt" /tmp/compiled.txt > /tmp/lockdiff.txt; then
             echo "::error file=$svc/requirements.txt::out of sync with $svc/pyproject.toml"

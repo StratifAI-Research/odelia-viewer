@@ -46,7 +46,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       continue-on-error: ${{ inputs.fail-on-error == 'false' }}
-      run: mypy viewer router MLIntegration/shared > outputs/mypy.txt 2>&1
+      run: mypy --explicit-package-bases viewer router MLIntegration/shared > outputs/mypy.txt 2>&1
 
     - name: Render summary
       shell: bash
