@@ -234,3 +234,15 @@ jobs:
           name: lint-yaml-${{ github.sha }}
           path: outputs/
           retention-days: 90
+
+  python-pin-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - uses: ./custom/deploy/.github/actions/python-pin-check
+        with:
+          working-directory: custom/deploy/orthanc

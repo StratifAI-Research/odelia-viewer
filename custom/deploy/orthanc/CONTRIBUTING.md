@@ -21,6 +21,6 @@ mypy viewer router MLIntegration/shared
 
 ## Adding or updating a dependency
 
-1. Edit `<service>/pyproject.toml` — modify `[project].dependencies`.
-2. Edit `<service>/requirements.txt` to match. The two files are kept in sync by hand. Both are committed.
-3. Pyproject.toml is the source of truth for direct deps; requirements.txt is what Dockerfiles consume.
+1. Edit `<service>/pyproject.toml` — add or modify an entry in `[project].dependencies`. Always use `==X.Y.Z` (or `pkg @ git+url@<sha>` for git deps).
+2. Edit `<service>/requirements.txt` to match — the two files are kept lockstep by hand.
+3. CI's `python-pin-check` job verifies both files are fully pinned and agree on versions. Unpinned entries (`>=`, no operator) fail the check.

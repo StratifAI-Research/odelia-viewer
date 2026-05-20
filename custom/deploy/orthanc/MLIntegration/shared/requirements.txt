@@ -1,11 +1,10 @@
-# Direct deps for shared. Edit pyproject.toml and this file together; no auto-compile.
-flask>=2.0.0
-flask-cors>=3.0.0
-torch>=1.9.0
-torchio>=0.18.0
-pydicom>=2.0.0
-requests>=2.25.0
-numpy>=1.20.0
-SimpleITK>=2.0.0
-monai>=0.8.0
-huggingface-hub>=0.10.0
+flask==3.1.3
+flask-cors==6.0.2
+torch==2.12.0
+torchio==1.2.0
+pydicom==3.0.2
+requests==2.34.2
+numpy==2.4.6
+SimpleITK==2.5.5
+monai==1.5.2
+huggingface-hub==1.15.0

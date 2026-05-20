@@ -1,4 +1,3 @@
-# Direct deps for viewer. Edit pyproject.toml and this file together; no auto-compile.
 pydicom==3.0.2
 dicomweb-client==0.61.0
 requests==2.34.2
