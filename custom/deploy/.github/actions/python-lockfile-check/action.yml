@@ -1,0 +1,54 @@
+name: Python lockfile sync check
+description: Verify each service's requirements.txt matches pyproject.toml via uv pip compile
+inputs:
+  working-directory:
+    description: 'Directory containing service subdirs with pyproject.toml + requirements.txt'
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v6
+      with:
+        python-version: '3.12'
+
+    - uses: astral-sh/setup-uv@v3
+      with:
+        version: '0.5.x'
+
+    - name: Verify each service's requirements.txt is in sync
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        services=(
+          viewer
+          router
+          MLIntegration/shared
+          MLIntegration/medgemma-mri
+          MLIntegration/MST-classification
+          MLIntegration/chat-middleware
+          MLIntegration/breast-cancer-classification
+        )
+        failed=0
+        for svc in "${services[@]}"; do
+          if [ ! -f "$svc/pyproject.toml" ]; then
+            echo "::warning::$svc has no pyproject.toml, skipping"
+            continue
+          fi
+          if [ ! -f "$svc/requirements.txt" ]; then
+            echo "::error file=$svc/requirements.txt::missing — run 'uv pip compile $svc/pyproject.toml -o $svc/requirements.txt --generate-hashes'"
+            failed=1
+            continue
+          fi
+          uv pip compile "$svc/pyproject.toml" \
+            -o /tmp/compiled.txt \
+            --generate-hashes \
+            --quiet
+          if ! diff -u "$svc/requirements.txt" /tmp/compiled.txt > /tmp/lockdiff.txt; then
+            echo "::error file=$svc/requirements.txt::out of sync with $svc/pyproject.toml"
+            cat /tmp/lockdiff.txt
+            failed=1
+          else
+            echo "✓ $svc"
+          fi
+        done
+        exit $failed
