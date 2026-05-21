@@ -57,7 +57,7 @@
     "@cornerstonejs/polymorphic-segmentation": "^3.7.17",
     "@cornerstonejs/tools": "^3.7.17",
     "@itk-wasm/morphological-contour-interpolation": "1.1.0",
-    "@kitware/vtk.js": "32.12.0",
+    "@kitware/vtk.js": "35.15.2",
     "html2canvas": "^1.4.1",
     "lodash.compact": "^3.0.1",
     "lodash.debounce": "^4.0.8",
