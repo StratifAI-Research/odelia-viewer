@@ -54,7 +54,7 @@
     "@cornerstonejs/adapters": "^3.7.17",
     "@cornerstonejs/core": "^3.7.17",
     "@cornerstonejs/labelmap-interpolation": "^3.7.17",
-    "@cornerstonejs/polymorphic-segmentation": "^3.7.17",
+    "@cornerstonejs/polymorphic-segmentation": "^4.22.9",
     "@cornerstonejs/tools": "^3.7.17",
     "@itk-wasm/morphological-contour-interpolation": "1.1.0",
     "@kitware/vtk.js": "32.12.0",
