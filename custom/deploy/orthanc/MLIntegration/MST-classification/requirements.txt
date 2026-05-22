@@ -1,3 +1,6 @@
+# NOTE: `--extra-index-url` cannot be expressed in pyproject.toml; this file
+# is the canonical install path when an index URL matters. python-pin-check
+# skips `-`-prefixed lines, so the version pins below are still enforced.
 --extra-index-url https://download.pytorch.org/whl/cpu
 Flask==3.1.3
 Flask-Cors==6.0.2
