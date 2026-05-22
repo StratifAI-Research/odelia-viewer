@@ -14,7 +14,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  RUFF_VERSION: '0.8.4'
   YAMLLINT_VERSION: '1.35.1'
 
 jobs:
@@ -136,99 +135,16 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - uses: actions/setup-python@v6
+      - uses: ./custom/deploy/.github/actions/python-lint
         with:
-          python-version: '3.12'
-
-      - name: Install ruff
-        run: pip install "ruff==${RUFF_VERSION}"
-
-      - name: Prepare outputs dir
-        run: mkdir -p outputs
-
-      - name: Run ruff
-        continue-on-error: true
-        run: |
-          ruff check custom/deploy/orthanc \
-            --output-format=json \
-            --exclude .venv,__pycache__,.pytest_cache,tests,sample_data,screenshots \
-            > outputs/ruff.json
-
-      - name: Render summary
-        env:
-          TOOL_VERSION: ${{ env.RUFF_VERSION }}
-        run: |
-          python3 <<'PYEOF'
-          import hashlib, json, os
-          from datetime import datetime, timezone
-          from pathlib import Path
-
-          OUT = Path("outputs")
-          path = OUT / "ruff.json"
-          data = []
-          if path.exists() and path.stat().st_size > 0:
-              try:
-                  data = json.loads(path.read_text())
-              except json.JSONDecodeError:
-                  data = []
-
-          violations = len(data)
-          file_counts = {}
-          rule_counts = {}
-          for v in data:
-              fn = v.get("filename", "") or (v.get("location", {}) or {}).get("file", "")
-              file_counts[fn] = file_counts.get(fn, 0) + 1
-              code = v.get("code") or "(unknown)"
-              rule_counts[code] = rule_counts.get(code, 0) + 1
-
-          top_files = sorted(file_counts.items(), key=lambda x: -x[1])[:10]
-          top_rules = sorted(rule_counts.items(), key=lambda x: -x[1])[:10]
-
-          includes = ["custom/deploy/orthanc/**/*.py"]
-          excludes = [".venv", "__pycache__", ".pytest_cache", "tests", "sample_data", "screenshots"]
-          scope_str = "|".join(sorted(includes) + ["!" + e for e in sorted(excludes)])
-          metadata = {
-              "sha": os.environ.get("GITHUB_SHA", ""),
-              "ref": os.environ.get("GITHUB_REF", ""),
-              "event": os.environ.get("GITHUB_EVENT_NAME", ""),
-              "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-              "tool": "ruff",
-              "tool_version": os.environ.get("TOOL_VERSION", ""),
-              "scope_checksum": hashlib.sha256(scope_str.encode()).hexdigest(),
-          }
-          (OUT / "metadata.json").write_text(json.dumps(metadata, indent=2))
-
-          short_sha = metadata["sha"][:7]
-          lines = [f"## Lint PY (ruff) — `{short_sha}` — `{metadata['event']}`\n"]
-          lines.append(f"- Files with violations: **{len(file_counts)}**")
-          lines.append(f"- Total violations: **{violations}**")
-          if top_rules:
-              lines.append("\n**Top 10 rules:**\n")
-              lines.append("| Rule | Count |")
-              lines.append("|---|---:|")
-              for r, n in top_rules:
-                  lines.append(f"| `{r}` | {n} |")
-          if top_files:
-              lines.append("\n**Top 10 files:**\n")
-              lines.append("| File | Violations |")
-              lines.append("|---|---:|")
-              for fp, n in top_files:
-                  lines.append(f"| `{fp}` | {n} |")
-
-          summary = "\n".join(lines) + "\n"
-          (OUT / "summary.md").write_text(summary)
-          step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
-          if step_summary:
-              with open(step_summary, "a") as f:
-                  f.write(summary)
-          PYEOF
+          working-directory: custom/deploy/orthanc
 
       - name: Upload artifact (main push only)
         if: github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: lint-py-${{ github.sha }}
-          path: outputs/
+          path: custom/deploy/orthanc/outputs/
           retention-days: 90
 
   lint-yaml:
@@ -318,3 +234,15 @@ jobs:
           name: lint-yaml-${{ github.sha }}
           path: outputs/
           retention-days: 90
+
+  python-pin-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - uses: ./custom/deploy/.github/actions/python-pin-check
+        with:
+          working-directory: custom/deploy/orthanc
