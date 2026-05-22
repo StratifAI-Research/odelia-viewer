@@ -1,8 +1,10 @@
 """Verify pyproject.toml [project].dependencies and requirements.txt are lockstep pinned.
 
 For each service directory, both files must:
-  - Have every entry fully pinned (== for PyPI, @ git+...@<sha> for git URLs).
+  - Have every entry fully pinned (== for PyPI, @ git+...@<40-char-sha> for git URLs).
   - Contain the same set of direct deps with identical version specs.
+
+Also validates requirements-dev.txt (no pyproject equivalent — just pin enforcement).
 
 Exits 1 if any service fails either check.
 """
@@ -14,6 +16,11 @@ import sys
 import tomllib
 from pathlib import Path
 
+# Services validated for pyproject↔requirements lockstep + pin enforcement.
+# Kept static (not auto-discovered) so adding a service is a deliberate edit —
+# a directory accidentally containing a stray pyproject.toml won't silently
+# enter the policy. When adding a new service, append it here and to any
+# orchestration that lists service directories.
 SERVICES = [
     "viewer",
     "router",
@@ -24,15 +31,38 @@ SERVICES = [
     "MLIntegration/breast-cancer-classification",
 ]
 
-# A dep line is "pinned" if it has `==<version>` (with optional whitespace)
-# OR is a git URL with a commit SHA: `pkg @ git+url@<sha>`.
-PINNED_PYPI = re.compile(r"^[A-Za-z0-9_.\-]+(\[[A-Za-z0-9_,\-]+\])?\s*==\s*[^\s]+$")
-PINNED_GIT = re.compile(r"^[A-Za-z0-9_.\-]+\s*@\s*git\+\S+@[0-9a-f]{7,}$")
+# Stand-alone pinned files that have no pyproject counterpart (dev tooling).
+EXTRA_PINNED_FILES = ["requirements-dev.txt"]
+
+# A dep line is "pinned" if it has `==<version>` (no wildcards) OR is a git URL
+# with a full 40-character commit SHA: `pkg @ git+url@<40-hex>`.
+# Version chars limited to PEP 440 alphabet — no `*`, so `pkg==1.*` is rejected.
+PINNED_PYPI = re.compile(
+    r"^[A-Za-z0-9_.\-]+(\[[A-Za-z0-9_,\-]+\])?\s*==\s*[A-Za-z0-9.+!_-]+$"
+)
+PINNED_GIT = re.compile(r"^[A-Za-z0-9_.\-]+\s*@\s*git\+\S+@[0-9a-f]{40}$")
 
 
 def is_pinned(entry: str) -> bool:
     entry = entry.strip()
     return bool(PINNED_PYPI.match(entry) or PINNED_GIT.match(entry))
+
+
+_NAME_HEAD = re.compile(r"^([A-Za-z0-9][A-Za-z0-9_.\-]*)(.*)$", re.DOTALL)
+
+
+def _normalize_entry(entry: str) -> str:
+    """Return entry with the leading package name PEP 503-normalized.
+
+    `Flask==3.1.3` and `flask==3.1.3` both become `flask==3.1.3`; the version
+    spec / extras / git URL after the name is preserved verbatim.
+    """
+    m = _NAME_HEAD.match(entry.strip())
+    if not m:
+        return entry.strip()
+    head, rest = m.group(1), m.group(2)
+    canonical = re.sub(r"[-_.]+", "-", head).lower()
+    return canonical + rest
 
 
 def read_pyproject_deps(path: Path) -> list[str]:
@@ -51,48 +81,74 @@ def read_requirements(path: Path) -> list[str]:
     ]
 
 
+def check_service(svc: str) -> bool:
+    """Return True on success, False on failure. Prints diagnostics either way."""
+    pyproject_path = Path(svc) / "pyproject.toml"
+    requirements_path = Path(svc) / "requirements.txt"
+
+    if not pyproject_path.exists():
+        print(f"::warning::{svc} has no pyproject.toml, skipping")
+        return True
+    if not requirements_path.exists():
+        print(f"::error file={requirements_path}::missing requirements.txt")
+        return False
+
+    py_deps = read_pyproject_deps(pyproject_path)
+    req_deps = read_requirements(requirements_path)
+    svc_failed = False
+
+    for entry in py_deps:
+        if not is_pinned(entry):
+            print(
+                f"::error file={pyproject_path}::unpinned dep in pyproject.toml: {entry!r}"
+            )
+            svc_failed = True
+
+    for entry in req_deps:
+        if not is_pinned(entry):
+            print(
+                f"::error file={requirements_path}::unpinned dep in requirements.txt: {entry!r}"
+            )
+            svc_failed = True
+
+    py_norm = sorted(_normalize_entry(d) for d in py_deps)
+    req_norm = sorted(_normalize_entry(d) for d in req_deps)
+    if py_norm != req_norm:
+        print(
+            f"::error::pyproject.toml and requirements.txt disagree in {svc}\n"
+            f"  pyproject only: {sorted(set(py_norm) - set(req_norm))}\n"
+            f"  requirements only: {sorted(set(req_norm) - set(py_norm))}"
+        )
+        svc_failed = True
+
+    if not svc_failed:
+        print(f"✓ {svc}")
+    return not svc_failed
+
+
+def check_extra_pinned_file(path_str: str) -> bool:
+    path = Path(path_str)
+    if not path.exists():
+        print(f"::warning::{path} not found, skipping")
+        return True
+    failed = False
+    for entry in read_requirements(path):
+        if not is_pinned(entry):
+            print(f"::error file={path}::unpinned dep: {entry!r}")
+            failed = True
+    if not failed:
+        print(f"✓ {path}")
+    return not failed
+
+
 def main() -> int:
     failed = False
     for svc in SERVICES:
-        pyproject_path = Path(svc) / "pyproject.toml"
-        requirements_path = Path(svc) / "requirements.txt"
-
-        if not pyproject_path.exists():
-            print(f"::warning::{svc} has no pyproject.toml, skipping")
-            continue
-        if not requirements_path.exists():
-            print(f"::error file={requirements_path}::missing requirements.txt")
+        if not check_service(svc):
             failed = True
-            continue
-
-        py_deps = read_pyproject_deps(pyproject_path)
-        req_deps = read_requirements(requirements_path)
-
-        for entry in py_deps:
-            if not is_pinned(entry):
-                print(
-                    f"::error file={pyproject_path}::unpinned dep in pyproject.toml: {entry!r}"
-                )
-                failed = True
-
-        for entry in req_deps:
-            if not is_pinned(entry):
-                print(
-                    f"::error file={requirements_path}::unpinned dep in requirements.txt: {entry!r}"
-                )
-                failed = True
-
-        if sorted(py_deps) != sorted(req_deps):
-            print(
-                f"::error::pyproject.toml and requirements.txt disagree in {svc}\n"
-                f"  pyproject only: {sorted(set(py_deps) - set(req_deps))}\n"
-                f"  requirements only: {sorted(set(req_deps) - set(py_deps))}"
-            )
+    for extra in EXTRA_PINNED_FILES:
+        if not check_extra_pinned_file(extra):
             failed = True
-
-        if not failed:
-            print(f"✓ {svc}")
-
     return 1 if failed else 0
 
 
