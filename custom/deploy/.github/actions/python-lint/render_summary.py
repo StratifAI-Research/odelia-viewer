@@ -8,8 +8,14 @@ Appends summary.md to GITHUB_STEP_SUMMARY when that env var is set.
 Pure function on file contents — no network, no GH API calls.
 
 Exit code:
-  0  — no violations, or PYTHON_LINT_WARN_ONLY=true (warn-only mode)
-  1  — one or more violations AND PYTHON_LINT_WARN_ONLY != 'true' (gating mode)
+  0  — no violations and no tool crash, or PYTHON_LINT_WARN_ONLY=true
+  1  — tool crash (non-zero exit with zero parsed output), OR violations in gating mode
+
+Tool crash detection: each tool step writes `outputs/<tool>.exit` with its exit
+code. A non-zero exit code paired with zero parsed violations is treated as a
+crash (config error, import failure, etc.) and always fails the job — even when
+warn-only is on, because warn-only is for "violations are debt", not "the linter
+itself broke".
 """
 
 from __future__ import annotations
@@ -31,6 +37,17 @@ def _read_text(path: Path) -> str:
     if not path.exists() or path.stat().st_size == 0:
         return ""
     return path.read_text()
+
+
+def _read_exit_code(path: Path) -> int | None:
+    """Return the exit code written by the action.yml step, or None if absent."""
+    raw = _read_text(path).strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
 
 
 def _tool_version(tool: str) -> str:
@@ -90,7 +107,7 @@ def _render_mypy(text: str) -> str:
     error_lines = [line for line in text.splitlines() if ": error:" in line]
     file_counts: dict[str, int] = {}
     code_counts: dict[str, int] = {}
-    pattern = re.compile(r"^([^:]+):\d+:\s+error:\s+.+?\[(\S+)\]\s*$")
+    pattern = re.compile(r"^([^:]+):\d+(?::\d+)?:\s+error:\s+.+?\[(\S+)\]\s*$")
     for line in error_lines:
         m = pattern.match(line)
         if not m:
@@ -172,12 +189,32 @@ def main() -> None:
     total_ruff_format = len(re.findall(r"^Would reformat:", ruff_format_text, re.MULTILINE))
     total_mypy = len([line for line in mypy_text.splitlines() if ": error:" in line])
 
+    tool_counts = {
+        "ruff": total_ruff,
+        "ruff-format": total_ruff_format,
+        "mypy": total_mypy,
+    }
+    tool_crashes: list[str] = []
+    for tool, count in tool_counts.items():
+        exit_code = _read_exit_code(OUT / f"{tool}.exit")
+        if exit_code is not None and exit_code != 0 and count == 0:
+            tool_crashes.append(f"{tool} (exit={exit_code})")
+
     warn_only = os.environ.get("PYTHON_LINT_WARN_ONLY") == "true"
     mode_label = "warn-only" if warn_only else "gating"
     print(
         f"Lint PY: ruff={total_ruff} format={total_ruff_format} mypy={total_mypy} ({mode_label})",
         file=sys.stderr,
     )
+
+    if tool_crashes:
+        # Tool crash always fails the job, regardless of warn-only.
+        print(
+            f"::error::Tool crash with no parsed output: {', '.join(tool_crashes)}. "
+            "Check the step logs — the tool likely failed before producing violations.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     if not warn_only and (total_ruff > 0 or total_ruff_format > 0 or total_mypy > 0):
         sys.exit(1)

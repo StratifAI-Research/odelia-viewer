@@ -31,22 +31,30 @@ runs:
       working-directory: ${{ inputs.working-directory }}
       continue-on-error: true
       run: |
+        set +e
         ruff check . \
           --output-format=json \
           --exclude .venv,__pycache__,.pytest_cache,tests,sample_data,screenshots \
           > outputs/ruff.json
+        echo $? > outputs/ruff.exit
 
     - name: Ruff format --check
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       continue-on-error: true
-      run: ruff format --check . > outputs/ruff-format.txt 2>&1
+      run: |
+        set +e
+        ruff format --check . > outputs/ruff-format.txt 2>&1
+        echo $? > outputs/ruff-format.exit
 
     - name: mypy
       shell: bash
       working-directory: ${{ inputs.working-directory }}
       continue-on-error: true
-      run: mypy --explicit-package-bases viewer router MLIntegration/shared > outputs/mypy.txt 2>&1
+      run: |
+        set +e
+        mypy --explicit-package-bases viewer router MLIntegration/shared > outputs/mypy.txt 2>&1
+        echo $? > outputs/mypy.exit
 
     - name: Render summary
       shell: bash
