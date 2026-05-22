@@ -16,15 +16,26 @@ FORTY_SHA = "0123456789abcdef0123456789abcdef01234567"
 SHORT_SHA = "0123456"
 
 
-def _write_service(root: Path, name: str, pyproject_deps: list[str], req_lines: list[str]) -> None:
+def _write_service(
+    root: Path,
+    name: str,
+    pyproject_deps: list[str],
+    req_lines: list[str],
+    build_requires: list[str] | None = None,
+) -> None:
     svc = root / name
     svc.mkdir(parents=True, exist_ok=True)
     deps_block = ",\n  ".join(f'"{d}"' for d in pyproject_deps)
+    build_block = ""
+    if build_requires is not None:
+        br = ", ".join(f'"{b}"' for b in build_requires)
+        build_block = f"[build-system]\nrequires = [{br}]\n\n"
     (svc / "pyproject.toml").write_text(
-        "[project]\n"
-        f'name = "{name.replace("/", "-")}"\n'
-        'version = "0.1.0"\n'
-        "dependencies = [\n  " + deps_block + ("\n]\n" if pyproject_deps else "]\n")
+        build_block
+        + "[project]\n"
+        + f'name = "{name.replace("/", "-")}"\n'
+        + 'version = "0.1.0"\n'
+        + "dependencies = [\n  " + deps_block + ("\n]\n" if pyproject_deps else "]\n")
     )
     (svc / "requirements.txt").write_text("\n".join(req_lines) + "\n")
 
@@ -138,3 +149,40 @@ def test_dash_underscore_dot_equivalence(
     assert check.main() == 0
     out = capsys.readouterr().out
     assert "disagree" not in out
+
+
+def test_unpinned_build_system_requires_fails(
+    fake_tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """`build-system.requires` entries (setuptools, wheel) must be pinned too.
+
+    Unpinned build-system deps let PEP 517 build envs pull the latest from PyPI
+    at build time, which makes Docker `pip install -e .` non-reproducible even
+    when [project].dependencies are fully pinned.
+    """
+    _write_service(
+        fake_tree,
+        "viewer",
+        ["pydicom==3.0.2"],
+        ["pydicom==3.0.2"],
+        build_requires=["setuptools>=61"],
+    )
+    assert check.main() == 1
+    out = capsys.readouterr().out
+    assert "[build-system].requires" in out
+    assert "setuptools>=61" in out
+
+
+def test_pinned_build_system_requires_passes(
+    fake_tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    _write_service(
+        fake_tree,
+        "viewer",
+        ["pydicom==3.0.2"],
+        ["pydicom==3.0.2"],
+        build_requires=["setuptools==82.0.1", "wheel==0.47.0"],
+    )
+    assert check.main() == 0
+    out = capsys.readouterr().out
+    assert "✓ viewer" in out

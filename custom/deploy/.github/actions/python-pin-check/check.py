@@ -71,6 +71,18 @@ def read_pyproject_deps(path: Path) -> list[str]:
     return data.get("project", {}).get("dependencies", [])
 
 
+def read_pyproject_build_requires(path: Path) -> list[str]:
+    """Return [build-system].requires entries (setuptools, wheel, etc.).
+
+    PEP 517 build environments resolve these at build time. Unpinned entries
+    let Docker builds pull mutable setuptools/wheel/etc. from PyPI on every run,
+    defeating the lockstep-pinning story for runtime deps.
+    """
+    with open(path, "rb") as f:
+        data = tomllib.load(f)
+    return data.get("build-system", {}).get("requires", [])
+
+
 def read_requirements(path: Path) -> list[str]:
     return [
         line.strip()
@@ -94,6 +106,7 @@ def check_service(svc: str) -> bool:
         return False
 
     py_deps = read_pyproject_deps(pyproject_path)
+    py_build_reqs = read_pyproject_build_requires(pyproject_path)
     req_deps = read_requirements(requirements_path)
     svc_failed = False
 
@@ -101,6 +114,13 @@ def check_service(svc: str) -> bool:
         if not is_pinned(entry):
             print(
                 f"::error file={pyproject_path}::unpinned dep in pyproject.toml: {entry!r}"
+            )
+            svc_failed = True
+
+    for entry in py_build_reqs:
+        if not is_pinned(entry):
+            print(
+                f"::error file={pyproject_path}::unpinned [build-system].requires entry: {entry!r}"
             )
             svc_failed = True
 
