@@ -194,23 +194,20 @@ jobs:
             "coverage==${COVERAGE_VERSION}"
 
       - name: Install subtree test dependencies
-        continue-on-error: true
-        run: |
-          if [ -f custom/deploy/orthanc/requirements-tests.txt ]; then
-            pip install -r custom/deploy/orthanc/requirements-tests.txt
-          fi
+        run: pip install -r custom/deploy/orthanc/requirements-tests.txt
 
       - name: Prepare outputs dir
         run: mkdir -p outputs
 
-      - name: Run pytest via coverage (full source scan)
+      - name: Run pytest (unit) with coverage gate
         run: |
-          coverage run \
-            --rcfile=.github/coverage.cfg \
-            -m pytest custom/deploy/orthanc/tests \
+          pytest custom/deploy/orthanc/tests \
+            -m unit \
+            --cov=custom/deploy/orthanc \
+            --cov-config=.github/coverage.cfg \
+            --cov-report=xml:outputs/pytest-coverage.xml \
+            --cov-fail-under=50 \
             --junitxml=outputs/pytest.xml
-          coverage xml --rcfile=.github/coverage.cfg -o outputs/pytest-coverage.xml
-          coverage report --rcfile=.github/coverage.cfg || true
 
       - name: Render summary (fails if no tests ran)
         if: always()
