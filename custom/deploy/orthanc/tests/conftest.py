@@ -1,3 +1,11 @@
+"""Auto-mark tests by location; fail loudly on orphan tests.
+
+Tests under tests/unit/   -> @pytest.mark.unit
+Tests under tests/integration/ -> @pytest.mark.integration
+Tests anywhere else that do not carry an explicit marker -> collection error.
+
+Rationale: orphan tests would silently skip under `-m unit`, hiding regressions.
+"""
 import pytest
 
 

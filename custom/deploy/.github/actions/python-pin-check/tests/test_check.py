@@ -46,6 +46,7 @@ def fake_tree(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     for svc in check.SERVICES:
         _write_service(tmp_path, svc, ["pydicom==3.0.2"], ["pydicom==3.0.2"])
     (tmp_path / "requirements-dev.txt").write_text("ruff==0.8.4\nmypy==1.13.0\n")
+    (tmp_path / "requirements-tests.txt").write_text("pytest==8.3.4\nrequests==2.32.3\njq==1.6.0\n")
     monkeypatch.chdir(tmp_path)
     return tmp_path
 

@@ -1,3 +1,8 @@
+"""sys.path setup for MLIntegration tests; minimal version.
+
+ODV-192 ships only the sys.path manipulation needed by the two seed tests.
+ODV-133 rebase replaces this file with its richer version.
+"""
 import os
 import sys
 
