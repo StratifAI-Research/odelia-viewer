@@ -186,3 +186,13 @@ def test_pinned_build_system_requires_passes(
     assert check.main() == 0
     out = capsys.readouterr().out
     assert "✓ viewer" in out
+
+
+def test_requirements_tests_unpinned_fails(
+    fake_tree: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (fake_tree / "requirements-tests.txt").write_text("pytest\nrequests==2.32.3\n")
+    assert check.main() == 1
+    out = capsys.readouterr().out
+    assert "requirements-tests.txt" in out
+    assert "unpinned dep" in out
