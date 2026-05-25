@@ -1,7 +1,6 @@
 # Packages
 node_modules
 .cursor/
-.codegraph/
 
 # Output
 build
