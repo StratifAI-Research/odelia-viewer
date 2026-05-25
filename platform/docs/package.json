@@ -71,7 +71,7 @@
     "date-fns": "3.6.0",
     "docusaurus-plugin-image-zoom": "1.0.1",
     "file-loader": "6.2.0",
-    "framer-motion": "6.2.4",
+    "framer-motion": "12.40.0",
     "glob": "10.5.0",
     "lucide-react": "0.379.0",
     "next-themes": "0.3.0",
