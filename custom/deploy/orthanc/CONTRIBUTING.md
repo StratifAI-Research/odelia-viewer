@@ -86,6 +86,6 @@ Tests outside `tests/unit/` and `tests/integration/` are rejected at collection 
 
 ### Coverage gate
 
-CI enforces `--cov-fail-under=50` against `custom/deploy/orthanc/`.
+CI enforces `--cov-fail-under=50` via the `python-test` composite action (same pattern as `python-lint`).
 
 **Currently red by design.** This PR (ODV-192) ships only two seed tests covering shared/config.py and shared/timing_utils.py — total coverage is well below the 50% floor. The CI gate exists; the test mass to clear it lives in ODV-133, which rebases onto post-192 main. Same shape as `lint-py` red-by-design until ODV-199/195/198 land. Don’t mis-diagnose `test-py` red on your PR as your regression — check the rollup against this baseline.
