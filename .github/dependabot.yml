@@ -24,10 +24,14 @@ updates:
     schedule:
       interval: weekly
 
+  # /platform/docs deps are pinned to match upstream OHIF (platform/docs/package.json).
+  # open-pull-requests-limit: 0 disables version-update PRs while leaving security
+  # advisory PRs enabled — those still open regardless of the limit.
   - package-ecosystem: npm
     directory: /platform/docs
     schedule:
-      interval: weekly
+      interval: monthly
+    open-pull-requests-limit: 0
 
   - package-ecosystem: docker
     directory: /
