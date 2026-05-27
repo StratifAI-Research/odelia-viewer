@@ -55,9 +55,11 @@ runs:
       run: |
         action_root="${{ github.action_path }}/.."
         test_dirs=$(find "$action_root" -path "*/tests/test_*.py" -exec dirname {} \; | sort -u)
-        if [ -n "$test_dirs" ]; then
-          pytest --import-mode=importlib $test_dirs --junitxml=${{ inputs.working-directory }}/outputs/pytest-actions.xml
-        fi
+        rc=0
+        for d in $test_dirs; do
+          pytest "$d" -v --tb=short || rc=$?
+        done
+        exit $rc
 
     - name: Render summary (fails if no tests ran)
       if: always()
