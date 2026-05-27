@@ -164,7 +164,7 @@ def _reset_orthanc_state():
 
 
 @pytest.fixture
-def rest_fake():
+def rest_fake(monkeypatch):
     """Records orthanc.RestApi* calls and lets tests bind responses.
 
     Usage:
@@ -185,16 +185,16 @@ def rest_fake():
         v = responses[key]
         return v(body) if callable(v) else v
 
-    orthanc.RestApiGet = lambda uri: _dispatch('GET', uri)
-    orthanc.RestApiPost = lambda uri, body=b'': _dispatch('POST', uri, body)
-    orthanc.RestApiPut = lambda uri, body=b'': _dispatch('PUT', uri, body)
-    orthanc.RestApiDelete = lambda uri: _dispatch('DELETE', uri)
+    monkeypatch.setattr(orthanc, "RestApiGet", lambda uri: _dispatch("GET", uri))
+    monkeypatch.setattr(orthanc, "RestApiPost", lambda uri, body=b"": _dispatch("POST", uri, body))
+    monkeypatch.setattr(orthanc, "RestApiPut", lambda uri, body=b"": _dispatch("PUT", uri, body))
+    monkeypatch.setattr(orthanc, "RestApiDelete", lambda uri: _dispatch("DELETE", uri))
 
     return type('RestFake', (), {'calls': calls, 'responses': responses})()
 
 
 @pytest.fixture
-def dicom_fake():
+def dicom_fake(monkeypatch):
     """Bind {instance_id: bytes} for orthanc.GetDicomForInstance calls."""
     import orthanc
     store = {}
@@ -204,5 +204,5 @@ def dicom_fake():
             raise KeyError(f'dicom_fake: no fixture for instance_id={instance_id!r}')
         return store[instance_id]
 
-    orthanc.GetDicomForInstance = _get
+    monkeypatch.setattr(orthanc, "GetDicomForInstance", _get)
     return store

@@ -50,6 +50,7 @@ runs:
           --junitxml=outputs/pytest.xml
 
     - name: Run action test suites
+      if: always()
       shell: bash
       run: |
         action_root="${{ github.action_path }}/.."

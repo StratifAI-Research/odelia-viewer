@@ -26,7 +26,7 @@ def work_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 def test_passing_suite(work_dir: Path) -> None:
     outputs = work_dir / "outputs"
-    (outputs / "pytest.xml").write_text((FIXTURES / "pytest-pass.xml").read_text())
+    (outputs / "pytest.xml").write_text((FIXTURES / "pytest-mixed.xml").read_text())
     (outputs / "pytest-coverage.xml").write_text((FIXTURES / "coverage.xml").read_text())
 
     render_summary.main()
@@ -76,7 +76,7 @@ def test_malformed_junit_xml(work_dir: Path) -> None:
 
 def test_missing_coverage_xml(work_dir: Path) -> None:
     outputs = work_dir / "outputs"
-    (outputs / "pytest.xml").write_text((FIXTURES / "pytest-pass.xml").read_text())
+    (outputs / "pytest.xml").write_text((FIXTURES / "pytest-mixed.xml").read_text())
 
     render_summary.main()
 

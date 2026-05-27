@@ -9,6 +9,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 import xml.etree.ElementTree as ET
+import importlib.metadata
 
 
 def main() -> None:
@@ -83,7 +84,7 @@ def main() -> None:
         "event": event,
         "timestamp_utc": datetime.now(timezone.utc).isoformat(),
         "tool": "pytest+coverage",
-        "tool_version": "",
+        "tool_version": importlib.metadata.version("pytest"),
         "scope_checksum": hashlib.sha256(scope_str.encode()).hexdigest(),
     }
     (out / "metadata.json").write_text(json.dumps(metadata, indent=2))

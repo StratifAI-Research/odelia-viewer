@@ -67,7 +67,7 @@ Two escape hatches if you need to ship something orthogonal:
 
 ## Python testing
 
-Tests live under `custom/deploy/orthanc/tests/`:
+Tests live under `tests/`:
 
 - `tests/unit/` — fast tests, no external services. CI’s default `pytest -m unit` runs only these.
 - `tests/integration/` — tests requiring a live Orthanc viewer. Marked `@pytest.mark.integration`; skip themselves when no viewer is reachable. Not run by default in CI.
