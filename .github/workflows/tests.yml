@@ -22,7 +22,7 @@ jobs:
   test-js:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.2
         with:
           submodules: recursive
           fetch-depth: 1
@@ -168,7 +168,7 @@ jobs:
 
       - name: Upload artifact (main push only)
         if: github.event_name == 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-js-${{ github.sha }}
           path: outputs/
@@ -177,7 +177,7 @@ jobs:
   test-py:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6.0.2
         with:
           submodules: recursive
           fetch-depth: 1
@@ -327,7 +327,7 @@ jobs:
 
       - name: Upload artifact (main push only)
         if: github.event_name == 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-py-${{ github.sha }}
           path: outputs/
