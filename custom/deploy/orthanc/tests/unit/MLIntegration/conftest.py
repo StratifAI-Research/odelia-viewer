@@ -152,3 +152,49 @@ def torchio_stub(monkeypatch):
     monkeypatch.setitem(sys.modules, 'torchio.transforms', stub.transforms)
     monkeypatch.setitem(sys.modules, 'torchio.transforms.transform', stub.transforms.transform)
     return stub
+
+
+# ---------------------------------------------------------------------------
+# WADO-RS fake — opt-in fixture for tests that call retrieve_via_wado_rs
+# or DICOMwebClient directly.
+# ---------------------------------------------------------------------------
+
+@pytest.fixture
+def wado_fake(monkeypatch):
+    """Fake DICOMwebClient injected into shared.wado_retrieval.
+
+    Usage:
+        def test_x(wado_fake):
+            wado_fake.series_responses[("1.2.100", "1.2.200")] = [make_dataset()]
+            # call code that uses retrieve_via_wado_rs(...)
+            assert wado_fake.calls == [("retrieve_series", "1.2.100", "1.2.200")]
+    """
+    calls = []
+    series_responses = {}
+    metadata_responses = {}
+
+    class FakeDICOMwebClient:
+        def __init__(self, url=""):
+            self.url = url
+
+        def retrieve_series(self, study_instance_uid="", series_instance_uid=""):
+            key = (study_instance_uid, series_instance_uid)
+            calls.append(("retrieve_series", *key))
+            if key not in series_responses:
+                raise ConnectionError(f"wado_fake: no series response for {key}")
+            return series_responses[key]
+
+        def retrieve_series_metadata(self, study_instance_uid="", series_instance_uid=""):
+            key = (study_instance_uid, series_instance_uid)
+            calls.append(("retrieve_series_metadata", *key))
+            if key not in metadata_responses:
+                raise ConnectionError(f"wado_fake: no metadata response for {key}")
+            return metadata_responses[key]
+
+    monkeypatch.setattr("shared.wado_retrieval.DICOMwebClient", FakeDICOMwebClient)
+
+    return type("WadoFake", (), {
+        "calls": calls,
+        "series_responses": series_responses,
+        "metadata_responses": metadata_responses,
+    })()
