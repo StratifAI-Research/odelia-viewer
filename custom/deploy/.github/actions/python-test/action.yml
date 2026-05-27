@@ -56,7 +56,7 @@ runs:
         action_root="${{ github.action_path }}/.."
         test_dirs=$(find "$action_root" -path "*/tests/test_*.py" -exec dirname {} \; | sort -u)
         if [ -n "$test_dirs" ]; then
-          pytest $test_dirs --junitxml=${{ inputs.working-directory }}/outputs/pytest-actions.xml
+          pytest --import-mode=importlib $test_dirs --junitxml=${{ inputs.working-directory }}/outputs/pytest-actions.xml
         fi
 
     - name: Render summary (fails if no tests ran)
