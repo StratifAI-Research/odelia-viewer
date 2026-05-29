@@ -110,12 +110,12 @@ def test_ups_update_workitem_wrong_method_returns_405(out, router):
     assert out.status == 405
 
 
-def test_ups_update_workitem_bad_json_returns_500(out, router):
+def test_ups_update_workitem_bad_json_returns_400(out, router):
     router.UPSUpdateWorkitem(
         out, "/ups-rs/workitems/2.25.444",
         method="POST", body="not-json",
     )
-    assert out.status == 500
+    assert out.status == 400
 
 
 # ---------------------------------------------------------------------------
