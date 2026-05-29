@@ -119,8 +119,15 @@ def _install_orthanc_stub():
     m.RestApiGet = m.RestApiPost = m.RestApiPut = m.RestApiDelete = _no_orthanc_handler
     m.GetDicomForInstance = _no_orthanc_handler
 
-    # ---- Logging: no-op ----
-    m.LogInfo = m.LogWarning = m.LogError = lambda msg: None
+    # ---- Logging: capture into m._log_calls so tests can assert on log-only side effects ----
+    m._log_calls = []  # list of (level, msg) tuples; cleared by _reset_orthanc_state
+    def _make_logger(level):
+        def _log(msg):
+            m._log_calls.append((level, msg))
+        return _log
+    m.LogInfo = _make_logger("info")
+    m.LogWarning = _make_logger("warning")
+    m.LogError = _make_logger("error")
 
     sys.modules['orthanc'] = m
 
@@ -168,6 +175,7 @@ def _reset_orthanc_state():
     orthanc._kv.clear()
     orthanc._rest_callbacks.clear()
     orthanc._onchange_callbacks.clear()
+    orthanc._log_calls.clear()
     # restore default raisers in case a prior test bound a fake
     orthanc.RestApiGet = orthanc.RestApiPost = orthanc.RestApiPut = orthanc.RestApiDelete = _no_orthanc_handler
     orthanc.GetDicomForInstance = _no_orthanc_handler
