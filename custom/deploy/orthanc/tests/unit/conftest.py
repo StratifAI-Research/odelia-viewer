@@ -107,7 +107,10 @@ def _install_orthanc_stub():
             return self._items[self._idx][1]
 
     def _iter(bucket):
-        items = [(k, v) for (b, k), v in sorted(m._kv.items()) if b == bucket]
+        # Real Orthanc's CreateKeysValuesIterator order is unspecified. Yielding
+        # reverse-sorted (rather than ascending) deterministically surfaces tests
+        # that depend on insertion- or alphabetical-order iteration.
+        items = [(k, v) for (b, k), v in sorted(m._kv.items(), reverse=True) if b == bucket]
         return _KVIterator(items)
 
     m.StoreKeyValue = _put
@@ -179,11 +182,14 @@ def _reset_orthanc_state():
     # restore default raisers in case a prior test bound a fake
     orthanc.RestApiGet = orthanc.RestApiPost = orthanc.RestApiPut = orthanc.RestApiDelete = _no_orthanc_handler
     orthanc.GetDicomForInstance = _no_orthanc_handler
-    # Drop ALL `ups`-prefixed entries — both viewer/ups and router/ups land in
-    # sys.modules under the bare `ups` name once their side imports first; evict
-    # between tests so the second side imports cleanly.
-    for key in [k for k in sys.modules if k == 'ups' or k.startswith('ups.')]:
-        del sys.modules[key]
+    # Evict modules that load under the same bare name from both viewer/ and router/
+    # subtrees. Without this, the second side imports a stale module reference from
+    # the first side's path. Includes top-level service modules (server, router,
+    # feedback_db, feedback_routes, wado_utils) in addition to the `ups` package.
+    _EVICT_NAMES = ('ups', 'server', 'router', 'feedback_db', 'feedback_routes', 'wado_utils')
+    for key in list(sys.modules):
+        if key in _EVICT_NAMES or any(key.startswith(n + '.') for n in _EVICT_NAMES):
+            del sys.modules[key]
     yield
 
 
