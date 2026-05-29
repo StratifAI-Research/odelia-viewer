@@ -103,4 +103,8 @@ def test_generate_attention_overlays_dtype_is_uint8(tmp_path, torch_stub, torchi
     weight_tensor.unsqueeze.return_value = weight_tensor
 
     result = preprocessing.generate_attention_overlays(img_tensor, weight_tensor, model_path)
+    import base64
+    decoded = base64.b64decode(result['data'])
     assert result['dtype'] == 'uint8'
+    assert result['shape'] == [5, 16, 16, 3]
+    assert len(decoded) == int(np.prod(result['shape']))

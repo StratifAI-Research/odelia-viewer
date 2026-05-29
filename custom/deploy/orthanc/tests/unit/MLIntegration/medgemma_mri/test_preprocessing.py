@@ -56,15 +56,17 @@ def test_normalize_slice_output_shape_preserved():
 
 
 def test_normalize_slice_uses_percentile_windowing():
-    """Outlier beyond 99th percentile should be clipped but not break output."""
+    """Outlier at (0,0) must saturate to 255; in-range values normalize to [0, <255]."""
     import preprocessing
     arr = np.zeros(100, dtype=np.float32)
-    arr[0] = 1000.0   # massive outlier
+    arr[0] = 1000.0   # massive outlier at position (0,0) after reshape
     arr[1:] = np.linspace(0, 10, 99)
     arr = arr.reshape(10, 10)
     result = preprocessing.normalize_slice(arr)
-    assert result.min() >= 0
-    assert result.max() <= 255
+    assert result.dtype == np.uint8
+    assert result[0, 0] == 255              # outlier clipped to p_high -> normalizes to max
+    assert (result == 255).sum() == 1       # only the outlier saturates; bulk wasn't all-clipped
+    assert result.min() == 0                # lowest in-range value normalizes to 0
 
 
 def test_read_dicom_volume_raises_on_missing_dcm(tmp_path):
@@ -121,7 +123,7 @@ def test_extract_central_slices_fewer_slices_than_volume(sitk_stub, monkeypatch)
 
     with patch('preprocessing.read_dicom_volume', return_value=MagicMock()):
         result = preprocessing.extract_central_slices('/fake/dicom', num_slices=20)
-    assert len(result) <= 10
+    assert len(result) == 10
 
 
 def test_extract_central_slices_single_slice(sitk_stub, monkeypatch):

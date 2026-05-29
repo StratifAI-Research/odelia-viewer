@@ -27,11 +27,11 @@ def test_get_subscribers_unknown_workitem_returns_empty(sub_storage):
     assert subs == []
 
 
-def test_add_subscription_idempotent(sub_storage):
+def test_add_subscription_same_pair_overwrites(sub_storage):
     sub_storage.add_subscription("wuid.2", "http://sub-b")
     sub_storage.add_subscription("wuid.2", "http://sub-b")
     subs = sub_storage.get_subscribers("wuid.2")
-    # Dedup: subscriber should appear only once
+    # Same (uid, url) pair overwrites the existing KV entry (key collision)
     assert subs.count("http://sub-b") == 1
 
 

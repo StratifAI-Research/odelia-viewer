@@ -77,7 +77,9 @@ def test_compute_subtraction_from_nifti_default_output_path(tmp_path, _stub_sitk
     assert str(tmp_path) in result
 
 
-def test_compute_subtraction_array_floors_to_zero(_stub_sitk_and_evict):
+def test_compute_subtraction_array_shifts_to_non_negative_origin(_stub_sitk_and_evict):
+    """Production does sub - sub.min() (shift), not clipping.
+    For pre=[[10,20],[30,40]], post=[[5,25],[25,45]] -> raw=[[-5,5],[-5,5]] -> shifted=[[0,10],[0,10]]."""
     import dicom_utils
     import SimpleITK as sitk
     pre_arr = np.array([[[10, 20], [30, 40]]], dtype=np.float32)
@@ -86,5 +88,6 @@ def test_compute_subtraction_array_floors_to_zero(_stub_sitk_and_evict):
     pre_img = MagicMock()
     post_img = MagicMock()
     result = dicom_utils._compute_subtraction_array(pre_img, post_img)
-    assert result.min() >= 0
+    assert result.min() == 0
+    assert result.max() == 10
     assert result.dtype == np.uint16

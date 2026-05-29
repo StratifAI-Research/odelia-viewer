@@ -129,18 +129,26 @@ def test_create_workitem_happy_path_returns_200(out, routes):
 
 
 def test_create_workitem_starts_background_thread(out, routes):
-    """Verify the background processing thread is started."""
+    """Verify Thread is constructed with daemon=True, target invokes process_workitem, start() is called."""
     body = json.dumps({
         "study_uid": "1.2.3",
         "series_uids": ["1.2.3.1"],
     }).encode()
     calls = []
-    with mock.patch('ups.routes.process_workitem', side_effect=lambda w: calls.append(w.workitem_uid)):
-        with mock.patch('threading.Thread') as mock_thread:
-            mock_thread.return_value.start = lambda: None
-            routes.CreateWorkitem(out, '/ups-rs/workitems', method='POST', body=body, groups=[])
-    # Thread constructor was called
-    assert mock_thread.called
+    with mock.patch('ups.routes.process_workitem',
+                    side_effect=lambda w: calls.append(w.workitem_uid)), \
+         mock.patch('threading.Thread') as mock_thread:
+        mock_thread.return_value.start = mock.MagicMock()
+        routes.CreateWorkitem(out, '/ups-rs/workitems', method='POST', body=body, groups=[])
+
+        mock_thread.assert_called_once()
+        assert mock_thread.call_args.kwargs.get('daemon') is True
+        mock_thread.return_value.start.assert_called_once()
+
+        # The captured target callable must invoke process_workitem.
+        target = mock_thread.call_args.kwargs['target']
+        target()
+        assert len(calls) == 1
 
 
 # ---------------------------------------------------------------------------
@@ -233,7 +241,7 @@ def test_query_workitems_returns_all_when_no_filter(out, routes):
     assert out.status == 200
     result = json.loads(out.body)
     assert isinstance(result, list)
-    assert len(result) >= 1
+    assert len(result) == 1
 
 
 def test_query_workitems_state_filter(out, routes):
@@ -353,12 +361,9 @@ def test_serve_manifest_wrong_method_returns_405(out, routes):
 
 
 def test_serve_manifest_missing_file_returns_404(out, routes, tmp_path):
-    with mock.patch.dict(os.environ, {"AI_MANIFEST_PATH": str(tmp_path / "no_manifest.json")}):
-        # Reload routes so MANIFEST_PATH picks up the patched env
-        _load_ups_routes()
-        from ups import routes as r
-        with mock.patch.object(r, 'MANIFEST_PATH', str(tmp_path / "no_manifest.json")):
-            r.ServeManifest(out, '/manifest', method='GET', body=b'', groups=[])
+    from ups import routes as r
+    with mock.patch.object(r, 'MANIFEST_PATH', str(tmp_path / "no_manifest.json")):
+        r.ServeManifest(out, '/manifest', method='GET', body=b'', groups=[])
     assert out.status == 404
 
 

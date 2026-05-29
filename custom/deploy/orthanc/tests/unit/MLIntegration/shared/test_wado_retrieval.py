@@ -101,8 +101,11 @@ def test_retrieve_via_wado_rs_raises_dicom_retrieval_error_on_failure():
             }])
 
 
-def test_retrieve_via_wado_rs_empty_list_returns_empty():
-    from shared.wado_retrieval import retrieve_via_wado_rs
-
-    results = retrieve_via_wado_rs([])
+def test_retrieve_via_wado_rs_empty_list_skips_client_construction():
+    """Empty input must short-circuit before constructing a DICOMwebClient (no I/O)."""
+    from unittest import mock
+    with mock.patch('shared.wado_retrieval.DICOMwebClient') as mock_cls:
+        from shared.wado_retrieval import retrieve_via_wado_rs
+        results = retrieve_via_wado_rs([])
     assert results == []
+    mock_cls.assert_not_called()

@@ -167,35 +167,40 @@ def test_notify_all_subscribers_includes_global_subscriber(proc, fake_workitem):
 
 def test_process_workitem_transitions_state_to_in_progress(proc, fake_workitem, monkeypatch):
     """
-    Smoke: process_workitem must flip state to IN_PROGRESS before doing heavy work.
-    We mock the heavy tail (model backend + SR upload). If the function bails
-    before completing, the state must still be IN_PROGRESS (or a terminal state),
-    never still SCHEDULED.
+    With a 500 model mock, process_workitem must move SCHEDULED -> IN_PROGRESS -> CANCELED.
+    Captures the state sequence via a wrapped store_workitem so we can pin the transition.
     """
-    # Mock the network call to the model backend
     mock_model_resp = SimpleNamespace(
         status_code=500,
         text="mocked model error",
         json=lambda: {},
     )
     monkeypatch.setattr('ups.processor.requests.post', lambda *a, **kw: mock_model_resp)
-
-    # Patch notify_all_subscribers — the actual symbol process_workitem calls
     monkeypatch.setattr(proc, 'notify_all_subscribers', lambda *a, **kw: None)
 
-    initial_state = fake_workitem.get_state()
-    assert initial_state == 'SCHEDULED'
+    # Patch via proc.ups_storage (NOT a fresh `from ups.storage import ...` — that
+    # would re-import after `_make_workitem` evicted `ups.*` from sys.modules,
+    # producing a different singleton from the one process_workitem actually uses).
+    states = []
+    real_store = proc.ups_storage.store_workitem
+
+    def _capture_then_store(wi):
+        states.append(wi.get_state())
+        real_store(wi)
+
+    monkeypatch.setattr(proc.ups_storage, 'store_workitem', _capture_then_store)
+
+    assert fake_workitem.get_state() == 'SCHEDULED'
 
     try:
         proc.process_workitem(fake_workitem)
     except Exception:
         pass  # processor may bail out on model error; that's expected
 
-    final_state = fake_workitem.get_state()
-    # Must have left SCHEDULED — it's now either IN_PROGRESS, CANCELED, FAILED, or COMPLETED
-    assert final_state != 'SCHEDULED', (
-        f"process_workitem never changed state from SCHEDULED (still {final_state})"
-    )
+    # The state sequence must show IN_PROGRESS before terminating in CANCELED.
+    # Captures any silent regression that skips the IN_PROGRESS transition.
+    assert 'IN_PROGRESS' in states, f"expected IN_PROGRESS in transitions, got {states}"
+    assert states[-1] == 'CANCELED', f"expected final state CANCELED, got {states[-1]!r}"
 
 
 def test_process_workitem_cancels_on_model_network_error(proc, fake_workitem, monkeypatch):
@@ -238,4 +243,4 @@ def test_process_workitem_stores_updated_workitem(proc, fake_workitem, monkeypat
     from ups.storage import ups_storage
     stored = ups_storage.get_workitem(fake_workitem.workitem_uid)
     assert stored is not None
-    assert stored.get_state() != 'SCHEDULED'
+    assert stored.get_state() == 'CANCELED'
