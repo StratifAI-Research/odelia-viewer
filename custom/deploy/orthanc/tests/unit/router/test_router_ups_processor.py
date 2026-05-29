@@ -246,3 +246,106 @@ def test_process_workitem_stores_updated_workitem(proc, fake_workitem, monkeypat
     stored = ups_storage.get_workitem(fake_workitem.workitem_uid)
     assert stored is not None
     assert stored.get_state() == 'CANCELED'
+
+
+# ---------------------------------------------------------------------------
+# R1, R2: process_workitem happy path (bilateral and bilateral_with_heatmap)
+# ---------------------------------------------------------------------------
+
+def _make_minimal_metadata():
+    """Minimal DICOM-JSON metadata for retrieve_series_metadata_sorted's first instance."""
+    return (
+        {
+            "00200032": {"Value": [0.0, 0.0, 0.0]},
+            "00200037": {"Value": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0]},
+            "00200052": {"Value": ["1.2.3.frame"]},
+            "00100010": {"Value": [{"Alphabetic": "TEST^PATIENT"}]},
+            "00100020": {"Value": ["P001"]},
+            "0020000D": {"Value": ["1.2.3"]},
+            "00080016": {"Value": ["1.2.840.10008.5.1.4.1.1.4"]},
+            "00080018": {"Value": ["1.2.3.4.1"]},
+        },
+        [[0.0, 0.0, 0.0], [0.0, 0.0, 1.0]],
+        1.0,
+    )
+
+
+def _install_fake_server(monkeypatch, response_format="bilateral"):
+    """Stub the lazy `from server import (...)` in process_workitem step 4."""
+    import sys, types
+    fake = types.ModuleType("server")
+    fake.detect_response_format = lambda results: response_format
+    fake.create_bilateral_sr = lambda original_dicom, results: (b"SR_BYTES", "20260101", "120000.000", "1.2.3.sr.uid")
+    fake.create_multiframe_attention_sc = lambda *a, **kw: b"SC_BYTES"
+    monkeypatch.setitem(sys.modules, "server", fake)
+    return fake
+
+
+def test_process_workitem_completes_on_bilateral_response(proc, fake_workitem, monkeypatch):
+    """Happy path: 200 model + 200 upload -> final state COMPLETED."""
+    states = []
+    real_store = proc.ups_storage.store_workitem
+    def _capture(wi):
+        states.append(wi.get_state())
+        real_store(wi)
+    monkeypatch.setattr(proc.ups_storage, 'store_workitem', _capture)
+    monkeypatch.setattr(proc, 'notify_all_subscribers', lambda *a, **kw: None)
+
+    model_resp = SimpleNamespace(
+        status_code=200, text="ok",
+        json=lambda: {"left": {"prediction": "Benign", "confidence": 95.0},
+                       "right": {"prediction": "Malignant", "confidence": 80.0}},
+    )
+    upload_resp = SimpleNamespace(status_code=200, text="ok", json=lambda: {})
+    posts = []
+    def _post(url, **kw):
+        posts.append((url, kw))
+        if "/instances" in url:
+            return upload_resp
+        return model_resp
+    monkeypatch.setattr('ups.processor.requests.post', _post)
+    monkeypatch.setattr(proc, 'retrieve_series_metadata_sorted',
+                        lambda urls: _make_minimal_metadata())
+    _install_fake_server(monkeypatch, response_format="bilateral")
+
+    proc.process_workitem(fake_workitem)
+
+    assert states[-1] == 'COMPLETED', f"expected final COMPLETED, got states={states}"
+    # Bilateral -> exactly one upload (SR only), no SC.
+    upload_calls = [u for u in posts if "/instances" in u[0]]
+    assert len(upload_calls) == 1
+    assert upload_calls[0][1].get("data") == b"SR_BYTES"
+
+
+def test_process_workitem_bilateral_with_heatmap_uploads_sr_and_sc(proc, fake_workitem, monkeypatch):
+    """bilateral_with_heatmap branch: when attention_maps.data is set, upload BOTH SR and SC."""
+    monkeypatch.setattr(proc.ups_storage, 'store_workitem', lambda wi: None)
+    monkeypatch.setattr(proc, 'notify_all_subscribers', lambda *a, **kw: None)
+
+    model_resp = SimpleNamespace(
+        status_code=200, text="ok",
+        json=lambda: {
+            "left": {"prediction": "Benign", "confidence": 95.0},
+            "right": {"prediction": "Malignant", "confidence": 80.0},
+            "attention_maps": {"data": "BASE64DATA", "shape": [5, 16, 16, 3], "dtype": "uint8"},
+        },
+    )
+    upload_resp = SimpleNamespace(status_code=200, text="ok", json=lambda: {})
+    posts = []
+    def _post(url, **kw):
+        posts.append((url, kw))
+        if "/instances" in url:
+            return upload_resp
+        return model_resp
+    monkeypatch.setattr('ups.processor.requests.post', _post)
+    monkeypatch.setattr(proc, 'retrieve_series_metadata_sorted',
+                        lambda urls: _make_minimal_metadata())
+    _install_fake_server(monkeypatch, response_format="bilateral_with_heatmap")
+
+    proc.process_workitem(fake_workitem)
+
+    upload_calls = [u for u in posts if "/instances" in u[0]]
+    upload_payloads = [u[1].get("data") for u in upload_calls]
+    assert b"SR_BYTES" in upload_payloads
+    assert b"SC_BYTES" in upload_payloads
+    assert len(upload_calls) == 2

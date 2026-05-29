@@ -107,3 +107,35 @@ def test_input_mapping_round_trips(mk_workitem):
     assert result['mapping']['leftCC'] == '1.2.100'
     assert result['mapping']['leftMLO'] == '1.2.101'
     assert result['input_configuration_id'] == 'cfg-v1'
+
+
+# ---------------------------------------------------------------------------
+# R4: CANCELED state records reason (00741238) and timestamp (00404052)
+# ---------------------------------------------------------------------------
+
+def _mk_wi(mk_workitem):
+    return mk_workitem(
+        study_uid='1.2.3', series_uids=['1.2.3.1'],
+        wado_rs_retrieval=[{'retrieval_url': 'http://x/studies/1.2.3',
+                             'study_uid': '1.2.3', 'series_uid': '1.2.3.1'}],
+    )
+
+
+def test_update_state_canceled_records_reason_and_timestamp(mk_workitem):
+    wi = _mk_wi(mk_workitem)
+    wi.update_state("CANCELED", cancellation_reason="Model returned 500")
+    # State updated
+    assert wi.data["00741000"]["Value"][0] == "CANCELED"
+    # Reason persisted in tag 00741238
+    assert wi.data["00741238"]["Value"][0] == "Model returned 500"
+    # Cancellation timestamp tag present (00404052) and non-empty
+    assert wi.data["00404052"]["Value"][0]
+
+
+def test_update_state_canceled_without_reason_still_records_timestamp(mk_workitem):
+    """No reason argument: timestamp still recorded; reason tag absent."""
+    wi = _mk_wi(mk_workitem)
+    wi.update_state("CANCELED")
+    assert wi.data["00741000"]["Value"][0] == "CANCELED"
+    assert wi.data["00404052"]["Value"][0]
+    assert "00741238" not in wi.data
