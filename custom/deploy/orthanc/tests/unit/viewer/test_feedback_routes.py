@@ -266,3 +266,89 @@ def test_register_feedback_endpoints_registers_6_routes(fb_routes):
     assert "/feedback/export.csv" in uris
     assert "/feedback/health" in uris
     assert len(uris) == 6
+
+
+# ---------------------------------------------------------------------------
+# V4: 409 body shape on duplicate submit (frontend depends on {code, message})
+# ---------------------------------------------------------------------------
+
+def test_submit_duplicate_409_body_has_expected_shape(out, fb_routes):
+    fb_routes.FeedbackSubmit(out, "/feedback/submit", method="POST", body=json.dumps(_valid_submit()))
+    out2 = type(out)()
+    fb_routes.FeedbackSubmit(out2, "/feedback/submit", method="POST", body=json.dumps(_valid_submit()))
+    assert out2.status == 409
+    body = json.loads(out2.body)
+    assert body == {"code": 409, "message": "Already submitted; use edit flow"}
+
+
+# ---------------------------------------------------------------------------
+# V2: FeedbackRead forwards includeUsers/includeHistory query params
+# ---------------------------------------------------------------------------
+
+def test_feedback_read_include_users_propagates_to_response(out, fb_routes):
+    fb_routes.FeedbackSubmit(out, "/feedback/submit", method="POST", body=json.dumps(_valid_submit()))
+    out2 = type(out)()
+    fb_routes.FeedbackRead(
+        out2, "/feedback", method="GET",
+        get={
+            "study_uid": "1.2.3", "model_name": "M", "model_version": "1",
+            "result_ts": "2026-01-01T00:00:00Z", "includeUsers": "true",
+        },
+    )
+    assert out2.status == 200
+    data = json.loads(out2.body)
+    assert "users" in data
+    assert len(data["users"]) == 1
+
+
+def test_feedback_read_include_history_propagates_to_response(out, fb_routes):
+    fb_routes.FeedbackSubmit(out, "/feedback/submit", method="POST", body=json.dumps(_valid_submit()))
+    p2 = {**_valid_submit(), "verdict_L": -1, "edited": True}
+    out2 = type(out)()
+    fb_routes.FeedbackSubmit(out2, "/feedback/submit", method="POST", body=json.dumps(p2))
+    out3 = type(out)()
+    fb_routes.FeedbackRead(
+        out3, "/feedback", method="GET",
+        get={
+            "study_uid": "1.2.3", "model_name": "M", "model_version": "1",
+            "result_ts": "2026-01-01T00:00:00Z", "includeHistory": "true",
+        },
+    )
+    assert out3.status == 200
+    data = json.loads(out3.body)
+    assert "history" in data
+    assert len(data["history"]) == 2
+
+
+def test_export_ndjson_scope_current_returns_current_row_only(out, fb_routes):
+    """Exercise the SQL-rewrite path through the route handler."""
+    fb_routes.FeedbackSubmit(out, "/feedback/submit", method="POST", body=json.dumps(_valid_submit()))
+    p2 = {**_valid_submit(), "verdict_L": -1, "edited": True}
+    out2 = type(out)()
+    fb_routes.FeedbackSubmit(out2, "/feedback/submit", method="POST", body=json.dumps(p2))
+    out3 = type(out)()
+    fb_routes.FeedbackExportNdjson(out3, "/feedback/export.ndjson", method="GET",
+                                    get={"scope": "current"})
+    assert out3.status == 200
+    lines = [l for l in out3.body.split("\n") if l]
+    assert len(lines) == 1                       # current view: only latest event
+    obj = json.loads(lines[0])
+    assert obj["verdict_L"] == -1
+    assert obj["submission_kind"] == "edit"
+
+
+def test_export_csv_model_name_filter_excludes_other(out, fb_routes):
+    """model_name query param is forwarded into the SQL WHERE clause."""
+    fb_routes.FeedbackSubmit(out, "/feedback/submit", method="POST", body=json.dumps(_valid_submit()))
+    other = {**_valid_submit(), "study_uid": "9.9.9", "model_name": "OTHER"}
+    out2 = type(out)()
+    fb_routes.FeedbackSubmit(out2, "/feedback/submit", method="POST", body=json.dumps(other))
+    out3 = type(out)()
+    fb_routes.FeedbackExportCsv(out3, "/feedback/export.csv", method="GET",
+                                 get={"model_name": "M"})
+    assert out3.status == 200
+    # Header + 1 data row for model M; "OTHER" model excluded.
+    lines = [l for l in out3.body.split("\n") if l]
+    assert len(lines) == 2
+    assert "M," in lines[1]
+    assert "OTHER," not in lines[1]

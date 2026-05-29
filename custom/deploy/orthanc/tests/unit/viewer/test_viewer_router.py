@@ -331,3 +331,56 @@ def test_send_to_ai_missing_study_id_returns_400(out, router):
     )
     assert out.status == 400
     assert "study_id" in out.body
+
+
+# ---------------------------------------------------------------------------
+# V5: register_feedback_endpoints fallback when feedback_routes import fails
+# ---------------------------------------------------------------------------
+
+def test_register_feedback_endpoints_is_none_when_feedback_routes_lacks_register(monkeypatch):
+    """When import succeeds but register_feedback_endpoints attr is missing, fallback engages."""
+    import sys
+    import types as _types
+    # Install a fake feedback_routes module WITHOUT register_feedback_endpoints.
+    fake = _types.ModuleType("feedback_routes")
+    monkeypatch.setitem(sys.modules, "feedback_routes", fake)
+    # Evict router so re-import picks up the fake.
+    sys.modules.pop("router", None)
+    import router as r
+    assert r.register_feedback_endpoints is None
+
+
+def test_no_feedback_uris_registered_when_register_is_none(monkeypatch):
+    """When register_feedback_endpoints is None, the module-load guard skips registration."""
+    import sys
+    import types as _types
+    import orthanc
+    orthanc._rest_callbacks.clear()
+    fake = _types.ModuleType("feedback_routes")
+    monkeypatch.setitem(sys.modules, "feedback_routes", fake)
+    sys.modules.pop("router", None)
+    import router  # noqa: F401  (re-import triggers callback registration)
+    feedback_uris = [uri for uri, _ in orthanc._rest_callbacks if uri.startswith("/feedback")]
+    assert feedback_uris == []
+
+
+# ---------------------------------------------------------------------------
+# V6: UPSGetWorkitem / UPSUpdateWorkitem ups_storage=None branches
+# ---------------------------------------------------------------------------
+
+def test_ups_get_workitem_returns_500_when_storage_not_initialized(out, router, monkeypatch):
+    monkeypatch.setattr(router, "ups_storage", None)
+    router.UPSGetWorkitem(out, "/ups-rs/workitems/2.25.999", method="GET")
+    assert out.status == 500
+    assert "UPS storage not initialized" in (out.body or "")
+
+
+def test_ups_update_workitem_falls_back_to_body_state_when_storage_unavailable(out, router, monkeypatch):
+    """When ups_storage is falsy, UPSUpdateWorkitem extracts the state from the body (no persistence) and still answers 200."""
+    monkeypatch.setattr(router, "ups_storage", None)
+    body = _make_workitem_body(uid="2.25.fallback", state="IN_PROGRESS")
+    router.UPSUpdateWorkitem(out, "/ups-rs/workitems/2.25.fallback", method="POST", body=body)
+    assert out.status == 200
+    import json as _json
+    resp = _json.loads(out.body)
+    assert resp == {"status": "updated"}
