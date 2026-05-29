@@ -109,7 +109,7 @@ def _install_orthanc_stub():
     def _iter(bucket):
         # Real Orthanc's CreateKeysValuesIterator order is unspecified. Yielding
         # reverse-sorted (rather than ascending) deterministically surfaces tests
-        # that depend on insertion- or alphabetical-order iteration.
+        # that depend on alphabetical/ascending iteration.
         items = [(k, v) for (b, k), v in sorted(m._kv.items(), reverse=True) if b == bucket]
         return _KVIterator(items)
 

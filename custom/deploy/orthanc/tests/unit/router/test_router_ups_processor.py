@@ -180,6 +180,8 @@ def test_process_workitem_transitions_state_to_in_progress(proc, fake_workitem, 
     # Patch via proc.ups_storage (NOT a fresh `from ups.storage import ...` — that
     # would re-import after `_make_workitem` evicted `ups.*` from sys.modules,
     # producing a different singleton from the one process_workitem actually uses).
+    # The post-call `assert states` below catches any regression where the patch
+    # fails to take effect (e.g. if process_workitem starts using a fresh import).
     states = []
     real_store = proc.ups_storage.store_workitem
 
@@ -198,6 +200,7 @@ def test_process_workitem_transitions_state_to_in_progress(proc, fake_workitem, 
 
     # The state sequence must show IN_PROGRESS before terminating in CANCELED.
     # Captures any silent regression that skips the IN_PROGRESS transition.
+    assert states, "store_workitem was never invoked — process_workitem returned without storing"
     assert 'IN_PROGRESS' in states, f"expected IN_PROGRESS in transitions, got {states}"
     assert states[-1] == 'CANCELED', f"expected final state CANCELED, got {states[-1]!r}"
 
