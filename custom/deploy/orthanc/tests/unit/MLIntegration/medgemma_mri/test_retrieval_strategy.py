@@ -6,7 +6,6 @@ returned dataset's SeriesInstanceUID).  This differs from BC's implementation.
 """
 import sys
 import inspect
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 import pytest
 
@@ -49,7 +48,6 @@ def test_wado_rs_retrieval_retrieve_uses_only_first_series(tmp_path):
     """medgemma WadoRSRetrieval only passes the first series to retrieve_via_wado_rs."""
     from retrieval_strategy import WadoRSRetrieval
     from shared.config import StorageConfig
-    import pydicom
 
     cfg = StorageConfig(image_folder=tmp_path)
     info = [

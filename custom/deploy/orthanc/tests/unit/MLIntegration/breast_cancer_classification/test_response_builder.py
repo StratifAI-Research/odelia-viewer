@@ -1,5 +1,4 @@
 """Tests for breast-cancer-classification/response_builder.py — build_bilateral_classification."""
-import pytest
 
 
 def test_build_bilateral_classification_returns_dict():

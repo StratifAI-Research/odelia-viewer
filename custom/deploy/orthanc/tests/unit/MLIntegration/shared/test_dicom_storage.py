@@ -1,6 +1,5 @@
 """Tests for shared/dicom_storage.py — DICOM file storage utilities."""
 import io
-from pathlib import Path
 
 import pydicom
 import pytest
@@ -9,7 +8,7 @@ import pytest
 def _make_fake_dataset(idx=0):
     """Return a minimal pydicom Dataset compatible with pydicom 3.x."""
     from pydicom.dataset import Dataset, FileMetaDataset
-    from pydicom.uid import ExplicitVRLittleEndian, UID, generate_uid
+    from pydicom.uid import ExplicitVRLittleEndian, UID
 
     sop_uid = f'1.2.3.{idx}'
     ds = Dataset()

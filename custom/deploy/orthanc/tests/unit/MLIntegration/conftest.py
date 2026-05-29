@@ -24,7 +24,6 @@ if _MLI_DIR not in sys.path:
 if _HERE not in sys.path:
     sys.path.append(_HERE)
 
-from _colliders import ML_SERVICE_COLLIDERS  # noqa: E402 — after sys.path setup
 
 
 # ---------------------------------------------------------------------------

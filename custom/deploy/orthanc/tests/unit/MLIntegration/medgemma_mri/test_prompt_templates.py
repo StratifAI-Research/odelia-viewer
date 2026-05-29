@@ -2,7 +2,6 @@
 
 No heavy deps — PIL is available in venv.  No stubs required.
 """
-from unittest.mock import MagicMock
 from PIL import Image as PILImage
 import pytest
 

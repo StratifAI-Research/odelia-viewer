@@ -1,7 +1,5 @@
 """Unit tests for viewer/ups/storage.py — KV-backed UPS workitem storage."""
-import json
 import sys
-import os
 
 import pytest
 

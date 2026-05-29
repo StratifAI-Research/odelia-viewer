@@ -7,7 +7,6 @@ tests/unit/MLIntegration/conftest.py.
 import sys
 from pathlib import Path
 import dataclasses
-import pytest
 
 
 def test_breast_cancer_config_fields_present(torch_stub):

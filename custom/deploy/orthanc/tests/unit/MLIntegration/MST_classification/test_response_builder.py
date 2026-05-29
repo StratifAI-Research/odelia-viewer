@@ -1,6 +1,5 @@
 """Tests for MST-classification/response_builder.py — build_bilateral_response."""
 import numpy as np
-import pytest
 
 
 def _make_probs(left_vals, right_vals):

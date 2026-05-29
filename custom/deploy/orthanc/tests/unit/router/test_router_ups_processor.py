@@ -5,7 +5,6 @@ Coverage:
   - notify_all_subscribers: calls notify_subscriber for each registered subscriber
   - process_workitem: smoke test — at minimum transitions to IN_PROGRESS before heavy work
 """
-import json
 import sys
 from types import SimpleNamespace
 from unittest import mock

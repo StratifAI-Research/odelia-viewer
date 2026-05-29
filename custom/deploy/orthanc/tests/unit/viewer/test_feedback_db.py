@@ -1,6 +1,5 @@
 """Unit tests for viewer/feedback_db.py — sqlite-backed feedback storage."""
 import importlib
-import json
 
 import pytest
 

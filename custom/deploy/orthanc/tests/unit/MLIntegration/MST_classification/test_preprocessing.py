@@ -6,10 +6,8 @@ tests/unit/MLIntegration/conftest.py.
 """
 import sys
 import types
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 import numpy as np
-import pytest
 
 
 def test_prepare_for_inference_returns_scalar_image(tmp_path, torch_stub, torchio_stub, monkeypatch):

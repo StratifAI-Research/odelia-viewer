@@ -3,9 +3,7 @@
 config.py imports torch at module level, so we inject torch_stub before loading.
 """
 import sys
-from pathlib import Path
 import dataclasses
-import pytest
 
 
 def test_medgemma_config_fields_present(torch_stub):

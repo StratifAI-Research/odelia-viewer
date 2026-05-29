@@ -11,7 +11,6 @@ Covers:
   - ServeManifest: GET happy path, GET missing file, wrong method
 """
 import json
-import os
 import sys
 from unittest import mock
 
@@ -257,8 +256,6 @@ def test_query_workitems_state_filter(out, routes):
     assert len(result) == 1
 
     # Filter for non-matching state
-    from ups.storage import ups_storage as _s
-    import importlib, sys
     out2_class = type(out)
     out2 = out2_class()
     routes.QueryWorkitems(

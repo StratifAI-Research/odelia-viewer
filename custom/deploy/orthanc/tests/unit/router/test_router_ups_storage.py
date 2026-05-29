@@ -4,7 +4,6 @@ The router variant uses no-colon key prefixes (KEY_PREFIX="upsworkitem",
 INDEX_KEY="upsworkitemindex") unlike the viewer variant which uses colons.
 All behaviour is otherwise identical to the viewer-side storage.
 """
-import json
 import sys
 import os
 

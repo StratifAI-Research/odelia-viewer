@@ -12,7 +12,6 @@ DICOM fixture set.  See _compute_subtraction_array for the array-level test
 that covers the arithmetic in isolation.
 """
 import sys
-from pathlib import Path
 from unittest.mock import MagicMock
 import numpy as np
 import pytest

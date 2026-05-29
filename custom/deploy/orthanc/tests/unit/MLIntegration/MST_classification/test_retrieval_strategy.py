@@ -1,8 +1,5 @@
 """Tests for MST-classification/retrieval_strategy.py — RetrievalStrategy + WadoRSRetrieval."""
-import sys
-import types
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 

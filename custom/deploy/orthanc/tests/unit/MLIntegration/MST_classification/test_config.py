@@ -6,7 +6,6 @@ torch_stub fixture is provided by tests/unit/MLIntegration/conftest.py.
 import sys
 from pathlib import Path
 
-import pytest
 
 
 def test_mst_config_fields_present(torch_stub, monkeypatch):

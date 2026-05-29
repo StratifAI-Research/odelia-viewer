@@ -13,7 +13,6 @@ A note in DONE report flags them as refactor candidates for dependency injection
 All other handlers (UPSUpdateWorkitem, UPSGetWorkitem, UPSWorkitemHandler,
 GetAIManifest, SendToAiDicom) have full happy + error path coverage.
 """
-import importlib
 import json
 import sys
 from unittest import mock
