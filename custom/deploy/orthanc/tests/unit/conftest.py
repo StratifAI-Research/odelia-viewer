@@ -13,10 +13,20 @@ import pytest
 # PYTEST_ODV133_FEEDBACK_DIR lets a caller pin a specific directory; otherwise
 # we create a fresh per-process tmp dir so parallel test runs on the same host
 # don't share SQLite state.
-os.environ.setdefault(
-    "ORTHANC_FEEDBACK_DB_DIR",
-    os.environ.get("PYTEST_ODV133_FEEDBACK_DIR") or tempfile.mkdtemp(prefix="odv133_fb_"),
-)
+_FB_DIR_CREATED_BY_US = False
+if not os.environ.get("ORTHANC_FEEDBACK_DB_DIR"):
+    _pinned = os.environ.get("PYTEST_ODV133_FEEDBACK_DIR")
+    if _pinned:
+        os.environ["ORTHANC_FEEDBACK_DB_DIR"] = _pinned
+    else:
+        os.environ["ORTHANC_FEEDBACK_DB_DIR"] = tempfile.mkdtemp(prefix="odv133_fb_")
+        _FB_DIR_CREATED_BY_US = True
+
+if _FB_DIR_CREATED_BY_US:
+    import atexit
+    import shutil
+    _FB_DIR_TO_CLEAN = os.environ["ORTHANC_FEEDBACK_DB_DIR"]
+    atexit.register(lambda: shutil.rmtree(_FB_DIR_TO_CLEAN, ignore_errors=True))
 
 
 def _no_orthanc_handler(*a, **kw):
@@ -58,7 +68,13 @@ def _install_orthanc_stub():
     m._kv = {}  # {(bucket, key): bytes}
 
     def _put(bucket, key, value):
-        m._kv[(bucket, key)] = value if isinstance(value, bytes) else str(value).encode()
+        # Mirror real Orthanc: StoreKeyValue requires bytes. Silent coercion would
+        # mask type bugs (e.g. accidentally passing a dict or unencoded str).
+        if not isinstance(value, (bytes, bytearray)):
+            raise TypeError(
+                f"StoreKeyValue requires bytes; got {type(value).__name__}"
+            )
+        m._kv[(bucket, key)] = bytes(value)
     def _get(bucket, key):
         return m._kv.get((bucket, key))
     def _del(bucket, key):
