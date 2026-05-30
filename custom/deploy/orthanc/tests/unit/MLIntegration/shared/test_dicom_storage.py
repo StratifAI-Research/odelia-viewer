@@ -125,3 +125,51 @@ def test_save_dicom_bytes_raises_on_empty(tmp_path):
     cfg = StorageConfig(image_folder=tmp_path)
     with pytest.raises(ValueError, match='No DICOM files'):
         save_dicom_bytes_to_folder([], 'empty', cfg)
+
+
+# ---------------------------------------------------------------------------
+# S4: syscall failures propagate from create_series_folder + save_*_to_folder
+# ---------------------------------------------------------------------------
+
+def test_create_series_folder_propagates_rmtree_permission_error(tmp_path, monkeypatch):
+    """When shutil.rmtree raises PermissionError, create_series_folder must surface it."""
+    from shared.dicom_storage import create_series_folder
+    from shared.config import StorageConfig
+    cfg = StorageConfig(image_folder=str(tmp_path))
+    # Pre-create the target dir so the clean branch is taken.
+    (tmp_path / "series.uid").mkdir()
+    import shutil as _shutil
+    monkeypatch.setattr(_shutil, "rmtree",
+                         lambda *a, **kw: (_ for _ in ()).throw(PermissionError("denied")))
+    with pytest.raises(PermissionError, match="denied"):
+        create_series_folder("series.uid", cfg, clean=True)
+
+
+def test_create_series_folder_propagates_makedirs_error(tmp_path, monkeypatch):
+    """When os.makedirs raises OSError (e.g. read-only mount), it must surface."""
+    from shared.dicom_storage import create_series_folder
+    from shared.config import StorageConfig
+    cfg = StorageConfig(image_folder=str(tmp_path))
+    import os as _os
+    monkeypatch.setattr(_os, "makedirs",
+                         lambda *a, **kw: (_ for _ in ()).throw(OSError("read-only filesystem")))
+    with pytest.raises(OSError, match="read-only"):
+        create_series_folder("series.uid", cfg, clean=False)
+
+
+def test_save_dicom_bytes_to_folder_propagates_open_error(tmp_path, monkeypatch):
+    """When open(..., 'wb') raises (e.g. disk full), the syscall failure surfaces."""
+    from shared.dicom_storage import save_dicom_bytes_to_folder
+    from shared.config import StorageConfig
+    cfg = StorageConfig(image_folder=str(tmp_path))
+
+    import builtins
+    real_open = builtins.open
+    def _raising_open(path, mode="r", *a, **kw):
+        if "w" in mode and "b" in mode and str(path).endswith(".dcm"):
+            raise OSError("No space left on device")
+        return real_open(path, mode, *a, **kw)
+    monkeypatch.setattr(builtins, "open", _raising_open)
+
+    with pytest.raises(OSError, match="No space left"):
+        save_dicom_bytes_to_folder([b"DCMP"], "series.uid", cfg)

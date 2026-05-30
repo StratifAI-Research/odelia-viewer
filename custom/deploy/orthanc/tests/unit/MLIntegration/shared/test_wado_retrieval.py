@@ -109,3 +109,74 @@ def test_retrieve_via_wado_rs_empty_list_skips_client_construction():
         results = retrieve_via_wado_rs([])
     assert results == []
     mock_cls.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# S1: Real HTTP/network/DICOM errors all surface as DicomRetrievalError
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("exc_factory,desc", [
+    (lambda: __import__("requests").exceptions.HTTPError("404 Not Found"), "HTTPError"),
+    (lambda: __import__("requests").exceptions.Timeout("read timeout"), "Timeout"),
+    (lambda: __import__("pydicom").errors.InvalidDicomError("bad transfer syntax"), "InvalidDicomError"),
+    (lambda: ConnectionError("refused"), "ConnectionError"),
+])
+def test_retrieve_via_wado_rs_wraps_underlying_exception(exc_factory, desc):
+    """Any exception from DICOMwebClient.retrieve_series surfaces as DicomRetrievalError."""
+    from shared.wado_retrieval import retrieve_via_wado_rs
+    from shared.exceptions import DicomRetrievalError
+    fake_client = MagicMock()
+    fake_client.retrieve_series.side_effect = exc_factory()
+    with patch("shared.wado_retrieval.DICOMwebClient", return_value=fake_client):
+        with pytest.raises(DicomRetrievalError, match="WADO-RS retrieval failed"):
+            retrieve_via_wado_rs([
+                {"retrieval_url": "http://x/studies/S/series/Q",
+                 "study_uid": "S", "series_uid": "Q"},
+            ])
+
+
+# ---------------------------------------------------------------------------
+# S2: All-or-nothing partial-failure — if a later series fails, the earlier
+#     accumulated datasets are NOT returned. Consumers must not see partial state.
+# ---------------------------------------------------------------------------
+
+def test_retrieve_via_wado_rs_all_or_nothing_on_partial_failure():
+    """First series succeeds, second raises -> the whole call raises and nothing returned."""
+    from shared.wado_retrieval import retrieve_via_wado_rs
+    from shared.exceptions import DicomRetrievalError
+    fake_client = MagicMock()
+    fake_client.retrieve_series.side_effect = [
+        [_make_fake_dataset("ok.1")],
+        ConnectionError("series 2 unreachable"),
+    ]
+    with patch("shared.wado_retrieval.DICOMwebClient", return_value=fake_client):
+        with pytest.raises(DicomRetrievalError):
+            retrieve_via_wado_rs([
+                {"retrieval_url": "http://x/studies/S/series/A",
+                 "study_uid": "S", "series_uid": "A"},
+                {"retrieval_url": "http://x/studies/S/series/B",
+                 "study_uid": "S", "series_uid": "B"},
+            ])
+
+
+# ---------------------------------------------------------------------------
+# S3: URL split("/studies/") edge cases — the production code does a single
+#     split on "/studies/" to derive the base URL.
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("retrieval_url,expected_base", [
+    ("http://host/dicom-web/studies/S/series/Q",       "http://host/dicom-web"),
+    ("http://host/dicom-web/studies/S/series/Q/",      "http://host/dicom-web"),
+    ("http://host/dicom-web",                          "http://host/dicom-web"),  # no /studies/, base = full url
+    ("http://proxy/studies/relay/studies/S/series/Q",  "http://proxy"),           # double /studies/: takes BEFORE the first match
+])
+def test_retrieve_via_wado_rs_derives_base_url(retrieval_url, expected_base):
+    """Base URL is split("/studies/")[0]; pins behavior on tricky inputs (no scheme assumed safe)."""
+    from shared.wado_retrieval import retrieve_via_wado_rs
+    fake_client = MagicMock()
+    fake_client.retrieve_series.return_value = []
+    with patch("shared.wado_retrieval.DICOMwebClient", return_value=fake_client) as mock_cls:
+        retrieve_via_wado_rs([
+            {"retrieval_url": retrieval_url, "study_uid": "S", "series_uid": "Q"},
+        ])
+    mock_cls.assert_called_once_with(url=expected_base)
