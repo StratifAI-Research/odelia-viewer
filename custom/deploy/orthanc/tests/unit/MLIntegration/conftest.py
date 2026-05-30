@@ -91,12 +91,22 @@ def build_torchio_stub():
 
     # Real base classes required by BC preprocessing subclassing
     class _ZNormalizationBase:
-        """Minimal torchio.ZNormalization stand-in."""
+        """Minimal torchio.ZNormalization stand-in.
+
+        znorm() raises NotImplementedError so tests that need real normalization
+        cannot silently pass with identity-substitution data. Tests that need the
+        real math must opt out of the torchio_stub fixture and import the real
+        torchio (the BC integration tests under test_dicom2nfti_onthefly_integration.py
+        and test_preprocessing.py's real-torch block do this).
+        """
         def __init__(self, masking_method=None, **kwargs):
             self.masking_method = masking_method
 
         def znorm(self, image_data, mask):
-            return image_data
+            raise NotImplementedError(
+                "torchio_stub._ZNormalizationBase.znorm() is not implemented; "
+                "use the real torchio fixture for tests that exercise normalization"
+            )
 
     class _CropOrPadBase:
         """Minimal torchio.CropOrPad stand-in."""
