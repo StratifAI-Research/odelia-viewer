@@ -197,3 +197,16 @@ def test_export_ndjson_scope_current_with_since_filter(fb):
     fb.submit_feedback(_payload())
     rows = list(fb.export_rows_ndjson("1970-01-01T00:00:00Z", None, None, None, "current"))
     assert len(rows) == 1
+
+
+def test_read_feedback_with_both_include_users_and_include_history(fb):
+    """Both flags True -> returns both users[] (current view) and history[] (all events)."""
+    fb.submit_feedback(_payload(user="alice", verdict_L=1, verdict_R=0))
+    fb.submit_feedback(_payload(user="alice", verdict_L=-1, verdict_R=1, edited=True))
+    fb.submit_feedback(_payload(user="bob", verdict_L=0, verdict_R=0))
+    data = fb.read_feedback("1.2.3", "M", "1", "2026-01-01T00:00:00Z", True, True)
+    assert "users" in data
+    assert "history" in data
+    user_ids = sorted(u["user_id"] for u in data["users"])
+    assert user_ids == ["alice", "bob"]            # current view -> 2 users
+    assert len(data["history"]) == 3                # full event log -> 3 events

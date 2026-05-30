@@ -128,3 +128,34 @@ def test_list_workitems_multiple_entries(storage):
         storage.store_workitem(w)
     items = storage.list_workitems()
     assert len(items) == 3
+
+
+# ---------------------------------------------------------------------------
+# Coverage fill: get_workitem malformed-bytes / delete swallow / _get_index corrupt (viewer side)
+# ---------------------------------------------------------------------------
+
+def test_get_workitem_returns_none_on_malformed_kv_bytes():
+    import orthanc
+    from ups.storage import ups_storage, UPSStorage
+    orthanc.StoreKeyValue(UPSStorage.BUCKET, f"{UPSStorage.KEY_PREFIX}garbled.uid", b"not-valid-json")
+    assert ups_storage.get_workitem("garbled.uid") is None
+
+
+def test_delete_workitem_swallows_exception_from_orthanc():
+    import orthanc
+    from ups.storage import ups_storage
+    original = orthanc.DeleteKeyValue
+    def _raise(*a, **kw):
+        raise RuntimeError("simulated DeleteKeyValue failure")
+    orthanc.DeleteKeyValue = _raise
+    try:
+        ups_storage.delete_workitem("any.uid")
+    finally:
+        orthanc.DeleteKeyValue = original
+
+
+def test_get_index_returns_empty_list_when_index_value_is_corrupt():
+    import orthanc
+    from ups.storage import ups_storage, UPSStorage
+    orthanc.StoreKeyValue(UPSStorage.BUCKET, UPSStorage.INDEX_KEY, b"\xff\xfe\xff{not-json")
+    assert ups_storage.list_workitems() == []

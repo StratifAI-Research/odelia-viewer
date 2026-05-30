@@ -189,3 +189,42 @@ def test_store_twice_no_duplicate_in_list(storage, workitem):
     items = storage.list_workitems()
     uids = [w.workitem_uid for w in items]
     assert uids.count(workitem.workitem_uid) == 1
+
+
+# ---------------------------------------------------------------------------
+# Coverage fill: get_workitem returns None when stored bytes are malformed (lines 56-58 in storage.py).
+# delete_workitem swallows error when the key doesn't exist after we've cleared the stub's lenient _del.
+# _get_index falls back to [] when the index value is corrupt JSON (line 103-104).
+# ---------------------------------------------------------------------------
+
+def test_get_workitem_returns_none_on_malformed_kv_bytes():
+    """Stored value cannot be decoded as a valid workitem JSON -> get_workitem returns None."""
+    import orthanc
+    from ups.storage import ups_storage, UPSStorage
+    # Put garbage bytes at the expected key.
+    orthanc.StoreKeyValue(UPSStorage.BUCKET, f"{UPSStorage.KEY_PREFIX}garbled.uid", b"not-valid-json-bytes")
+    assert ups_storage.get_workitem("garbled.uid") is None
+
+
+def test_delete_workitem_swallows_exception_from_orthanc():
+    """If orthanc.DeleteKeyValue raises (real Orthanc semantics), the wrapper logs + continues."""
+    import orthanc
+    from ups.storage import ups_storage
+    # Monkeypatch DeleteKeyValue to raise inside the call.
+    original = orthanc.DeleteKeyValue
+    def _raise(*a, **kw):
+        raise RuntimeError("simulated orthanc DeleteKeyValue failure")
+    orthanc.DeleteKeyValue = _raise
+    try:
+        # Must NOT raise.
+        ups_storage.delete_workitem("any.uid")
+    finally:
+        orthanc.DeleteKeyValue = original
+
+
+def test_get_index_returns_empty_list_when_index_value_is_corrupt():
+    """Corrupt index bytes -> bare except returns []; list_workitems then returns []."""
+    import orthanc
+    from ups.storage import ups_storage, UPSStorage
+    orthanc.StoreKeyValue(UPSStorage.BUCKET, UPSStorage.INDEX_KEY, b"\xff\xfe\xff{not-json")
+    assert ups_storage.list_workitems() == []
