@@ -10,11 +10,7 @@ Covers:
   - create_multiframe_attention_sc: smoke returns bytes with SC Modality
   - create_text_overlay_sc: smoke test (requires pixel_array on original_ds)
 
-Note: OnStableStudy is registered but REMOVED from the orthanc callback in the
-running server. It is still importable; we do not test it because it requires
-real Orthanc REST calls that are deeply coupled to Orthanc internals (study
-instances, series metadata, etc.). The UPS workflow (router/ups/) covers the
-same logic via dedicated tests.
+The legacy OnStableStudy OnChange callback has been removed (see ups/processor.py for the UPS-based replacement).
 """
 import base64
 import io
