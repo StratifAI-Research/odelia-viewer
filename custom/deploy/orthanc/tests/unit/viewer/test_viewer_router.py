@@ -579,19 +579,24 @@ def test_send_to_ai_dicom_happy_path_responds_with_success(out, router, rest_fak
     assert resp["target"] == "PACS"
 
 
-def test_send_to_ai_dicom_store_failure_returns_error_payload(out, router, rest_fake):
-    """When the modality store endpoint raises, the function still answers (200 with error payload)."""
+@pytest.mark.xfail(
+    reason="production wart: modality-store failure returns HTTP 200 with error JSON "
+           "body instead of 5xx (same class as A1: 500->400 for bad JSON). "
+           "When the production fix lands, this test xpasses and the marker is removed.",
+    strict=False,
+)
+def test_send_to_ai_dicom_store_failure_should_return_5xx(out, router, rest_fake):
+    """When the modality store endpoint raises, expected behavior is a 5xx response (currently 200)."""
     import json as _json
     _bind_series_listing(rest_fake, "STD", ["S-orig"], ai=False)
     rest_fake.responses[("GET", "/modalities")] = b"[]"
     rest_fake.responses[("GET", "/series/S-orig/instances")] = _json.dumps([{"ID": "I1"}]).encode()
-    # No response bound for POST /modalities/PACS/store -> rest_fake raises -> error payload
+    # No response bound for POST /modalities/PACS/store -> rest_fake raises.
     body = b'{"study_id": "STD", "target": "PACS"}'
     router.SendToAiDicom(out, "/send-to-ai-dicom", method="POST", body=body)
-    # AnswerBuffer was called with status 200 + error JSON
-    assert out.status == 200
-    resp = _json.loads(out.body)
-    assert resp["status"] == "error"
+    assert out.status >= 500, (
+        "store failure currently surfaces as 200 + error payload; expected 5xx"
+    )
 
 
 # --- SendToAiDicomWeb ---
