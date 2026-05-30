@@ -141,17 +141,26 @@ def test_get_workitem_returns_none_on_malformed_kv_bytes():
     assert ups_storage.get_workitem("garbled.uid") is None
 
 
-def test_delete_workitem_swallows_exception_from_orthanc():
+def test_delete_workitem_swallows_exception_and_leaves_state_intact(capsys):
+    """Same contract as the router twin: DeleteKeyValue failure must not corrupt state or raise."""
     import orthanc
-    from ups.storage import ups_storage
+    from ups.storage import ups_storage, UPSStorage
+    orthanc.StoreKeyValue(UPSStorage.BUCKET, f"{UPSStorage.KEY_PREFIX}survivor.uid", b'{"data": "x"}')
+    orthanc.StoreKeyValue(UPSStorage.BUCKET, UPSStorage.INDEX_KEY, b'["survivor.uid"]')
+    before_index = sorted(w.workitem_uid for w in ups_storage.list_workitems())
+
     original = orthanc.DeleteKeyValue
     def _raise(*a, **kw):
         raise RuntimeError("simulated DeleteKeyValue failure")
     orthanc.DeleteKeyValue = _raise
     try:
-        ups_storage.delete_workitem("any.uid")
+        ups_storage.delete_workitem("survivor.uid")
     finally:
         orthanc.DeleteKeyValue = original
+
+    captured = capsys.readouterr().out
+    assert "Error deleting" in captured, f"expected error log, got: {captured!r}"
+    assert sorted(w.workitem_uid for w in ups_storage.list_workitems()) == before_index
 
 
 def test_get_index_returns_empty_list_when_index_value_is_corrupt():

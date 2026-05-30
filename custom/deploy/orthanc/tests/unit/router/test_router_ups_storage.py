@@ -206,20 +206,31 @@ def test_get_workitem_returns_none_on_malformed_kv_bytes():
     assert ups_storage.get_workitem("garbled.uid") is None
 
 
-def test_delete_workitem_swallows_exception_from_orthanc():
-    """If orthanc.DeleteKeyValue raises (real Orthanc semantics), the wrapper logs + continues."""
+def test_delete_workitem_swallows_exception_and_leaves_state_intact(capsys):
+    """If orthanc.DeleteKeyValue raises (real Orthanc semantics), the wrapper logs and
+    leaves index + KV state intact. Pins the no-corruption guarantee."""
     import orthanc
-    from ups.storage import ups_storage
-    # Monkeypatch DeleteKeyValue to raise inside the call.
+    from ups.storage import ups_storage, UPSStorage
+    # Seed an existing item so we can prove its index entry survives a failed delete.
+    orthanc.StoreKeyValue(UPSStorage.BUCKET, f"{UPSStorage.KEY_PREFIX}survivor.uid", b'{"data": "x"}')
+    orthanc.StoreKeyValue(UPSStorage.BUCKET, UPSStorage.INDEX_KEY,
+                          b'["survivor.uid"]')
+    before_index = sorted(w.workitem_uid for w in ups_storage.list_workitems())
+
     original = orthanc.DeleteKeyValue
     def _raise(*a, **kw):
         raise RuntimeError("simulated orthanc DeleteKeyValue failure")
     orthanc.DeleteKeyValue = _raise
     try:
-        # Must NOT raise.
-        ups_storage.delete_workitem("any.uid")
+        ups_storage.delete_workitem("survivor.uid")  # must NOT raise
     finally:
         orthanc.DeleteKeyValue = original
+
+    # Production uses print(); capsys captures it.
+    captured = capsys.readouterr().out
+    assert "Error deleting" in captured, f"expected error log, got: {captured!r}"
+    # Index entry must survive — the function MUST NOT call _remove_from_index when the KV delete failed.
+    assert sorted(w.workitem_uid for w in ups_storage.list_workitems()) == before_index
 
 
 def test_get_index_returns_empty_list_when_index_value_is_corrupt():
