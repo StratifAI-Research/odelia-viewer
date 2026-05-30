@@ -236,3 +236,57 @@ def dicom_fake():
 
     orthanc.GetDicomForInstance = _get
     return store
+
+# ---------------------------------------------------------------------------
+# WADO-RS fake — opt-in fixture covering both shared.wado_retrieval and
+# router.wado_utils. Lives here (root unit conftest) so tests in either subtree
+# can request it; the two `setattr` calls are individually guarded so the
+# fixture works whether the patch target's module is on sys.path or not.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def wado_fake(monkeypatch):
+    """Fake DICOMwebClient injected into shared.wado_retrieval and router.wado_utils.
+
+    Usage:
+        def test_x(wado_fake):
+            wado_fake.series_responses[("1.2.100", "1.2.200")] = [make_dataset()]
+            # call code that uses retrieve_via_wado_rs(...) or retrieve_series_metadata
+            assert wado_fake.calls == [("retrieve_series", "1.2.100", "1.2.200")]
+    """
+    calls = []
+    series_responses = {}
+    metadata_responses = {}
+
+    class FakeDICOMwebClient:
+        def __init__(self, url=""):
+            self.url = url
+
+        def retrieve_series(self, study_instance_uid="", series_instance_uid=""):
+            key = (study_instance_uid, series_instance_uid)
+            calls.append(("retrieve_series", *key))
+            if key not in series_responses:
+                raise ConnectionError(f"wado_fake: no series response for {key}")
+            return series_responses[key]
+
+        def retrieve_series_metadata(self, study_instance_uid="", series_instance_uid=""):
+            key = (study_instance_uid, series_instance_uid)
+            calls.append(("retrieve_series_metadata", *key))
+            if key not in metadata_responses:
+                raise ConnectionError(f"wado_fake: no metadata response for {key}")
+            return metadata_responses[key]
+
+    # Each setattr is independently guarded — the target module is only loaded
+    # if the test (or its conftest tree) has put it on sys.path.
+    for target in ("shared.wado_retrieval.DICOMwebClient", "wado_utils.DICOMwebClient"):
+        try:
+            monkeypatch.setattr(target, FakeDICOMwebClient)
+        except (ImportError, AttributeError):
+            pass
+
+    return type("WadoFake", (), {
+        "calls": calls,
+        "series_responses": series_responses,
+        "metadata_responses": metadata_responses,
+    })()
