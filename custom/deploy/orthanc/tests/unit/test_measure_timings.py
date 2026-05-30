@@ -156,3 +156,64 @@ def test_parse_timing_logs_unknown_container_uses_name_as_is(tmp_path):
     parse_timing_logs(prof, 'my-unknown-container', logs)
     assert len(prof.measurements) == 1
     assert prof.measurements[0]['component'] == 'my-unknown-container'
+
+
+# ---------------------------------------------------------------------------
+# T1: docker-timestamp filtering, metadata bracket extraction, non-unit skip,
+#     exception-swallow path
+# ---------------------------------------------------------------------------
+
+def test_parse_timing_logs_skips_lines_before_profiler_start(tmp_path):
+    """Docker-timestamped lines older than profiler.start_datetime are filtered out."""
+    import measure_timings
+    p = measure_timings.TimingProfiler(trace_id='t1', output_dir=str(tmp_path))
+    # Force a known start_datetime so the input timestamps fall before it.
+    from datetime import datetime
+    p.start_datetime = datetime(2099, 1, 1, 0, 0, 0)
+    logs = "2024-11-12T13:56:54.123456789Z TIMING: too_old_op: 100.0ms"
+    measure_timings.parse_timing_logs(p, "orthanc-viewer", logs)
+    assert p.measurements == []      # nothing recorded - line was filtered
+
+
+def test_parse_timing_logs_includes_lines_after_profiler_start(tmp_path):
+    """Docker-timestamped lines newer than profiler.start_datetime are recorded."""
+    import measure_timings
+    from datetime import datetime
+    p = measure_timings.TimingProfiler(trace_id='t1', output_dir=str(tmp_path))
+    p.start_datetime = datetime(2000, 1, 1, 0, 0, 0)
+    logs = "2024-11-12T13:56:54.123456789Z TIMING: recent_op: 200.0ms"
+    measure_timings.parse_timing_logs(p, "orthanc-viewer", logs)
+    assert len(p.measurements) == 1
+    assert p.measurements[0]["operation"] == "recent_op"
+    assert p.measurements[0]["duration_ms"] == 200.0
+
+
+def test_parse_timing_logs_extracts_metadata_from_brackets(tmp_path):
+    """[key:"val"] after duration is parsed as JSON and stored in metadata."""
+    import json
+    import measure_timings
+    p = measure_timings.TimingProfiler(trace_id='t1', output_dir=str(tmp_path))
+    logs = 'TIMING: op_with_meta: 12.5ms ["phase":"warmup","id":7]'
+    measure_timings.parse_timing_logs(p, "orthanc-viewer", logs)
+    assert len(p.measurements) == 1
+    meta = json.loads(p.measurements[0]["metadata"])
+    assert meta == {"phase": "warmup", "id": 7}
+
+
+def test_parse_timing_logs_skips_lines_without_ms_or_s_unit(tmp_path):
+    """A TIMING line whose duration contains neither ms nor s hits the else-continue skip."""
+    import measure_timings
+    p = measure_timings.TimingProfiler(trace_id='t1', output_dir=str(tmp_path))
+    logs = "TIMING: op_no_unit: 12.5xyz"
+    measure_timings.parse_timing_logs(p, "orthanc-viewer", logs)
+    assert p.measurements == []
+
+
+def test_parse_timing_logs_swallows_unparseable_timing_line(tmp_path):
+    """When the inner float parse raises, the outer try swallows it without raising."""
+    import measure_timings
+    p = measure_timings.TimingProfiler(trace_id='t1', output_dir=str(tmp_path))
+    logs = "TIMING: op_garbled: not-a-number-ms"
+    # Must NOT raise; nothing should be recorded.
+    measure_timings.parse_timing_logs(p, "orthanc-viewer", logs)
+    assert p.measurements == []

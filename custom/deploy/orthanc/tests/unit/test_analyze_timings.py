@@ -215,3 +215,63 @@ def test_compare_profiles_does_not_raise(tmp_path):
     _write_csv(csv_b, rows_b)
     # compare_profiles prints only; return value is None — just ensure no exception
     compare_profiles([str(csv_a), str(csv_b)])
+
+
+# ---------------------------------------------------------------------------
+# T2: compare_profiles aggregation - capture stdout and verify per-component
+#     avg/min/max are computed from the right data.
+# ---------------------------------------------------------------------------
+
+def _write_compare_csv(path, rows):
+    """Write a minimal timing CSV the loader recognises."""
+    headers = ["trace_id", "timestamp", "component", "operation", "duration_ms", "metadata"]
+    lines = [",".join(headers)]
+    for r in rows:
+        lines.append(",".join(str(r.get(h, "")) for h in headers))
+    path.write_text("\n".join(lines) + "\n")
+
+
+def test_compare_profiles_reports_per_component_avg_min_max(tmp_path, capsys):
+    """compare_profiles prints avg/min/max for each component across runs."""
+    import analyze_timings
+    csv1 = tmp_path / "run1.csv"
+    csv2 = tmp_path / "run2.csv"
+    _write_compare_csv(csv1, [
+        {"trace_id": "t1", "component": "orthanc-router", "operation": "infer",
+         "duration_ms": "100.0"},
+        {"trace_id": "t1", "component": "ml-mst", "operation": "forward",
+         "duration_ms": "500.0"},
+    ])
+    _write_compare_csv(csv2, [
+        {"trace_id": "t2", "component": "orthanc-router", "operation": "infer",
+         "duration_ms": "200.0"},
+        {"trace_id": "t2", "component": "ml-mst", "operation": "forward",
+         "duration_ms": "700.0"},
+    ])
+
+    analyze_timings.compare_profiles([str(csv1), str(csv2)])
+    out = capsys.readouterr().out
+
+    # orthanc-router: avg=150, min=100, max=200; ml-mst: avg=600, min=500, max=700.
+    assert "orthanc-router" in out
+    assert "ml-mst" in out
+    # Values rendered with %.2f formatter.
+    assert "150.00ms" in out
+    assert "100.00ms" in out
+    assert "200.00ms" in out
+    assert "600.00ms" in out
+    assert "500.00ms" in out
+    assert "700.00ms" in out
+
+
+def test_compare_profiles_reports_end_to_end_times(tmp_path, capsys):
+    """A complete_pipeline operation is surfaced as the end-to-end time per run."""
+    import analyze_timings
+    csv1 = tmp_path / "run1.csv"
+    _write_compare_csv(csv1, [
+        {"trace_id": "t1", "component": "orthanc-router",
+         "operation": "complete_pipeline", "duration_ms": "1234.50"},
+    ])
+    analyze_timings.compare_profiles([str(csv1)])
+    out = capsys.readouterr().out
+    assert "1234.50ms" in out
