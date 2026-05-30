@@ -3,6 +3,7 @@ testpaths = [
   "tests"
 ]
 addopts = "-q"
+asyncio_mode = "auto"
 markers = [
   "integration: tests requiring a live Orthanc instance (skipped automatically if unreachable)",
 ]
