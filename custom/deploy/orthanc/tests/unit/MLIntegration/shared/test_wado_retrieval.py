@@ -11,42 +11,6 @@ def _make_fake_dataset(sop_uid='1.2.3.1'):
     return ds
 
 
-def test_retrieve_via_wado_rs_returns_list_of_datasets():
-    from shared.wado_retrieval import retrieve_via_wado_rs
-
-    fake_client = MagicMock()
-    fake_client.retrieve_series.return_value = [_make_fake_dataset('1.2.3.1')]
-
-    with patch('shared.wado_retrieval.DICOMwebClient', return_value=fake_client):
-        results = retrieve_via_wado_rs([{
-            'retrieval_url': 'http://host/dicom-web',
-            'study_uid': '1.2.100',
-            'series_uid': '1.2.200',
-        }])
-
-    assert len(results) == 1
-    assert results[0].SOPInstanceUID == '1.2.3.1'
-
-
-def test_retrieve_via_wado_rs_passes_correct_study_series_to_client():
-    from shared.wado_retrieval import retrieve_via_wado_rs
-
-    fake_client = MagicMock()
-    fake_client.retrieve_series.return_value = [_make_fake_dataset()]
-
-    with patch('shared.wado_retrieval.DICOMwebClient', return_value=fake_client):
-        retrieve_via_wado_rs([{
-            'retrieval_url': 'http://host/dicom-web',
-            'study_uid': 'STUDY-UID',
-            'series_uid': 'SERIES-UID',
-        }])
-
-    fake_client.retrieve_series.assert_called_once_with(
-        study_instance_uid='STUDY-UID',
-        series_instance_uid='SERIES-UID',
-    )
-
-
 def test_retrieve_via_wado_rs_extracts_base_url_from_full_wado_url():
     """If retrieval_url contains /studies/, the base URL is extracted correctly."""
     from shared.wado_retrieval import retrieve_via_wado_rs
@@ -67,38 +31,15 @@ def test_retrieve_via_wado_rs_extracts_base_url_from_full_wado_url():
     assert constructed_url == 'http://host/dicom-web'
 
 
-def test_retrieve_via_wado_rs_aggregates_multiple_series():
+def test_retrieve_via_wado_rs_aggregates_multiple_series(wado_fake):
     from shared.wado_retrieval import retrieve_via_wado_rs
-
-    fake_client = MagicMock()
-    fake_client.retrieve_series.side_effect = [
-        [_make_fake_dataset('1.2.3.1'), _make_fake_dataset('1.2.3.2')],
-        [_make_fake_dataset('1.2.3.3')],
-    ]
-
-    with patch('shared.wado_retrieval.DICOMwebClient', return_value=fake_client):
-        results = retrieve_via_wado_rs([
-            {'retrieval_url': 'http://host/dicom-web', 'study_uid': 'S1', 'series_uid': 'SE1'},
-            {'retrieval_url': 'http://host/dicom-web', 'study_uid': 'S1', 'series_uid': 'SE2'},
-        ])
-
+    wado_fake.series_responses[("S1", "SE1")] = [_make_fake_dataset("1.2.3.1"), _make_fake_dataset("1.2.3.2")]
+    wado_fake.series_responses[("S1", "SE2")] = [_make_fake_dataset("1.2.3.3")]
+    results = retrieve_via_wado_rs([
+        {"retrieval_url": "http://host/dicom-web", "study_uid": "S1", "series_uid": "SE1"},
+        {"retrieval_url": "http://host/dicom-web", "study_uid": "S1", "series_uid": "SE2"},
+    ])
     assert len(results) == 3
-
-
-def test_retrieve_via_wado_rs_raises_dicom_retrieval_error_on_failure():
-    from shared.wado_retrieval import retrieve_via_wado_rs
-    from shared.exceptions import DicomRetrievalError
-
-    fake_client = MagicMock()
-    fake_client.retrieve_series.side_effect = ConnectionError('network down')
-
-    with patch('shared.wado_retrieval.DICOMwebClient', return_value=fake_client):
-        with pytest.raises(DicomRetrievalError, match='WADO-RS retrieval failed'):
-            retrieve_via_wado_rs([{
-                'retrieval_url': 'http://host/dicom-web',
-                'study_uid': 'S1',
-                'series_uid': 'SE1',
-            }])
 
 
 def test_retrieve_via_wado_rs_empty_list_skips_client_construction():
@@ -140,23 +81,18 @@ def test_retrieve_via_wado_rs_wraps_underlying_exception(exc_factory, desc):
 #     accumulated datasets are NOT returned. Consumers must not see partial state.
 # ---------------------------------------------------------------------------
 
-def test_retrieve_via_wado_rs_all_or_nothing_on_partial_failure():
+def test_retrieve_via_wado_rs_all_or_nothing_on_partial_failure(wado_fake):
     """First series succeeds, second raises -> the whole call raises and nothing returned."""
     from shared.wado_retrieval import retrieve_via_wado_rs
     from shared.exceptions import DicomRetrievalError
-    fake_client = MagicMock()
-    fake_client.retrieve_series.side_effect = [
-        [_make_fake_dataset("ok.1")],
-        ConnectionError("series 2 unreachable"),
-    ]
-    with patch("shared.wado_retrieval.DICOMwebClient", return_value=fake_client):
-        with pytest.raises(DicomRetrievalError):
-            retrieve_via_wado_rs([
-                {"retrieval_url": "http://x/studies/S/series/A",
-                 "study_uid": "S", "series_uid": "A"},
-                {"retrieval_url": "http://x/studies/S/series/B",
-                 "study_uid": "S", "series_uid": "B"},
-            ])
+    # Only bind the first series; the second triggers wado_fake's unbound-key ConnectionError
+    # which retrieve_via_wado_rs wraps as DicomRetrievalError.
+    wado_fake.series_responses[("S", "A")] = [_make_fake_dataset("ok.1")]
+    with pytest.raises(DicomRetrievalError):
+        retrieve_via_wado_rs([
+            {"retrieval_url": "http://x/studies/S/series/A", "study_uid": "S", "series_uid": "A"},
+            {"retrieval_url": "http://x/studies/S/series/B", "study_uid": "S", "series_uid": "B"},
+        ])
 
 
 # ---------------------------------------------------------------------------
