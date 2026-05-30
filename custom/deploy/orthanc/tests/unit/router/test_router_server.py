@@ -509,3 +509,208 @@ def test_create_text_overlay_sc_references_sr_when_given(srv):
     assert hasattr(parsed, "ReferencedInstanceSequence")
     ref_uid = parsed.ReferencedInstanceSequence[0].ReferencedSOPInstanceUID
     assert str(ref_uid) == str(fake_sr_uid)
+
+
+# ---------------------------------------------------------------------------
+# D5: OnStableStudy OnChange callback coverage
+# ---------------------------------------------------------------------------
+
+import json as _json
+from types import SimpleNamespace as _SN
+from unittest import mock as _mock
+
+
+def _dicom_bytes_for(ds):
+    """Serialize a pydicom Dataset to bytes (so orthanc.GetDicomForInstance can return real DICOM)."""
+    import io as _io
+    import pydicom as _pydicom
+    buf = _io.BytesIO()
+    _pydicom.dcmwrite(buf, ds, enforce_file_format=True)
+    return buf.getvalue()
+
+
+def _wire_minimal_stable_study_state(srv, rest_fake, dicom_fake,
+                                       slice_spacing=None, slice_thickness=None,
+                                       instance_count=1):
+    """Bind orthanc REST + DICOM endpoints + one minimal study/series/instance state.
+
+    Returns the SeriesInstanceUID so the test can assert on it later.
+    """
+    import orthanc
+    # Default raisers were restored by autouse reset; rebind to rest_fake's dispatcher.
+    orthanc.GetDicomForInstance = lambda iid: dicom_fake[iid]
+
+    ds = _minimal_dicom()
+    if slice_spacing is not None:
+        ds.SpacingBetweenSlices = slice_spacing
+    if slice_thickness is not None:
+        ds.SliceThickness = slice_thickness
+
+    dicom_buf = _dicom_bytes_for(ds)
+    dicom_fake["I1"] = dicom_buf
+
+    rest_fake.responses[("GET", "/studies/STUDY1/instances")] = _json.dumps(
+        [{"ID": "I1"}] * instance_count
+    ).encode()
+    rest_fake.responses[("GET", "/instances/I1")] = _json.dumps(
+        {"ParentSeries": "SE1", "IndexInSeries": 0}
+    ).encode()
+    rest_fake.responses[("GET", "/series/SE1")] = _json.dumps(
+        {"Instances": ["I1"]}
+    ).encode()
+    rest_fake.responses[("GET", "/instances/I1/tags?simplify")] = _json.dumps(
+        {"InstanceNumber": 1}
+    ).encode()
+    return ds.SeriesInstanceUID
+
+
+def test_on_stable_study_skips_non_stable_study_change(srv, rest_fake):
+    """A non-STABLE_STUDY change does nothing (no orthanc calls, no error)."""
+    import orthanc
+    srv.OnStableStudy(orthanc.ChangeType.STABLE_SERIES, None, "ANY")
+    assert rest_fake.calls == []
+
+
+def test_on_stable_study_returns_early_when_no_instances(srv, rest_fake):
+    """Empty instances list -> return without exception or further REST calls."""
+    import orthanc
+    rest_fake.responses[("GET", "/studies/STUDY1/instances")] = b"[]"
+    srv.OnStableStudy(orthanc.ChangeType.STABLE_STUDY, None, "STUDY1")
+    # Only the initial GET fired; no /instances/<id> follow-up.
+    methods_paths = [(m, u) for m, u, _ in rest_fake.calls]
+    assert methods_paths == [("GET", "/studies/STUDY1/instances")]
+
+
+def test_on_stable_study_returns_when_model_returns_non_200(srv, rest_fake, dicom_fake, monkeypatch):
+    """Model backend non-200 -> log + return; no DICOM upload attempted."""
+    import orthanc
+    _wire_minimal_stable_study_state(srv, rest_fake, dicom_fake)
+
+    posts = []
+    def _post(url, **kw):
+        posts.append((url, kw))
+        if "/analyze/mri" in url:
+            return _SN(status_code=500, text="model down", json=lambda: {})
+        raise AssertionError(f"unexpected POST to {url}")
+    monkeypatch.setattr(srv.requests, "post", _post)
+
+    srv.OnStableStudy(orthanc.ChangeType.STABLE_STUDY, None, "STUDY1")
+    # Exactly one POST (the model call); no /instances upload happened.
+    assert len(posts) == 1
+    assert "/analyze/mri" in posts[0][0]
+
+
+def test_on_stable_study_swallows_model_network_exception(srv, rest_fake, dicom_fake, monkeypatch):
+    """RequestException during the model call is caught; function returns without raising."""
+    import orthanc
+    import requests as _req_lib
+    _wire_minimal_stable_study_state(srv, rest_fake, dicom_fake)
+
+    monkeypatch.setattr(srv.requests, "post",
+                          _mock.MagicMock(side_effect=_req_lib.exceptions.ConnectionError("refused")))
+    # Must NOT raise.
+    srv.OnStableStudy(orthanc.ChangeType.STABLE_STUDY, None, "STUDY1")
+
+
+def test_on_stable_study_uploads_sr_for_bilateral_response(srv, rest_fake, dicom_fake, monkeypatch):
+    """Bilateral response_format -> create_bilateral_sr -> single SR uploaded to viewer."""
+    import orthanc
+    _wire_minimal_stable_study_state(srv, rest_fake, dicom_fake)
+
+    bilateral_results = {
+        "left": {"prediction": "Benign", "confidence": 95.0},
+        "right": {"prediction": "Malignant", "confidence": 80.0},
+    }
+    model_resp = _SN(status_code=200, text="ok", json=lambda: bilateral_results)
+    upload_resp = _SN(status_code=200, text="ok", json=lambda: {})
+
+    posts = []
+    def _post(url, **kw):
+        posts.append((url, kw))
+        return upload_resp if "/instances" in url else model_resp
+    monkeypatch.setattr(srv.requests, "post", _post)
+
+    # Stub the heavy SR builder to a deterministic byte tag.
+    monkeypatch.setattr(srv, "create_bilateral_sr",
+                          lambda original_ds, results: (b"SR_BYTES", "20260101", "120000.000", "1.2.3.sr.uid"))
+
+    srv.OnStableStudy(orthanc.ChangeType.STABLE_STUDY, None, "STUDY1")
+
+    upload_calls = [p for p in posts if "/instances" in p[0]]
+    assert len(upload_calls) == 1
+    assert upload_calls[0][1].get("data") == b"SR_BYTES"
+
+
+def test_on_stable_study_uploads_sr_and_sc_for_bilateral_with_heatmap(srv, rest_fake, dicom_fake, monkeypatch):
+    """bilateral_with_heatmap response_format -> SR + multi-frame SC both uploaded."""
+    import orthanc
+    _wire_minimal_stable_study_state(srv, rest_fake, dicom_fake)
+
+    results = {
+        "left": {"prediction": "Benign", "confidence": 95.0},
+        "right": {"prediction": "Malignant", "confidence": 80.0},
+        "attention_maps": {"data": "BASE64DATA", "shape": [5, 16, 16, 3], "dtype": "uint8"},
+    }
+    model_resp = _SN(status_code=200, text="ok", json=lambda: results)
+    upload_resp = _SN(status_code=200, text="ok", json=lambda: {})
+    posts = []
+    def _post(url, **kw):
+        posts.append((url, kw))
+        return upload_resp if "/instances" in url else model_resp
+    monkeypatch.setattr(srv.requests, "post", _post)
+
+    monkeypatch.setattr(srv, "create_bilateral_sr",
+                          lambda original_ds, results: (b"SR_BYTES", "20260101", "120000.000", "1.2.3.sr.uid"))
+    monkeypatch.setattr(srv, "create_multiframe_attention_sc",
+                          lambda *a, **kw: b"SC_BYTES")
+
+    srv.OnStableStudy(orthanc.ChangeType.STABLE_STUDY, None, "STUDY1")
+
+    upload_calls = [p for p in posts if "/instances" in p[0]]
+    upload_payloads = [p[1].get("data") for p in upload_calls]
+    assert b"SR_BYTES" in upload_payloads
+    assert b"SC_BYTES" in upload_payloads
+    assert len(upload_calls) == 2
+
+
+def test_on_stable_study_continues_when_upload_returns_non_200(srv, rest_fake, dicom_fake, monkeypatch):
+    """Non-200 upload response logs but does not raise; function returns normally."""
+    import orthanc
+    _wire_minimal_stable_study_state(srv, rest_fake, dicom_fake)
+    bilateral_results = {
+        "left": {"prediction": "Benign", "confidence": 95.0},
+        "right": {"prediction": "Malignant", "confidence": 80.0},
+    }
+    model_resp = _SN(status_code=200, text="ok", json=lambda: bilateral_results)
+    bad_upload = _SN(status_code=500, text="store failed", json=lambda: {})
+    monkeypatch.setattr(srv.requests, "post",
+                          lambda url, **kw: bad_upload if "/instances" in url else model_resp)
+    monkeypatch.setattr(srv, "create_bilateral_sr",
+                          lambda *a, **kw: (b"SR_BYTES", "20260101", "120000.000", "1.2.3.sr.uid"))
+    # Must NOT raise even though upload reports failure.
+    srv.OnStableStudy(orthanc.ChangeType.STABLE_STUDY, None, "STUDY1")
+
+
+def test_on_stable_study_uses_slice_thickness_when_spacing_between_slices_absent(srv, rest_fake, dicom_fake, monkeypatch):
+    """Code path: SliceThickness fallback when SpacingBetweenSlices is missing."""
+    import orthanc
+    _wire_minimal_stable_study_state(srv, rest_fake, dicom_fake, slice_thickness=2.5)
+    bilateral_results = {
+        "left": {"prediction": "Benign", "confidence": 95.0},
+        "right": {"prediction": "Malignant", "confidence": 80.0},
+    }
+    model_resp = _SN(status_code=200, text="ok", json=lambda: bilateral_results)
+    upload_resp = _SN(status_code=200, text="ok", json=lambda: {})
+    monkeypatch.setattr(srv.requests, "post",
+                          lambda url, **kw: upload_resp if "/instances" in url else model_resp)
+    monkeypatch.setattr(srv, "create_bilateral_sr",
+                          lambda *a, **kw: (b"SR_BYTES", "20260101", "120000.000", "1.2.3.sr.uid"))
+    # Just verify it runs without raising; SliceThickness fallback path is exercised.
+    srv.OnStableStudy(orthanc.ChangeType.STABLE_STUDY, None, "STUDY1")
+
+
+def test_on_stable_study_outer_exception_swallowed(srv, rest_fake, dicom_fake):
+    """When orthanc.RestApiGet raises for the initial /studies/<id>/instances, outer try catches."""
+    import orthanc
+    # No binding for /studies/STUDY1/instances -> rest_fake raises -> outer except logs and returns.
+    srv.OnStableStudy(orthanc.ChangeType.STABLE_STUDY, None, "STUDY1")
