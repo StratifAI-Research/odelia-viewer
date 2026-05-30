@@ -23,7 +23,7 @@ def _fake_dicom2nii_from_module(d_module):
     import torchio as tio
     def _impl(item, root):
         series_uid_str, _paths = item
-        data = torch.linspace(0.1, 1.0, 1 * 256 * 256 * 8).reshape(1, 256, 256, 8)
+        data = torch.linspace(0.1, 1.0, 1 * 64 * 64 * 8).reshape(1, 64, 64, 8)
         series_name = series_uid_str.split("_", 1)[1]
         return series_name, tio.ScalarImage(tensor=data, affine=torch.eye(4))
     return _impl
