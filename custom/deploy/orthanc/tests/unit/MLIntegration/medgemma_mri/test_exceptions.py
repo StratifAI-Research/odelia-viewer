@@ -88,3 +88,42 @@ def test_exceptions_are_distinct_types():
     from exceptions import ModelNotLoadedError, ModelAuthenticationError, InferenceError, ResponseParsingError
     types_ = [ModelNotLoadedError, ModelAuthenticationError, InferenceError, ResponseParsingError]
     assert len(set(types_)) == 4
+
+
+# ---------------------------------------------------------------------------
+# G1: PreprocessingError parity with the other four exception classes
+# ---------------------------------------------------------------------------
+
+def test_preprocessing_error_is_exception():
+    from exceptions import PreprocessingError
+    assert issubclass(PreprocessingError, Exception)
+
+
+def test_preprocessing_error_default_message():
+    from exceptions import PreprocessingError
+    err = PreprocessingError()
+    assert "preprocessing" in str(err).lower()
+
+
+def test_preprocessing_error_custom_message():
+    from exceptions import PreprocessingError
+    err = PreprocessingError("dcm read failed")
+    assert "dcm read failed" in str(err)
+
+
+def test_preprocessing_error_can_be_raised_and_caught():
+    from exceptions import PreprocessingError
+    with pytest.raises(PreprocessingError):
+        raise PreprocessingError("test")
+
+
+def test_all_five_exceptions_are_distinct_types():
+    """Includes PreprocessingError — the previous distinct-count was 4 and silently
+    excluded this class. With G1, all 5 service exceptions must be distinct."""
+    from exceptions import (
+        ModelNotLoadedError, ModelAuthenticationError, InferenceError,
+        PreprocessingError, ResponseParsingError,
+    )
+    types_ = [ModelNotLoadedError, ModelAuthenticationError, InferenceError,
+              PreprocessingError, ResponseParsingError]
+    assert len(set(types_)) == 5

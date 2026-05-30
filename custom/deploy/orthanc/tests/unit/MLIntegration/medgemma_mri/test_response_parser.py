@@ -226,3 +226,60 @@ def test_parse_bilateral_response_reasoning_not_in_output():
     result = parse_bilateral_response(_good_json())
     assert 'reasoning' not in result['left']
     assert 'reasoning' not in result['right']
+
+
+# ---------------------------------------------------------------------------
+# G3: malformed-LLM-output coverage — realistic VLM failure modes
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("payload,reason", [
+    ("", "whitespace-only payload (empty after strip)"),
+    ("   \n\t  ", "whitespace-only payload (chars stripped)"),
+    ("```json\n{\"left\": {}}\n", "single fence — no closing ```"),
+    ('{"left": {"classification": "Benign", "confidence": 80}, "right": {"classification": "Benign", "confidence": 80}}\nplus trailing prose', "trailing prose after JSON"),
+])
+def test_parse_bilateral_response_rejects_malformed_json(payload, reason):
+    """Parser must raise ResponseParsingError for common LLM malformations."""
+    from response_parser import parse_bilateral_response
+    from exceptions import ResponseParsingError
+    with pytest.raises(ResponseParsingError):
+        parse_bilateral_response(payload)
+
+
+def test_parse_bilateral_response_rejects_null_confidence():
+    """JSON `null` confidence -> ResponseParsingError (float(None) -> TypeError)."""
+    from response_parser import parse_bilateral_response
+    from exceptions import ResponseParsingError
+    payload = '{"left": {"classification": "Benign", "confidence": null}, "right": {"classification": "Benign", "confidence": 50}}'
+    with pytest.raises(ResponseParsingError, match="confidence"):
+        parse_bilateral_response(payload)
+
+
+def test_parse_bilateral_response_accepts_nan_confidence_as_nan_float():
+    """JSON parser converts NaN to float; validate_confidence clamp does NOT catch NaN.
+    Pins current behavior: NaN survives. If we want stricter, change production and update this test."""
+    import math
+    from response_parser import parse_bilateral_response
+    # Most JSON parsers reject NaN. json.loads(...) with allow_nan=True (default for stdlib) accepts it.
+    payload = '{"left": {"classification": "Benign", "confidence": NaN}, "right": {"classification": "Benign", "confidence": 50}}'
+    parsed = parse_bilateral_response(payload)
+    # min(100, max(0, nan)) returns nan (math semantics). Pin that the parser doesn't crash.
+    assert math.isnan(parsed["left"]["confidence"]) or parsed["left"]["confidence"] in (0.0, 100.0)
+
+
+def test_parse_bilateral_response_rejects_side_as_list():
+    """parsed[side] must be a dict; a list (e.g. LLM returns array) raises."""
+    from response_parser import parse_bilateral_response
+    from exceptions import ResponseParsingError
+    payload = '{"left": [{"classification": "Benign", "confidence": 80}], "right": {"classification": "Benign", "confidence": 80}}'
+    with pytest.raises(ResponseParsingError, match="must be an object"):
+        parse_bilateral_response(payload)
+
+
+def test_parse_bilateral_response_rejects_empty_classification_string():
+    """Empty classification string fails validate_classification."""
+    from response_parser import parse_bilateral_response
+    from exceptions import ResponseParsingError
+    payload = '{"left": {"classification": "", "confidence": 80}, "right": {"classification": "Benign", "confidence": 80}}'
+    with pytest.raises(ResponseParsingError, match="Invalid classification"):
+        parse_bilateral_response(payload)

@@ -147,3 +147,82 @@ def test_extract_central_slices_image_size(sitk_stub, monkeypatch):
     with patch('preprocessing.read_dicom_volume', return_value=MagicMock()):
         result = preprocessing.extract_central_slices('/fake/dicom', num_slices=1)
     assert result[0].size == (64, 64)
+
+
+# ---------------------------------------------------------------------------
+# G2: get_dicom_metadata explicit branch coverage + read_dicom_volume 4D path
+# ---------------------------------------------------------------------------
+
+def test_get_dicom_metadata_extracts_temporal_position_from_tag_0020_0100(sitk_stub, monkeypatch):
+    """When 0020|0100 (TemporalPositionIdentifier) is present, it is read first."""
+    import preprocessing
+    reader = MagicMock()
+    reader.HasMetaDataKey.side_effect = lambda k: k in {"0020|0100", "0020|1041", "0020|0013"}
+    reader.GetMetaData.side_effect = lambda k: {
+        "0020|0100": "3", "0020|1041": "5.5", "0020|0013": "7",
+    }[k]
+    monkeypatch.setattr(sitk_stub, "ImageFileReader", MagicMock(return_value=reader))
+    temporal, loc, num = preprocessing.get_dicom_metadata("/fake/file.dcm")
+    assert temporal == 3
+    assert loc == 5.5
+    assert num == 7
+
+
+def test_get_dicom_metadata_falls_back_to_trigger_time_0018_1060(sitk_stub, monkeypatch):
+    """When 0020|0100 is missing but 0018|1060 (TriggerTime) is present, it is used."""
+    import preprocessing
+    reader = MagicMock()
+    reader.HasMetaDataKey.side_effect = lambda k: k == "0018|1060"
+    reader.GetMetaData.side_effect = lambda k: {"0018|1060": "42.5"}[k]
+    monkeypatch.setattr(sitk_stub, "ImageFileReader", MagicMock(return_value=reader))
+    temporal, _, _ = preprocessing.get_dicom_metadata("/fake/file.dcm")
+    assert temporal == 42  # int(float("42.5"))
+
+
+def test_get_dicom_metadata_falls_back_to_image_position_patient_for_z(sitk_stub, monkeypatch):
+    """When 0020|1041 is missing but 0020|0032 is present, use the Z component of IPP."""
+    import preprocessing
+    reader = MagicMock()
+    reader.HasMetaDataKey.side_effect = lambda k: k == "0020|0032"
+    reader.GetMetaData.side_effect = lambda k: {"0020|0032": "1.0\\2.0\\3.5"}[k]
+    monkeypatch.setattr(sitk_stub, "ImageFileReader", MagicMock(return_value=reader))
+    _, slice_loc, _ = preprocessing.get_dicom_metadata("/fake/file.dcm")
+    assert slice_loc == 3.5
+
+
+def test_get_dicom_metadata_returns_zero_tuple_on_reader_failure(sitk_stub, monkeypatch):
+    """If the reader raises (e.g. unreadable file), return (0, 0.0, 0) sentinel."""
+    import preprocessing
+    reader = MagicMock()
+    reader.ReadImageInformation.side_effect = RuntimeError("unreadable")
+    monkeypatch.setattr(sitk_stub, "ImageFileReader", MagicMock(return_value=reader))
+    out = preprocessing.get_dicom_metadata("/fake/file.dcm")
+    assert out == (0, 0.0, 0)
+
+
+def test_read_dicom_volume_extracts_first_temporal_phase_when_multiple_phases(tmp_path, sitk_stub, monkeypatch):
+    """4D branch: two temporal positions present -> select the lowest key, use only its files."""
+    import preprocessing
+    # Create two empty .dcm files; metadata is supplied by the patched helper.
+    f0 = tmp_path / "phase0.dcm"
+    f1 = tmp_path / "phase1.dcm"
+    f0.write_bytes(b"")
+    f1.write_bytes(b"")
+
+    metadata_for = {str(f0): (0, 0.0, 0), str(f1): (1, 0.0, 1)}
+    monkeypatch.setattr(preprocessing, "get_dicom_metadata",
+                         lambda p: metadata_for[str(p)])
+
+    captured = []
+    series_reader = MagicMock()
+    def _set_files(files):
+        captured.append(list(files))
+    series_reader.SetFileNames.side_effect = _set_files
+    series_reader.Execute.return_value = MagicMock()
+    monkeypatch.setattr(sitk_stub, "ImageSeriesReader", MagicMock(return_value=series_reader))
+
+    preprocessing.read_dicom_volume(tmp_path)
+
+    # Only the lower temporal phase (key=0 = phase0.dcm) should have been read.
+    assert len(captured) == 1
+    assert captured[0] == [str(f0)]
