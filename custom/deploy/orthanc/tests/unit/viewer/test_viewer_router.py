@@ -521,3 +521,122 @@ def test_has_processable_content_false_when_all_ai(out, router, rest_fake):
         {"SeriesDescription": "Automated Diagnostic Findings", "Modality": "SR"}
     ).encode()
     assert router.HasProcessableContent("STD") is False
+
+
+# ---------------------------------------------------------------------------
+# D4: wider SendToAi(Dicom|DicomWeb) coverage — beyond the early 400/405 checks
+# ---------------------------------------------------------------------------
+
+def _bind_series_listing(rest_fake, study_id, series_list, ai=False):
+    """Bind /studies/<id>/series + tags-simplify for each series. ai=True flags them as AI results."""
+    import json as _json
+    rest_fake.responses[("GET", f"/studies/{study_id}/series")] = _json.dumps(
+        [{"ID": sid} for sid in series_list]
+    ).encode()
+    desc = "Automated Diagnostic Findings" if ai else "Axial T1"
+    modality = "SR" if ai else "MR"
+    for sid in series_list:
+        rest_fake.responses[("GET", f"/series/{sid}/tags?simplify")] = _json.dumps(
+            {"SeriesDescription": desc, "Modality": modality}
+        ).encode()
+
+
+def test_send_to_ai_dicom_no_processable_content_returns_400(out, router, rest_fake):
+    """If no series_uids in body AND HasProcessableContent is False, return 400."""
+    _bind_series_listing(rest_fake, "STD", ["S-ai-1"], ai=True)  # all AI -> not processable
+    body = b'{"study_id": "STD", "target": "PACS"}'
+    router.SendToAiDicom(out, "/send-to-ai-dicom", method="POST", body=body)
+    assert out.status == 400
+    assert "no processable content" in (out.body or "").lower()
+
+
+def test_send_to_ai_dicom_no_series_after_filter_returns_400(out, router, rest_fake):
+    """series_uids list, but every lookup returns no Series-type -> "No series found to send"."""
+    import json as _json
+    rest_fake.responses[("GET", "/modalities")] = b"[]"
+    # Lookup returns Study-only result (not Series) for every UID
+    rest_fake.responses[("POST", "/tools/lookup")] = _json.dumps([{"Type": "Study", "ID": "X"}]).encode()
+    body = b'{"study_id": "STD", "target": "PACS", "series_uids": ["1.2.3.SE1"]}'
+    router.SendToAiDicom(out, "/send-to-ai-dicom", method="POST", body=body)
+    assert out.status == 400
+    assert "no series found" in (out.body or "").lower()
+
+
+def test_send_to_ai_dicom_happy_path_responds_with_success(out, router, rest_fake):
+    """Full happy path: study has originals -> instances fetched -> /modalities/<target>/store POST succeeds."""
+    import json as _json
+    _bind_series_listing(rest_fake, "STD", ["S-orig"], ai=False)  # processable
+    rest_fake.responses[("GET", "/modalities")] = b"[]"
+    rest_fake.responses[("GET", "/series/S-orig/instances")] = _json.dumps(
+        [{"ID": "I1"}, {"ID": "I2"}]
+    ).encode()
+    rest_fake.responses[("POST", "/modalities/PACS/store")] = b'{}'
+    body = b'{"study_id": "STD", "target": "PACS"}'
+    router.SendToAiDicom(out, "/send-to-ai-dicom", method="POST", body=body)
+    assert out.status == 200
+    resp = _json.loads(out.body)
+    assert resp["status"] == "success"
+    assert resp["target"] == "PACS"
+
+
+def test_send_to_ai_dicom_store_failure_returns_error_payload(out, router, rest_fake):
+    """When the modality store endpoint raises, the function still answers (200 with error payload)."""
+    import json as _json
+    _bind_series_listing(rest_fake, "STD", ["S-orig"], ai=False)
+    rest_fake.responses[("GET", "/modalities")] = b"[]"
+    rest_fake.responses[("GET", "/series/S-orig/instances")] = _json.dumps([{"ID": "I1"}]).encode()
+    # No response bound for POST /modalities/PACS/store -> rest_fake raises -> error payload
+    body = b'{"study_id": "STD", "target": "PACS"}'
+    router.SendToAiDicom(out, "/send-to-ai-dicom", method="POST", body=body)
+    # AnswerBuffer was called with status 200 + error JSON
+    assert out.status == 200
+    resp = _json.loads(out.body)
+    assert resp["status"] == "error"
+
+
+# --- SendToAiDicomWeb ---
+
+def test_send_to_ai_dicomweb_study_not_found_returns_404(out, router, rest_fake):
+    """orthanc.RestApiGet(/studies/<id>) raising -> 404 surface."""
+    body = b'{"study_id": "MISSING", "target": "P", "target_url": "http://x/dicom-web"}'
+    router.SendToAiDicomWeb(out, "/send-to-ai-dicomweb", method="POST", body=body)
+    assert out.status == 404
+    assert "not found" in (out.body or "").lower()
+
+
+def test_send_to_ai_dicomweb_study_no_processable_content_returns_400(out, router, rest_fake):
+    """study_id exists but all series are AI results -> 400."""
+    import json as _json
+    rest_fake.responses[("GET", "/studies/STD")] = _json.dumps(
+        {"Series": ["S-ai-1"], "PatientMainDicomTags": {"PatientName": "X"}}
+    ).encode()
+    _bind_series_listing(rest_fake, "STD", ["S-ai-1"], ai=True)
+    body = b'{"study_id": "STD", "target": "P", "target_url": "http://x/dicom-web"}'
+    router.SendToAiDicomWeb(out, "/send-to-ai-dicomweb", method="POST", body=body)
+    assert out.status == 400
+    assert "no processable content" in (out.body or "").lower()
+
+
+def test_send_to_ai_dicomweb_dicomweb_server_config_failure_returns_500(out, router, rest_fake, monkeypatch):
+    """When requests.put to /dicom-web/servers/<target> returns non-2xx, response is 500."""
+    import json as _json
+    rest_fake.responses[("GET", "/studies/STD")] = _json.dumps(
+        {"Series": ["S-orig"], "PatientMainDicomTags": {"PatientName": "X"}}
+    ).encode()
+    _bind_series_listing(rest_fake, "STD", ["S-orig"], ai=False)
+
+    from unittest import mock as _mock
+    bad_resp = _mock.MagicMock(status_code=500, text="config error")
+    monkeypatch.setattr(router.requests, "put", _mock.MagicMock(return_value=bad_resp))
+
+    body = b'{"study_id": "STD", "target": "P", "target_url": "http://x/dicom-web"}'
+    router.SendToAiDicomWeb(out, "/send-to-ai-dicomweb", method="POST", body=body)
+    assert out.status == 500
+    assert "configuring dicomweb" in (out.body or "").lower()
+
+
+def test_send_to_ai_wraps_dicomweb_for_backward_compat(out, router, rest_fake):
+    """SendToAi is a thin wrapper around SendToAiDicomWeb; missing target_url -> 400."""
+    body = b'{"study_id": "STD", "target": "P"}'   # no target_url
+    router.SendToAi(out, "/send-to-ai", method="POST", body=body)
+    assert out.status == 400
