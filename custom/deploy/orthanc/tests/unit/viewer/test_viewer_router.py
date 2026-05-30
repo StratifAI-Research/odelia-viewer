@@ -384,3 +384,140 @@ def test_ups_update_workitem_falls_back_to_body_state_when_storage_unavailable(o
     import json as _json
     resp = _json.loads(out.body)
     assert resp == {"status": "updated"}
+
+
+# ---------------------------------------------------------------------------
+# D2: small helper coverage (FilterAIResultSeries, HasProcessableContent,
+#     GetStudyInstanceUID, ListModalities)
+# ---------------------------------------------------------------------------
+
+import json as _json
+
+
+def test_get_study_instance_uid_returns_uid_from_main_tags(out, router, rest_fake):
+    rest_fake.responses[("GET", "/studies/STD1")] = _json.dumps(
+        {"MainDicomTags": {"StudyInstanceUID": "1.2.3.std"}}
+    ).encode()
+    assert router.GetStudyInstanceUID("STD1") == "1.2.3.std"
+
+
+def test_get_study_instance_uid_returns_none_when_tag_missing(out, router, rest_fake):
+    rest_fake.responses[("GET", "/studies/STD2")] = _json.dumps(
+        {"MainDicomTags": {"PatientName": "X"}}    # no StudyInstanceUID
+    ).encode()
+    assert router.GetStudyInstanceUID("STD2") is None
+
+
+def test_get_study_instance_uid_returns_none_on_orthanc_error(out, router, rest_fake):
+    """When orthanc.RestApiGet raises (no response bound), GetStudyInstanceUID returns None."""
+    # No response bound -> rest_fake raises RuntimeError, which the function catches.
+    assert router.GetStudyInstanceUID("MISSING") is None
+
+
+def test_list_modalities_returns_configured_modalities(out, router, rest_fake):
+    rest_fake.responses[("GET", "/modalities")] = b"[\"PACS1\", \"PACS2\"]"
+    rest_fake.responses[("GET", "/modalities/PACS1")] = _json.dumps(
+        {"Host": "h1", "Port": 4242, "AET": "AET1"}
+    ).encode()
+    rest_fake.responses[("GET", "/modalities/PACS2")] = _json.dumps(
+        {"Host": "h2", "Port": 4243, "AET": "AET2"}
+    ).encode()
+    result = router.ListModalities()
+    assert result == ["PACS1", "PACS2"]
+
+
+def test_list_modalities_returns_empty_on_orthanc_error(out, router, rest_fake):
+    """No response bound -> rest_fake raises -> ListModalities catches -> returns []."""
+    assert router.ListModalities() == []
+
+
+def test_filter_ai_result_series_excludes_known_ai_descriptions(out, router, rest_fake):
+    """Series whose description matches an AI marker is filtered out; others remain."""
+    rest_fake.responses[("GET", "/studies/STD/series")] = _json.dumps([
+        {"ID": "S-orig"},
+        {"ID": "S-ai-sr"},
+        {"ID": "S-ai-heatmap"},
+    ]).encode()
+    rest_fake.responses[("GET", "/series/S-orig/tags?simplify")] = _json.dumps(
+        {"SeriesDescription": "T1 axial", "Modality": "MR"}
+    ).encode()
+    rest_fake.responses[("GET", "/series/S-ai-sr/tags?simplify")] = _json.dumps(
+        {"SeriesDescription": "Automated Diagnostic Findings", "Modality": "SR"}
+    ).encode()
+    rest_fake.responses[("GET", "/series/S-ai-heatmap/tags?simplify")] = _json.dumps(
+        {"SeriesDescription": "Axial - Heatmap overlay", "Modality": "SC"}
+    ).encode()
+    result = router.FilterAIResultSeries("STD")
+    assert result == ["S-orig"]
+
+
+def test_filter_ai_result_series_treats_sc_or_sr_with_ai_keyword_as_ai(out, router, rest_fake):
+    """An SC/SR modality with 'AI' anywhere in the description is filtered out."""
+    rest_fake.responses[("GET", "/studies/STD/series")] = _json.dumps([
+        {"ID": "S-ai-sc"},
+        {"ID": "S-orig"},
+    ]).encode()
+    rest_fake.responses[("GET", "/series/S-ai-sc/tags?simplify")] = _json.dumps(
+        {"SeriesDescription": "Generic AI Stuff", "Modality": "SC"}
+    ).encode()
+    rest_fake.responses[("GET", "/series/S-orig/tags?simplify")] = _json.dumps(
+        {"SeriesDescription": "Axial T2", "Modality": "MR"}
+    ).encode()
+    result = router.FilterAIResultSeries("STD")
+    assert result == ["S-orig"]
+
+
+def test_filter_ai_result_series_filters_description_prefix_and_suffix_markers(out, router, rest_fake):
+    """Descriptions starting with `AI_` or ending with `_AI` are filtered."""
+    rest_fake.responses[("GET", "/studies/STD/series")] = _json.dumps([
+        {"ID": "S-prefix"},
+        {"ID": "S-suffix"},
+        {"ID": "S-clean"},
+    ]).encode()
+    rest_fake.responses[("GET", "/series/S-prefix/tags?simplify")] = _json.dumps(
+        {"SeriesDescription": "AI_Stuff", "Modality": "MR"}
+    ).encode()
+    rest_fake.responses[("GET", "/series/S-suffix/tags?simplify")] = _json.dumps(
+        {"SeriesDescription": "Stuff_AI", "Modality": "MR"}
+    ).encode()
+    rest_fake.responses[("GET", "/series/S-clean/tags?simplify")] = _json.dumps(
+        {"SeriesDescription": "Original", "Modality": "MR"}
+    ).encode()
+    result = router.FilterAIResultSeries("STD")
+    assert result == ["S-clean"]
+
+
+def test_filter_ai_result_series_keeps_series_when_tag_lookup_fails(out, router, rest_fake):
+    """If reading tags raises, the series is conservatively kept as original."""
+    rest_fake.responses[("GET", "/studies/STD/series")] = _json.dumps([
+        {"ID": "S-tag-fail"},
+        {"ID": "S-ok"},
+    ]).encode()
+    # No response bound for S-tag-fail -> rest_fake raises -> series is kept.
+    rest_fake.responses[("GET", "/series/S-ok/tags?simplify")] = _json.dumps(
+        {"SeriesDescription": "Original", "Modality": "MR"}
+    ).encode()
+    result = router.FilterAIResultSeries("STD")
+    assert sorted(result) == ["S-ok", "S-tag-fail"]
+
+
+def test_filter_ai_result_series_returns_empty_on_outer_error(out, router, rest_fake):
+    """If the study/series listing raises, return empty list."""
+    # No response bound for /studies/.../series -> outer except returns [].
+    assert router.FilterAIResultSeries("NOPE") == []
+
+
+def test_has_processable_content_true_when_any_original_series(out, router, rest_fake):
+    rest_fake.responses[("GET", "/studies/STD/series")] = _json.dumps([{"ID": "S-orig"}]).encode()
+    rest_fake.responses[("GET", "/series/S-orig/tags?simplify")] = _json.dumps(
+        {"SeriesDescription": "Axial", "Modality": "MR"}
+    ).encode()
+    assert router.HasProcessableContent("STD") is True
+
+
+def test_has_processable_content_false_when_all_ai(out, router, rest_fake):
+    rest_fake.responses[("GET", "/studies/STD/series")] = _json.dumps([{"ID": "S-ai"}]).encode()
+    rest_fake.responses[("GET", "/series/S-ai/tags?simplify")] = _json.dumps(
+        {"SeriesDescription": "Automated Diagnostic Findings", "Modality": "SR"}
+    ).encode()
+    assert router.HasProcessableContent("STD") is False
