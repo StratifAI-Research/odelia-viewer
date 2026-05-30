@@ -645,3 +645,203 @@ def test_send_to_ai_wraps_dicomweb_for_backward_compat(out, router, rest_fake):
     body = b'{"study_id": "STD", "target": "P"}'   # no target_url
     router.SendToAi(out, "/send-to-ai", method="POST", body=body)
     assert out.status == 400
+
+
+# ---------------------------------------------------------------------------
+# SendToAiDicomWeb post-config coverage (viewer/router.py:430-613)
+# ---------------------------------------------------------------------------
+
+def _good_server_config_resp():
+    from unittest import mock as _mock
+    return _mock.MagicMock(status_code=200, text="ok")
+
+
+def _bind_dicomweb_study_state(rest_fake, study_id="STD", series_id="S-orig",
+                                 series_dicom_uid="1.2.3.SE1"):
+    """Bind /studies/<id> + filter listing + per-series instances + /series/<id> for SeriesInstanceUID."""
+    import json as _json
+    rest_fake.responses[("GET", f"/studies/{study_id}")] = _json.dumps(
+        {"Series": [series_id], "PatientMainDicomTags": {"PatientName": "X"},
+         "MainDicomTags": {"StudyInstanceUID": "1.2.3.STUDY"}}
+    ).encode()
+    # FilterAIResultSeries path: returns S-orig as non-AI
+    rest_fake.responses[("GET", f"/studies/{study_id}/series")] = _json.dumps(
+        [{"ID": series_id}]
+    ).encode()
+    rest_fake.responses[("GET", f"/series/{series_id}/tags?simplify")] = _json.dumps(
+        {"SeriesDescription": "Axial T1", "Modality": "MR"}
+    ).encode()
+    rest_fake.responses[("GET", f"/series/{series_id}/instances")] = _json.dumps(
+        [{"ID": "I1"}, {"ID": "I2"}]
+    ).encode()
+    rest_fake.responses[("GET", f"/series/{series_id}")] = _json.dumps(
+        {"MainDicomTags": {"SeriesInstanceUID": series_dicom_uid}}
+    ).encode()
+
+
+def test_send_to_ai_dicomweb_happy_path_creates_workitem_and_returns_success(out, router, rest_fake, monkeypatch):
+    """Full happy path: DICOMweb config OK -> series filtered -> UPS workitem POSTed -> success payload with workitem_uid."""
+    import json as _json
+    from unittest import mock as _mock
+    _bind_dicomweb_study_state(rest_fake)
+
+    workitem_response = _mock.MagicMock(
+        status_code=201,
+        json=lambda: {"00080018": {"Value": ["1.2.3.WORKITEM"]}},
+    )
+    subscribe_response = _mock.MagicMock(status_code=200)
+    posts = []
+    def _post(url, **kw):
+        posts.append((url, kw))
+        if "/subscribers" in url:
+            return subscribe_response
+        return workitem_response
+    monkeypatch.setattr(router.requests, "post", _post)
+    monkeypatch.setattr(router.requests, "put", _mock.MagicMock(return_value=_good_server_config_resp()))
+
+    body = b'{"study_id": "STD", "target": "P", "target_url": "http://router:8042/dicom-web"}'
+    router.SendToAiDicomWeb(out, "/send-to-ai-dicomweb", method="POST", body=body)
+
+    assert out.status == 200
+    resp = _json.loads(out.body)
+    assert resp["status"] == "success"
+    assert resp["workitem_uid"] == "1.2.3.WORKITEM"
+    assert resp["study_id"] == "STD"
+
+    # Two POSTs: workitem creation + subscribe.
+    urls = [p[0] for p in posts]
+    assert any("/ups-rs/workitems" in u and "/subscribers" not in u for u in urls)
+    assert any("/subscribers" in u for u in urls)
+
+
+def test_send_to_ai_dicomweb_happy_path_passes_input_mapping_through(out, router, rest_fake, monkeypatch):
+    """If body has input_mapping + input_configuration_id, they appear in the workitem POST body."""
+    import json as _json
+    from unittest import mock as _mock
+    _bind_dicomweb_study_state(rest_fake)
+
+    posts = []
+    def _post(url, **kw):
+        posts.append((url, kw))
+        if "/subscribers" in url:
+            return _mock.MagicMock(status_code=200)
+        return _mock.MagicMock(status_code=201, json=lambda: {"00080018": {"Value": ["wi.X"]}})
+    monkeypatch.setattr(router.requests, "post", _post)
+    monkeypatch.setattr(router.requests, "put", _mock.MagicMock(return_value=_good_server_config_resp()))
+
+    body = _json.dumps({
+        "study_id": "STD", "target": "P", "target_url": "http://router:8042/dicom-web",
+        "input_mapping": {"primary": "1.2.3.SE1"},
+        "input_configuration_id": "cfg-42",
+    }).encode()
+    router.SendToAiDicomWeb(out, "/send-to-ai-dicomweb", method="POST", body=body)
+
+    create_call = next(p for p in posts if "/ups-rs/workitems" in p[0] and "/subscribers" not in p[0])
+    payload = create_call[1].get("json", {})
+    assert payload.get("input_mapping") == {"primary": "1.2.3.SE1"}
+    assert payload.get("input_configuration_id") == "cfg-42"
+
+
+def test_send_to_ai_dicomweb_no_series_after_filter_returns_400(out, router, rest_fake, monkeypatch):
+    """If FilterAIResultSeries returns empty (all series are AI), respond 400 'No series found to send'."""
+    import json as _json
+    from unittest import mock as _mock
+    # Override the series listing with all-AI markers
+    rest_fake.responses[("GET", "/studies/STD")] = _json.dumps(
+        {"Series": ["S-ai"], "PatientMainDicomTags": {"PatientName": "X"},
+         "MainDicomTags": {"StudyInstanceUID": "1.2.3.STUDY"}}
+    ).encode()
+    rest_fake.responses[("GET", "/studies/STD/series")] = _json.dumps([{"ID": "S-ai"}]).encode()
+    rest_fake.responses[("GET", "/series/S-ai/tags?simplify")] = _json.dumps(
+        {"SeriesDescription": "Automated Diagnostic Findings", "Modality": "SR"}
+    ).encode()
+    monkeypatch.setattr(router.requests, "put", _mock.MagicMock(return_value=_good_server_config_resp()))
+
+    # series_uids provided so we bypass HasProcessableContent check, but every lookup returns Study-only
+    rest_fake.responses[("POST", "/tools/lookup")] = _json.dumps([{"Type": "Study", "ID": "X"}]).encode()
+    body = b'{"study_id": "STD", "target": "P", "target_url": "http://router:8042/dicom-web", "series_uids": ["1.2.3.SE1"]}'
+    router.SendToAiDicomWeb(out, "/send-to-ai-dicomweb", method="POST", body=body)
+    assert out.status == 400
+    assert "no series" in (out.body or "").lower()
+
+
+def test_send_to_ai_dicomweb_returns_500_when_study_instance_uid_missing(out, router, rest_fake, monkeypatch):
+    """When GetStudyInstanceUID returns None (StudyInstanceUID missing from MainDicomTags), respond 500."""
+    import json as _json
+    from unittest import mock as _mock
+    # Override study response with empty MainDicomTags
+    rest_fake.responses[("GET", "/studies/STD")] = _json.dumps(
+        {"Series": ["S-orig"], "PatientMainDicomTags": {"PatientName": "X"},
+         "MainDicomTags": {}}  # no StudyInstanceUID
+    ).encode()
+    rest_fake.responses[("GET", "/studies/STD/series")] = _json.dumps([{"ID": "S-orig"}]).encode()
+    rest_fake.responses[("GET", "/series/S-orig/tags?simplify")] = _json.dumps(
+        {"SeriesDescription": "Axial T1", "Modality": "MR"}
+    ).encode()
+    rest_fake.responses[("GET", "/series/S-orig/instances")] = _json.dumps([{"ID": "I1"}]).encode()
+    monkeypatch.setattr(router.requests, "put", _mock.MagicMock(return_value=_good_server_config_resp()))
+
+    body = b'{"study_id": "STD", "target": "P", "target_url": "http://router:8042/dicom-web"}'
+    router.SendToAiDicomWeb(out, "/send-to-ai-dicomweb", method="POST", body=body)
+    assert out.status == 500
+    assert "StudyInstanceUID" in (out.body or "")
+
+
+def test_send_to_ai_dicomweb_returns_error_payload_when_workitem_creation_fails(out, router, rest_fake, monkeypatch):
+    """When the UPS workitem POST returns non-2xx, respond with error payload (not 5xx — current behavior)."""
+    import json as _json
+    from unittest import mock as _mock
+    _bind_dicomweb_study_state(rest_fake)
+
+    bad_workitem = _mock.MagicMock(status_code=500, text="router unavailable")
+    monkeypatch.setattr(router.requests, "post", _mock.MagicMock(return_value=bad_workitem))
+    monkeypatch.setattr(router.requests, "put", _mock.MagicMock(return_value=_good_server_config_resp()))
+
+    body = b'{"study_id": "STD", "target": "P", "target_url": "http://router:8042/dicom-web"}'
+    router.SendToAiDicomWeb(out, "/send-to-ai-dicomweb", method="POST", body=body)
+    # Production answers 200 with error payload (analogous to the D4 xfail wart, but a separate path).
+    assert out.status == 200
+    resp = _json.loads(out.body)
+    assert resp["status"] == "error"
+    assert "Failed to create UPS workitem" in resp["message"]
+
+
+def test_send_to_ai_dicomweb_subscribe_failure_does_not_block_success(out, router, rest_fake, monkeypatch):
+    """Subscribe failure is logged but the workitem-created success response still goes out."""
+    import json as _json
+    from unittest import mock as _mock
+    _bind_dicomweb_study_state(rest_fake)
+
+    workitem_response = _mock.MagicMock(status_code=201, json=lambda: {"00080018": {"Value": ["wi.OK"]}})
+    bad_subscribe = _mock.MagicMock(status_code=500)
+    def _post(url, **kw):
+        return bad_subscribe if "/subscribers" in url else workitem_response
+    monkeypatch.setattr(router.requests, "post", _post)
+    monkeypatch.setattr(router.requests, "put", _mock.MagicMock(return_value=_good_server_config_resp()))
+
+    body = b'{"study_id": "STD", "target": "P", "target_url": "http://router:8042/dicom-web"}'
+    router.SendToAiDicomWeb(out, "/send-to-ai-dicomweb", method="POST", body=body)
+    assert out.status == 200
+    assert _json.loads(out.body)["workitem_uid"] == "wi.OK"
+
+
+def test_send_to_ai_dicomweb_strips_dicom_web_suffix_from_router_url(out, router, rest_fake, monkeypatch):
+    """target_url with /dicom-web suffix is stripped before POSTing to /ups-rs/workitems."""
+    import json as _json
+    from unittest import mock as _mock
+    _bind_dicomweb_study_state(rest_fake)
+
+    posts = []
+    def _post(url, **kw):
+        posts.append(url)
+        if "/subscribers" in url:
+            return _mock.MagicMock(status_code=200)
+        return _mock.MagicMock(status_code=201, json=lambda: {"00080018": {"Value": ["wi.42"]}})
+    monkeypatch.setattr(router.requests, "post", _post)
+    monkeypatch.setattr(router.requests, "put", _mock.MagicMock(return_value=_good_server_config_resp()))
+
+    body = b'{"study_id": "STD", "target": "P", "target_url": "http://router:8042/dicom-web/"}'
+    router.SendToAiDicomWeb(out, "/send-to-ai-dicomweb", method="POST", body=body)
+    # The UPS-RS create POST goes to the root, not under /dicom-web
+    create_post = next(u for u in posts if "/ups-rs/workitems" in u and "/subscribers" not in u)
+    assert create_post == "http://router:8042/ups-rs/workitems"
