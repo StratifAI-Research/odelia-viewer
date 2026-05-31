@@ -14,7 +14,7 @@ fastapi==0.136.1
 httpx==0.28.1
 pydantic==2.13.4
 # Async test infrastructure for chat-middleware ollama_fake fixture (cherry-picked from ODV-192)
-pytest-asyncio==1.4.0
+pytest-asyncio==0.24.0
 aiohttp==3.13.5
 # Real torch / torchio / SimpleITK for MLI service unit tests (BC + MST + medgemma)
 # CPU-only wheels keep CI install size manageable.
