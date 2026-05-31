@@ -344,6 +344,9 @@ def test_process_workitem_bilateral_with_heatmap_uploads_sr_and_sc(proc, fake_wo
 
     proc.process_workitem(fake_workitem)
 
+    # H7: explicitly assert one POST hit the configured model URL.
+    model_calls = [u for u in posts if "/analyze/mri" in u[0]]
+    assert len(model_calls) == 1, f"expected exactly one model POST, saw URLs: {[u[0] for u in posts]}"
     upload_calls = [u for u in posts if "/instances" in u[0]]
     upload_payloads = [u[1].get("data") for u in upload_calls]
     assert b"SR_BYTES" in upload_payloads
