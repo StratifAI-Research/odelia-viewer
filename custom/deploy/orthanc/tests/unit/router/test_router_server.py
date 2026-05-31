@@ -505,3 +505,154 @@ def test_create_text_overlay_sc_references_sr_when_given(srv):
     assert hasattr(parsed, "ReferencedInstanceSequence")
     ref_uid = parsed.ReferencedInstanceSequence[0].ReferencedSOPInstanceUID
     assert str(ref_uid) == str(fake_sr_uid)
+
+
+# ---------------------------------------------------------------------------
+# H1+H2: patient attribution + AI provenance audit on every SR/SC builder
+# MDR/IEC 62304 §5.6: AI output must not be mis-attributed to the wrong patient
+# and must carry traceable model provenance.
+# ---------------------------------------------------------------------------
+
+
+def _assert_patient_attribution(parsed, original_ds, msg_prefix=""):
+    """Audit helper: every AI-produced DICOM object must round-trip the four
+    safety-critical patient/study attribution tags from the original DICOM."""
+    assert str(parsed.PatientID) == str(original_ds.PatientID), \
+        f"{msg_prefix}PatientID mismatch: {parsed.PatientID!r} != {original_ds.PatientID!r}"
+    assert str(parsed.PatientName) == str(original_ds.PatientName), \
+        f"{msg_prefix}PatientName mismatch: {parsed.PatientName!r} != {original_ds.PatientName!r}"
+    assert str(parsed.StudyInstanceUID) == str(original_ds.StudyInstanceUID), \
+        f"{msg_prefix}StudyInstanceUID mismatch"
+
+
+def _assert_sr_model_provenance(parsed, msg_prefix=""):
+    """SR audit: model provenance is encoded inside a ContentSequence item whose
+    TextValue carries the model_name (with AlgorithmName / AlgorithmVersion siblings).
+    Audit trace: MDR Annex I §17.1 — output must be traceable to producing model."""
+    def _walk(item, depth=0):
+        if depth > 4:
+            return None
+        text_val = getattr(item, "TextValue", None)
+        alg_name = getattr(item, "AlgorithmName", None)
+        alg_ver = getattr(item, "AlgorithmVersion", None)
+        if text_val and alg_name and alg_ver:
+            return (str(text_val), str(alg_name), str(alg_ver))
+        for child in getattr(item, "ContentSequence", []) or []:
+            found = _walk(child, depth + 1)
+            if found:
+                return found
+        return None
+
+    for top in getattr(parsed, "ContentSequence", []) or []:
+        found = _walk(top)
+        if found:
+            model_name, alg_name, alg_ver = found
+            assert model_name.strip(), f"{msg_prefix}model_name (TextValue) is empty"
+            assert alg_name.strip(), f"{msg_prefix}AlgorithmName is empty"
+            assert alg_ver.strip(), f"{msg_prefix}AlgorithmVersion is empty"
+            return
+    raise AssertionError(
+        f"{msg_prefix}no ContentSequence item carries (TextValue + AlgorithmName + AlgorithmVersion) "
+        "model provenance — auditor cannot trace AI output to producing model"
+    )
+
+
+def _assert_sc_model_provenance(parsed, msg_prefix=""):
+    """SC audit: model provenance is the ManufacturerModelName tag (set by production
+    on every SC). Audit trace: MDR Annex I §17.1."""
+    assert hasattr(parsed, "ManufacturerModelName"), \
+        f"{msg_prefix}ManufacturerModelName tag missing — no audit trace from SC to producing model"
+    assert str(parsed.ManufacturerModelName).strip(), \
+        f"{msg_prefix}ManufacturerModelName is empty (no model provenance encoded)"
+
+
+# --- bilateral SR ---
+
+def test_create_bilateral_sr_carries_full_patient_attribution(srv):
+    """H1: bilateral SR must round-trip ALL of PatientID/PatientName/StudyInstanceUID."""
+    ds = _minimal_dicom()
+    sr_bytes, _, _, _ = srv.create_bilateral_sr(ds, _BILATERAL_RESULTS)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sr_bytes))
+    _assert_patient_attribution(parsed, ds, msg_prefix="bilateral_sr: ")
+
+
+def test_create_bilateral_sr_encodes_model_provenance(srv):
+    """H2: bilateral SR must encode ManufacturerModelName for audit traceability."""
+    ds = _minimal_dicom()
+    sr_bytes, _, _, _ = srv.create_bilateral_sr(ds, _BILATERAL_RESULTS)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sr_bytes))
+    _assert_sr_model_provenance(parsed, msg_prefix="bilateral_sr: ")
+
+
+# --- MST SR ---
+
+def test_create_mst_sr_carries_full_patient_attribution(srv):
+    """H1: MST SR — same audit guarantee as bilateral. PRIOR REVIEW GAP."""
+    ds = _minimal_dicom()
+    sr_bytes, _, _, _ = srv.create_mst_sr(ds, _MST_RESULTS)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sr_bytes))
+    _assert_patient_attribution(parsed, ds, msg_prefix="mst_sr: ")
+
+
+def test_create_mst_sr_encodes_model_provenance(srv):
+    """H2: MST SR must encode ManufacturerModelName. PRIOR REVIEW GAP."""
+    ds = _minimal_dicom()
+    sr_bytes, _, _, _ = srv.create_mst_sr(ds, _MST_RESULTS)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sr_bytes))
+    _assert_sr_model_provenance(parsed, msg_prefix="mst_sr: ")
+
+
+def test_create_mst_sr_mutating_input_propagates_to_output(srv):
+    """Negative-attribution check: assertions are NOT hard-coded — changing the input
+    ds.PatientID must change the output. Catches a future regression where the SR builder
+    accidentally writes a constant PatientID."""
+    ds = _minimal_dicom()
+    ds.PatientID = "PATIENT_X_AUDIT"
+    sr_bytes, _, _, _ = srv.create_mst_sr(ds, _MST_RESULTS)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sr_bytes))
+    assert str(parsed.PatientID) == "PATIENT_X_AUDIT"
+
+
+# --- multiframe attention SC ---
+
+def test_create_multiframe_attention_sc_carries_full_patient_attribution(srv):
+    """H1: multi-frame SC — same audit guarantee. PRIOR REVIEW GAP."""
+    ds = _minimal_dicom()
+    sc_bytes = srv.create_multiframe_attention_sc(ds, _make_fake_attention_maps())
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sc_bytes), force=True)
+    _assert_patient_attribution(parsed, ds, msg_prefix="multiframe_attention_sc: ")
+
+
+def test_create_multiframe_attention_sc_encodes_model_provenance(srv):
+    """H2: multi-frame SC must encode ManufacturerModelName. PRIOR REVIEW GAP."""
+    ds = _minimal_dicom()
+    sc_bytes = srv.create_multiframe_attention_sc(ds, _make_fake_attention_maps())
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sc_bytes), force=True)
+    _assert_sc_model_provenance(parsed, msg_prefix="multiframe_attention_sc: ")
+
+
+# --- text overlay SC ---
+
+def test_create_text_overlay_sc_carries_full_patient_attribution(srv):
+    """H1: text-overlay SC — same audit guarantee. PRIOR REVIEW GAP."""
+    ds = _minimal_dicom_with_pixels()
+    sc_bytes = srv.create_text_overlay_sc(ds, text="AI")
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sc_bytes), force=True)
+    _assert_patient_attribution(parsed, ds, msg_prefix="text_overlay_sc: ")
+
+
+def test_create_text_overlay_sc_encodes_model_provenance(srv):
+    """H2: text-overlay SC must encode ManufacturerModelName. PRIOR REVIEW GAP."""
+    ds = _minimal_dicom_with_pixels()
+    sc_bytes = srv.create_text_overlay_sc(ds, text="AI")
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sc_bytes), force=True)
+    _assert_sc_model_provenance(parsed, msg_prefix="text_overlay_sc: ")
