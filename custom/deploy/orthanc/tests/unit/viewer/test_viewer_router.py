@@ -859,3 +859,106 @@ def test_send_to_ai_dicomweb_strips_dicom_web_suffix_from_router_url(out, router
     # The UPS-RS create POST goes to the root, not under /dicom-web
     create_post = next(u for u in posts if "/ups-rs/workitems" in u and "/subscribers" not in u)
     assert create_post == "http://router:8042/ups-rs/workitems"
+
+
+# ---------------------------------------------------------------------------
+# SendToAiDicom modality-config coverage (viewer/router.py:173-262)
+# ---------------------------------------------------------------------------
+
+def _bind_send_to_ai_dicom_state(rest_fake, study_id="STD", series_id="S-orig",
+                                    target="PACS", *, include_existing_modality=False):
+    """Bind everything SendToAiDicom needs to reach the final modality store POST.
+
+    - FilterAIResultSeries (non-AI series) via _bind_series_listing
+    - GET /modalities (ListModalities)
+    - Optional GET /modalities/<target> (lookup-existing branch)
+    - GET /series/<sid>/instances + POST /modalities/<target>/store
+
+    Returns nothing; caller can layer more bindings on top.
+    """
+    import json as _json
+    _bind_series_listing(rest_fake, study_id, [series_id], ai=False)
+    rest_fake.responses[("GET", "/modalities")] = b"[]"
+    if include_existing_modality:
+        rest_fake.responses[("GET", f"/modalities/{target}")] = _json.dumps(
+            {"AET": "EXISTING", "Host": "old", "Port": 4242}
+        ).encode()
+        rest_fake.responses[("DELETE", f"/modalities/{target}")] = b""
+    rest_fake.responses[("PUT", f"/modalities/{target}")] = b""
+    rest_fake.responses[("GET", f"/series/{series_id}/instances")] = _json.dumps(
+        [{"ID": "I1"}, {"ID": "I2"}]
+    ).encode()
+    rest_fake.responses[("POST", f"/modalities/{target}/store")] = b"{}"
+
+
+def test_send_to_ai_dicom_configures_new_modality_when_target_url_provided(out, router, rest_fake):
+    """No existing modality (GET /modalities/<target> raises -> silent pass) -> PUT configures it -> success."""
+    import json as _json
+    _bind_send_to_ai_dicom_state(rest_fake, include_existing_modality=False)
+    body = b'{"study_id": "STD", "target": "PACS", "target_url": "remote-host:11112/REMOTE_AET"}'
+    router.SendToAiDicom(out, "/send-to-ai-dicom", method="POST", body=body)
+    assert out.status == 200
+    assert _json.loads(out.body)["status"] == "success"
+    # PUT and the post-PUT verification GET both hit /modalities/PACS.
+    put_calls = [c for c in rest_fake.calls if c[0] == "PUT" and c[1] == "/modalities/PACS"]
+    assert len(put_calls) == 1
+    # The PUT body must be a JSON-serialized modality config with the parsed host/port/AET.
+    config = _json.loads(put_calls[0][2])
+    assert config["Host"] == "remote-host"
+    assert config["Port"] == 11112
+    assert config["AET"] == "REMOTE_AET"
+
+
+def test_send_to_ai_dicom_deletes_existing_modality_before_reconfiguring(out, router, rest_fake):
+    """When GET /modalities/<target> succeeds, the existing modality is DELETE'd before PUT reconfigure."""
+    _bind_send_to_ai_dicom_state(rest_fake, include_existing_modality=True)
+    body = b'{"study_id": "STD", "target": "PACS", "target_url": "h:104/AET1"}'
+    router.SendToAiDicom(out, "/send-to-ai-dicom", method="POST", body=body)
+    assert out.status == 200
+    # DELETE preceded PUT in the call order.
+    call_seq = [(c[0], c[1]) for c in rest_fake.calls if "/modalities/PACS" in c[1]]
+    delete_idx = call_seq.index(("DELETE", "/modalities/PACS"))
+    put_idx = call_seq.index(("PUT", "/modalities/PACS"))
+    assert delete_idx < put_idx, f"expected DELETE before PUT; got {call_seq}"
+
+
+def test_send_to_ai_dicom_defaults_aet_to_target_when_url_has_no_aet(out, router, rest_fake):
+    """target_url='host:port' (no /AET) -> AET parsed as 'port' due to split mechanics, port defaults to 104.
+
+    Pins the current parsing behavior. The url_parts = target_url.split('/') logic with input 'h:104'
+    yields ['h:104'] which is len < 2 -> 'Invalid target URL format' branch.
+    Production then logs and continues to the store step (no PUT).
+    """
+    import json as _json
+    _bind_send_to_ai_dicom_state(rest_fake)
+    body = b'{"study_id": "STD", "target": "PACS", "target_url": "h:104"}'
+    router.SendToAiDicom(out, "/send-to-ai-dicom", method="POST", body=body)
+    assert out.status == 200    # continues to store and succeeds
+    assert _json.loads(out.body)["status"] == "success"
+    # PUT must NOT have been issued — the URL parse fell into the 'Invalid target URL format' branch.
+    assert not any(c[0] == "PUT" for c in rest_fake.calls)
+
+
+def test_send_to_ai_dicom_continues_when_put_raises(out, router, rest_fake):
+    """If RestApiPut raises ('Failed to configure DICOM modality'), function still continues to the store POST."""
+    import json as _json
+    _bind_send_to_ai_dicom_state(rest_fake)
+    # Remove PUT binding so rest_fake raises -> outer try/except logs + continues.
+    del rest_fake.responses[("PUT", "/modalities/PACS")]
+    body = b'{"study_id": "STD", "target": "PACS", "target_url": "h:104/AET"}'
+    router.SendToAiDicom(out, "/send-to-ai-dicom", method="POST", body=body)
+    assert out.status == 200
+    assert _json.loads(out.body)["status"] == "success"
+
+
+def test_send_to_ai_dicom_succeeds_without_target_url(out, router, rest_fake):
+    """No target_url -> modality-config block skipped entirely; function proceeds straight to the store POST."""
+    import json as _json
+    _bind_send_to_ai_dicom_state(rest_fake)
+    body = b'{"study_id": "STD", "target": "PACS"}'   # no target_url
+    router.SendToAiDicom(out, "/send-to-ai-dicom", method="POST", body=body)
+    assert out.status == 200
+    assert _json.loads(out.body)["status"] == "success"
+    # No modality-config GET/PUT/DELETE for PACS — only the store POST.
+    modality_calls = [c for c in rest_fake.calls if "/modalities/PACS" in c[1] and not c[1].endswith("/store")]
+    assert modality_calls == []
