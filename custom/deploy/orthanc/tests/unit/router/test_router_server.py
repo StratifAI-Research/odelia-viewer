@@ -214,8 +214,9 @@ def test_add_text_overlay_single_frame_modifies_pixels(srv):
     result = srv.add_text_overlay(arr, text="TEST", color="red")
     assert result.shape[0] == 64
     assert result.shape[1] == 64
-    # Some pixels should be non-zero (text was drawn)
-    assert result.sum() > 0
+    # Overlay must actually modify the input — sum>0 alone would pass if a single
+    # background pixel were lit by any unrelated bug.
+    assert np.any(result != arr), "overlay produced no pixel change vs input"
 
 
 def test_add_text_overlay_single_frame_greyscale_converts_to_rgb(srv):
@@ -235,7 +236,9 @@ def test_add_text_overlay_multi_frame_preserves_frame_count(srv):
 def test_add_text_overlay_multi_frame_modifies_pixels(srv):
     arr = np.zeros((3, 64, 64, 3), dtype=np.uint8)
     result = srv.add_text_overlay(arr, text="AI", color="green")
-    assert result.sum() > 0
+    # Each frame must be modified — sum>0 would pass if only one frame got lit.
+    assert np.any(result != arr), "multi-frame overlay produced no pixel change vs input"
+    assert result.shape == arr.shape, f"multi-frame overlay changed shape: {arr.shape} -> {result.shape}"
 
 
 # ---------------------------------------------------------------------------
@@ -291,11 +294,17 @@ def test_create_bilateral_sr_preserves_patient_info(srv):
     assert str(parsed.StudyInstanceUID) == str(ds.StudyInstanceUID)
 
 
-def test_create_bilateral_sr_returns_sop_uid(srv):
+def test_create_bilateral_sr_returns_valid_sop_uid(srv):
+    """Returned UID must be a non-empty valid DICOM UID (1-64 chars, digits + dots, valid root).
+    Mis-formatted UIDs are rejected by downstream Orthanc / DICOMweb consumers — pin the format."""
+    from pydicom.uid import UID
     ds = _minimal_dicom()
     _, date, time_str, uid = srv.create_bilateral_sr(ds, _BILATERAL_RESULTS)
-    assert uid  # non-empty UID
+    assert uid
     assert isinstance(uid, str)
+    parsed_uid = UID(uid)
+    assert parsed_uid.is_valid, f"returned SOP UID is not a valid DICOM UID: {uid!r}"
+    assert 1 <= len(uid) <= 64, f"DICOM UID length must be 1-64 chars; got {len(uid)}"
 
 
 def test_create_bilateral_sr_content_contains_measurements(srv):
@@ -435,6 +444,31 @@ def test_create_multiframe_attention_sc_frame_count_matches(srv):
     from pydicom import dcmread
     parsed = dcmread(io.BytesIO(sc_bytes), force=True)
     assert int(parsed.NumberOfFrames) == num_frames
+
+
+def test_create_multiframe_attention_sc_pixel_values_round_trip(srv):
+    """The decoded PixelData must match the input base64 payload byte-for-byte.
+    A writer bug that zero-fills frames or truncates the payload passes the
+    frame-count and Modality tests but fails this one."""
+    import base64 as _b64
+    ds = _minimal_dicom()
+    # Build a deterministic payload so we can compare bytes after the round-trip.
+    expected_arr = (np.arange(4 * 16 * 16 * 3) % 256).astype(np.uint8).reshape(4, 16, 16, 3)
+    expected_bytes = expected_arr.tobytes()
+    attention_maps = {
+        "data": _b64.b64encode(expected_bytes).decode("utf-8"),
+        "shape": [4, 16, 16, 3],
+        "dtype": "uint8",
+    }
+    sc_bytes = srv.create_multiframe_attention_sc(ds, attention_maps)
+    from pydicom import dcmread
+    parsed = dcmread(io.BytesIO(sc_bytes), force=True)
+    assert int(parsed.NumberOfFrames) == 4
+    # Compare decoded pixel bytes against the encoded payload.
+    pixel_data = parsed.PixelData
+    # PixelData may have a trailing pad byte to even length per DICOM rules.
+    assert pixel_data[:len(expected_bytes)] == expected_bytes, \
+        "SC PixelData does not match the encoded attention-map payload (writer dropped/zeroed bytes)"
 
 
 def test_create_multiframe_attention_sc_references_original(srv):
