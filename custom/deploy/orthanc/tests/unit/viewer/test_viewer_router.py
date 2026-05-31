@@ -658,18 +658,15 @@ def _good_server_config_resp():
 
 def _bind_dicomweb_study_state(rest_fake, study_id="STD", series_id="S-orig",
                                  series_dicom_uid="1.2.3.SE1"):
-    """Bind /studies/<id> + filter listing + per-series instances + /series/<id> for SeriesInstanceUID."""
+    """Bind /studies/<id> + the FilterAIResultSeries subset (via _bind_series_listing) + per-series
+    instances + /series/<id> for SeriesInstanceUID — everything SendToAiDicomWeb needs to reach
+    the workitem POST."""
     import json as _json
+    # FilterAIResultSeries path (returns series_id as non-AI) — reuse the existing helper.
+    _bind_series_listing(rest_fake, study_id, [series_id], ai=False)
     rest_fake.responses[("GET", f"/studies/{study_id}")] = _json.dumps(
         {"Series": [series_id], "PatientMainDicomTags": {"PatientName": "X"},
          "MainDicomTags": {"StudyInstanceUID": "1.2.3.STUDY"}}
-    ).encode()
-    # FilterAIResultSeries path: returns S-orig as non-AI
-    rest_fake.responses[("GET", f"/studies/{study_id}/series")] = _json.dumps(
-        [{"ID": series_id}]
-    ).encode()
-    rest_fake.responses[("GET", f"/series/{series_id}/tags?simplify")] = _json.dumps(
-        {"SeriesDescription": "Axial T1", "Modality": "MR"}
     ).encode()
     rest_fake.responses[("GET", f"/series/{series_id}/instances")] = _json.dumps(
         [{"ID": "I1"}, {"ID": "I2"}]
@@ -743,21 +740,17 @@ def test_send_to_ai_dicomweb_happy_path_passes_input_mapping_through(out, router
 
 
 def test_send_to_ai_dicomweb_no_series_after_filter_returns_400(out, router, rest_fake, monkeypatch):
-    """If FilterAIResultSeries returns empty (all series are AI), respond 400 'No series found to send'."""
+    """series_uids path: every lookup returns Study-only -> empty -> 400 'No series found to send'."""
     import json as _json
     from unittest import mock as _mock
-    # Override the series listing with all-AI markers
+    # Minimal study binding (needed for the study-existence verify step).
     rest_fake.responses[("GET", "/studies/STD")] = _json.dumps(
-        {"Series": ["S-ai"], "PatientMainDicomTags": {"PatientName": "X"},
+        {"Series": ["S-any"], "PatientMainDicomTags": {"PatientName": "X"},
          "MainDicomTags": {"StudyInstanceUID": "1.2.3.STUDY"}}
-    ).encode()
-    rest_fake.responses[("GET", "/studies/STD/series")] = _json.dumps([{"ID": "S-ai"}]).encode()
-    rest_fake.responses[("GET", "/series/S-ai/tags?simplify")] = _json.dumps(
-        {"SeriesDescription": "Automated Diagnostic Findings", "Modality": "SR"}
     ).encode()
     monkeypatch.setattr(router.requests, "put", _mock.MagicMock(return_value=_good_server_config_resp()))
 
-    # series_uids provided so we bypass HasProcessableContent check, but every lookup returns Study-only
+    # series_uids provided -> takes the lookup path; lookup returns no Series-type entries.
     rest_fake.responses[("POST", "/tools/lookup")] = _json.dumps([{"Type": "Study", "ID": "X"}]).encode()
     body = b'{"study_id": "STD", "target": "P", "target_url": "http://router:8042/dicom-web", "series_uids": ["1.2.3.SE1"]}'
     router.SendToAiDicomWeb(out, "/send-to-ai-dicomweb", method="POST", body=body)
@@ -788,13 +781,23 @@ def test_send_to_ai_dicomweb_returns_500_when_study_instance_uid_missing(out, ro
 
 
 def test_send_to_ai_dicomweb_returns_error_payload_when_workitem_creation_fails(out, router, rest_fake, monkeypatch):
-    """When the UPS workitem POST returns non-2xx, respond with error payload (not 5xx — current behavior)."""
+    """When the UPS workitem POST returns non-2xx, respond with error payload (not 5xx — current behavior).
+
+    Uses a dispatcher mock + asserts subscribe was NEVER called, so a future production reorder
+    that issues subscribe BEFORE workitem can't make this test silently pass.
+    """
     import json as _json
     from unittest import mock as _mock
     _bind_dicomweb_study_state(rest_fake)
 
     bad_workitem = _mock.MagicMock(status_code=500, text="router unavailable")
-    monkeypatch.setattr(router.requests, "post", _mock.MagicMock(return_value=bad_workitem))
+    posts = []
+    def _post(url, **kw):
+        posts.append(url)
+        if "/subscribers" in url:
+            return _mock.MagicMock(status_code=200)  # would lie if reached
+        return bad_workitem
+    monkeypatch.setattr(router.requests, "post", _post)
     monkeypatch.setattr(router.requests, "put", _mock.MagicMock(return_value=_good_server_config_resp()))
 
     body = b'{"study_id": "STD", "target": "P", "target_url": "http://router:8042/dicom-web"}'
@@ -804,25 +807,36 @@ def test_send_to_ai_dicomweb_returns_error_payload_when_workitem_creation_fails(
     resp = _json.loads(out.body)
     assert resp["status"] == "error"
     assert "Failed to create UPS workitem" in resp["message"]
+    # Subscribe must not have been attempted when workitem creation failed.
+    assert all("/subscribers" not in u for u in posts), \
+        f"subscribe should not be called when workitem creation fails; saw {posts}"
 
 
-def test_send_to_ai_dicomweb_subscribe_failure_does_not_block_success(out, router, rest_fake, monkeypatch):
-    """Subscribe failure is logged but the workitem-created success response still goes out."""
+def test_send_to_ai_dicomweb_subscribe_failure_does_not_block_success(out, router, rest_fake, monkeypatch, capsys):
+    """Subscribe failure is logged AND attempted (not silently skipped), but the workitem-created success
+    response still goes out."""
     import json as _json
     from unittest import mock as _mock
     _bind_dicomweb_study_state(rest_fake)
 
     workitem_response = _mock.MagicMock(status_code=201, json=lambda: {"00080018": {"Value": ["wi.OK"]}})
     bad_subscribe = _mock.MagicMock(status_code=500)
+    posts = []
     def _post(url, **kw):
+        posts.append(url)
         return bad_subscribe if "/subscribers" in url else workitem_response
     monkeypatch.setattr(router.requests, "post", _post)
     monkeypatch.setattr(router.requests, "put", _mock.MagicMock(return_value=_good_server_config_resp()))
 
     body = b'{"study_id": "STD", "target": "P", "target_url": "http://router:8042/dicom-web"}'
     router.SendToAiDicomWeb(out, "/send-to-ai-dicomweb", method="POST", body=body)
+
     assert out.status == 200
     assert _json.loads(out.body)["workitem_uid"] == "wi.OK"
+    # Subscribe must have been attempted (so the "doesn't-block-success" claim is meaningful, not vacuous).
+    assert any("/subscribers" in u for u in posts), f"subscribe was never attempted; saw {posts}"
+    # And the failure must surface in the logs (production uses print()).
+    assert "Subscription failed" in capsys.readouterr().out
 
 
 def test_send_to_ai_dicomweb_strips_dicom_web_suffix_from_router_url(out, router, rest_fake, monkeypatch):
