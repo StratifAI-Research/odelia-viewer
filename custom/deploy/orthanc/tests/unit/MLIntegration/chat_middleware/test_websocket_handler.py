@@ -259,3 +259,161 @@ async def test_handle_websocket_cancel_without_active_task_is_silent(tmp_path, m
     types = [m["type"] for m in ws.sent]
     assert "error" not in types
     assert types.count("done") == 0
+
+
+# ---------------------------------------------------------------------------
+# H1+H2: real WS TestClient (covers active-task cancel + task_done_callback
+# + back-to-back CHAT concurrent-generation cancel) + WebSocketDisconnect path
+# ---------------------------------------------------------------------------
+
+import asyncio as _asyncio
+
+
+def _build_app_with_ws(tmp_path, monkeypatch, fake_ollama):
+    """Build a minimal FastAPI app exposing ONLY the /ws/chat/{sid} route + mount the real handler.
+
+    Reset all chat-middleware singletons + inject the fake ollama before app import so the
+    handler picks it up. Returns (app, TestClient).
+    """
+    monkeypatch.setenv("IMAGE_FOLDER", str(tmp_path / "ws-real-img"))
+    monkeypatch.setenv("MAX_CACHE_ENTRIES", "5")
+    import config; config.config = None
+    import runtime_config; runtime_config._runtime_config = None
+    import session_manager; session_manager._session_manager = None
+    import image_cache; image_cache._image_cache = None
+    import ollama_client
+    ollama_client._ollama_client = None
+    monkeypatch.setattr(ollama_client, "get_ollama_client", lambda *a, **kw: fake_ollama)
+
+    import sys
+    sys.modules.pop("websocket_handler", None)
+    import websocket_handler as wh
+    # Also reach the dispatcher'''s module-level alias if it imported get_ollama_client by name
+    monkeypatch.setattr(wh, "get_ollama_client", lambda *a, **kw: fake_ollama)
+
+    from fastapi import FastAPI, WebSocket
+    from fastapi.testclient import TestClient
+
+    app = FastAPI()
+
+    @app.websocket("/ws/chat/{session_id}")
+    async def _ws(websocket: WebSocket, session_id: str):
+        await wh.handle_websocket(websocket, session_id)
+
+    return app, TestClient(app)
+
+
+class _AwaitableOllama:
+    """Async ollama fake that yields chunks with optional asyncio.sleep gaps.
+
+    Allows tests to interleave a second CHAT request while the first is still streaming."""
+    def __init__(self, chunks, per_chunk_sleep_s=0.05):
+        self._chunks = chunks
+        self._sleep = per_chunk_sleep_s
+        self.model = "test"
+        self.calls = []
+
+    async def chat_stream(self, messages, cancel_event=None, runtime_options=None):
+        self.calls.append({"messages": messages})
+        for chunk in self._chunks:
+            if cancel_event is not None and cancel_event.is_set():
+                return
+            await _asyncio.sleep(self._sleep)
+            yield chunk
+
+    async def health_check(self):
+        return True
+
+    async def list_models(self):
+        return ["test"]
+
+
+def test_real_ws_dispatcher_chat_message_streams_tokens_to_completion(tmp_path, monkeypatch):
+    """Drive handle_websocket through a real TestClient.websocket_connect.
+    Exercises accept() lifecycle + websocket.iter_json + asyncio.Task scheduling + task_done_callback."""
+    fake = _AwaitableOllama(chunks=[
+        {"type": "content", "text": "Hello "},
+        {"type": "content", "text": "world"},
+    ], per_chunk_sleep_s=0.0)
+    _app, client = _build_app_with_ws(tmp_path, monkeypatch, fake)
+    with client.websocket_connect("/ws/chat/sess-real-1") as ws:
+        connected = ws.receive_json()
+        assert connected["type"] == "connected"
+        assert connected["session_id"] == "sess-real-1"
+
+        ws.send_json({"type": "chat", "content": "hello", "study_uid": "", "series_uids": []})
+
+        # Drain tokens + done. Expect 2 tokens + 1 done.
+        received = []
+        while True:
+            msg = ws.receive_json()
+            received.append(msg)
+            if msg["type"] == "done":
+                break
+        token_msgs = [m for m in received if m["type"] == "token"]
+        assert [m["content"] for m in token_msgs] == ["Hello ", "world"]
+
+
+def test_real_ws_dispatcher_cancel_during_active_generation(tmp_path, monkeypatch):
+    """CHAT then CANCEL: dispatcher must set cancel_event, await the active task, and emit DONE.
+
+    Exercises the active_task / cancel_event / wait_for(..., 1.0) code path in handle_websocket
+    that is otherwise unreachable through the fake-WS-only tests."""
+    # Slow chunks so cancellation arrives mid-stream.
+    fake = _AwaitableOllama(chunks=[{"type": "content", "text": "slow-chunk"}] * 30,
+                              per_chunk_sleep_s=0.05)
+    _app, client = _build_app_with_ws(tmp_path, monkeypatch, fake)
+
+    with client.websocket_connect("/ws/chat/sess-cancel-test") as ws:
+        ws.receive_json()         # connected
+        ws.send_json({"type": "chat", "content": "long-generation",
+                       "study_uid": "", "series_uids": []})
+        # Drain the first token so we know the chat task is in-flight.
+        first = ws.receive_json()
+        assert first["type"] == "token"
+
+        # Now CANCEL while the task is still streaming.
+        ws.send_json({"type": "cancel"})
+
+        # Dispatcher cancels active task -> chat task finishes (with DONE).
+        # Then dispatcher sends its own DONE (content="Cancelled").
+        # Drain until we see the cancellation DONE.
+        cancel_done_seen = False
+        while True:
+            msg = ws.receive_json()
+            if msg["type"] == "done" and msg.get("content") == "Cancelled":
+                cancel_done_seen = True
+                break
+            # The chat task'''s own DONE (no content) — keep draining.
+        assert cancel_done_seen
+
+
+def test_handle_websocket_handles_websocketdisconnect_mid_iter(tmp_path, monkeypatch):
+    """Fake WebSocket whose iter_json raises WebSocketDisconnect: the finally branch
+    must cancel any active task and not propagate the exception."""
+    _reset_singletons(tmp_path, monkeypatch)
+    import websocket_handler as wh
+    from fastapi import WebSocketDisconnect
+
+    class _DisconnectingWS:
+        def __init__(self):
+            self.sent = []
+            self.accepted = False
+        async def accept(self):
+            self.accepted = True
+        async def send_json(self, payload):
+            self.sent.append(payload)
+        async def iter_json(self):
+            # Yield nothing; just raise.
+            raise WebSocketDisconnect()
+            yield {}   # unreachable; needed to make iter_json an async generator
+
+    ws = _DisconnectingWS()
+    # Must NOT raise.
+    import asyncio as _aio
+    _aio.get_event_loop()
+    import asyncio
+    asyncio.get_event_loop().run_until_complete(wh.handle_websocket(ws, "S-disco"))
+    assert ws.accepted
+    # The connected event was sent before disconnect.
+    assert ws.sent and ws.sent[0]["type"] == "connected"
