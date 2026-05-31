@@ -100,7 +100,7 @@ def test_build_messages_system_prompt_from_runtime_config(tmp_path, monkeypatch)
 
 
 def test_prompt_builder_uses_explicit_config_when_provided(tmp_path, monkeypatch):
-    """If a RuntimeConfig is passed, .config returns it (the singleton is not consulted)."""
+    """If a RuntimeConfig is passed, the singleton is not consulted (the singleton is not consulted)."""
     _config_env(tmp_path, monkeypatch)
     from runtime_config import RuntimeConfig
     explicit = RuntimeConfig()

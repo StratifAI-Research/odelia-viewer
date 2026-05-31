@@ -62,16 +62,8 @@ def test_get_moves_entry_to_most_recently_used():
     assert c.has("uid.c")
 
 
-def test_get_updates_last_accessed_timestamp():
-    from image_cache import ImageCache
-    import time
-    c = ImageCache(max_entries=2)
-    s = _make_cached("uid.x")
-    c.put("uid.x", s)
-    old_ts = s.last_accessed
-    time.sleep(0.001)
-    c.get("uid.x")
-    assert c._cache["uid.x"].last_accessed > old_ts
+
+
 
 
 def test_clear_returns_count_and_empties_cache():
@@ -126,3 +118,19 @@ def test_reset_image_cache_replaces_singleton():
     second = image_cache.reset_image_cache(max_entries=20)
     assert first is not second
     assert second.max_entries == 20
+
+
+def test_get_updates_last_accessed_timestamp():
+    """M6: construct CachedSeries with an explicit OLD timestamp so the post-get now()
+    is unambiguously greater. No sleep, no monkeypatch — deterministic against CI clock skew."""
+    from datetime import datetime
+    from image_cache import ImageCache, CachedSeries
+    c = ImageCache(max_entries=2)
+    ancient = datetime(2020, 1, 1)
+    s = CachedSeries(series_uid="uid.x", base64_images=["i"], last_accessed=ancient)
+    c.put("uid.x", s)
+    assert c._cache["uid.x"].last_accessed == ancient
+    c.get("uid.x")
+    assert c._cache["uid.x"].last_accessed > ancient
+
+

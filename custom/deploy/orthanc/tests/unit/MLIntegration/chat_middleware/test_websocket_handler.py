@@ -208,7 +208,10 @@ async def test_handle_chat_emits_error_when_ollama_stream_raises(tmp_path, monke
 
 
 async def test_handle_chat_does_not_persist_history_when_cancelled_mid_stream(tmp_path, monkeypatch):
-    """If cancel_event is set during the stream, no history is appended."""
+    """If cancel_event is set during the stream, no history is appended AND a DONE is still sent.
+
+    H4 fix: also assert no `assistant`-role entry landed in history — a refactor that swaps
+    the cancel-check order would slip past a pure history-emptiness assertion."""
     _reset_singletons(tmp_path, monkeypatch)
     import websocket_handler as wh
     from session_manager import get_session_manager
@@ -224,7 +227,12 @@ async def test_handle_chat_does_not_persist_history_when_cancelled_mid_stream(tm
 
     ws = _FakeWebSocket()
     await wh.handle_chat(ws, s, content="x", study_uid="", series_uids=[])
-    assert get_session_manager().get_history("S8") == []
+    # History must NOT contain an assistant entry (the partial response).
+    history = get_session_manager().get_history("S8")
+    assert all(m.get("role") != "assistant" for m in history), \
+        f"assistant entry leaked into history after cancel: {history}"
+    # Specifically no entry at all (cancel happens before user message append too).
+    assert history == []
 
 
 # ---------- handle_websocket dispatcher ----------

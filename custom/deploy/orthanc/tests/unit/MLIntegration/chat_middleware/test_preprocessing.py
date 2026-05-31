@@ -185,10 +185,17 @@ def test_read_dicom_volume_returns_reader_executed_image(tmp_path, monkeypatch):
 # ---------- preprocess_series (async) ----------
 
 async def test_preprocess_series_happy_path(tmp_path, monkeypatch):
-    """Full pipeline with all I/O / DICOM hooks monkey-patched."""
+    """Full pipeline with all I/O / DICOM hooks monkey-patched.
+
+    M7 (MDR): captures the WADO `retrieval_url` template and asserts the (study_uid, series_uid)
+    pair from inputs lands at the right positions — pins the patient-data-integrity boundary."""
     import preprocessing
     fake_dataset = mock.MagicMock()
-    monkeypatch.setattr(preprocessing, "retrieve_via_wado_rs", lambda info: [fake_dataset])
+    wado_captured = []
+    def _capture_wado(info):
+        wado_captured.append(info)
+        return [fake_dataset]
+    monkeypatch.setattr(preprocessing, "retrieve_via_wado_rs", _capture_wado)
     folder = tmp_path / "series"
     folder.mkdir()
     monkeypatch.setattr(preprocessing, "save_datasets_to_folder", lambda ds, uid, cfg: folder)
@@ -207,6 +214,13 @@ async def test_preprocess_series_happy_path(tmp_path, monkeypatch):
     assert all(s.startswith("data:image/png;base64,") for s in out)
     # The temp folder should have been removed in the finally block.
     assert not folder.exists()
+    # M7 (MDR patient-data-integrity): pin the WADO URL template — a study/series swap
+    # or template typo would mis-route patient data on the wire.
+    assert wado_captured == [[{
+        "retrieval_url": "http://x/dicom-web/studies/STD1/series/SE1",
+        "study_uid": "STD1",
+        "series_uid": "SE1",
+    }]]
 
 
 async def test_preprocess_series_raises_when_no_datasets_retrieved(tmp_path, monkeypatch):

@@ -148,6 +148,19 @@ def test_debug_config_put_updates_ollama_options(tmp_path, monkeypatch):
     assert payload["ollama_options"]["temperature"] == 0.3
 
 
+def test_debug_config_put_invalid_slice_strategy_returns_422(tmp_path, monkeypatch):
+    """M8: PUT with an unknown slice_strategy enum value -> 422 (pydantic validation).
+    Pinning this prevents a future loosening of the enum validator from silently accepting
+    invalid strategies (which would corrupt downstream slice extraction)."""
+    _app, client = _fresh_app(tmp_path, monkeypatch)
+    r = client.put("/debug/config", json={
+        "preprocessing": {"slice_strategy": "not_a_real_strategy"},
+    })
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert any("slice_strategy" in str(d).lower() for d in detail)
+
+
 # ---------- /debug/cache ----------
 
 def test_debug_cache_delete_clears_and_reports_count(tmp_path, monkeypatch):

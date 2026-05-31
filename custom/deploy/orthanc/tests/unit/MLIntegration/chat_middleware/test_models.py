@@ -1,5 +1,4 @@
 """Tests for chat-middleware/models.py — pydantic schemas + enums."""
-import pytest
 
 
 def test_client_message_type_enum_values():

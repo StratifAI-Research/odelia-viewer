@@ -190,7 +190,8 @@ async def test_cancel_active_generation_force_cancels_uncooperative_task():
 
     async def uncooperative_task():
         # Sleeps past the 0.5s shield window without checking cancel_event.
-        await asyncio.sleep(2.0)
+        # 0.6s is enough to exceed the shield while keeping suite runtime tight.
+        await asyncio.sleep(0.6)
         return "never"
 
     s.active_task = asyncio.create_task(uncooperative_task())

@@ -127,10 +127,14 @@ async def test_chat_stream_yields_thinking_chunks_when_reasoning_content_present
 
 
 async def test_chat_stream_skips_non_data_and_blank_lines(monkeypatch):
-    """Non-'data: ' prefixed lines and blank lines are dropped silently."""
+    """Non-'data: ' prefixed lines and blank lines are dropped silently.
+
+    H3 fix: use b"\\n" (newline byte) for the blank-line case rather than b"" — the latter
+    triggers the early-return `if not raw_line: continue` shortcut, bypassing the live
+    decode + startswith branch the production code actually depends on."""
     import ollama_client
     resp = _FakeResponse(status=200, lines=[
-        b"",                                                                         # blank
+        b"\n",                                                                       # blank SSE separator (real wire shape)
         b": comment\n",                                                              # not data:
         _sse_line({"choices": [{"delta": {"content": "ok"}}]}),
         b"data: [DONE]\n",
