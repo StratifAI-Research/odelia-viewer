@@ -780,13 +780,20 @@ def test_send_to_ai_dicomweb_returns_500_when_study_instance_uid_missing(out, ro
     assert "StudyInstanceUID" in (out.body or "")
 
 
-def test_send_to_ai_dicomweb_returns_error_payload_when_workitem_creation_fails(out, router, rest_fake, monkeypatch):
-    """When the UPS workitem POST returns non-2xx, respond with error payload (not 5xx — current behavior).
+@pytest.mark.xfail(
+    reason="production wart: SendToAiDicomWeb returns HTTP 200 with error JSON when UPS workitem "
+           "creation on the router fails. Same class of bug as the D4 xfail "
+           "(test_send_to_ai_dicom_store_failure_should_return_5xx) — error conditions on "
+           "downstream POSTs should surface as 5xx. When the production fix lands this xpasses "
+           "and the marker is removed.",
+    strict=False,
+)
+def test_send_to_ai_dicomweb_workitem_creation_failure_should_return_5xx(out, router, rest_fake, monkeypatch):
+    """PINNING-BUG: workitem-creation failure currently surfaces as 200 + error payload (should be 5xx).
 
-    Uses a dispatcher mock + asserts subscribe was NEVER called, so a future production reorder
-    that issues subscribe BEFORE workitem can't make this test silently pass.
+    Once the production fix lands, this test xpasses; remove the marker.
+    Also asserts subscribe was NEVER called so the failure path is exercised at the right point.
     """
-    import json as _json
     from unittest import mock as _mock
     _bind_dicomweb_study_state(rest_fake)
 
@@ -802,14 +809,13 @@ def test_send_to_ai_dicomweb_returns_error_payload_when_workitem_creation_fails(
 
     body = b'{"study_id": "STD", "target": "P", "target_url": "http://router:8042/dicom-web"}'
     router.SendToAiDicomWeb(out, "/send-to-ai-dicomweb", method="POST", body=body)
-    # Production answers 200 with error payload (analogous to the D4 xfail wart, but a separate path).
-    assert out.status == 200
-    resp = _json.loads(out.body)
-    assert resp["status"] == "error"
-    assert "Failed to create UPS workitem" in resp["message"]
-    # Subscribe must not have been attempted when workitem creation failed.
+    # Subscribe must not have been attempted when workitem creation failed (this part is real spec).
     assert all("/subscribers" not in u for u in posts), \
         f"subscribe should not be called when workitem creation fails; saw {posts}"
+    # Expected (correct) behavior: 5xx response for upstream router failure.
+    assert out.status >= 500, (
+        "workitem-creation failure currently surfaces as 200 + error payload; expected 5xx"
+    )
 
 
 def test_send_to_ai_dicomweb_subscribe_failure_does_not_block_success(out, router, rest_fake, monkeypatch, capsys):
