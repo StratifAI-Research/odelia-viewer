@@ -258,6 +258,11 @@ def wado_fake(monkeypatch):
     calls = []
     series_responses = {}
     metadata_responses = {}
+    # MDR H5: tests can bind concrete exception classes (HTTPError, Timeout,
+    # InvalidDicomError, etc.) to specific (study, series) keys so production'''s
+    # wrap-as-DicomRetrievalError contract is exercised against the real exception surface.
+    series_exceptions = {}      # {(study, series): Exception instance}
+    metadata_exceptions = {}    # same
 
     class FakeDICOMwebClient:
         def __init__(self, url=""):
@@ -266,6 +271,8 @@ def wado_fake(monkeypatch):
         def retrieve_series(self, study_instance_uid="", series_instance_uid=""):
             key = (study_instance_uid, series_instance_uid)
             calls.append(("retrieve_series", *key))
+            if key in series_exceptions:
+                raise series_exceptions[key]
             if key not in series_responses:
                 raise ConnectionError(f"wado_fake: no series response for {key}")
             return series_responses[key]
@@ -273,6 +280,8 @@ def wado_fake(monkeypatch):
         def retrieve_series_metadata(self, study_instance_uid="", series_instance_uid=""):
             key = (study_instance_uid, series_instance_uid)
             calls.append(("retrieve_series_metadata", *key))
+            if key in metadata_exceptions:
+                raise metadata_exceptions[key]
             if key not in metadata_responses:
                 raise ConnectionError(f"wado_fake: no metadata response for {key}")
             return metadata_responses[key]
@@ -289,4 +298,6 @@ def wado_fake(monkeypatch):
         "calls": calls,
         "series_responses": series_responses,
         "metadata_responses": metadata_responses,
+        "series_exceptions": series_exceptions,
+        "metadata_exceptions": metadata_exceptions,
     })()

@@ -62,18 +62,20 @@ def test_retrieve_via_wado_rs_empty_list_skips_client_construction():
     (lambda: __import__("pydicom").errors.InvalidDicomError("bad transfer syntax"), "InvalidDicomError"),
     (lambda: ConnectionError("refused"), "ConnectionError"),
 ])
-def test_retrieve_via_wado_rs_wraps_underlying_exception(exc_factory, desc):
-    """Any exception from DICOMwebClient.retrieve_series surfaces as DicomRetrievalError."""
+def test_retrieve_via_wado_rs_wraps_underlying_exception(wado_fake, exc_factory, desc):
+    """Any exception from DICOMwebClient.retrieve_series surfaces as DicomRetrievalError.
+
+    Uses wado_fake'''s series_exceptions binding so the real exception classes flow through
+    production'''s except-clauses (H5: test the production exception contract via the fake,
+    not a generic MagicMock side_effect)."""
     from shared.wado_retrieval import retrieve_via_wado_rs
     from shared.exceptions import DicomRetrievalError
-    fake_client = MagicMock()
-    fake_client.retrieve_series.side_effect = exc_factory()
-    with patch("shared.wado_retrieval.DICOMwebClient", return_value=fake_client):
-        with pytest.raises(DicomRetrievalError, match="WADO-RS retrieval failed"):
-            retrieve_via_wado_rs([
-                {"retrieval_url": "http://x/studies/S/series/Q",
-                 "study_uid": "S", "series_uid": "Q"},
-            ])
+    wado_fake.series_exceptions[("S", "Q")] = exc_factory()
+    with pytest.raises(DicomRetrievalError, match="WADO-RS retrieval failed"):
+        retrieve_via_wado_rs([
+            {"retrieval_url": "http://x/studies/S/series/Q",
+             "study_uid": "S", "series_uid": "Q"},
+        ])
 
 
 # ---------------------------------------------------------------------------
