@@ -5,15 +5,12 @@ ollama_client, config, etc. are importable by tests in this package.
 
 Provides ollama_fake — a FakeOllamaClient injected via monkeypatch.
 """
-import os
 import sys
+from pathlib import Path
 
 import pytest
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_CHAT_DIR = os.path.abspath(
-    os.path.join(_HERE, "..", "..", "..", "..", "MLIntegration", "chat-middleware")
-)
+_CHAT_DIR = str(Path(__file__).resolve().parents[4] / "MLIntegration" / "chat-middleware")
 if _CHAT_DIR not in sys.path:
     sys.path.insert(0, _CHAT_DIR)
 

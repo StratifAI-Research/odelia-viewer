@@ -7,7 +7,7 @@ inputs:
   python-version:
     default: '3.12'
   pytest-cov-version:
-    default: '6.0.0'
+    default: '7.1.0'
   coverage-version:
     default: '7.6.10'
   test-marker:

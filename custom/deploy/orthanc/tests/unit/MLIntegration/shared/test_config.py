@@ -1,8 +1,6 @@
 """Tests for shared/config.py — StorageConfig dataclass."""
 from pathlib import Path
 
-import pytest
-
 
 def test_storage_config_stores_image_folder():
     from shared.config import StorageConfig

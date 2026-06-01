@@ -6,6 +6,7 @@ imports it. Provides FakeOutput, opt-in REST/DICOM fakes, and per-test reset.
 import os
 import sys
 import tempfile
+from pathlib import Path
 from types import ModuleType
 import pytest
 
@@ -112,8 +113,7 @@ def _install_orthanc_stub():
 _install_orthanc_stub()
 
 # Make the orthanc/ directory importable for sibling-module tests at this level
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_ORTHANC_DIR = os.path.abspath(os.path.join(_HERE, "..", ".."))
+_ORTHANC_DIR = str(Path(__file__).resolve().parents[2])
 if _ORTHANC_DIR not in sys.path:
     sys.path.insert(0, _ORTHANC_DIR)
 
@@ -147,20 +147,25 @@ def out():
 
 @pytest.fixture(autouse=True)
 def _reset_orthanc_state():
-    """Clear KV store + captured callbacks + REST/DICOM stubs between tests."""
+    """Clear KV store + captured callbacks + REST/DICOM stubs after each test.
+
+    Initial state is clean because _install_orthanc_stub() seeds empty containers
+    and default _no_orthanc_handler raisers; teardown brings the module back to
+    that baseline so the next test starts identically.
+    """
+    yield
     import orthanc
     orthanc._kv.clear()
     orthanc._rest_callbacks.clear()
     orthanc._onchange_callbacks.clear()
-    # restore default raisers in case a prior test bound a fake
+    # restore default raisers in case the test bound a fake
     orthanc.RestApiGet = orthanc.RestApiPost = orthanc.RestApiPut = orthanc.RestApiDelete = _no_orthanc_handler
     orthanc.GetDicomForInstance = _no_orthanc_handler
     # Drop ALL `ups`-prefixed entries — both viewer/ups and router/ups land in
     # sys.modules under the bare `ups` name once their side imports first; evict
-    # between tests so the second side imports cleanly.
+    # between tests so the next test's side imports cleanly.
     for key in [k for k in sys.modules if k == 'ups' or k.startswith('ups.')]:
         del sys.modules[key]
-    yield
 
 
 @pytest.fixture

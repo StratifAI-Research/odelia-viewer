@@ -7,15 +7,15 @@ Per-service conftests further prepend their specific dir.
 Also adds this directory to sys.path so that _colliders.py is importable as
 `from _colliders import ML_SERVICE_COLLIDERS` in any sub-package conftest.
 """
-import os
 import sys
 import types
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
 
-_HERE = os.path.dirname(os.path.abspath(__file__))
-_MLI_DIR = os.path.abspath(os.path.join(_HERE, '..', '..', '..', 'MLIntegration'))
+_HERE = str(Path(__file__).resolve().parent)
+_MLI_DIR = str(Path(__file__).resolve().parents[3] / 'MLIntegration')
 
 if _MLI_DIR not in sys.path:
     sys.path.insert(0, _MLI_DIR)

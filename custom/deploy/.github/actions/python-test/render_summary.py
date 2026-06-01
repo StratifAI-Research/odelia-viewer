@@ -21,7 +21,7 @@ def main() -> None:
         (out / "summary.md").write_text(summary)
         step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
         if step_summary:
-            with open(step_summary, "a") as f:
+            with open(step_summary, "a", encoding="utf-8") as f:
                 f.write(summary)
         if fail_reason:
             print(f"::error::{fail_reason}")
@@ -66,13 +66,14 @@ def main() -> None:
                 fn = cls.get("filename", "")
                 rate = float(cls.get("line-rate", 0) or 0)
                 file_covs.append((fn, round(rate * 100, 1)))
-        except (ET.ParseError, ValueError):
-            pass
+        except (ET.ParseError, ValueError) as e:
+            print(f"::warning::coverage XML parse failed; coverage summary will read 0%: {e}")
 
     line_pct = (lines_covered / lines_valid * 100) if lines_valid else 0
     file_covs.sort(key=lambda x: x[1])
     lowest = file_covs[:10]
 
+    # Keep in sync with coverage.cfg `omit` — divergence silently changes scope_checksum.
     excludes = [
         "tests", "MLIntegration/tests", "sample_data", "screenshots",
         ".venv", "__pycache__", ".pytest_cache",
