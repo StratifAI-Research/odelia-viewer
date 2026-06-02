@@ -1,6 +1,5 @@
 import os
 import time
-from typing import Dict
 
 import pytest
 import requests
@@ -29,7 +28,7 @@ def wait_for_orthanc(base_url: str):
 
 
 @pytest.fixture()
-def unique_payload() -> Dict[str, str]:
+def unique_payload() -> dict[str, str]:
     # Use time-based unique values
     ts = int(time.time() * 1000)
     return {

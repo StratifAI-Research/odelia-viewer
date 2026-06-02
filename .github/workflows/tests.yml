@@ -13,11 +13,6 @@ concurrency:
   group: tests-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
-env:
-  PYTEST_VERSION: '8.3.4'
-  PYTEST_COV_VERSION: '6.0.0'
-  COVERAGE_VERSION: '7.6.10'
-
 jobs:
   test-js:
     runs-on: ubuntu-latest
@@ -182,153 +177,15 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - uses: actions/setup-python@v6
+      - uses: ./custom/deploy/.github/actions/python-test
         with:
-          python-version: '3.12'
-
-      - name: Install pytest and coverage
-        run: |
-          pip install \
-            "pytest==${PYTEST_VERSION}" \
-            "pytest-cov==${PYTEST_COV_VERSION}" \
-            "coverage==${COVERAGE_VERSION}"
-
-      - name: Install subtree test dependencies
-        continue-on-error: true
-        run: |
-          if [ -f custom/deploy/orthanc/requirements-tests.txt ]; then
-            pip install -r custom/deploy/orthanc/requirements-tests.txt
-          fi
-
-      - name: Prepare outputs dir
-        run: mkdir -p outputs
-
-      - name: Run pytest via coverage (full source scan)
-        run: |
-          coverage run \
-            --rcfile=.github/coverage.cfg \
-            -m pytest custom/deploy/orthanc/tests \
-            --junitxml=outputs/pytest.xml
-          coverage xml --rcfile=.github/coverage.cfg -o outputs/pytest-coverage.xml
-          coverage report --rcfile=.github/coverage.cfg || true
-
-      - name: Render summary (fails if no tests ran)
-        if: always()
-        env:
-          PYTEST_VER: ${{ env.PYTEST_VERSION }}
-        run: |
-          python3 <<'PYEOF'
-          import hashlib, json, os, sys
-          from datetime import datetime, timezone
-          from pathlib import Path
-          import xml.etree.ElementTree as ET
-
-          OUT = Path("outputs")
-          junit_path = OUT / "pytest.xml"
-          cov_path = OUT / "pytest-coverage.xml"
-
-          def write_and_maybe_fail(summary, fail_reason=None):
-              (OUT / "summary.md").write_text(summary)
-              step_summary = os.environ.get("GITHUB_STEP_SUMMARY")
-              if step_summary:
-                  with open(step_summary, "a") as f:
-                      f.write(summary)
-              if fail_reason:
-                  print(f"::error::{fail_reason}")
-                  sys.exit(1)
-
-          short_sha = (os.environ.get("GITHUB_SHA", "") or "")[:7]
-          event = os.environ.get("GITHUB_EVENT_NAME", "")
-
-          if not junit_path.exists() or junit_path.stat().st_size == 0:
-              write_and_maybe_fail(
-                  f"## Test PY (pytest) — `{short_sha}` — `{event}`\n\n"
-                  "**Failed:** pytest did not produce `pytest.xml`. "
-                  "Likely causes: install failure or pytest crashed before writing output.\n",
-                  "pytest produced no junit XML",
-              )
-
-          collected = passed = failed = errors = skipped = 0
-          try:
-              root = ET.parse(junit_path).getroot()
-              suites = [root] if root.tag == "testsuite" else root.findall("testsuite")
-              for s in suites:
-                  collected += int(s.get("tests", 0))
-                  failed += int(s.get("failures", 0))
-                  errors += int(s.get("errors", 0))
-                  skipped += int(s.get("skipped", 0))
-              passed = collected - failed - errors - skipped
-          except ET.ParseError as e:
-              write_and_maybe_fail(
-                  f"## Test PY (pytest) — `{short_sha}` — `{event}`\n\n"
-                  f"**Failed:** `pytest.xml` is not valid XML: {e}\n",
-                  "pytest junit XML is malformed",
-              )
-
-          lines_covered = lines_valid = 0
-          file_covs = []
-          if cov_path.exists() and cov_path.stat().st_size > 0:
-              try:
-                  cov_root = ET.parse(cov_path).getroot()
-                  lines_covered = int(float(cov_root.get("lines-covered", 0) or 0))
-                  lines_valid = int(float(cov_root.get("lines-valid", 0) or 0))
-                  for cls in cov_root.iter("class"):
-                      fn = cls.get("filename", "")
-                      rate = float(cls.get("line-rate", 0) or 0)
-                      file_covs.append((fn, round(rate * 100, 1)))
-              except (ET.ParseError, ValueError):
-                  pass
-
-          line_pct = (lines_covered / lines_valid * 100) if lines_valid else 0
-          file_covs.sort(key=lambda x: x[1])
-          lowest = file_covs[:10]
-
-          includes = ["custom/deploy/orthanc/**/*.py"]
-          excludes = [
-              "tests", "MLIntegration/tests", "sample_data", "screenshots",
-              ".venv", "__pycache__", ".pytest_cache",
-          ]
-          scope_str = "|".join(sorted(includes) + ["!" + e for e in sorted(excludes)])
-          metadata = {
-              "sha": os.environ.get("GITHUB_SHA", ""),
-              "ref": os.environ.get("GITHUB_REF", ""),
-              "event": event,
-              "timestamp_utc": datetime.now(timezone.utc).isoformat(),
-              "tool": "pytest+coverage",
-              "tool_version": os.environ.get("PYTEST_VER", ""),
-              "scope_checksum": hashlib.sha256(scope_str.encode()).hexdigest(),
-          }
-          (OUT / "metadata.json").write_text(json.dumps(metadata, indent=2))
-
-          out_lines = [f"## Test PY (pytest) — `{short_sha}` — `{event}`\n"]
-          out_lines.append("### Tests\n")
-          out_lines.append(f"- Collected: **{collected}**")
-          out_lines.append(f"- Passed: **{passed}** — Failed: **{failed}** — Errors: **{errors}** — Skipped: **{skipped}**")
-          out_lines.append("\n### Coverage\n")
-          out_lines.append(f"- Lines covered: **{lines_covered}/{lines_valid}** → **{line_pct:.1f}%**")
-          if lowest:
-              out_lines.append("\n**Lowest-coverage files (top 10):**\n")
-              out_lines.append("| File | Line % |")
-              out_lines.append("|---|---:|")
-              for fp, pct in lowest:
-                  out_lines.append(f"| `{fp}` | {pct}% |")
-
-          summary = "\n".join(out_lines) + "\n"
-
-          if collected == 0:
-              write_and_maybe_fail(
-                  summary + "\n**Failed:** zero tests collected. "
-                  "Check that test files exist under `custom/deploy/orthanc/tests/`.\n",
-                  "pytest collected zero tests",
-              )
-
-          write_and_maybe_fail(summary)
-          PYEOF
+          working-directory: custom/deploy/orthanc
 
       - name: Upload artifact (main push only)
         if: github.event_name == 'push'
         uses: actions/upload-artifact@v7
         with:
           name: test-py-${{ github.sha }}
-          path: outputs/
+          path: custom/deploy/orthanc/outputs/
           retention-days: 90
+
