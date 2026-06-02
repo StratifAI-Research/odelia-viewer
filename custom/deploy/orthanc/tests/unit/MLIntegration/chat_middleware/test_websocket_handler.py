@@ -418,10 +418,8 @@ def test_handle_websocket_handles_websocketdisconnect_mid_iter(tmp_path, monkeyp
 
     ws = _DisconnectingWS()
     # Must NOT raise.
-    import asyncio as _aio
-    _aio.get_event_loop()
     import asyncio
-    asyncio.get_event_loop().run_until_complete(wh.handle_websocket(ws, "S-disco"))
+    asyncio.run(wh.handle_websocket(ws, "S-disco"))
     assert ws.accepted
     # The connected event was sent before disconnect.
     assert ws.sent and ws.sent[0]["type"] == "connected"
