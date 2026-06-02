@@ -34,7 +34,7 @@ AI_NAME = os.environ.get("AI_NAME", "Breast Cancer Classification Model")
 
 def add_text_overlay(pixel_array, text="PROCESSED BY AI", color="red"):
     """
-    **Deprecated** — slated for removal; do not use in new code.
+    **Deprecated** — slated for removal with its only remaining caller (create_text_overlay_sc). Do not add new callers.
 
     Adds a large text overlay to the pixel array with the specified color.
     Handles multi-frame (4D) and single-frame (2D/3D) DICOM.

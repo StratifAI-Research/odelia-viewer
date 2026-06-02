@@ -104,14 +104,23 @@ def _minimal_dicom():
     return ds
 
 
+class _DatasetWithFakePixels(Dataset):
+    """Dataset subclass exposing ._pixel_array as .pixel_array.
+
+    The property lives on this subclass — not on pydicom.Dataset itself —
+    so it cannot leak across tests and shadow pydicom's real pixel_array
+    decoder for any test that runs afterwards.
+    """
+    @property
+    def pixel_array(self):
+        return self._pixel_array
+
+
 def _minimal_dicom_with_pixels(rows=64, cols=64):
     """Minimal DICOM with a fake RGB pixel_array attribute for SC tests."""
     ds = _minimal_dicom()
-    # Attach a fake pixel_array property (avoids needing real encoded pixel data)
-    arr = np.zeros((rows, cols, 3), dtype=np.uint8)
-    ds._pixel_array = arr
-    # Monkey-patch pixel_array as a property
-    type(ds).pixel_array = property(lambda self: self._pixel_array)
+    ds.__class__ = _DatasetWithFakePixels
+    ds._pixel_array = np.zeros((rows, cols, 3), dtype=np.uint8)
     return ds
 
 
