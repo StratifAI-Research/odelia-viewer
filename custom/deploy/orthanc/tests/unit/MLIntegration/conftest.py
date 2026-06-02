@@ -10,6 +10,7 @@ Also adds this directory to sys.path so that _colliders.py is importable as
 import os
 import sys
 import types
+from types import ModuleType
 from unittest.mock import MagicMock
 
 import pytest
@@ -138,7 +139,7 @@ def build_torchio_stub():
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def torch_stub(monkeypatch):
+def torch_stub(monkeypatch) -> ModuleType:
     """Inject a fake torch into sys.modules for the duration of this test."""
     stub = build_torch_stub()
     monkeypatch.setitem(sys.modules, 'torch', stub)
@@ -147,7 +148,7 @@ def torch_stub(monkeypatch):
 
 
 @pytest.fixture
-def sitk_stub(monkeypatch):
+def sitk_stub(monkeypatch) -> ModuleType:
     """Inject a fake SimpleITK into sys.modules for the duration of this test."""
     stub = build_sitk_stub()
     monkeypatch.setitem(sys.modules, 'SimpleITK', stub)
@@ -155,7 +156,7 @@ def sitk_stub(monkeypatch):
 
 
 @pytest.fixture
-def torchio_stub(monkeypatch):
+def torchio_stub(monkeypatch) -> ModuleType:
     """Inject a fake torchio into sys.modules for the duration of this test."""
     stub = build_torchio_stub()
     monkeypatch.setitem(sys.modules, 'torchio', stub)

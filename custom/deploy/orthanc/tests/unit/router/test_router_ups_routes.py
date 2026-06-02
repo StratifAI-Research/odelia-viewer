@@ -12,6 +12,8 @@ Covers:
 """
 import json
 import sys
+from types import ModuleType
+from typing import Iterator
 from unittest import mock
 
 import pytest
@@ -35,7 +37,7 @@ def _ensure_router_path():
 
 
 @pytest.fixture(autouse=True)
-def _router_path_guard():
+def _router_path_guard() -> Iterator[None]:
     """Ensure router/ is at front of sys.path for each test; restore after.
 
     Both viewer and router conftest files run at collection time. By test time
@@ -59,7 +61,7 @@ def _load_ups_routes():
 
 
 @pytest.fixture
-def routes():
+def routes() -> ModuleType:
     return _load_ups_routes()
 
 

@@ -15,6 +15,8 @@ The legacy OnStableStudy OnChange callback has been removed (see ups/processor.p
 import base64
 import io
 import sys
+from types import ModuleType
+from typing import Iterator
 
 import numpy as np
 import pytest
@@ -56,7 +58,7 @@ def _load_server():
 
 
 @pytest.fixture(autouse=True)
-def _router_path_guard():
+def _router_path_guard() -> Iterator[None]:
     """Ensure router/ is at sys.path[0] for each test; restore after.
 
     Both viewer and router conftest files run at collection time. This fixture
@@ -73,7 +75,7 @@ def _router_path_guard():
 
 
 @pytest.fixture
-def srv():
+def srv() -> ModuleType:
     return _load_server()
 
 

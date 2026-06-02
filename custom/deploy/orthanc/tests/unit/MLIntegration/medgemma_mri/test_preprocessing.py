@@ -15,6 +15,7 @@ Uncovered paths (intentional, documented here):
 - read_dicom_volume itself is only smoke-tested here (error-on-missing-dcm);
   full path needs real DICOM files.
 """
+from typing import Iterator
 import sys
 import numpy as np
 import pytest
@@ -22,7 +23,7 @@ from unittest.mock import patch, MagicMock
 
 
 @pytest.fixture(autouse=True)
-def _evict_module(sitk_stub):
+def _evict_module(sitk_stub) -> Iterator[None]:
     sys.modules.pop('preprocessing', None)
     yield
     sys.modules.pop('preprocessing', None)

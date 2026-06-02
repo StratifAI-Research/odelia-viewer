@@ -2,12 +2,13 @@
 
 No heavy deps — PIL is available in venv.  No stubs required.
 """
+from typing import Iterator
 from PIL import Image as PILImage
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def _evict_module():
+def _evict_module() -> Iterator[None]:
     import sys
     sys.modules.pop('prompt_templates', None)
     yield

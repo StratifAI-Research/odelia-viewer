@@ -2,6 +2,7 @@
 import importlib.util
 import os
 import sys
+from typing import Any
 import pytest
 
 # Absolute path to the router's ups/workitem.py — used so the fixture always
@@ -14,7 +15,7 @@ _WORKITEM_PATH = os.path.join(_ROUTER_DIR, 'ups', 'workitem.py')
 
 
 @pytest.fixture
-def mk_workitem():
+def mk_workitem() -> Any:
     # Evict any cached ups/* modules to avoid getting the viewer's version.
     for key in [k for k in sys.modules if k == 'ups' or k.startswith('ups.')]:
         del sys.modules[key]

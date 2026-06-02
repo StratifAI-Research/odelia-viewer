@@ -9,13 +9,14 @@ dicom_to_unilateral_nifti is integration-heavy (DICOM files + TorchIO) and is
 excluded from this test file; it is exercised transitively by test_dicom_converter.py.
 """
 import sys
+from typing import Iterator
 
 import pandas as pd
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def _evict_module(torch_stub, torchio_stub):
+def _evict_module(torch_stub, torchio_stub) -> Iterator[None]:
     sys.modules.pop('dicom2nfti_onthefly', None)
     yield
     sys.modules.pop('dicom2nfti_onthefly', None)

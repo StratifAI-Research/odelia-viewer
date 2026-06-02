@@ -6,13 +6,15 @@ We stub both plus dicom2nfti_onthefly itself before importing dicom_converter.
 """
 import sys
 import types
+from types import ModuleType
+from typing import Iterator
 from unittest.mock import MagicMock
 
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def _stub_dicom2nfti(torch_stub, torchio_stub, monkeypatch):
+def _stub_dicom2nfti(torch_stub, torchio_stub, monkeypatch) -> Iterator[ModuleType]:
     """Stub out dicom2nfti_onthefly before importing dicom_converter."""
     d2n_stub = types.ModuleType("dicom2nfti_onthefly")
     d2n_stub.dicom_to_unilateral_nifti = MagicMock(return_value={

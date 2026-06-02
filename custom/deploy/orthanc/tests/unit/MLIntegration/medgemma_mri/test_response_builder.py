@@ -2,11 +2,12 @@
 
 No heavy deps — no stubs required.
 """
+from typing import Iterator
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def _evict_module():
+def _evict_module() -> Iterator[None]:
     import sys
     sys.modules.pop('response_builder', None)
     yield

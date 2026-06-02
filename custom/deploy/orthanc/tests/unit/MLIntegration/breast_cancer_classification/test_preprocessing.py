@@ -13,12 +13,13 @@ Uncovered paths (intentional):
   signature and argument passing are validated indirectly via module importability.
 """
 import sys
+from typing import Iterator
 
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def _evict_preprocessing():
+def _evict_preprocessing() -> Iterator[None]:
     """Ensure preprocessing is re-imported fresh with stubs active."""
     sys.modules.pop('preprocessing', None)
     yield

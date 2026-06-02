@@ -15,6 +15,7 @@ GetAIManifest, SendToAiDicom) have full happy + error path coverage.
 """
 import json
 import sys
+from types import ModuleType
 from unittest import mock
 
 import pytest
@@ -35,7 +36,7 @@ def _load_router():
 
 
 @pytest.fixture
-def router():
+def router() -> ModuleType:
     return _load_router()
 
 
@@ -69,7 +70,7 @@ def test_module_registers_feedback_endpoints_when_available():
 # UPSUpdateWorkitem
 # ---------------------------------------------------------------------------
 
-def _make_workitem_body(uid="2.25.111", state="SCHEDULED"):
+def _make_workitem_body(uid: str = "2.25.111", state: str = "SCHEDULED") -> str:
     return json.dumps({
         "00741000": {"vr": "CS", "Value": [state]},
         "00080018": {"vr": "UI", "Value": [uid]},

@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 from types import ModuleType
+from typing import Any, Iterator
 import pytest
 
 # Allow feedback_db to initialize its SQLite store in a writable temp location.
@@ -167,12 +168,12 @@ class FakeOutput:
 
 
 @pytest.fixture
-def out():
+def out() -> FakeOutput:
     return FakeOutput()
 
 
 @pytest.fixture(autouse=True)
-def _reset_orthanc_state():
+def _reset_orthanc_state() -> Iterator[None]:
     """Clear KV store + captured callbacks + REST/DICOM stubs between tests."""
     import orthanc
     orthanc._kv.clear()
@@ -194,7 +195,7 @@ def _reset_orthanc_state():
 
 
 @pytest.fixture
-def rest_fake():
+def rest_fake() -> Any:
     """Records orthanc.RestApi* calls and lets tests bind responses.
 
     Usage:
@@ -224,7 +225,7 @@ def rest_fake():
 
 
 @pytest.fixture
-def dicom_fake():
+def dicom_fake() -> dict[str, Any]:
     """Bind {instance_id: bytes} for orthanc.GetDicomForInstance calls."""
     import orthanc
     store = {}
@@ -246,7 +247,7 @@ def dicom_fake():
 
 
 @pytest.fixture
-def wado_fake(monkeypatch):
+def wado_fake(monkeypatch) -> Any:
     """Fake DICOMwebClient injected into shared.wado_retrieval and router.wado_utils.
 
     Usage:

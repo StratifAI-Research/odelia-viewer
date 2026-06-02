@@ -4,6 +4,7 @@ medgemma's WadoRSRetrieval only processes the FIRST series (logs a warning
 for multiple) and extracts series_uid from the input list (not from the
 returned dataset's SeriesInstanceUID).  This differs from BC's implementation.
 """
+from typing import Iterator
 import sys
 import inspect
 from unittest.mock import MagicMock, patch
@@ -11,7 +12,7 @@ import pytest
 
 
 @pytest.fixture(autouse=True)
-def _evict_module():
+def _evict_module() -> Iterator[None]:
     sys.modules.pop('retrieval_strategy', None)
     yield
     sys.modules.pop('retrieval_strategy', None)

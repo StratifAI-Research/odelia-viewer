@@ -1,11 +1,12 @@
 """Unit tests for viewer/feedback_db.py — sqlite-backed feedback storage."""
 import importlib
+from types import ModuleType
 
 import pytest
 
 
 @pytest.fixture
-def fb(tmp_path, monkeypatch):
+def fb(tmp_path, monkeypatch) -> ModuleType:
     # Reset module-level singleton state so each test gets a fresh DB.
     monkeypatch.setenv('ORTHANC_FEEDBACK_DB_DIR', str(tmp_path))
     monkeypatch.setenv('ORTHANC_FEEDBACK_DB_PATH', str(tmp_path / 'fb.sqlite'))

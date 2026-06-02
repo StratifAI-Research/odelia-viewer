@@ -1,11 +1,12 @@
 """Unit tests for viewer/ups/storage.py — KV-backed UPS workitem storage."""
 import sys
+from typing import Any
 
 import pytest
 
 
 @pytest.fixture
-def storage():
+def storage() -> Any:
     # Evict cached module so KV-backed state is fresh per test
     for key in [k for k in sys.modules if k == "ups" or k.startswith("ups.")]:
         del sys.modules[key]
@@ -14,7 +15,7 @@ def storage():
 
 
 @pytest.fixture
-def workitem():
+def workitem() -> Any:
     """Return a minimal UPSWorkitem for use in storage tests."""
     for key in [k for k in sys.modules if k == "ups" or k.startswith("ups.")]:
         del sys.modules[key]

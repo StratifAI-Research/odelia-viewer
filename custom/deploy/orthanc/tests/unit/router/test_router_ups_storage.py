@@ -6,6 +6,7 @@ All behaviour is otherwise identical to the viewer-side storage.
 """
 import sys
 import os
+from typing import Any, Iterator
 
 import pytest
 
@@ -22,7 +23,7 @@ def _ensure_router_path():
 
 
 @pytest.fixture(autouse=True)
-def _router_path_guard():
+def _router_path_guard() -> Iterator[None]:
     """Ensure router/ is at sys.path[0] for each test; restore after."""
     saved = list(sys.path)
     _ensure_router_path()
@@ -31,7 +32,7 @@ def _router_path_guard():
 
 
 @pytest.fixture
-def storage():
+def storage() -> Any:
     _ensure_router_path()
     for key in [k for k in sys.modules if k == "ups" or k.startswith("ups.")]:
         del sys.modules[key]
@@ -40,7 +41,7 @@ def storage():
 
 
 @pytest.fixture
-def workitem():
+def workitem() -> Any:
     _ensure_router_path()
     for key in [k for k in sys.modules if k == "ups" or k.startswith("ups.")]:
         del sys.modules[key]

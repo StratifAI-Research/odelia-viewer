@@ -6,7 +6,8 @@ Coverage:
   - process_workitem: smoke test — at minimum transitions to IN_PROGRESS before heavy work
 """
 import sys
-from types import SimpleNamespace
+from types import ModuleType, SimpleNamespace
+from typing import Any, Iterator
 from unittest import mock
 
 import pytest
@@ -50,7 +51,7 @@ def _make_workitem(uid="2.25.proc1"):
 
 
 @pytest.fixture(autouse=True)
-def _router_path_guard():
+def _router_path_guard() -> Iterator[None]:
     """Ensure router/ is at sys.path[0] for each test; restore after."""
     saved = list(sys.path)
     _ensure_router_path()
@@ -59,14 +60,14 @@ def _router_path_guard():
 
 
 @pytest.fixture
-def proc():
+def proc() -> ModuleType:
     _evict_ups()
     import ups.processor as p
     return p
 
 
 @pytest.fixture
-def fake_workitem():
+def fake_workitem() -> Any:
     return _make_workitem()
 
 

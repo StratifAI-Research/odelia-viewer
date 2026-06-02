@@ -1,6 +1,7 @@
 """Path setup for medgemma-mri tests + sibling-name eviction."""
 import os
 import sys
+from typing import Iterator
 
 import pytest
 
@@ -11,7 +12,7 @@ _MG_DIR = os.path.abspath(os.path.join(_HERE, '..', '..', '..', '..', 'MLIntegra
 
 
 @pytest.fixture(autouse=True)
-def _force_mg_path():
+def _force_mg_path() -> Iterator[None]:
     """Ensure medgemma-mri dir is at sys.path[0] and evict colliding sibling names."""
     saved = list(sys.path)
     if _MG_DIR in sys.path:

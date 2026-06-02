@@ -7,6 +7,7 @@ Provides ollama_fake — a FakeOllamaClient injected via monkeypatch.
 """
 import os
 import sys
+from typing import Iterator
 
 import pytest
 
@@ -21,7 +22,7 @@ if _CHAT_DIR not in sys.path:
 
 
 @pytest.fixture(autouse=True)
-def _force_chat_path():
+def _force_chat_path() -> Iterator[None]:
     """Ensure chat-middleware dir is at sys.path[0] and evict colliding sibling names."""
     saved = list(sys.path)
     if _CHAT_DIR in sys.path:
@@ -59,7 +60,7 @@ class FakeOllamaClient:
 
 
 @pytest.fixture
-def ollama_fake(monkeypatch):
+def ollama_fake(monkeypatch) -> Iterator[FakeOllamaClient]:
     """Provide a FakeOllamaClient and wire it into the ollama_client singleton.
 
     Usage:

@@ -1,6 +1,7 @@
 """Path setup for breast-cancer-classification tests + sibling-name eviction."""
 import os
 import sys
+from typing import Iterator
 
 import pytest
 
@@ -11,7 +12,7 @@ _BC_DIR = os.path.abspath(os.path.join(_HERE, '..', '..', '..', '..', 'MLIntegra
 
 
 @pytest.fixture(autouse=True)
-def _force_bc_path():
+def _force_bc_path() -> Iterator[None]:
     """Ensure breast-cancer-classification dir is at sys.path[0] and evict colliding sibling names."""
     saved = list(sys.path)
     if _BC_DIR in sys.path:

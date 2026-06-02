@@ -1,6 +1,7 @@
 """Path setup for MST-classification tests + sibling-name eviction."""
 import os
 import sys
+from typing import Iterator
 
 import pytest
 
@@ -11,7 +12,7 @@ _MST_DIR = os.path.abspath(os.path.join(_HERE, '..', '..', '..', '..', 'MLIntegr
 
 
 @pytest.fixture(autouse=True)
-def _force_mst_path():
+def _force_mst_path() -> Iterator[None]:
     """Ensure MST-classification dir is at sys.path[0] and evict colliding sibling names."""
     saved = list(sys.path)
     if _MST_DIR in sys.path:

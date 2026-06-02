@@ -1,11 +1,12 @@
 """Unit tests for viewer/ups/subscription_storage.py — KV-backed subscription registry."""
 import sys
+from typing import Any
 
 import pytest
 
 
 @pytest.fixture
-def sub_storage():
+def sub_storage() -> Any:
     for key in [k for k in sys.modules if k == "ups" or k.startswith("ups.")]:
         del sys.modules[key]
     from ups.subscription_storage import UPSSubscriptionStorage

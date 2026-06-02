@@ -1,12 +1,13 @@
 """Unit tests for viewer/feedback_routes.py — REST handler functions."""
 import importlib
 import json
+from types import ModuleType
 
 import pytest
 
 
 @pytest.fixture
-def fb_routes(tmp_path, monkeypatch):
+def fb_routes(tmp_path, monkeypatch) -> ModuleType:
     """Reload feedback_db and feedback_routes with isolated SQLite DB."""
     monkeypatch.setenv("ORTHANC_FEEDBACK_DB_DIR", str(tmp_path))
     monkeypatch.setenv("ORTHANC_FEEDBACK_DB_PATH", str(tmp_path / "fb.sqlite"))

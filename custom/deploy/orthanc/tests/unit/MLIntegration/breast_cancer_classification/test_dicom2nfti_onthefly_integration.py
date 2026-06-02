@@ -5,12 +5,13 @@ and torchio. To exercise the real CropOrPad / threshold / split logic of
 dicom_to_unilateral_nifti, this test lives in its own module without that stub.
 """
 import sys
+from typing import Iterator
 
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def _evict_module():
+def _evict_module() -> Iterator[None]:
     """Ensure dicom2nfti_onthefly re-imports with REAL torch/torchio (no stub fixture used)."""
     sys.modules.pop("dicom2nfti_onthefly", None)
     yield

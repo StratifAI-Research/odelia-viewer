@@ -8,12 +8,13 @@ Uncovered paths:
   tested via parse_bilateral_response.  Direct lower-case variant tested in
   test_validate_classification_case_insensitive.
 """
+from typing import Iterator
 import json
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def _evict_module():
+def _evict_module() -> Iterator[None]:
     import sys
     sys.modules.pop('response_parser', None)
     sys.modules.pop('exceptions', None)

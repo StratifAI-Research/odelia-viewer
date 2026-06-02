@@ -12,13 +12,15 @@ DICOM fixture set.  See _compute_subtraction_array for the array-level test
 that covers the arithmetic in isolation.
 """
 import sys
+from types import ModuleType
+from typing import Iterator
 from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def _stub_sitk_and_evict(sitk_stub, monkeypatch):
+def _stub_sitk_and_evict(sitk_stub, monkeypatch) -> Iterator[ModuleType]:
     """Wire the shared sitk_stub and evict the cached dicom_utils module."""
     sys.modules.pop("dicom_utils", None)
     yield sitk_stub

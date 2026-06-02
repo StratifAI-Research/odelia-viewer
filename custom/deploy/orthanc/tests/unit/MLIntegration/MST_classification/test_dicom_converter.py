@@ -8,12 +8,14 @@ dicom_converter.
 import sys
 import types
 from pathlib import Path
+from types import ModuleType
+from typing import Iterator
 from unittest.mock import MagicMock
 import pytest
 
 
 @pytest.fixture(autouse=True)
-def _stub_dicom_utils(sitk_stub, monkeypatch):
+def _stub_dicom_utils(sitk_stub, monkeypatch) -> Iterator[ModuleType]:
     du_stub = types.ModuleType("dicom_utils")
     du_stub.dicom_to_nifti = MagicMock(return_value="/tmp/mri_series.nii.gz")
     du_stub.dicom_to_nifti_subtraction = MagicMock(return_value="/tmp/mri_subtraction.nii.gz")
