@@ -1,0 +1,109 @@
+# Thin reference stack for odelia-viewer.
+#
+# The full, fully-configured deployment stack lives in the platform repo:
+#   https://github.com/StratifAI-Research/odelia-viewer-platform  (pinned: v0.1.0)
+#
+# Here the viewer is built from local source; every other service is pulled as a
+# pinned DockerHub image published by the platform repo. Config files are NOT
+# mounted (they live in platform); services run with image-baked defaults, so
+# this compose is for quick smoke/reference use, not production.
+version: "3.8"
+
+services:
+  viewer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-viewer:${TAG:-latest}
+    container_name: odelia-viewer
+    ports:
+      - "8081:8081"
+    environment:
+      - PUBLIC_URL=/
+      - PORT=8081
+    networks:
+      - odelia-network
+
+  orthanc-viewer:
+    image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-orthanc-viewer:${PLATFORM_TAG:-0.1.0}
+    container_name: odelia-orthanc-viewer
+    ports:
+      - "8000:8042"
+      - "2000:4242"
+    networks:
+      - odelia-network
+
+  orthanc-router-mst:
+    image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-orthanc-router:${PLATFORM_TAG:-0.1.0}
+    container_name: odelia-orthanc-router-mst
+    ports:
+      - "4243:4242"
+      - "8043:8042"
+    networks:
+      - odelia-network
+
+  mst-classifier:
+    image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-mst-classifier:${PLATFORM_TAG:-0.1.0}
+    container_name: odelia-mst-classifier
+    ports:
+      - "5556:5556"
+    networks:
+      - odelia-network
+
+  orthanc-router-medgemma:
+    image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-orthanc-router:${PLATFORM_TAG:-0.1.0}
+    container_name: odelia-orthanc-router-medgemma
+    ports:
+      - "4244:4242"
+      - "8044:8042"
+    networks:
+      - odelia-network
+
+  medgemma-mri:
+    image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-medgemma-mri:${PLATFORM_TAG:-0.1.0}
+    container_name: odelia-medgemma-mri
+    ports:
+      - "5557:5557"
+    networks:
+      - odelia-network
+
+  chat-middleware:
+    image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-chat-middleware:${PLATFORM_TAG:-0.1.0}
+    container_name: odelia-chat-middleware
+    ports:
+      - "5560:5560"
+    networks:
+      - odelia-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: odelia-grafana
+    ports:
+      - "3000:3000"
+    networks:
+      - odelia-network
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0.5
+    command: "start-dev"
+    container_name: keycloak
+    ports:
+      - "8080:8080"
+    networks:
+      - odelia-network
+
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    environment:
+      POSTGRES_DB: keycloak
+      POSTGRES_USER: keycloak
+      POSTGRES_PASSWORD: password
+    networks:
+      - odelia-network
+
+networks:
+  odelia-network:
+    driver: bridge
