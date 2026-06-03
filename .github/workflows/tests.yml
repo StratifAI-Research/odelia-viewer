@@ -168,24 +168,3 @@ jobs:
           name: test-js-${{ github.sha }}
           path: outputs/
           retention-days: 90
-
-  test-py:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6.0.2
-        with:
-          submodules: recursive
-          fetch-depth: 1
-
-      - uses: ./custom/deploy/.github/actions/python-test
-        with:
-          working-directory: custom/deploy/orthanc
-
-      - name: Upload artifact (main push only)
-        if: github.event_name == 'push'
-        uses: actions/upload-artifact@v7
-        with:
-          name: test-py-${{ github.sha }}
-          path: custom/deploy/orthanc/outputs/
-          retention-days: 90
-

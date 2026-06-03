@@ -59,7 +59,7 @@ COPY package.json yarn.lock preinstall.js lerna.json ./
 COPY --parents ./addOns/package.json ./addOns/*/*/package.json ./extensions/*/package.json ./modes/*/package.json ./platform/*/package.json ./
 COPY --parents ./custom/mode/*/package.json ./custom/extension/*/package.json ./
 # Copy the local directory
-COPY  --exclude=custom/deploy --exclude=**/.venv/** --exclude=yarn.lock --exclude=package.json --exclude=Dockerfile . .
+COPY  --exclude=**/.venv/** --exclude=yarn.lock --exclude=package.json --exclude=Dockerfile . .
 
 # Run the install after copying all files for complete workspace context
 RUN rm -rf node_modules */*/node_modules .cache .turbo bun.lockb && \
@@ -109,7 +109,7 @@ COPY --from=builder /usr/src/app/platform/app/dist /usr/share/nginx/html${PUBLIC
 COPY --from=builder /usr/src/app/platform/app/dist/dicom-microscopy-viewer /usr/share/nginx/html/dicom-microscopy-viewer
 
 # Copy app-config.js
-COPY --chown=nginx:nginx custom/deploy/config/app-config.js /usr/share/nginx/html${PUBLIC_URL}app-config.js
+COPY --chown=nginx:nginx custom/config/app-config.js /usr/share/nginx/html${PUBLIC_URL}app-config.js
 RUN chmod 644 /usr/share/nginx/html${PUBLIC_URL}app-config.js
 
 # Copy the entrypoint script

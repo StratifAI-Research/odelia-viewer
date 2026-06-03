@@ -70,6 +70,4 @@ __pycache__/
 .coverage
 
 # Docker volume mounts
-custom/deploy/volumes/*
-custom/deploy/logs/*
 design_docs/
