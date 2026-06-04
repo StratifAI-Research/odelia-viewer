@@ -43,8 +43,8 @@ services:
       - odelia-network
 
   mst-classifier:
-    image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-mst-classifier:${PLATFORM_TAG:-0.1.0}
-    container_name: odelia-mst-classifier
+    image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-model-mst:${PLATFORM_TAG:-0.1.0}
+    container_name: odelia-model-mst
     ports:
       - "5556:5556"
     networks:
@@ -60,16 +60,16 @@ services:
       - odelia-network
 
   medgemma-mri:
-    image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-medgemma-mri:${PLATFORM_TAG:-0.1.0}
-    container_name: odelia-medgemma-mri
+    image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-model-medgemma:${PLATFORM_TAG:-0.1.0}
+    container_name: odelia-model-medgemma
     ports:
       - "5557:5557"
     networks:
       - odelia-network
 
   chat-middleware:
-    image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-chat-middleware:${PLATFORM_TAG:-0.1.0}
-    container_name: odelia-chat-middleware
+    image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-chat:${PLATFORM_TAG:-0.1.0}
+    container_name: odelia-chat
     ports:
       - "5560:5560"
     networks:
