@@ -5,6 +5,7 @@
 // Run from a dir where "playwright" resolves (e.g. the odelia-viewer repo root):
 //   QA_USER=viewer QA_PASS=viewer node .claude/skills/browser-qa-sweep/qa-runner.mjs
 // Env: QA_BASE_URL (default http://localhost:8081), QA_USER, QA_PASS, QA_OUT (default ./qa-out)
+// Opt: QA_STUDY_UID (adds a viewer-study surface), QA_VIEWER_PATH (route prefix; default /viewer/template?StudyInstanceUIDs=)
 import { chromium } from "playwright";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -25,6 +26,7 @@ const SURFACES = [
   { name: "03-invalid-study", path: "/viewer?StudyInstanceUIDs=1.2.3.invalid" },
 ];
 
+if (process.env.QA_STUDY_UID) SURFACES.push({ name: "04-viewer-study", path: (process.env.QA_VIEWER_PATH || "/viewer/template?StudyInstanceUIDs=") + process.env.QA_STUDY_UID, act: async (p) => { await p.waitForTimeout(6000); } });
 async function maybeLogin(page) {
   // Keycloak login form appears after redirect. Submit, then wait until redirected
   // back out of the realm (i.e. actually logged into the app).
