@@ -71,3 +71,4 @@ __pycache__/
 
 # Docker volume mounts
 design_docs/
+deploy/volumes/

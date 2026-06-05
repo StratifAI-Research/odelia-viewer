@@ -1,0 +1,166 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Total submissions",
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 0 },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "odelia-sqlite" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "queryType": "table",
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "odelia-sqlite" },
+          "queryText": "SELECT COUNT(*) AS total\nFROM feedback_event e\nJOIN ai_result_ref r ON r.id = e.ai_result_id\nWHERE e.created_at >= '${__from:date:iso}'\n  AND e.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE e.user_id='${user}' END);\n-- ${__to}",
+          "rawQueryText": "SELECT COUNT(*) AS total\nFROM feedback_event e\nJOIN ai_result_ref r ON r.id = e.ai_result_id\nWHERE e.created_at >= '${__from:date:iso}'\n  AND e.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE e.user_id='${user}' END);\n-- ${__to}",
+          "rawSql": "SELECT COUNT(*) AS total\nFROM feedback_event e\nJOIN ai_result_ref r ON r.id = e.ai_result_id\nWHERE e.created_at >= '${__from:date:iso}'\n  AND e.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE e.user_id='${user}' END);\n-- ${__to}"
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Unique submissions (latest per user × result)",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 0 },
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "fieldConfig": { "defaults": { "unit": "none" }, "overrides": [] },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "odelia-sqlite" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "queryType": "table",
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "odelia-sqlite" },
+          "queryText": "SELECT COUNT(*) AS unique_total\nFROM v_feedback_current c\nJOIN ai_result_ref r ON r.id = c.ai_result_id\nWHERE c.created_at >= '${__from:date:iso}'\n  AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END);\n-- ${__to}",
+          "rawQueryText": "SELECT COUNT(*) AS unique_total\nFROM v_feedback_current c\nJOIN ai_result_ref r ON r.id = c.ai_result_id\nWHERE c.created_at >= '${__from:date:iso}'\n  AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END);\n-- ${__to}",
+          "rawSql": "SELECT COUNT(*) AS unique_total\nFROM v_feedback_current c\nJOIN ai_result_ref r ON r.id = c.ai_result_id\nWHERE c.created_at >= '${__from:date:iso}'\n  AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END);\n-- ${__to}"
+        }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Left side verdicts",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 6 },
+      "options": {
+        "orientation": "auto",
+        "legend": { "showLegend": false },
+        "barWidth": 0.97,
+        "stacking": "none",
+        "tooltip": { "mode": "single" }
+      },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "odelia-sqlite" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "queryType": "table",
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "odelia-sqlite" },
+          "queryText": "SELECT 'agree' AS verdict, COUNT(*) AS n\nFROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_L=1\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END)\nUNION ALL\nSELECT 'unsure', COUNT(*) FROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_L=0\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END)\nUNION ALL\nSELECT 'disagree', COUNT(*) FROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_L=-1\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END);\n-- ${__to}",
+          "rawQueryText": "SELECT 'agree' AS verdict, COUNT(*) AS n\nFROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_L=1\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END)\nUNION ALL\nSELECT 'unsure', COUNT(*) FROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_L=0\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END)\nUNION ALL\nSELECT 'disagree', COUNT(*) FROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_L=-1\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END);\n-- ${__to}",
+          "rawSql": "SELECT 'agree' AS verdict, COUNT(*) AS n\nFROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_L=1\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END)\nUNION ALL\nSELECT 'unsure', COUNT(*) FROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_L=0\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END)\nUNION ALL\nSELECT 'disagree', COUNT(*) FROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_L=-1\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END);\n-- ${__to}"
+        }
+      ]
+    },
+    {
+      "type": "barchart",
+      "title": "Right side verdicts",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 6 },
+      "options": {
+        "orientation": "auto",
+        "legend": { "showLegend": false },
+        "barWidth": 0.97,
+        "stacking": "none",
+        "tooltip": { "mode": "single" }
+      },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "odelia-sqlite" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "queryType": "table",
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "odelia-sqlite" },
+          "queryText": "SELECT 'agree' AS verdict, COUNT(*) AS n\nFROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_R=1\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END)\nUNION ALL\nSELECT 'unsure', COUNT(*) FROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_R=0\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END)\nUNION ALL\nSELECT 'disagree', COUNT(*) FROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_R=-1\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END);\n-- ${__to}",
+          "rawQueryText": "SELECT 'agree' AS verdict, COUNT(*) AS n\nFROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_R=1\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END)\nUNION ALL\nSELECT 'unsure', COUNT(*) FROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_R=0\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END)\nUNION ALL\nSELECT 'disagree', COUNT(*) FROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_R=-1\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END);\n-- ${__to}",
+          "rawSql": "SELECT 'agree' AS verdict, COUNT(*) AS n\nFROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_R=1\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END)\nUNION ALL\nSELECT 'unsure', COUNT(*) FROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_R=0\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END)\nUNION ALL\nSELECT 'disagree', COUNT(*) FROM v_feedback_current c JOIN ai_result_ref r ON r.id=c.ai_result_id\nWHERE c.verdict_R=-1\n  AND c.created_at >= '${__from:date:iso}' AND c.created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE r.model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE c.user_id='${user}' END);\n-- ${__to}"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "All submissions (history)",
+      "gridPos": { "h": 16, "w": 24, "x": 0, "y": 16 },
+      "options": { "showHeader": true },
+      "fieldConfig": { "defaults": { "custom": {} }, "overrides": [] },
+      "datasource": { "type": "frser-sqlite-datasource", "uid": "odelia-sqlite" },
+      "targets": [
+        {
+          "refId": "A",
+          "format": "table",
+          "queryType": "table",
+          "datasource": { "type": "frser-sqlite-datasource", "uid": "odelia-sqlite" },
+          "queryText": "SELECT id, study_uid, model_name, model_version, result_ts, user_id, verdict_L, verdict_R, created_at, submission_kind\nFROM v_feedback_history_denorm\nWHERE created_at >= '${__from:date:iso}'\n  AND created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE user_id='${user}' END)\nORDER BY created_at DESC, id DESC;\n-- ${__to}",
+          "rawQueryText": "SELECT id, study_uid, model_name, model_version, result_ts, user_id, verdict_L, verdict_R, created_at, submission_kind\nFROM v_feedback_history_denorm\nWHERE created_at >= '${__from:date:iso}'\n  AND created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE user_id='${user}' END)\nORDER BY created_at DESC, id DESC;\n-- ${__to}",
+          "rawSql": "SELECT id, study_uid, model_name, model_version, result_ts, user_id, verdict_L, verdict_R, created_at, submission_kind\nFROM v_feedback_history_denorm\nWHERE created_at >= '${__from:date:iso}'\n  AND created_at <= '${__to:date:iso}'\n  AND (CASE WHEN '${model}'='All' OR '${model}'='' THEN 1 ELSE model_name='${model}' END)\n  AND (CASE WHEN '${user}'='All' OR '${user}'='' THEN 1 ELSE user_id='${user}' END)\nORDER BY created_at DESC, id DESC;\n-- ${__to}"
+        }
+      ]
+    }
+  ],
+  "refresh": "10s",
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["odelia", "sqlite"],
+  "templating": {
+    "list": [
+      {
+        "name": "model",
+        "type": "query",
+        "hide": 0,
+        "label": "Model",
+        "datasource": { "type": "frser-sqlite-datasource", "uid": "odelia-sqlite" },
+        "query": "SELECT DISTINCT model_name AS __text, model_name AS __value FROM ai_result_ref ORDER BY 1;",
+        "includeAll": true,
+        "allValue": "All",
+        "refresh": 2,
+        "multi": false,
+        "current": { "selected": true, "text": "All", "value": "All" }
+      },
+      {
+        "name": "user",
+        "type": "query",
+        "hide": 0,
+        "label": "User",
+        "datasource": { "type": "frser-sqlite-datasource", "uid": "odelia-sqlite" },
+        "query": "SELECT DISTINCT user_id AS __text, user_id AS __value FROM feedback_event ORDER BY 1;",
+        "includeAll": true,
+        "allValue": "All",
+        "refresh": 2,
+        "multi": false,
+        "current": { "selected": true, "text": "All", "value": "All" }
+      }
+    ]
+  },
+  "time": { "from": "now-30d", "to": "now" },
+  "timepicker": {},
+  "timezone": "",
+  "title": "ODELIA Feedback Overview",
+  "uid": "odelia-feedback",
+  "version": 4
+}
