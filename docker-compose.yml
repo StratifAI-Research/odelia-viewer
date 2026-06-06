@@ -9,9 +9,9 @@ services:
     container_name: odelia-viewer
     volumes:
     - ./deploy/config/nginx.conf:/etc/nginx/nginx.conf
-    - ./deploy/config/app-config.js:/usr/share/nginx/html/app-config.js
+    - ./custom/config/app-config.js:/usr/share/nginx/html/app-config.js
     ports:
-    - ${BIND_HOST:-}8081:8081
+    - 8081:8081
     depends_on:
     - orthanc-viewer
     - keycloak
@@ -38,8 +38,8 @@ services:
     networks:
     - odelia-network
     ports:
-    - ${BIND_HOST:-}8000:8042
-    - ${BIND_HOST:-}2000:4242
+    - 8000:8042
+    - 2000:4242
     environment:
     - ORTHANC__NAME=orthanc-viewer
     - VERBOSE_ENABLED=true
@@ -60,8 +60,8 @@ services:
     networks:
     - odelia-network
     ports:
-    - ${BIND_HOST:-}4243:4242
-    - ${BIND_HOST:-}8043:8042
+    - 4243:4242
+    - 8043:8042
     environment:
     - ORTHANC__NAME=orthanc-router-mst
     - VERBOSE_ENABLED=true
@@ -81,7 +81,7 @@ services:
     networks:
     - odelia-network
     ports:
-    - ${BIND_HOST:-}5556:5556
+    - 5556:5556
   orthanc-router-medgemma:
     image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-orthanc-router:${TAG:-0.1.0}
     hostname: orthanc-router-medgemma
@@ -93,8 +93,8 @@ services:
     networks:
     - odelia-network
     ports:
-    - ${BIND_HOST:-}4244:4242
-    - ${BIND_HOST:-}8044:8042
+    - 4244:4242
+    - 8044:8042
     environment:
     - ORTHANC__NAME=orthanc-router-medgemma
     - VERBOSE_ENABLED=true
@@ -118,7 +118,7 @@ services:
     networks:
     - odelia-network
     ports:
-    - ${BIND_HOST:-}5557:5557
+    - 5557:5557
   chat-middleware:
     image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-chat:${TAG:-0.1.0}
     container_name: odelia-chat
@@ -133,7 +133,7 @@ services:
     networks:
     - odelia-network
     ports:
-    - ${BIND_HOST:-}5560:5560
+    - 5560:5560
     depends_on:
     - orthanc-viewer
     extra_hosts:
@@ -146,7 +146,7 @@ services:
     volumes:
     - ./deploy/volumes/models:/models:ro
     ports:
-    - ${BIND_HOST:-}8090:8090
+    - 8090:8090
     networks:
     - odelia-network
     restart: unless-stopped
@@ -175,7 +175,7 @@ services:
     image: grafana/grafana:11.1.0
     container_name: odelia-grafana
     ports:
-    - ${BIND_HOST:-}3000:3000
+    - 3000:3000
     user: 0:0
     environment:
     - GF_INSTALL_PLUGINS=frser-sqlite-datasource
@@ -218,7 +218,7 @@ services:
       KC_HOSTNAME_DEBUG: 'true'
       PROXY_ADDRESS_FORWARDING: 'true'
     ports:
-    - ${BIND_HOST:-}8080:8080
+    - 8080:8080
     depends_on:
     - postgres
     restart: unless-stopped
