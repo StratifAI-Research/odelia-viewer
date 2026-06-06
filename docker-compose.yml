@@ -1,7 +1,7 @@
 # Full deployment stack for odelia-viewer, runnable end-to-end.
 # Component services use published images (stratifai/odelia-*:0.1.0); the viewer
 # builds from this repo (override with VIEWER_TAG / docker compose pull + --no-build).
-# Default configs live in ./deploy/. For medgemma, set HF_TOKEN in a .env file
+# Default configs live in ./deploy/. For medgemma, set a valid HF_TOKEN
 # (gated google/medgemma model); without it medgemma will not start.
 services:
   viewer:
@@ -111,7 +111,7 @@ services:
     environment:
       ORTHANC_URL: http://orthanc-router-medgemma:8042
       IMAGE_FOLDER: /app/medgemma-service/images
-      HF_TOKEN: ${HF_TOKEN:-}
+      HF_TOKEN: "HF_TOKEN"
       NUM_SLICES: '100'
       MAX_NEW_TOKENS: '500'
       TORCH_DTYPE: bfloat16
