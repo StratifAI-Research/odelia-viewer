@@ -79,7 +79,7 @@ Opening the AI panel is **not** enough. Drive the whole flow and confirm a resul
    rises above baseline (new **SR** + **SC** series). Check the new series have a **fresh
    `LastUpdate`** (today, after the test started) and Modality SR/SC. Cross-check the router
    log: `sudo docker logs odelia-orthanc-router-mst` (workitem → model call → upload).
-5. Reload the study and screenshot the AI result (SR / heatmap) in the viewer.
+5. Reload the study, then **load the result into the viewport** — click the SC (attention-heatmap) series thumbnail so the heatmap actually renders/overlays in the viewport, and open the SR. **Screenshot the heatmap displayed in the viewport.** Confirming the SR/SC series merely *exist* in the series browser is NOT sufficient — the result must be shown rendered.
 
 If the model backend is down (e.g. medgemma needs a token, MST weight-load error), report
 exactly where it breaks (UI send / router→model / inference / upload) — don't report PASS
