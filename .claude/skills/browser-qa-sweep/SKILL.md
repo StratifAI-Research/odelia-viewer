@@ -40,13 +40,20 @@ Not for: pure unit/logic changes with no deployed-UI impact.
    - For many surfaces, fan out — see **REQUIRED SUB-SKILL:** superpowers:dispatching-parallel-agents
 4. Synthesize the per-surface findings into one regression report (format below).
 
+**Auth / session (important):** the runner uses ONE browser context, so the Keycloak/
+oauth2-proxy session cookie persists — log in **once**, not per surface. After every
+navigation, **wait for the app to actually render** (URL out of `/realms/`, app shell
+present) before screenshotting; a screenshot that shows the Keycloak login/redirect page
+is a runner-timing bug, **not** a real surface (the only intended login shot is `00-login`).
+The runner's `ensureAppLoaded()` does this; if you script flows yourself, replicate it.
+
 ## Surfaces (core features)
 | Surface | Needs data? | What to check |
 |---|---|---|
 | Login / auth redirect | no | Keycloak login renders; creds land you in the app |
 | Study list | no | Loads, renders columns, search box works, empty state is sane |
 | Invalid/empty study URL | no | Graceful error, not a white screen |
-| AI routing panel | **yes** | Panel opens, model options render |
+| AI routing panel + send-to-AI | **yes** | Not just "opens" — **drive the full wizard to Send** and verify a fresh result lands. See *Send-to-AI roundtrip* below. |
 | Chat | **yes** | Chat panel opens, connects (websocket) |
 | Viewport + tools | **yes** | Image renders; zoom/pan/window-level work |
 | Measurements | **yes** | Length/annotation tools place + persist |
@@ -54,6 +61,29 @@ Not for: pure unit/logic changes with no deployed-UI impact.
 | Feedback / Grafana (:3000) | no | Login page renders |
 
 Every surface also: **no console errors**, **renders (no white screen)**, **lands where expected**.
+
+## Send-to-AI roundtrip (required — do not stop at "panel opens")
+
+Opening the AI panel is **not** enough. Drive the whole flow and confirm a result comes back:
+
+1. Open the study in send-ai mode (`/viewer/template?StudyInstanceUIDs=<uid>`); open the AI routing panel.
+2. Record a **baseline** of Orthanc first: `curl -s http://localhost:8000/statistics` (note `CountInstances`/`CountSeries`).
+3. Walk the wizard to the end and press **Send to AI**:
+   - Step 1: pick the AI model (MST is usually pre-selected).
+   - Step 2: pick an input mode (e.g. Multiphase).
+   - Step 3: map the series (e.g. "NCI-dyn DEV") to the input key.
+   - Step 4: click **Send to AI**.
+   - The research-use **"Confirm and Hide"** banner intercepts pointer events — if a normal
+     click does nothing, dispatch the click via JS (`el.click()`), then continue.
+4. **Verify the result**: poll `curl -s http://localhost:8000/statistics` until `CountInstances`
+   rises above baseline (new **SR** + **SC** series). Check the new series have a **fresh
+   `LastUpdate`** (today, after the test started) and Modality SR/SC. Cross-check the router
+   log: `sudo docker logs odelia-orthanc-router-mst` (workitem → model call → upload).
+5. Reload the study and screenshot the AI result (SR / heatmap) in the viewer.
+
+If the model backend is down (e.g. medgemma needs a token, MST weight-load error), report
+exactly where it breaks (UI send / router→model / inference / upload) — don't report PASS
+just because the panel rendered.
 
 ## Reading results
 `qa-out/results.json` has per-surface `url`, `screenshot`, `consoleErrors`, `ok`.

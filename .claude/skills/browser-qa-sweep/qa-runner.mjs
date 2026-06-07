@@ -42,6 +42,20 @@ async function maybeLogin(page) {
   } catch {}
 }
 
+async function ensureAppLoaded(page) {
+  // Resolve any Keycloak/login interstitial, then wait until the APP itself is rendered
+  // so screenshots capture the app, not a login/redirect page. The session persists in
+  // this single browser context, so after the first login this normally just waits out
+  // the SSO redirect (no re-login). Only fills the form if one actually appears.
+  for (let i = 0; i < 4; i++) {
+    if (await page.locator("#username").count()) { await maybeLogin(page); continue; }
+    if (!/\/realms\/|\/auth\/|openid-connect/.test(page.url())) break;
+    await page.waitForLoadState("networkidle", { timeout: 15000 }).catch(() => {});
+    await page.waitForTimeout(1500);
+  }
+  await page.waitForLoadState("networkidle", { timeout: 20000 }).catch(() => {});
+}
+
 await mkdir(OUT, { recursive: true });
 const browser = await chromium.launch({ headless: true, args: ["--no-sandbox"] });
 const ctx = await browser.newContext({ viewport: { width: 1600, height: 1000 }, ignoreHTTPSErrors: true });
@@ -66,7 +80,7 @@ for (const s of SURFACES) {
   const at = errors.length;
   try {
     await page.goto(BASE + s.path, { waitUntil: "networkidle", timeout: 60000 }).catch(() => {});
-    await maybeLogin(page);
+    await ensureAppLoaded(page);  // wait for app render; don't screenshot a login interstitial
     if (s.act) await s.act(page);
     await page.waitForTimeout(2000);
     const shot = path.join(OUT, s.name + ".png");
