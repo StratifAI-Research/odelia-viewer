@@ -9,6 +9,7 @@ services:
     container_name: odelia-viewer
     volumes:
     - ./deploy/config/nginx.conf:/etc/nginx/nginx.conf
+    # app-config.js is baked into the viewer image (see Dockerfile); kept under custom/, not deploy/
     - ./custom/config/app-config.js:/usr/share/nginx/html/app-config.js
     ports:
     - 8081:8081
@@ -111,7 +112,7 @@ services:
     environment:
       ORTHANC_URL: http://orthanc-router-medgemma:8042
       IMAGE_FOLDER: /app/medgemma-service/images
-      HF_TOKEN: "HF_TOKEN"
+      HF_TOKEN: "${HF_TOKEN:-}"
       NUM_SLICES: '100'
       MAX_NEW_TOKENS: '500'
       TORCH_DTYPE: bfloat16
