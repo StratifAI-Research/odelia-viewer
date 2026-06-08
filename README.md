@@ -12,6 +12,14 @@ based on the <a href="https://ohif.org/">Open Health Imaging Foundation (OHIF)</
 
 <hr />
 
+## Deployment
+
+The full deployment stack (Orthanc, AI services, Keycloak, Grafana, config) now lives in the
+[odelia-viewer-platform](https://github.com/StratifAI-Research/odelia-viewer-platform) repo,
+pinned to a platform release. This repo only builds and publishes the OHIF viewer image
+(`stratifai/odelia-viewer`). The root `docker-compose.yml` here is a runnable reference stack; its volume directories under `deploy/volumes/` are created at runtime (Docker creates them root-owned on first `up`).
+
+
 [![NPM version][npm-version-image]][npm-url]
 [![MIT License][license-image]][license-url]
 [![This project is using Percy.io for visual regression testing.][percy-image]](percy-url)
