@@ -21,7 +21,7 @@ module.exports = {
     'src/**/*.{ts,tsx}',
     '!src/**/*.test.{ts,tsx}',
     '!src/index.tsx',
-    '!src/**/index.ts',
+    '!src/**/index.{ts,tsx}',
     '!src/id.js',
     '!src/__mocks__/**',
     '!src/test-utils/**',

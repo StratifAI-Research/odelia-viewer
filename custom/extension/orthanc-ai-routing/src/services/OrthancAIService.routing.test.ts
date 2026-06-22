@@ -386,18 +386,25 @@ describe('OrthancAIService — workitem polling', () => {
   });
 
   it('polls, invokes the callback, and stops on COMPLETED', async () => {
-    fetchMock.mockResolvedValue(
-      mockResponse({ text: JSON.stringify({ '00741000': { vr: 'CS', Value: ['COMPLETED'] } }) })
-    );
+    // First tick is terminal (COMPLETED); a later tick, if it ever ran, would be
+    // IN_PROGRESS — so consuming it would prove the loop failed to auto-stop.
+    fetchMock
+      .mockResolvedValueOnce(
+        mockResponse({ text: JSON.stringify({ '00741000': { vr: 'CS', Value: ['COMPLETED'] } }) })
+      )
+      .mockResolvedValue(
+        mockResponse({ text: JSON.stringify({ '00741000': { vr: 'CS', Value: ['IN_PROGRESS'] } }) })
+      );
     const cb = jest.fn();
     await service.startWorkitemPolling('w1', cb, 500);
 
+    expect(cb).not.toHaveBeenCalled(); // nothing fires before the first interval elapses
     await jest.advanceTimersByTimeAsync(500);
+    expect(cb).toHaveBeenCalledTimes(1);
     expect(cb).toHaveBeenCalledWith(expect.objectContaining({ state: 'COMPLETED' }));
 
-    const callsAfter = fetchMock.mock.calls.length;
-    await jest.advanceTimersByTimeAsync(1500);
-    expect(fetchMock).toHaveBeenCalledTimes(callsAfter); // auto-stopped
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(cb).toHaveBeenCalledTimes(1); // auto-stopped: the IN_PROGRESS tick never runs
   });
 
   it('stopWorkitemPolling halts further callbacks for a non-terminal state', async () => {
