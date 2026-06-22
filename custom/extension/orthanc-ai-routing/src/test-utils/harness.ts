@@ -2,7 +2,16 @@
 // NOT a *.test.ts so it is not collected as a suite; excluded from coverage
 // via collectCoverageFrom (!src/test-utils/**).
 
-/** Minimal Response-like factory for fetch mocking. */
+/**
+ * Minimal Response-like factory for fetch mocking.
+ *
+ * Faithful to the real fetch Response body contract: the body stream can be
+ * consumed ONCE. Calling json()/text() a second time (in either order) throws,
+ * exactly as a browser does. This matters: code that calls response.json() and
+ * then response.text() on the same Response (e.g. the error-extraction fallback
+ * in OrthancAIService) only "works" against a lax mock — in a real browser the
+ * second read throws because json() already consumed (and locked) the stream.
+ */
 export function mockResponse(opts: {
   ok?: boolean;
   status?: number;
@@ -10,16 +19,27 @@ export function mockResponse(opts: {
   text?: string;
 }): Response {
   const { ok = true, status = 200, json, text } = opts;
+  let consumed = false;
+  const consume = () => {
+    if (consumed) {
+      throw new TypeError('Body has already been consumed.');
+    }
+    consumed = true;
+  };
   return {
     ok,
     status,
     json: async () => {
+      consume(); // a real Response reads (and locks) the stream before parsing
       if (json === undefined) {
-        throw new SyntaxError('mockResponse: no json body provided');
+        throw new SyntaxError('mockResponse: body is not valid JSON');
       }
       return json;
     },
-    text: async () => (text !== undefined ? text : JSON.stringify(json ?? '')),
+    text: async () => {
+      consume();
+      return text !== undefined ? text : JSON.stringify(json ?? '');
+    },
   } as unknown as Response;
 }
 
