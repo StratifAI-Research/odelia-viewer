@@ -48,6 +48,22 @@ describe('useAIRouting', () => {
     expect(result.current.currentEndpoint).toEqual(AI_ENDPOINT);
   });
 
+  // KNOWN BUG (ODV-160): the hook loads currentEndpoint via a useState lazy
+  // initializer (a mount-only side effect), so it never re-reads the service if
+  // the prop changes. Unskip once converted to a useEffect keyed on the service.
+  it.skip('re-derives currentEndpoint when the orthancAIService prop changes', () => {
+    const ui = { show: jest.fn() };
+    const { result, rerender } = renderHook(
+      ({ s }) => useAIRouting({ orthancAIService: s as unknown as OrthancAIService, uiNotificationService: ui }),
+      { initialProps: { s: makeService({ getCurrentEndpoint: jest.fn(() => AI_ENDPOINT) }) } }
+    );
+    expect(result.current.currentEndpoint).toEqual(AI_ENDPOINT);
+
+    const next = { id: 'ep-2', name: 'other', url: 'http://other' };
+    rerender({ s: makeService({ getCurrentEndpoint: jest.fn(() => next) }) });
+    expect(result.current.currentEndpoint).toEqual(next); // fails today: mount-hack won't re-run
+  });
+
   it('handleEndpointChange updates state, persists, and shows an info toast', () => {
     const { result, svc, ui } = setup();
     const next = { id: 'ep-2', name: 'other', url: 'http://other' };

@@ -38,8 +38,10 @@ const available = [
 
 describe('useInputMapping', () => {
   it('initializes selectedConfigId to the first config, null when manifest is null', () => {
-    expect(renderHook(() => useInputMapping(manifest)).result.current.selectedConfigId).toBe('c1');
-    expect(renderHook(() => useInputMapping(null)).result.current.selectedConfigId).toBeNull();
+    const withManifest = renderHook(() => useInputMapping(manifest));
+    expect(withManifest.result.current.selectedConfigId).toBe('c1');
+    const withNull = renderHook(() => useInputMapping(null));
+    expect(withNull.result.current.selectedConfigId).toBeNull();
   });
 
   it('setSelectedConfigId switches the config and clears the mapping', () => {
