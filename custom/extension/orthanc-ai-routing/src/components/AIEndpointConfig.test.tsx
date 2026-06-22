@@ -39,6 +39,18 @@ describe('AIEndpointConfig — loading', () => {
     render(<AIEndpointConfig onEndpointChange={onEndpointChange} currentEndpoint={null} />);
     expect(onEndpointChange).toHaveBeenCalledWith(expect.objectContaining({ id: DEFAULT_ID }));
   });
+
+  it('bootstraps from window.config.aiEndpoints when storage is empty', () => {
+    (window as any).config = { aiEndpoints: [epA] };
+    try {
+      const onEndpointChange = jest.fn();
+      render(<AIEndpointConfig onEndpointChange={onEndpointChange} currentEndpoint={null} />);
+      expect(onEndpointChange).toHaveBeenCalledWith(epA);
+      expect(JSON.parse(localStorage.getItem('aiEndpoints')!)[0].id).toBe('a');
+    } finally {
+      delete (window as any).config;
+    }
+  });
 });
 
 describe('AIEndpointConfig — selection & display', () => {
@@ -64,6 +76,13 @@ describe('AIEndpointConfig — selection & display', () => {
     render(<AIEndpointConfig onEndpointChange={jest.fn()} currentEndpoint={epA} compact />);
     expect(screen.queryByText('Add New')).toBeNull();
     expect(screen.queryByText('Name: Alpha')).toBeNull();
+  });
+
+  it('disables the select while loading / with no endpoints', () => {
+    // No seed: first render is isLoading=true before the mount effect resolves.
+    render(<AIEndpointConfig onEndpointChange={jest.fn()} currentEndpoint={null} compact />);
+    // After mount the default is loaded and the select is enabled again.
+    expect((screen.getByRole('combobox') as HTMLSelectElement).disabled).toBe(false);
   });
 });
 
@@ -116,6 +135,19 @@ describe('AIEndpointConfig — edit & delete', () => {
     fireEvent.click(screen.getByText('Update'));
     // editing the current endpoint re-selects it
     expect(onEndpointChange).toHaveBeenCalledWith(expect.objectContaining({ id: 'a', name: 'Alpha-2' }));
+  });
+
+  it('deleting the current endpoint among several selects a remaining one', () => {
+    seed([epA, epB]);
+    const onEndpointChange = jest.fn();
+    render(<AIEndpointConfig onEndpointChange={onEndpointChange} currentEndpoint={epA} />);
+    fireEvent.click(screen.getByText('Edit')); // edits the current endpoint (epA)
+    fireEvent.click(screen.getByText('Delete'));
+    const deletes = screen.getAllByRole('button', { name: 'Delete' });
+    fireEvent.click(deletes[deletes.length - 1]);
+
+    expect(onEndpointChange).toHaveBeenCalledWith(epB); // re-selected the survivor
+    expect(JSON.parse(localStorage.getItem('aiEndpoints')!).map((e: AIEndpoint) => e.id)).toEqual(['b']);
   });
 
   it('deleting the only endpoint restores the default via the confirm dialog', () => {

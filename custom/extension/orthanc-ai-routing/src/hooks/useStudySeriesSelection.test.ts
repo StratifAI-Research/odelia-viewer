@@ -6,13 +6,17 @@ jest.mock('@ohif/core', () => ({
 }));
 
 import { useStudySeriesSelection } from './useStudySeriesSelection';
+import { DicomMetadataStore } from '@ohif/core';
 
-function makeDSS(displaySets: any[]) {
+const RETRY_WINDOW = 150 + 100 * 11; // initial 150ms + 10 retries @100ms (source magic numbers)
+
+function makeDSS(initial: any[]) {
+  let current = initial;
   const listeners: Record<string, Function[]> = {};
   const unsubs: jest.Mock[] = [];
   return {
     EVENTS: { DISPLAY_SETS_CHANGED: 'changed' },
-    getActiveDisplaySets: jest.fn(() => displaySets),
+    getActiveDisplaySets: jest.fn(() => current),
     subscribe: jest.fn((evt: string, cb: Function) => {
       (listeners[evt] ||= []).push(cb);
       const unsubscribe = jest.fn();
@@ -20,6 +24,8 @@ function makeDSS(displaySets: any[]) {
       return { unsubscribe };
     }),
     _unsubs: unsubs,
+    _emit: (evt: string) => (listeners[evt] || []).forEach(cb => cb()),
+    _set: (next: any[]) => { current = next; },
   };
 }
 
@@ -43,6 +49,7 @@ beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'warn').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
+  (DicomMetadataStore.getStudy as jest.Mock).mockReturnValue({ series: [] });
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -53,7 +60,7 @@ describe('useStudySeriesSelection — studies', () => {
   it('groups studies after the load delay, skipping SR/SC display sets', async () => {
     const dss = makeDSS([
       ds({ SeriesInstanceUID: 's1', Modality: 'MR' }),
-      ds({ SeriesInstanceUID: 's2', Modality: 'SR', displaySetInstanceUID: 'd2' }), // skipped
+      ds({ SeriesInstanceUID: 's2', Modality: 'SR', displaySetInstanceUID: 'd2' }),
     ]);
     const { result } = renderHook(() =>
       useStudySeriesSelection({ displaySetService: dss as any, activeStudyUID: null })
@@ -64,6 +71,54 @@ describe('useStudySeriesSelection — studies', () => {
     expect(result.current.availableStudies).toHaveLength(1);
     expect(result.current.availableStudies[0].studyInstanceUid).toBe('st1');
     expect(result.current.isLoadingStudies).toBe(false);
+  });
+
+  it('prefers the study description from DicomMetadataStore series metadata', async () => {
+    (DicomMetadataStore.getStudy as jest.Mock).mockReturnValue({
+      series: [{ Modality: 'MR', instances: [{ StudyDescription: 'From-metadata', StudyDate: '20240601' }] }],
+    });
+    const dss = makeDSS([ds({ StudyDate: '', StudyDescription: 'fallback-desc' })]);
+    const { result } = renderHook(() =>
+      useStudySeriesSelection({ displaySetService: dss as any, activeStudyUID: null })
+    );
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(150);
+    });
+    expect(result.current.availableStudies[0].description).toContain('From-metadata');
+  });
+
+  it('builds a description-only / date-only / "Unnamed Study" display name', async () => {
+    const cases = [
+      { in: { StudyDate: '', StudyDescription: 'OnlyDesc' }, expect: 'OnlyDesc' },
+      { in: { StudyDate: '20240101', StudyDescription: '' }, expect: '20240101' },
+      { in: { StudyDate: '', StudyDescription: '' }, expect: 'Unnamed Study' },
+    ];
+    for (const c of cases) {
+      const dss = makeDSS([ds(c.in)]);
+      const { result } = renderHook(() =>
+        useStudySeriesSelection({ displaySetService: dss as any, activeStudyUID: null })
+      );
+      await act(async () => {
+        await jest.advanceTimersByTimeAsync(150);
+      });
+      expect(result.current.availableStudies[0].description).toBe(c.expect);
+    }
+  });
+
+  it('groups multiple distinct studies', async () => {
+    const dss = makeDSS([
+      ds({ StudyInstanceUID: 'st1', SeriesInstanceUID: 's1' }),
+      ds({ StudyInstanceUID: 'st2', SeriesInstanceUID: 's2', displaySetInstanceUID: 'd2' }),
+    ]);
+    const { result } = renderHook(() =>
+      useStudySeriesSelection({ displaySetService: dss as any, activeStudyUID: null })
+    );
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(150);
+    });
+    // NB: source sorts by Date.parse(formattedDate); the identity formatDate yields
+    // non-ISO strings (NaN), so order is effectively insertion order — both present.
+    expect(result.current.availableStudies.map((s: any) => s.studyInstanceUid).sort()).toEqual(['st1', 'st2']);
   });
 
   it('handles an empty display-set list without error', async () => {
@@ -84,7 +139,7 @@ describe('useStudySeriesSelection — series', () => {
     const dss = makeDSS([
       ds({ SeriesInstanceUID: 's1', SeriesNumber: 2, Modality: 'MR' }),
       ds({ SeriesInstanceUID: 's2', SeriesNumber: 1, Modality: 'CT', displaySetInstanceUID: 'd2' }),
-      ds({ SeriesInstanceUID: 's3', Modality: 'SR', displaySetInstanceUID: 'd3' }), // excluded
+      ds({ SeriesInstanceUID: 's3', Modality: 'SR', displaySetInstanceUID: 'd3' }),
     ]);
     const { result } = renderHook(() =>
       useStudySeriesSelection({ displaySetService: dss as any, activeStudyUID: 'st1' })
@@ -92,8 +147,23 @@ describe('useStudySeriesSelection — series', () => {
     await act(async () => {
       await jest.advanceTimersByTimeAsync(300);
     });
-    expect(result.current.availableSeries.map((s: any) => s.SeriesInstanceUID)).toEqual(['s2', 's1']); // sorted by number
-    expect(result.current.selectedSeriesUIDs.size).toBe(2); // auto-selected
+    expect(result.current.availableSeries.map((s: any) => s.SeriesInstanceUID)).toEqual(['s2', 's1']);
+    expect(result.current.selectedSeriesUIDs.size).toBe(2);
+    expect(result.current.isLoadingSeries).toBe(false);
+  });
+
+  it('yields no series when the active study has only SR/SC display sets', async () => {
+    const dss = makeDSS([
+      ds({ StudyInstanceUID: 'st1', Modality: 'SR', SeriesInstanceUID: 's1' }),
+      ds({ StudyInstanceUID: 'st1', Modality: 'SC', SeriesInstanceUID: 's2', displaySetInstanceUID: 'd2' }),
+    ]);
+    const { result } = renderHook(() =>
+      useStudySeriesSelection({ displaySetService: dss as any, activeStudyUID: 'st1' })
+    );
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(300);
+    });
+    expect(result.current.availableSeries).toEqual([]);
     expect(result.current.isLoadingSeries).toBe(false);
   });
 
@@ -110,19 +180,36 @@ describe('useStudySeriesSelection — series', () => {
   });
 
   it('reports an error after exhausting retries when display sets never arrive', async () => {
-    const dss = makeDSS([]); // always empty
+    const dss = makeDSS([]);
     const { result } = renderHook(() =>
       useStudySeriesSelection({ displaySetService: dss as any, activeStudyUID: 'st1' })
     );
     await act(async () => {
-      await jest.advanceTimersByTimeAsync(150 + 100 * 11);
+      await jest.advanceTimersByTimeAsync(RETRY_WINDOW);
     });
     expect(result.current.seriesError).toMatch(/Display sets not available/);
     expect(result.current.isLoadingSeries).toBe(false);
   });
+
+  it('loads late-arriving series via the DISPLAY_SETS_CHANGED event after a retry', async () => {
+    const dss = makeDSS([]); // empty at mount → enters retry loop
+    const { result } = renderHook(() =>
+      useStudySeriesSelection({ displaySetService: dss as any, activeStudyUID: 'st1' })
+    );
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(250); // first attempt + 1 retry → retryCount > 0
+    });
+    expect(result.current.availableSeries).toEqual([]);
+
+    dss._set([ds({ SeriesInstanceUID: 's1' })]); // data arrives late
+    await act(async () => {
+      dss._emit('changed');
+    });
+    expect(result.current.availableSeries.map((s: any) => s.SeriesInstanceUID)).toEqual(['s1']);
+  });
 });
 
-describe('useStudySeriesSelection — selection actions', () => {
+describe('useStudySeriesSelection — selection & retry actions', () => {
   async function loaded() {
     const dss = makeDSS([
       ds({ SeriesInstanceUID: 's1', SeriesNumber: 1 }),
@@ -134,7 +221,7 @@ describe('useStudySeriesSelection — selection actions', () => {
     await act(async () => {
       await jest.advanceTimersByTimeAsync(300);
     });
-    return hook;
+    return { dss, ...hook };
   }
 
   it('toggleSeries removes then re-adds a series', async () => {
@@ -159,21 +246,51 @@ describe('useStudySeriesSelection — selection actions', () => {
     expect(result.current.selectedSeriesUIDs.size).toBe(0);
     expect(result.current.seriesError).toBeNull();
   });
+
+  it('retrySeries reloads series after data becomes available', async () => {
+    const dss = makeDSS([]); // exhausts retries → error state
+    const { result } = renderHook(() =>
+      useStudySeriesSelection({ displaySetService: dss as any, activeStudyUID: 'st1' })
+    );
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(RETRY_WINDOW);
+    });
+    expect(result.current.seriesError).toBeTruthy();
+
+    dss._set([ds({ SeriesInstanceUID: 's1' })]);
+    act(() => result.current.retrySeries());
+    expect(result.current.availableSeries.map((s: any) => s.SeriesInstanceUID)).toEqual(['s1']);
+    expect(result.current.seriesError).toBeNull();
+  });
+
+  it('retrySeries surfaces an error when the store throws', async () => {
+    const { result, dss } = await loaded();
+    dss.getActiveDisplaySets.mockImplementation(() => {
+      throw new Error('DICOMweb store failure');
+    });
+    act(() => result.current.retrySeries());
+    expect(result.current.seriesError).toBeTruthy();
+    expect(result.current.isLoadingSeries).toBe(false);
+  });
 });
 
 describe('useStudySeriesSelection — teardown', () => {
-  it('unsubscribes both listeners and fires no timers after unmount', async () => {
-    const dss = makeDSS([]); // empty → effect 3 schedules retry timers
+  it('unsubscribes both listeners and does no work after unmount', async () => {
+    const dss = makeDSS([]); // empty → series effect schedules retry timers
     const { unmount } = renderHook(() =>
       useStudySeriesSelection({ displaySetService: dss as any, activeStudyUID: 'st1' })
     );
-    // Two subscriptions: one from the studies effect, one from the series effect.
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(150); // let one attempt run (retryCount > 0)
+    });
     expect(dss.subscribe).toHaveBeenCalledTimes(2);
 
+    const callsBefore = dss.getActiveDisplaySets.mock.calls.length;
     unmount();
     dss._unsubs.forEach(u => expect(u).toHaveBeenCalledTimes(1));
 
-    // Advancing past all retry timers must not throw or update state post-unmount.
-    expect(() => jest.advanceTimersByTime(2000)).not.toThrow();
+    // No timer may fire work after unmount: getActiveDisplaySets must not be called again.
+    jest.advanceTimersByTime(2000);
+    expect(dss.getActiveDisplaySets.mock.calls.length).toBe(callsBefore);
   });
 });

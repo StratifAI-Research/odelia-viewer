@@ -50,21 +50,27 @@ export function installFetchMock(): jest.Mock {
   return fn;
 }
 
-/** localStorage override matching the existing OrthancAIService.test.ts pattern. */
+// Module-level backing store, deliberately decoupled from the property identity:
+// jsdom's window.localStorage redefine via defineProperty can no-op after the
+// first install, leaving a stale mock in place. By resetting this shared store on
+// every install, data clears between tests even if the property object persists.
+let __lsStore: Record<string, string> = {};
+
+/** Installs a fresh, isolated localStorage mock. Call in beforeEach. */
 export function installLocalStorageMock(): void {
-  let store: Record<string, string> = {};
+  __lsStore = {};
   Object.defineProperty(window, 'localStorage', {
     configurable: true,
     value: {
-      getItem: (k: string) => (k in store ? store[k] : null),
+      getItem: (k: string) => (k in __lsStore ? __lsStore[k] : null),
       setItem: (k: string, v: string) => {
-        store[k] = String(v);
+        __lsStore[k] = String(v);
       },
       removeItem: (k: string) => {
-        delete store[k];
+        delete __lsStore[k];
       },
       clear: () => {
-        store = {};
+        __lsStore = {};
       },
     },
   });
