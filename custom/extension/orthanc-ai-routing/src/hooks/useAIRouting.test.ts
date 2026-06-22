@@ -1,6 +1,15 @@
 import { renderHook, act } from '@testing-library/react';
 import { useAIRouting } from './useAIRouting';
 import { AI_ENDPOINT } from '../test-utils/harness';
+import type OrthancAIService from '../services/OrthancAIService';
+
+// Duck-typed stub of the methods useAIRouting actually calls. A missing stub
+// fails loudly at runtime (calling undefined), so this is a documentation aid,
+// not a compile-time drift guard.
+type MockService = Pick<
+  OrthancAIService,
+  'getCurrentEndpoint' | 'setCurrentEndpoint' | 'routeSeriesToAI' | 'startWorkitemPolling' | 'stopWorkitemPolling'
+>;
 
 function makeService(over: Record<string, any> = {}) {
   return {
@@ -17,7 +26,11 @@ function setup(over: Record<string, any> = {}, onComplete?: () => void) {
   const svc = makeService(over);
   const ui = { show: jest.fn() };
   const hook = renderHook(() =>
-    useAIRouting({ orthancAIService: svc as any, uiNotificationService: ui, onComplete })
+    useAIRouting({
+      orthancAIService: svc as unknown as OrthancAIService,
+      uiNotificationService: ui,
+      onComplete,
+    })
   );
   return { svc, ui, ...hook };
 }
@@ -108,7 +121,23 @@ describe('useAIRouting', () => {
     });
     expect(ok).toBe(false);
     expect(result.current.error).toBe('backend down');
+    expect(result.current.status).toBe('idle');
+    expect(result.current.progressDescription).toBeNull();
     expect(ui.show).toHaveBeenCalledWith(expect.objectContaining({ type: 'error' }));
+  });
+
+  it('an unrecognized response status returns false and resets to idle without an error', async () => {
+    const { result } = setup({
+      routeSeriesToAI: jest.fn().mockResolvedValue({ status: 'pending' }),
+    });
+    let ok: boolean | undefined;
+    await act(async () => {
+      ok = await result.current.sendToAI('1.2', ['s1']);
+    });
+    expect(ok).toBe(false);
+    expect(result.current.status).toBe('idle');
+    expect(result.current.progressDescription).toBeNull();
+    expect(result.current.error).toBeNull(); // distinct from the 'error' status path
   });
 
   it('a thrown routeSeriesToAI rejection is caught and surfaced', async () => {
@@ -122,6 +151,7 @@ describe('useAIRouting', () => {
     expect(ok).toBe(false);
     expect(result.current.error).toBe('boom');
     expect(result.current.status).toBe('idle');
+    expect(result.current.progress).toBe(0); // progress reset in the catch
   });
 
   it('a SCHEDULED then IN_PROGRESS update advances status/progress', async () => {
@@ -139,6 +169,23 @@ describe('useAIRouting', () => {
     expect(result.current.status).toBe('checking');
     expect(result.current.progress).toBe(60);
     expect(result.current.progressDescription).toBe('analyzing');
+
+    // IN_PROGRESS without a description falls back to the default text
+    act(() => updateCb({ state: 'IN_PROGRESS', progress: 70 }));
+    expect(result.current.progressDescription).toBe('AI analysis in progress...');
+    expect(result.current.progress).toBe(70);
+  });
+
+  it('an unknown workitem state logs a warning and leaves status unchanged', async () => {
+    const { result, svc } = setup();
+    await act(async () => {
+      await result.current.sendToAI('1.2', ['s1']);
+    });
+    const updateCb = (svc.startWorkitemPolling as jest.Mock).mock.calls[0][1];
+    const warnSpy = jest.spyOn(console, 'warn');
+    act(() => updateCb({ state: 'BOGUS_STATE' }));
+    expect(warnSpy).toHaveBeenCalledWith('Unknown workitem state:', 'BOGUS_STATE');
+    expect(result.current.status).toBe('checking'); // unchanged from post-send state
   });
 
   it('a CANCELED update sets the error from the cancellation reason', async () => {
@@ -151,15 +198,29 @@ describe('useAIRouting', () => {
     expect(result.current.error).toBe('operator stopped');
   });
 
-  it('reset stops polling and clears state', async () => {
+  it('reset stops polling and clears all state fields', async () => {
     const { result, svc } = setup();
     await act(async () => {
       await result.current.sendToAI('1.2', ['s1']);
     });
+    expect(result.current.progressDescription).not.toBeNull(); // set by the send
+
     act(() => result.current.reset());
     expect(svc.stopWorkitemPolling).toHaveBeenCalled();
     expect(result.current.status).toBe('idle');
     expect(result.current.progress).toBe(0);
     expect(result.current.workitemUid).toBeNull();
+    expect(result.current.error).toBeNull();
+    expect(result.current.progressDescription).toBeNull();
+  });
+
+  it('reset clears a previously set error', async () => {
+    const { result } = setup();
+    await act(async () => {
+      await result.current.sendToAI('1.2', []); // empty series → sets error
+    });
+    expect(result.current.error).not.toBeNull();
+    act(() => result.current.reset());
+    expect(result.current.error).toBeNull();
   });
 });

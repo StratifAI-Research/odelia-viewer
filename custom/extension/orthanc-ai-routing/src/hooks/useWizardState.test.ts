@@ -9,6 +9,9 @@ describe('useWizardState', () => {
     act(() => result.current.goToPrevStep());
     expect(result.current.currentStep).toBe(1); // clamped low
 
+    act(() => result.current.goToNextStep());
+    expect(result.current.currentStep).toBe(2); // advances exactly one step
+
     for (let i = 0; i < 6; i++) {
       act(() => result.current.goToNextStep());
     }

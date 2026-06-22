@@ -97,4 +97,77 @@ describe('useInputMapping', () => {
     expect(result.current.selectedConfigId).toBe('c1');
     expect(result.current.mapping).toEqual({});
   });
+
+  it('autoDetect does not assign the same series UID to two competing inputs', () => {
+    const cfg = {
+      id: 'c1',
+      name: 'cfg',
+      inputs: [
+        { key: 'a', label: 'A', required: true, auto_detect_patterns: ['^T1'] },
+        { key: 'b', label: 'B', required: false, auto_detect_patterns: ['^T1'] },
+      ],
+    };
+    const only = [series({ SeriesInstanceUID: 's1', SeriesDescription: 'T1 axial' })];
+    const { result } = renderHook(() => useInputMapping({ ...manifest, input_configurations: [cfg] }));
+    act(() => result.current.autoDetect(cfg, only));
+    expect(result.current.mapping.a).toBe('s1');
+    expect(result.current.mapping.b).toBeNull(); // not reused
+  });
+
+  it('autoDetect works with no modality filter and an undefined SeriesDescription', () => {
+    const cfg = {
+      id: 'c1',
+      name: 'cfg',
+      inputs: [{ key: 'a', label: 'A', required: true, auto_detect_patterns: ['^T1'] }], // no modality
+    };
+    const srs = [
+      series({ SeriesInstanceUID: 's1', SeriesDescription: undefined, Modality: 'CT' }),
+      series({ SeriesInstanceUID: 's2', SeriesDescription: 'T1 axial', Modality: 'CT' }),
+    ];
+    const { result } = renderHook(() => useInputMapping({ ...manifest, input_configurations: [cfg] }));
+    act(() => result.current.autoDetect(cfg, srs));
+    expect(result.current.mapping).toEqual({ a: 's2' });
+  });
+
+  it('autoDetect returns null for an input with no auto_detect_patterns', () => {
+    const cfg = {
+      id: 'c1',
+      name: 'cfg',
+      inputs: [{ key: 'a', label: 'A', required: false }], // no auto_detect_patterns
+    };
+    const { result } = renderHook(() => useInputMapping({ ...manifest, input_configurations: [cfg] }));
+    act(() => result.current.autoDetect(cfg, available));
+    expect(result.current.mapping.a).toBeNull();
+  });
+
+  it('setSelectedConfigId switching to a different config clears the mapping', () => {
+    const multi: ModelManifest = {
+      ...manifest,
+      input_configurations: [
+        manifest.input_configurations[0],
+        { id: 'c2', name: 'cfg2', inputs: [{ key: 'x', label: 'X', required: true }] },
+      ],
+    };
+    const { result } = renderHook(() => useInputMapping(multi));
+    act(() => result.current.setInputSeries('t1', 's1'));
+    act(() => result.current.setSelectedConfigId('c2'));
+    expect(result.current.selectedConfigId).toBe('c2');
+    expect(result.current.mapping).toEqual({});
+  });
+
+  it('reset with a null manifest sets selectedConfigId to null', () => {
+    const { result } = renderHook(() => useInputMapping(null));
+    act(() => result.current.setInputSeries('t1', 's1'));
+    act(() => result.current.reset());
+    expect(result.current.selectedConfigId).toBeNull();
+    expect(result.current.mapping).toEqual({});
+  });
+
+  it('isValid transitions true -> false when a required input is cleared', () => {
+    const { result } = renderHook(() => useInputMapping(manifest));
+    act(() => result.current.setInputSeries('t1', 's1'));
+    expect(result.current.isValid).toBe(true);
+    act(() => result.current.setInputSeries('t1', null));
+    expect(result.current.isValid).toBe(false);
+  });
 });
