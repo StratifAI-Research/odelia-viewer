@@ -10,7 +10,8 @@ export const Button = ({ children, onClick, disabled, ...rest }: any) => (
   </button>
 );
 
-export const Dialog = Pass;
+// Faithful to the real (radix) Dialog: content only renders when `open`.
+export const Dialog = ({ open, children }: any) => (open ? <div>{children}</div> : null);
 export const DialogContent = Pass;
 export const DialogHeader = Pass;
 export const DialogFooter = Pass;
