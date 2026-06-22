@@ -1,12 +1,18 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { ModelSelectionStep } from './ModelSelectionStep';
 import { AI_ENDPOINT } from '../../test-utils/harness';
 
 // AIEndpointConfig is heavy (Tier D); stub it so this step tests its own logic.
+// The stub captures the onEndpointChange prop (accessed only at render time, so
+// no TDZ on the mock-prefixed holder) so the cache-clear/refetch path is testable.
+const mockEndpointConfig: { onEndpointChange?: (ep: any) => void } = {};
 jest.mock('../AIEndpointConfig', () => ({
   __esModule: true,
-  default: () => <div data-testid="endpoint-config" />,
+  default: ({ onEndpointChange }: any) => {
+    mockEndpointConfig.onEndpointChange = onEndpointChange;
+    return <div data-testid="endpoint-config" />;
+  },
 }));
 
 const manifest = {
@@ -73,6 +79,24 @@ describe('ModelSelectionStep', () => {
     );
     await waitFor(() => expect(screen.getByText('Failed to fetch model configuration')).toBeTruthy());
     expect(props.onManifestLoaded).toHaveBeenCalledWith(null);
+  });
+
+  it('clears the manifest cache and re-fetches when the endpoint changes', async () => {
+    const props = base();
+    render(<ModelSelectionStep {...props} />);
+    await waitFor(() => expect(props.onManifestLoaded).toHaveBeenCalledWith(manifest));
+    props.onManifestLoaded.mockClear();
+    (props.orthancAIService.getModelManifest as jest.Mock).mockClear();
+
+    const newEndpoint = { id: 'ep-2', name: 'other', url: 'http://other:8042/dicom-web' };
+    await act(async () => {
+      mockEndpointConfig.onEndpointChange!(newEndpoint);
+    });
+
+    expect(props.orthancAIService.clearManifestCache).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(props.orthancAIService.getModelManifest).toHaveBeenCalledWith(newEndpoint.url)
+    );
   });
 
   it('renders an error banner from the error prop', () => {

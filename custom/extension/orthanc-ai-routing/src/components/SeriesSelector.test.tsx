@@ -83,6 +83,36 @@ describe('SeriesSelector', () => {
     expect(onClearSelection).toHaveBeenCalledTimes(1);
   });
 
+  it('renders the checkmark SVG only for selected series and shows modality/instances', () => {
+    render(
+      <SeriesSelector
+        series={[
+          series({ SeriesInstanceUID: 's1', SeriesDescription: 'T1', Modality: 'CT', numImageFrames: 42 }),
+          series({ SeriesInstanceUID: 's2', SeriesDescription: 'T2' }),
+        ]}
+        selectedSeriesUIDs={new Set(['s1'])}
+        onToggleSeries={noop}
+        onSelectAll={noop}
+        onClearSelection={noop}
+      />
+    );
+    expect(document.querySelectorAll('svg').length).toBe(1); // only the selected row
+    expect(screen.getByText(/CT · 42 instances/)).toBeTruthy();
+  });
+
+  it('treats undefined numImageFrames as 0 in the summary', () => {
+    render(
+      <SeriesSelector
+        series={[series({ SeriesInstanceUID: 's1', numImageFrames: undefined as any })]}
+        selectedSeriesUIDs={new Set(['s1'])}
+        onToggleSeries={noop}
+        onSelectAll={noop}
+        onClearSelection={noop}
+      />
+    );
+    expect(screen.getByText('1 series (0 instances)')).toBeTruthy();
+  });
+
   it('falls back to a series-number label when description is empty', () => {
     render(
       <SeriesSelector

@@ -55,6 +55,11 @@ describe('SeriesSelectionStep', () => {
     expect(screen.getByText(/Next/).closest('button')!.disabled).toBe(true);
   });
 
+  it('disables Next while loading even with series selected', () => {
+    render(<SeriesSelectionStep {...base} isLoading selectedSeriesUIDs={new Set(['s1'])} />);
+    expect(screen.getByText(/Next/).closest('button')!.disabled).toBe(true);
+  });
+
   it('renders a Back button only when onBack is provided', () => {
     const { rerender } = render(<SeriesSelectionStep {...base} />);
     expect(screen.queryByText(/Back/)).toBeNull();

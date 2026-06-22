@@ -17,6 +17,7 @@ describe('EndpointSelectionStep', () => {
     expect(screen.getByText(/Model: test-ai/)).toBeTruthy();
     expect(screen.getByText(/Study: Brain MR/)).toBeTruthy();
     expect(screen.getByText(/Series: 3 selected/)).toBeTruthy();
+    expect(screen.queryByText('Input Mapping')).toBeNull(); // absent without a description
   });
 
   it('shows "Not configured" and disables Send when no endpoint', () => {
