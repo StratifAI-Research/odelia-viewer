@@ -5,9 +5,26 @@ module.exports = {
   ...base,
   name: pkg.name,
   displayName: pkg.name,
+  // Match CI (tests.yml --coverageProvider=v8); istanbul vs v8 count differently.
+  coverageProvider: 'v8',
   moduleNameMapper: {
     ...base.moduleNameMapper,
+    // @ohif/ui* are symlinked raw JSX/TS; default transformIgnorePatterns skips
+    // node_modules, so they must be stubbed for any component/hook test.
+    '^@ohif/ui$': '<rootDir>/src/test-utils/__mocks__/ohif-ui.tsx',
+    '^@ohif/ui-next$': '<rootDir>/src/test-utils/__mocks__/ohif-ui-next.tsx',
     '\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$':
       '<rootDir>/src/__mocks__/fileMock.js',
   },
+  // Narrow coverage to meaningful product source; exclude boilerplate/scaffolding.
+  collectCoverageFrom: [
+    'src/**/*.{ts,tsx}',
+    '!src/**/*.test.{ts,tsx}',
+    '!src/index.tsx',
+    '!src/**/index.ts',
+    '!src/id.js',
+    '!src/__mocks__/**',
+    '!src/test-utils/**',
+    '!src/types/**',
+  ],
 };
