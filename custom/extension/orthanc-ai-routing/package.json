@@ -49,7 +49,7 @@
     "@babel/runtime": "^7.20.13",
     "@ohif/core": "workspace:*",
     "@ohif/ui": "workspace:*",
-    "react": "^18.2.0",
+    "react": "^19.2.7",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
@@ -80,7 +80,7 @@
     "webpack-merge": "^5.7.3",
     "webpack-cli": "^4.0.0",
     "webpack-dev-server": "^4.0.0",
-    "@types/react": "^18.2.0",
+    "@types/react": "^19.2.17",
     "@types/react-dom": "^18.2.0",
     "@typescript-eslint/eslint-plugin": "^5.0.0",
     "@typescript-eslint/parser": "^5.0.0",
