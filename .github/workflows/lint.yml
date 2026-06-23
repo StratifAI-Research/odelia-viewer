@@ -25,7 +25,7 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/setup-bun
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -121,30 +121,10 @@ jobs:
 
       - name: Upload artifact (main push only)
         if: github.event_name == 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lint-js-${{ github.sha }}
           path: outputs/
-          retention-days: 90
-
-  lint-py:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6.0.2
-        with:
-          submodules: recursive
-          fetch-depth: 1
-
-      - uses: ./custom/deploy/.github/actions/python-lint
-        with:
-          working-directory: custom/deploy/orthanc
-
-      - name: Upload artifact (main push only)
-        if: github.event_name == 'push'
-        uses: actions/upload-artifact@v4
-        with:
-          name: lint-py-${{ github.sha }}
-          path: custom/deploy/orthanc/outputs/
           retention-days: 90
 
   lint-yaml:
@@ -229,20 +209,8 @@ jobs:
 
       - name: Upload artifact (main push only)
         if: github.event_name == 'push'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lint-yaml-${{ github.sha }}
           path: outputs/
           retention-days: 90
-
-  python-pin-check:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6.0.2
-        with:
-          submodules: recursive
-          fetch-depth: 1
-
-      - uses: ./custom/deploy/.github/actions/python-pin-check
-        with:
-          working-directory: custom/deploy/orthanc

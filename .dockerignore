@@ -45,3 +45,4 @@ dockerfile
 coverage/
 platform/docs/
 testdata/
+deploy/
