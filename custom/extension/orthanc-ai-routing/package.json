@@ -27,7 +27,9 @@
     "build:package": "yarn run build",
     "start": "yarn run dev",
     "lint": "eslint src --ext .ts,.tsx",
-    "format": "prettier --write \"src/**/*.{ts,tsx}\""
+    "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "test:unit": "jest --config jest.config.js --watchAll",
+    "test:unit:ci": "jest --config jest.config.js --ci --runInBand --collectCoverage --coverageProvider=v8 --passWithNoTests"
   },
   "peerDependencies": {
     "@ohif/core": "workspace:*",
