@@ -2,11 +2,8 @@ import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { AI_ENDPOINT } from '../test-utils/harness';
 
-// Real useStudySeriesSelection imports @ohif/core (a UMD needing cornerstone); stub it.
-jest.mock('@ohif/core', () => ({
-  utils: { formatDate: (d: string) => d || '' },
-  DicomMetadataStore: { getStudy: jest.fn(() => ({ series: [] })) },
-}));
+// @ohif/core (imported transitively by the real useStudySeriesSelection) is mapped to
+// a stub via moduleNameMapper (jest.config.js).
 
 // Controllable viewport context. mock-prefixed so the jest.mock factories may close
 // over it; a stable grid reference per test avoids effect churn / act warnings.

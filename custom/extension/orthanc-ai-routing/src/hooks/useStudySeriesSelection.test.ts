@@ -1,11 +1,6 @@
 import { renderHook, act } from '@testing-library/react';
-
-jest.mock('@ohif/core', () => ({
-  utils: { formatDate: (d: string) => d || '' },
-  DicomMetadataStore: { getStudy: jest.fn(() => ({ series: [] })) },
-}));
-
 import { useStudySeriesSelection } from './useStudySeriesSelection';
+// @ohif/core is mapped to a stub via moduleNameMapper (jest.config.js).
 import { DicomMetadataStore } from '@ohif/core';
 
 const RETRY_WINDOW = 150 + 100 * 11; // initial 150ms + 10 retries @100ms (source magic numbers)
