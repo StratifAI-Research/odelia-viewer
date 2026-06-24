@@ -25,7 +25,9 @@
     "dev:my-extension": "yarn run dev",
     "build": "cross-env NODE_ENV=production webpack --config .webpack/webpack.prod.js",
     "build:package": "yarn run build",
-    "start": "yarn run dev"
+    "start": "yarn run dev",
+    "test:unit": "jest --config jest.config.js --watchAll",
+    "test:unit:ci": "jest --config jest.config.js --ci --runInBand --collectCoverage --coverageProvider=v8 --passWithNoTests"
   },
   "peerDependencies": {
     "@ohif/core": "workspace:*",
