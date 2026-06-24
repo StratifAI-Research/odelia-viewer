@@ -1,6 +1,7 @@
 {
   "name": "ohif-monorepo-root",
   "private": true,
+  "packageManager": "bun@1.2.23",
   "workspaces": {
     "packages": [
       "platform/app",
@@ -21,8 +22,7 @@
   },
   "engines": {
     "node": ">=18",
-    "npm": ">=6",
-    "yarn": ">=1.20.0"
+    "npm": ">=6"
   },
   "scripts": {
     "cm": "npx git-cz",
@@ -37,7 +37,7 @@
     "build:demo": "lerna run build:viewer:demo --stream",
     "build:package-all": "lerna run build:package --parallel --stream",
     "build:package-all-1": "lerna run build:package-1 --parallel --stream",
-    "dev:fast": "cd platform/app && yarn run dev:fast",
+    "dev:fast": "cd platform/app && bun run dev:fast",
     "show:config": "echo Config is $APP_CONFIG on $PUBLIC_URL",
     "dev": "lerna run dev:viewer --stream",
     "dev:no:cache": "lerna run dev:no:cache --stream",
@@ -47,10 +47,10 @@
     "dev:dcm4chee": "lerna run dev:dcm4chee --stream",
     "dev:static": "lerna run dev:static --stream",
     "orthanc:up": "docker compose -f platform/app/.recipes/Nginx-Orthanc/docker-compose.yml up",
-    "install:dev": "cp -f yarn.lock addOns/yarn.lock && cd addOns && yarn install --modules-folder ../node_modules",
+    "install:dev": "cd addOns && bun install",
     "preinstall": "node preinstall.js",
-    "start": "yarn run dev",
-    "test": "yarn run test:unit",
+    "start": "bun run dev",
+    "test": "bun run test:unit",
     "test:data": "git submodule update --init -f testdata",
     "test-watch": "jest --collectCoverage --watchAll",
     "test:unit": "jest --collectCoverage",
@@ -61,11 +61,11 @@
     "test:e2e:headed": "npx playwright test --headed",
     "test:e2e:debug": "npx playwright test --debug",
     "test:e2e:dist": "lerna run test:e2e:dist --stream",
-    "test:e2e:serve": "yarn test:data && lerna run test:e2e:serve --stream",
+    "test:e2e:serve": "bun run test:data && lerna run test:e2e:serve --stream",
     "see-changed": "lerna changed",
     "docs:preview": "lerna run docs:preview --stream",
     "docs:publish": "chmod +x ./build-and-publish-docs.sh && ./build-and-publish-docs.sh",
-    "release": "yarn run lerna:version && yarn run lerna:publish",
+    "release": "bun run lerna:version && bun run lerna:publish",
     "lerna:clean": "lerna clean",
     "lerna:cache": "./netlify-lerna-cache.sh",
     "lerna:restore": "./netlify-lerna-restore.sh",

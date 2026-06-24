@@ -55,17 +55,24 @@ RUN npm install -g lerna@7.2.0
 ENV PATH=/usr/src/app/node_modules/.bin:$PATH
 
 # Do an initial install and then a final install
-COPY package.json yarn.lock preinstall.js lerna.json ./
+COPY package.json bun.lock preinstall.js lerna.json ./
 COPY --parents ./addOns/package.json ./addOns/*/*/package.json ./extensions/*/package.json ./modes/*/package.json ./platform/*/package.json ./
 COPY --parents ./custom/mode/*/package.json ./custom/extension/*/package.json ./
 # Copy the local directory
-COPY  --exclude=**/.venv/** --exclude=yarn.lock --exclude=package.json --exclude=Dockerfile . .
+COPY  --exclude=**/.venv/** --exclude=bun.lock --exclude=package.json --exclude=Dockerfile . .
 
-# Run the install after copying all files for complete workspace context
+# Run the install after copying all files for complete workspace context.
+# Remove any stale binary lockfile so the committed text bun.lock is authoritative.
 RUN rm -rf node_modules */*/node_modules .cache .turbo bun.lockb && \
     bun pm cache rm
-RUN sed -i '/"@percy\/cypress":/d; /"cypress":/d; /"cypress-file-upload":/d; /"@playwright\/test":/d' package.json
-RUN yarn install --no-save
+# Keep ALL optional deps installed: platform-native binaries (Nx's linux-x64 binary,
+# esbuild/rollup/sharp natives, ...) ship as optionalDependencies and are required to
+# build, so a blanket --omit=optional breaks the build. package.json is left unmodified
+# (no sed) so it stays in sync with bun.lock and --frozen-lockfile remains valid. The
+# only thing we suppress is the heavy Cypress binary download — Cypress is a test-only
+# dep that the production build never uses.
+ENV CYPRESS_INSTALL_BINARY=0
+RUN bun install --frozen-lockfile
 
 # Build here
 # After install it should hopefully be stable until the local directory changes
