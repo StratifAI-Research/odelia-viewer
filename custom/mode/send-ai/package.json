@@ -17,15 +17,14 @@
   "module": "src/index.tsx",
   "engines": {
     "node": ">=14",
-    "npm": ">=6",
-    "yarn": ">=1.16.0"
+    "npm": ">=6"
   },
   "scripts": {
     "dev": "cross-env NODE_ENV=development webpack --config .webpack/webpack.dev.js --watch --output-pathinfo",
-    "dev:cornerstone": "yarn run dev",
+    "dev:cornerstone": "bun run dev",
     "build": "cross-env NODE_ENV=production webpack --config .webpack/webpack.prod.js",
-    "build:package": "yarn run build",
-    "start": "yarn run dev",
+    "build:package": "bun run build",
+    "start": "bun run dev",
     "test:unit": "jest --watchAll",
     "test:unit:ci": "jest --ci --runInBand --collectCoverage --passWithNoTests"
   },

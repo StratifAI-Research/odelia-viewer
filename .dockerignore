@@ -12,13 +12,11 @@
 **/build/
 
 # Dependencies
+# NOTE: bun.lock is intentionally NOT ignored — the Dockerfile COPYs it for
+# `bun install --frozen-lockfile`. Ignoring it would break the frozen install.
 **/node_modules/
 .bun/
 **/.bun/
-bun.lock
-.yarn/
-**/.yarn/
-yarn-error.log
 npm-debug.log
 **/node_modules
 **/.cache
