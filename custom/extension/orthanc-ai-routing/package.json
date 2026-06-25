@@ -48,7 +48,7 @@
     "@babel/runtime": "^7.20.13",
     "@ohif/core": "workspace:*",
     "@ohif/ui": "workspace:*",
-    "react": "^18.2.0",
+    "react": "^19.2.7",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
