@@ -1,4 +1,5 @@
 import React from 'react';
+import { installConsoleErrorFilter } from '../test-utils/harness';
 import { render, screen } from '@testing-library/react';
 import AITrackedViewport from './AITrackedViewport';
 
@@ -42,20 +43,7 @@ const baseProps = (over: any = {}) => ({
 
 // Component logs verbosely on mount/unmount; silence log and swallow the
 // environmental ReactDOMTestUtils.act deprecation, re-emit other errors.
-const realError = console.error;
-beforeAll(() => {
-  jest.spyOn(console, 'log').mockImplementation(() => {});
-  jest.spyOn(console, 'error').mockImplementation((...args: any[]) => {
-    if (typeof args[0] === 'string' && args[0].includes('ReactDOMTestUtils.act')) {
-      return;
-    }
-    realError(...args);
-  });
-});
-afterAll(() => {
-  (console.log as jest.Mock).mockRestore();
-  (console.error as jest.Mock).mockRestore();
-});
+installConsoleErrorFilter({ silenceLog: true });
 
 describe('AITrackedViewport', () => {
   beforeEach(() => {

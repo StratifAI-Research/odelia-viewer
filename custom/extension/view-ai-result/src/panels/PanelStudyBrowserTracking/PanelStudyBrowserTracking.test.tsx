@@ -1,4 +1,5 @@
 import React from 'react';
+import { installConsoleErrorFilter } from '../../test-utils/harness';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import PanelStudyBrowserTracking from './PanelStudyBrowserTracking';
@@ -112,22 +113,7 @@ function setSystem(svc: any) {
   };
 }
 
-const realError = console.error;
-beforeAll(() => {
-  jest.spyOn(console, 'log').mockImplementation(() => {});
-  jest.spyOn(console, 'warn').mockImplementation(() => {});
-  jest.spyOn(console, 'error').mockImplementation((...args: any[]) => {
-    if (typeof args[0] === 'string' && args[0].includes('ReactDOMTestUtils.act')) {
-      return;
-    }
-    realError(...args);
-  });
-});
-afterAll(() => {
-  (console.log as jest.Mock).mockRestore();
-  (console.warn as jest.Mock).mockRestore();
-  (console.error as jest.Mock).mockRestore();
-});
+installConsoleErrorFilter({ silenceLog: true, silenceWarn: true });
 
 beforeEach(() => {
   jest.clearAllMocks();

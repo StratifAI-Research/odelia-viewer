@@ -1,6 +1,6 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { makeServicesManager, withSystem } from '../../test-utils/harness';
+import { installConsoleErrorFilter, makeServicesManager, withSystem } from '../../test-utils/harness';
 
 // The panel consumes the streaming chat hook; inject its surface directly so we
 // drive each render branch and assert the panel forwards the right payloads.
@@ -36,8 +36,9 @@ jest.mock('../../hooks/useChatService', () => ({
 // only reads StudyInstanceUIDs + the active viewport map from them.
 import ChatPanel from './ChatPanel';
 
+let msgSeq = 0;
 const msg = (over: any = {}) => ({
-  id: `m-${Math.random()}`,
+  id: `m-${++msgSeq}`,
   role: 'assistant',
   content: 'hello',
   timestamp: new Date('2024-03-15T10:00:00Z'),
@@ -47,19 +48,10 @@ const msg = (over: any = {}) => ({
 // jsdom lacks scrollIntoView; the panel calls it on every messages change.
 // Swallow only the environmental ReactDOMTestUtils.act deprecation; re-emit
 // every other console.error so real failures still surface.
-const realError = console.error;
+installConsoleErrorFilter();
 beforeAll(() => {
   (Element.prototype as any).scrollIntoView = jest.fn();
   (HTMLElement.prototype as any).focus = jest.fn();
-  jest.spyOn(console, 'error').mockImplementation((...args: any[]) => {
-    if (typeof args[0] === 'string' && args[0].includes('ReactDOMTestUtils.act')) {
-      return;
-    }
-    realError(...args);
-  });
-});
-afterAll(() => {
-  (console.error as jest.Mock).mockRestore();
 });
 
 beforeEach(() => {

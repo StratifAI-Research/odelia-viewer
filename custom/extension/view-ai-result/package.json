@@ -26,7 +26,7 @@
     "build:package": "bun run build",
     "start": "bun run dev",
     "test:unit": "jest --config jest.config.js --watchAll",
-    "test:unit:ci": "jest --config jest.config.js --ci --runInBand --collectCoverage --coverageProvider=v8 --passWithNoTests"
+    "test:unit:ci": "jest --config jest.config.js --ci --runInBand --collectCoverage"
   },
   "peerDependencies": {
     "@ohif/core": "workspace:*",

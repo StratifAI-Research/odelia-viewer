@@ -1,4 +1,5 @@
 import React from 'react';
+import { installConsoleErrorFilter } from '../test-utils/harness';
 import { render, screen, fireEvent } from '@testing-library/react';
 import DisclaimerBanner from './DisclaimerBanner';
 
@@ -6,16 +7,7 @@ const STORAGE_KEY = 'odeliaDisclaimerHidden';
 
 // Swallow only the testing-library/React ReactDOMTestUtils.act deprecation
 // (environmental, fires on effect-driven first renders), re-emit anything else.
-const realError = console.error;
-beforeAll(() => {
-  jest.spyOn(console, 'error').mockImplementation((...args: any[]) => {
-    if (typeof args[0] === 'string' && args[0].includes('ReactDOMTestUtils.act')) {
-      return;
-    }
-    realError(...args);
-  });
-});
-afterAll(() => (console.error as jest.Mock).mockRestore());
+installConsoleErrorFilter();
 
 describe('DisclaimerBanner', () => {
   let openSpy: jest.SpyInstance;

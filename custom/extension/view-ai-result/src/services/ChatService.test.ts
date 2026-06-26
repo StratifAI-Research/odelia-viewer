@@ -33,9 +33,15 @@ class FakeWebSocket {
     this.sent.push(data);
   }
 
-  close(code?: number, reason?: string) {
+  close(code = 1000, reason = '') {
+    if (this.readyState === FakeWebSocket.CLOSED) {
+      return;
+    }
     this.readyState = FakeWebSocket.CLOSED;
     this.closed = { code, reason };
+    // Mirror a real socket: closing fires onclose, which clears the connect
+    // timeout and publishes DISCONNECTED.
+    this.onclose?.({ code, reason, wasClean: code === 1000 });
   }
 
   // test helpers
@@ -102,7 +108,11 @@ describe('ChatService', () => {
     (window as any).config = { chatMiddleware: { wsUrl: 'ws://custom/ws' } };
     const svc = new ChatService();
     svc.connect();
-    expect(lastWs().url).toBe('ws://custom/ws');
+    const ws = lastWs();
+    expect(ws.url).toBe('ws://custom/ws');
+    // Tear the socket down so the 10s connection timeout armed by connect() is
+    // cleared (via onclose) instead of leaking as an open handle.
+    ws.close();
   });
 
   it('connect resolves with the session id once CONNECTED arrives', async () => {
@@ -242,7 +252,7 @@ describe('ChatService', () => {
       await p;
 
       svc.disconnect();
-      ws.emitClose(1000, 'Client disconnect', false);
+      // disconnect() closes the socket, which now drives onclose itself.
       jest.advanceTimersByTime(60000);
       expect(FakeWebSocket.instances).toHaveLength(1); // no new socket
     });

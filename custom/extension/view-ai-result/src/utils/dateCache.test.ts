@@ -1,4 +1,11 @@
-import { getStaticDate } from './dateCache';
+// Re-require the module before each test so its internal date cache starts
+// empty; tests then don't depend on every case using a unique UID.
+let getStaticDate: typeof import('./dateCache').getStaticDate;
+
+beforeEach(() => {
+  jest.resetModules();
+  ({ getStaticDate } = require('./dateCache'));
+});
 
 describe('getStaticDate', () => {
   it('formats an 8-char DICOM date as MM/DD/YYYY', () => {

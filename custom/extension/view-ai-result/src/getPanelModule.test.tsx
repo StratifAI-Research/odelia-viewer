@@ -2,7 +2,7 @@ import React from 'react';
 import { render, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import getPanelModule from './getPanelModule';
-import { makeServicesManager, withSystem } from './test-utils/harness';
+import { installConsoleErrorFilter, makeServicesManager, withSystem } from './test-utils/harness';
 
 // Harness managers passed to the panel-module factory. The seriesList panel
 // resolves utility modules + the active data source through the extension
@@ -62,22 +62,7 @@ function makeManagers(overrides: any = {}) {
   return { servicesManager, commandsManager, extensionManager };
 }
 
-const realError = console.error;
-beforeAll(() => {
-  jest.spyOn(console, 'log').mockImplementation(() => {});
-  jest.spyOn(console, 'warn').mockImplementation(() => {});
-  jest.spyOn(console, 'error').mockImplementation((...args: any[]) => {
-    if (typeof args[0] === 'string' && args[0].includes('ReactDOMTestUtils.act')) {
-      return;
-    }
-    realError(...args);
-  });
-});
-afterAll(() => {
-  (console.log as jest.Mock).mockRestore();
-  (console.warn as jest.Mock).mockRestore();
-  (console.error as jest.Mock).mockRestore();
-});
+installConsoleErrorFilter({ silenceLog: true, silenceWarn: true });
 
 beforeEach(() => {
   jest.clearAllMocks();

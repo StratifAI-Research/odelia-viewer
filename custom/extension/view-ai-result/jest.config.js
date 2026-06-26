@@ -19,8 +19,8 @@ module.exports = {
       '<rootDir>/src/__mocks__/fileMock.js',
   },
   collectCoverageFrom: [
-    'src/**/*.{ts,tsx}',
-    '!src/**/*.test.{ts,tsx}',
+    'src/**/*.{js,jsx,ts,tsx}',
+    '!src/**/*.test.{js,jsx,ts,tsx}',
     '!src/index.tsx',
     '!src/**/index.{ts,tsx}',
     '!src/id.js',

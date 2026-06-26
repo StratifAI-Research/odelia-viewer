@@ -101,11 +101,4 @@ describe('useAIResultSubscription', () => {
     renderHook(() => useAIResultSubscription(config));
     expect(aiResultsService.subscribe).not.toHaveBeenCalled();
   });
-
-  it('ignores selected events on heatmap viewports via guarded handler', () => {
-    const { config } = makeConfig({ config: { isHeatmapViewport: true } });
-    renderHook(() => useAIResultSubscription(config));
-    // No subscription set up, so callback must never run.
-    expect(config.onAIResultSelected).not.toHaveBeenCalled();
-  });
 });

@@ -79,16 +79,44 @@ describe('toggleHeatmapImageSliceSync', () => {
     expect(addViewportToSyncGroup).toHaveBeenCalledWith('v1', 'engine-v1', expect.anything());
   });
 
-  it('is idempotent: a second toggle reverses the first', () => {
-    // Enable
-    const enable = makeServices({ hasSync: false });
-    toggleHeatmapImageSliceSync({ servicesManager: enable.servicesManager });
-    expect(enable.addViewportToSyncGroup).toHaveBeenCalledTimes(2);
+  it('round-trips on repeated toggles against shared sync state', () => {
+    // One stateful mock: add/remove mutate the synced set and the synchronizer
+    // lookup reflects it, so each toggle observes the previous toggle's effect.
+    const synced = new Set<string>();
+    const viewports = new Map<string, any>();
+    ['v1', 'v2'].forEach(id => viewports.set(id, gridViewport(id)));
 
-    // Disable (state now reports sync present)
-    const disable = makeServices({ hasSync: true });
-    toggleHeatmapImageSliceSync({ servicesManager: disable.servicesManager });
-    expect(disable.removeViewportFromSyncGroup).toHaveBeenCalledTimes(2);
-    expect(disable.addViewportToSyncGroup).not.toHaveBeenCalled();
+    const addViewportToSyncGroup = jest.fn((id: string) => { synced.add(id); });
+    const removeViewportFromSyncGroup = jest.fn((id: string) => { synced.delete(id); });
+    const getSynchronizersForViewport = jest.fn((id: string) =>
+      synced.has(id) ? [{ id: HEATMAP_SYNC_ID }] : [{ id: 'something-else' }]
+    );
+    const getCornerstoneViewport = jest.fn((id: string) => ({
+      getRenderingEngine: () => ({ id: `engine-${id}` }),
+    }));
+
+    const servicesManager = {
+      services: {
+        syncGroupService: { addViewportToSyncGroup, removeViewportFromSyncGroup, getSynchronizersForViewport },
+        cornerstoneViewportService: { getCornerstoneViewport },
+        viewportGridService: { getState: () => ({ viewports }) },
+      },
+    };
+
+    // First toggle: nothing synced yet -> enable both viewports.
+    toggleHeatmapImageSliceSync({ servicesManager });
+    expect(addViewportToSyncGroup).toHaveBeenCalledTimes(2);
+    expect(removeViewportFromSyncGroup).not.toHaveBeenCalled();
+    expect(synced).toEqual(new Set(['v1', 'v2']));
+
+    // Second toggle: shared state now reports sync -> disable both viewports.
+    toggleHeatmapImageSliceSync({ servicesManager });
+    expect(removeViewportFromSyncGroup).toHaveBeenCalledTimes(2);
+    expect(synced.size).toBe(0);
+
+    // Third toggle: back to enabled, proving a clean round-trip.
+    toggleHeatmapImageSliceSync({ servicesManager });
+    expect(addViewportToSyncGroup).toHaveBeenCalledTimes(4);
+    expect(synced).toEqual(new Set(['v1', 'v2']));
   });
 });
