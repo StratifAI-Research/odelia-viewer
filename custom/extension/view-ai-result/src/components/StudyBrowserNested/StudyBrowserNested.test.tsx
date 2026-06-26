@@ -113,4 +113,26 @@ describe('StudyBrowserNested', () => {
     render(<StudyBrowserNested {...props} />);
     expect(screen.getByText('No Study Date')).toBeTruthy();
   });
+
+  // KNOWN BUG (ODV-80): the studies list is keyed on `study.studyInstanceUid`,
+  // which is undefined for studies that arrive without a UID (as produced by the
+  // nested-tab grouping path the panels feed in), so React logs an "each child
+  // needs a unique key" warning. Unskip once the render supplies a stable
+  // fallback key (e.g. an index fallback) or upstream guarantees a UID.
+  it.skip('renders studies without a missing-key warning when a study has no UID', () => {
+    const errors: unknown[] = [];
+    const spy = jest.spyOn(console, 'error').mockImplementation((...args) => {
+      errors.push(args[0]);
+    });
+
+    const props = baseProps();
+    props.tabs[0].studies = [study({ studyInstanceUid: undefined })];
+    render(<StudyBrowserNested {...props} />);
+    spy.mockRestore();
+
+    const keyWarning = errors.some(
+      e => typeof e === 'string' && e.includes('unique "key"')
+    );
+    expect(keyWarning).toBe(false); // fails today: undefined key warns
+  });
 });
