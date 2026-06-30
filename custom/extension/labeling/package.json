@@ -40,7 +40,7 @@
     "webpack": "^5.50.0"
   },
   "dependencies": {
-    "@babel/runtime": "^7.20.13",
+    "@babel/runtime": "^8.0.0",
     "papaparse": "^5.4.1"
   },
   "devDependencies": {
