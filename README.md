@@ -1,338 +1,189 @@
-<!-- prettier-ignore-start -->
-<!-- markdownlint-disable -->
 <div align="center">
-  <h1>Odelia Medical Imaging Viewer (based on OHIF)</h1>
-  <p><strong>The Odelia Viewer</strong> is a zero-footprint medical image viewer
-based on the <a href="https://ohif.org/">Open Health Imaging Foundation (OHIF)</a> platform. It is a configurable and extensible progressive web application with out-of-the-box support for image archives which support <a href="https://www.dicomstandard.org/using/dicomweb/">DICOMweb</a>.</p>
+  <h1>ODELIA Viewer</h1>
+  <p>
+    <strong>A web-based DICOM viewer with built-in AI workflows for the <a href="https://odelia.ai/">ODELIA</a> project.</strong><br/>
+    Zero-footprint, DICOMweb-native, and built on the <a href="https://ohif.org/">OHIF Viewer</a>. Maintained by <a href="https://www.stratifai.com/">StratifAI</a>.
+  </p>
 
-  <p>This viewer is part of the <strong>ODELIA project</strong> - an innovative EU-funded research initiative developing <strong>Open Source Swarm Learning to Empower Medical AI</strong>. The project focuses on advancing AI-driven breast cancer detection in MRI screenings while ensuring data privacy through cutting-edge swarm learning technology.</p>
+  <p>
+    <a href="https://odelia.ai/">ODELIA Project</a> ·
+    <a href="https://www.stratifai.com/">StratifAI</a> ·
+    <a href="https://github.com/StratifAI-Research/odelia-viewer-platform">ODELIA Viewer Platform</a>
+  </p>
+
+  <p>
+    <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"/></a>
+    <a href="https://hub.docker.com/r/stratifai/odelia-viewer"><img src="https://img.shields.io/docker/v/stratifai/odelia-viewer?sort=semver&label=docker" alt="Docker image version"/></a>
+    <a href="https://hub.docker.com/r/stratifai/odelia-viewer"><img src="https://img.shields.io/docker/pulls/stratifai/odelia-viewer.svg" alt="Docker pulls"/></a>
+    <a href="https://github.com/StratifAI-Research/odelia-viewer/actions/workflows/docker-build-push.yml"><img src="https://github.com/StratifAI-Research/odelia-viewer/actions/workflows/docker-build-push.yml/badge.svg" alt="Docker Build & Push"/></a>
+    <a href="https://github.com/StratifAI-Research/odelia-viewer/actions/workflows/tests.yml"><img src="https://github.com/StratifAI-Research/odelia-viewer/actions/workflows/tests.yml/badge.svg" alt="Tests"/></a>
+  </p>
 </div>
 
-
-
-<hr />
-
-## Deployment
-
-The full deployment stack (Orthanc, AI services, Keycloak, Grafana, config) now lives in the
-[odelia-viewer-platform](https://github.com/StratifAI-Research/odelia-viewer-platform) repo,
-pinned to a platform release. This repo only builds and publishes the OHIF viewer image
-(`stratifai/odelia-viewer`). The root `docker-compose.yml` here is a runnable reference stack; its volume directories under `deploy/volumes/` are created at runtime (Docker creates them root-owned on first `up`).
-
-
-[![NPM version][npm-version-image]][npm-url]
-[![MIT License][license-image]][license-url]
-[![This project is using Percy.io for visual regression testing.][percy-image]](percy-url)
-<!-- [![NPM downloads][npm-downloads-image]][npm-url] -->
-<!-- [![Pulls][docker-pulls-img]][docker-image-url] -->
-<!-- [![FOSSA Status](https://app.fossa.io/api/projects/git%2Bgithub.com%2FOHIF%2FViewers.svg?type=shield)](https://app.fossa.io/projects/git%2Bgithub.com%2FOHIF%2FViewers?ref=badge_shield) -->
-
-<!-- [![Netlify Status][netlify-image]][netlify-url] -->
-<!-- [![CircleCI][circleci-image]][circleci-url] -->
-<!-- [![codecov][codecov-image]][codecov-url] -->
-<!-- [![All Contributors](https://img.shields.io/badge/all_contributors-10-orange.svg?style=flat-square)](#contributors) -->
-<!-- prettier-ignore-end -->
-
-
-## About
-
-The Odelia Viewer can retrieve
-and load images from most sources and formats; render sets in 2D, 3D, and
-reconstructed representations; allows for the manipulation, annotation, and
-serialization of observations; supports internationalization, OpenID Connect,
-offline use, hotkeys, and many more features.
-
-Almost everything offers some degree of customization and configuration. If it
-doesn't support something you need, we accept pull requests and have an ever
-improving Extension System.
-
-### ODELIA Project
-
-The Odelia Viewer is developed as part of the **ODELIA** (Open Consortium for Decentralized Medical Artificial Intelligence) project, funded by the European Union's Horizon Europe research and innovation programme under grant agreement No 101057091.
-
-**Key Objectives:**
-- **Swarm Learning Framework**: Building the first open-source software framework for swarm learning, enabling privacy-preserving AI development without data sharing
-- **Breast Cancer Detection**: Developing and validating AI algorithms for accurate breast cancer detection in MRI screenings
-- **European Collaboration**: Uniting 12 partners across 7 European countries in a groundbreaking medical AI initiative
-- **Privacy-First Approach**: Ensuring data security and GDPR compliance through decentralized AI training
-
-The project runs from 2023-2027 with total funding of €8.69 million, aiming to revolutionize medical AI while protecting patient privacy and fostering international collaboration in healthcare innovation.
-
-## Why Choose Us
-
-### Community & Experience
-
-The Odelia Viewer is based on the OHIF Viewer, a collaborative effort that has served as the basis for many
-active, production, and FDA Cleared medical imaging viewers. It benefits from
-OHIF's extensive community's collective experience, and from the sponsored
-contributions of individuals, research groups, and commercial organizations.
-
-### Built to Adapt
-
-After more than 8-years of integrating with many companies and organizations,
-The OHIF Viewer has been rebuilt from the ground up to better address the
-varying workflow and configuration needs of its many users. The Odelia Viewer inherits
-all of these capabilities. All of the Viewer's core features are built using its own extension system. The same extensibility
-that allows us to offer:
-
-- 2D and 3D medical image viewing
-- Multiplanar Reconstruction (MPR)
-- Maximum Intensity Project (MIP)
-- Whole slide microscopy viewing
-- PDF and Dicom Structured Report rendering
-- Segmentation rendering as labelmaps and contours
-- User Access Control (UAC)
-- Context specific toolbar and side panel content
-- and many others
-
-Can be leveraged by you to customize the viewer for your workflow, and to add
-any new functionality you may need (and wish to maintain privately without
-forking).
-
-### Support
-
-- [ODELIA Project Website](https://odelia.ai/) - Official project information and updates
-- [Report a Bug 🐛](https://github.com/OHIF/Viewers/issues/new?assignees=&labels=Community%3A+Report+%3Abug%3A%2CAwaiting+Reproduction&projects=&template=bug-report.yml&title=%5BBug%5D+)
-- [Request a Feature 🚀](https://github.com/OHIF/Viewers/issues/new?assignees=&labels=Community%3A+Request+%3Ahand%3A&projects=&template=feature-request.yml&title=%5BFeature+Request%5D+)
-- [Ask a Question 🤗](community.ohif.org)
-- [Slack Channel](https://join.slack.com/t/cornerstonejs/shared_invite/zt-1r8xb2zau-dOxlD6jit3TN0Uwf928w9Q)
-
-For commercial support, academic collaborations, and answers to common
-questions; please use [Get Support](https://ohif.org/get-support/) to contact
-us.
-
-**ODELIA Project Resources:**
-- [Project Website](https://odelia.ai/)
-- [EU CORDIS Project Page](https://cordis.europa.eu/project/id/101057091)
-- [MediSwarm GitHub Repository](https://github.com/KatherLab/MediSwarm) - Open-source swarm learning framework
-
-
-## Developing
-
-### Branches
-
-#### `master` branch - The latest dev (beta) release
-
-- `master` - The latest dev release
-
-This is typically where the latest development happens. Code that is in the master branch has passed code reviews and automated tests, but it may not be deemed ready for production. This branch usually contains the most recent changes and features being worked on by the development team. It's often the starting point for creating feature branches (where new features are developed) and hotfix branches (for urgent fixes).
-
-Each package is tagged with beta version numbers, and published to npm such as `@ohif/ui@3.6.0-beta.1`
-
-### `release/*` branches - The latest stable releases
-Once the `master` branch code reaches a stable, release-ready state, we conduct a comprehensive code review and QA testing. Upon approval, we create a new release branch from `master`. These branches represent the latest stable version considered ready for production.
-
-For example, `release/3.5` is the branch for version 3.5.0, and `release/3.6` is for version 3.6.0. After each release, we wait a few days to ensure no critical bugs. If any are found, we fix them in the release branch and create a new release with a minor version bump, e.g., 3.5.1 in the `release/3.5` branch.
-
-Each package is tagged with version numbers and published to npm, such as `@ohif/ui@3.5.0`. Note that `master` is always ahead of the `release` branch. We publish docker builds for both beta and stable releases.
-
-Here is a schematic representation of our development workflow:
-
-![alt text](platform/docs/docs/assets/img/github-readme-branches-Jun2024.png)
+---
 
 
 
+The ODELIA Viewer is the medical-imaging front end of the **ODELIA** project, an EU-funded
+initiative building open-source swarm learning for privacy-preserving medical AI, with a focus on
+breast-cancer detection in MRI. It is a fork of the [OHIF Viewer](https://ohif.org/) extended with
+ODELIA-specific AI workflows.
+
+On top of OHIF's standard capabilities (2D/3D/MPR rendering, segmentation, structured reports,
+measurements, OpenID Connect, hotkeys, DICOMweb), this viewer lets you send a study to an AI model
+and review the results without leaving the viewer.
+
+**This repository builds only the viewer itself**. To run ODELIA as a whole, **start with the
+[ODELIA Viewer Platform](https://github.com/StratifAI-Research/odelia-viewer-platform)**, which provides
+the full, runnable stack (viewer + Orthanc PACS + AI services + authentication + monitoring).
 
 
-### Requirements
 
-- [Yarn 1.20.0+](https://yarnpkg.com/en/docs/install)
-- [Node 18+](https://nodejs.org/en/)
-- Yarn Workspaces should be enabled on your machine:
-  - `yarn config set workspaces-experimental true`
+## Running it
 
-### Getting Started
+For any real deployment, use the
+[ODELIA Viewer Platform](https://github.com/StratifAI-Research/odelia-viewer-platform).
 
-1. [Fork this repository][how-to-fork]
-2. [Clone your forked repository][how-to-clone]
-   - `git clone https://github.com/YOUR-USERNAME/Viewers.git`
-3. Navigate to the cloned project's directory
-4. Add this repo as a `remote` named `upstream`
-   - `git remote add upstream https://github.com/OHIF/Viewers.git`
-5. `yarn install` to restore dependencies and link projects
-
-#### To Develop
-
-_From this repository's root directory:_
+The published image serves a static single-page app behind nginx, which you can run with just
+[Docker](https://docs.docker.com/get-docker/):
 
 ```bash
-# Enable Yarn Workspaces
-yarn config set workspaces-experimental true
-
-# Restore dependencies
-yarn install
+docker pull stratifai/odelia-viewer:latest
+docker run --rm -p 3000:80 stratifai/odelia-viewer:latest
+# open http://localhost:3000/viewer
 ```
 
-## Commands
+On its own this serves the viewer shell only — the default config expects a DICOMweb backend
+(`/pacs/dicom-web`) and authentication (`/keycloak`), so loading studies and signing in require the
+platform stack or a [custom config](#configuration).
 
-These commands are available from the root directory. Each project directory
-also supports a number of commands that can be found in their respective
-`README.md` and `package.json` files.
 
-| Yarn Commands                | Description                                                   |
-| ---------------------------- | ------------------------------------------------------------- |
-| **Develop**                  |                                                               |
-| `dev`              | Default development experience for Viewer                     |
-| `dev:fast`             | Our experimental fast dev mode that uses rsbuild instead of webpack                     |
-| `test:unit`                  | Jest multi-project test runner; overall coverage              |
-| **Deploy**                   |                                                               |
-| `build`\*                    | Builds production output for our PWA Viewer                   |  |
 
-\* - For more information on different builds, check out our [Deploy
-Docs][deployment-docs]
+### Configuration
 
-## Project
+The viewer reads [`app-config.js`](custom/config/app-config.js) at load time. To point it at your own services
+**without rebuilding**, override it at container start:
 
-The OHIF Medical Image Viewing Platform is maintained as a
-[`monorepo`][monorepo]. This means that this repository, instead of containing a
-single project, contains many projects. If you explore our project structure,
-you'll see the following:
+- set the **`APP_CONFIG`** environment variable to the full config file contents — the entrypoint writes it to `app-config.js`; or
+- mount your own file over `/usr/share/nginx/html/app-config.js` (the path follows `PUBLIC_URL`, which defaults to `/`).
+
+Common entrypoint env vars:
+
+- **`PUBLIC_URL`** — base path (default `/`)
+- **`PORT`** — HTTP port (default `80`)
+- **`SSL_PORT`** — serve HTTPS on this port (HTTP only if unset); also requires a certificate and key mounted at `/etc/ssl/certs/ssl-certificate.crt` and `/etc/ssl/private/ssl-private-key.key`
+
+## Local development
+
+### Prerequisites
+
+- **[Node](https://nodejs.org/) 20.9** — JavaScript runtime (pinned in [`.node-version`](.node-version); `engines` allows ≥18). A version manager such as [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm) makes it easy to match.
+- **[Bun](https://bun.sh/) 1.2.23** — package manager and script runner (pinned via `packageManager` in [`package.json`](package.json)).
+- **[Docker](https://www.docker.com/get-started/)** *(optional)* — only needed to build the production image.
+
+### Setup
 
 ```bash
+bun install        # install & link workspace dependencies (versions pinned in bun.lock)
+bun run dev        # start the dev server (http://localhost:3000)
+docker build -t stratifai/odelia-viewer:local .  # optional: build docker image
+```
+
+
+
+### Tests
+
+Unit tests (Jest):
+
+```bash
+bun run test:unit     # run all unit tests with coverage
+bun run test-watch    # run in watch mode
+```
+
+End-to-end tests (Playwright). Fetch the test data once with `bun run test:data`. Then run the full suite:
+
+```bash
+bun run test:e2e:ci   # headless
+```
+
+Note: Swap in `test:e2e:ui` (interactive), `test:e2e:headed` (visible
+browser), or `test:e2e:debug` (step-through) if needed.
+
+## Repository structure
+
+This repository is a fork of the OHIF Viewer (version recorded in [`version.json`](version.json)),
+organized as a monorepo. The OHIF source (`platform/`, `extensions/`, `modes/`, `addOns/`) is kept
+close to upstream and periodically re-merged; ODELIA's viewer code lives under `custom/`, with
+deployment and test assets alongside:
+
+```
 .
-├── extensions               #
-│   ├── _example             # Skeleton of example extension
-│   ├── default              # basic set of useful functionalities (datasources, panels, etc)
-│   ├── cornerstone       # image rendering and tools w/ Cornerstone3D
-│   ├── cornerstone-dicom-sr # DICOM Structured Report rendering and export
-│   ├── cornerstone-dicom-sr # DICOM Structured Report rendering and export
-│   ├── cornerstone-dicom-seg # DICOM Segmentation rendering and export
-│   ├── cornerstone-dicom-rt # DICOM RTSTRUCT rendering
-│   ├── cornerstone-microscopy # Whole Slide Microscopy rendering
-│   ├── dicom-pdf # PDF rendering
-│   ├── dicom-video # DICOM RESTful Services
-│   ├── measurement-tracking # Longitudinal measurement tracking
-│   ├── tmtv # Total Metabolic Tumor Volume (TMTV) calculation
-|
-
-│
-├── modes                    #
-│   ├── _example             # Skeleton of example mode
-│   ├── basic-dev-mode       # Basic development mode
-│   ├── longitudinal         # Longitudinal mode (measurement tracking)
-│   ├── tmtv       # Total Metabolic Tumor Volume (TMTV) calculation mode
-│   └── microscopy          # Whole Slide Microscopy mode
-│
-├── platform                 #
-│   ├── core                 # Business Logic
-│   ├── i18n                 # Internationalization Support
-│   ├── ui                   # React component library
-│   ├── docs                 # Documentation
-│   └── viewer               # Connects platform and extension projects
-│
-├── ...                      # misc. shared configuration
-├── lerna.json               # MonoRepo (Lerna) settings
-├── package.json             # Shared devDependencies and commands
-└── README.md                # This file
+├── custom/        # ODELIA viewer extensions, modes, and app config   ← ODELIA
+├── platform/      # OHIF core, UI, i18n, app shell + pluginConfig.json  (upstream)
+├── extensions/    # OHIF extensions (cornerstone, segmentation, …)      (upstream)
+├── modes/         # OHIF workflow modes                                 (upstream)
+├── addOns/        # OHIF external dependencies                          (upstream)
+├── deploy/        # config for the reference docker-compose stack
+├── tests/         # Playwright end-to-end tests
+├── Dockerfile     # builds the stratifai/odelia-viewer image
+└── docker-compose.yml  # reference stack (use the platform repo for production)
 ```
 
-## Acknowledgments
+## ODELIA customizations
 
-To acknowledge the OHIF Viewer in an academic publication, please cite
+The `custom/` directory holds the ODELIA viewer extensions, modes, and runtime config:
 
-> _Open Health Imaging Foundation Viewer: An Extensible Open-Source Framework
-> for Building Web-Based Imaging Applications to Support Cancer Research_
->
-> Erik Ziegler, Trinity Urban, Danny Brown, James Petts, Steve D. Pieper, Rob
-> Lewis, Chris Hafey, and Gordon J. Harris
->
-> _JCO Clinical Cancer Informatics_, no. 4 (2020), 336-345, DOI:
-> [10.1200/CCI.19.00131](https://www.doi.org/10.1200/CCI.19.00131)
->
-> Open-Access on Pubmed Central:
-> https://www.ncbi.nlm.nih.gov/pmc/articles/PMC7259879/
+| Path | What it adds |
+| --- | --- |
+| [`custom/extension/orthanc-ai-routing`](custom/extension/orthanc-ai-routing) | **Send to AI** — route a study to a configured AI endpoint via the Orthanc routing plugin, plus endpoint-management UI |
+| [`custom/extension/view-ai-result`](custom/extension/view-ai-result) | **View AI results** — load and display a model's inference output alongside the images |
+| [`custom/extension/labeling`](custom/extension/labeling) | **Labeling** — lesion labeling UI, ODELIA measurement-service mappings, CSV import/export |
+| [`custom/mode/send-ai`](custom/mode/send-ai) | Send-to-AI workflow mode |
+| [`custom/mode/labeling-mode`](custom/mode/labeling-mode) | Labeling workflow mode |
+| [`custom/config/app-config.js`](custom/config/app-config.js) | Default viewer configuration (data sources, AI endpoints, UI options) baked into the image — [overridable at runtime](#configuration) |
 
-or, for v1, please cite:
+Custom extensions and modes are declared as workspaces in [`package.json`](package.json)
+(`custom/extension/*`, `custom/mode/*`) and registered in
+[`platform/app/pluginConfig.json`](platform/app/pluginConfig.json).
 
-> _LesionTracker: Extensible Open-Source Zero-Footprint Web Viewer for Cancer
-> Imaging Research and Clinical Trials_
->
-> Trinity Urban, Erik Ziegler, Rob Lewis, Chris Hafey, Cheryl Sadow, Annick D.
-> Van den Abbeele and Gordon J. Harris
->
-> _Cancer Research_, November 1 2017 (77) (21) e119-e122 DOI:
-> [10.1158/0008-5472.CAN-17-0334](https://www.doi.org/10.1158/0008-5472.CAN-17-0334)
+## About ODELIA
 
-**Note:** If you use or find this repository helpful, please take the time to
-star this repository on GitHub. This is an easy way for us to assess adoption
-and it can help us obtain future funding for the project.
+[ODELIA](https://odelia.ai/) (Open Consortium for Decentralized Medical Artificial Intelligence)
+unites partners across Europe to build the first open-source **swarm learning** framework — training
+medical AI across institutions without sharing patient data — and to develop and validate AI for
+breast-cancer detection in MRI.
 
-This work is supported primarily by the National Institutes of Health, National
-Cancer Institute, Informatics Technology for Cancer Research (ITCR) program,
-under a
-[grant to Dr. Gordon Harris at Massachusetts General Hospital (U24 CA199460)](https://projectreporter.nih.gov/project_info_description.cfm?aid=8971104).
+- [ODELIA website](https://odelia.ai/)
+- [EU CORDIS project page](https://cordis.europa.eu/project/id/101057091)
 
-[NCI Imaging Data Commons (IDC) project](https://imaging.datacommons.cancer.gov/) supported the development of new features and bug fixes marked with ["IDC:priority"](https://github.com/OHIF/Viewers/issues?q=is%3Aissue+is%3Aopen+label%3AIDC%3Apriority),
-["IDC:candidate"](https://github.com/OHIF/Viewers/issues?q=is%3Aissue+is%3Aopen+label%3AIDC%3Acandidate) or ["IDC:collaboration"](https://github.com/OHIF/Viewers/issues?q=is%3Aissue+is%3Aopen+label%3AIDC%3Acollaboration). NCI Imaging Data Commons is supported by contract number 19X037Q from
-Leidos Biomedical Research under Task Order HHSN26100071 from NCI. [IDC Viewer](https://learn.canceridc.dev/portal/visualization) is a customized version of the OHIF Viewer.
+> This project has received funding from the European Union's Horizon Europe research and innovation
+> programme under grant agreement [No 101057091](https://cordis.europa.eu/project/id/101057091).
 
-This project is tested with BrowserStack. Thank you for supporting open-source!
+## Built on OHIF
+
+ODELIA Viewer is a fork of the [OHIF Viewer](https://github.com/OHIF/Viewers), an extensible
+open-source framework for web-based medical imaging. Most core viewer functionality comes from OHIF;
+for general architecture, extensions, and modes, the [OHIF documentation](https://docs.ohif.org/) is
+the best reference. We're grateful to the OHIF community — if OHIF helps your work, please cite:
+
+> Open Health Imaging Foundation Viewer: An Extensible Open-Source Framework for Building Web-Based
+> Imaging Applications to Support Cancer Research. Erik Ziegler, Trinity Urban, Danny Brown, et al.
+> *JCO Clinical Cancer Informatics*, no. 4 (2020), 336-345.
+> DOI: [10.1200/CCI.19.00131](https://www.doi.org/10.1200/CCI.19.00131)
+
+## Contributing & support
+
+- **Viewer source or image bugs and feature requests:** [open an issue in this repo](https://github.com/StratifAI-Research/odelia-viewer/issues).
+- **General OHIF framework bugs and questions:** [open an issue on the OHIF board](https://github.com/OHIF/Viewers/issues).
+
 
 ## License
 
-MIT © [OHIF](https://github.com/OHIF)
+[MIT](LICENSE) — the source in this repository (OHIF core + ODELIA customizations) is MIT-licensed,
+and this fork preserves the OHIF Viewer's copyright and license notice (© [OHIF](https://github.com/OHIF)).
+Bundled third-party dependencies retain their own licenses.
 
-<!--
-  Links
-  -->
 
-<!-- prettier-ignore-start -->
-<!-- Badges -->
-[lerna-image]: https://img.shields.io/badge/maintained%20with-lerna-cc00ff.svg
-[lerna-url]: https://lerna.js.org/
-[netlify-image]: https://api.netlify.com/api/v1/badges/32708787-c9b0-4634-b50f-7ca41952da77/deploy-status
-[netlify-url]: https://app.netlify.com/sites/ohif-dev/deploys
-[all-contributors-image]: https://img.shields.io/badge/all_contributors-0-orange.svg?style=flat-square
-[circleci-image]: https://circleci.com/gh/OHIF/Viewers.svg?style=svg
-[circleci-url]: https://circleci.com/gh/OHIF/Viewers
-[codecov-image]: https://codecov.io/gh/OHIF/Viewers/branch/master/graph/badge.svg
-[codecov-url]: https://codecov.io/gh/OHIF/Viewers/branch/master
-[prettier-image]: https://img.shields.io/badge/code_style-prettier-ff69b4.svg?style=flat-square
-[prettier-url]: https://github.com/prettier/prettier
-[semantic-image]: https://img.shields.io/badge/%20%20%F0%9F%93%A6%F0%9F%9A%80-semantic--release-e10079.svg
-[semantic-url]: https://github.com/semantic-release/semantic-release
-<!-- ROW -->
-[npm-url]: https://npmjs.org/package/@ohif/app
-[npm-downloads-image]: https://img.shields.io/npm/dm/@ohif/app.svg?style=flat-square
-[npm-version-image]: https://img.shields.io/npm/v/@ohif/app.svg?style=flat-square
-[docker-pulls-img]: https://img.shields.io/docker/pulls/ohif/viewer.svg?style=flat-square
-[docker-image-url]: https://hub.docker.com/r/ohif/app
-[license-image]: https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square
-[license-url]: LICENSE
-[percy-image]: https://percy.io/static/images/percy-badge.svg
-[percy-url]: https://percy.io/Open-Health-Imaging-Foundation/OHIF-Viewer
-<!-- Links -->
-[monorepo]: https://en.wikipedia.org/wiki/Monorepo
-[how-to-fork]: https://help.github.com/en/articles/fork-a-repo
-[how-to-clone]: https://help.github.com/en/articles/fork-a-repo#step-2-create-a-local-clone-of-your-fork
-[ohif-architecture]: https://docs.ohif.org/architecture/index.html
-[ohif-extensions]: https://docs.ohif.org/architecture/index.html
-[deployment-docs]: https://docs.ohif.org/deployment/
-[react-url]: https://reactjs.org/
-[pwa-url]: https://developers.google.com/web/progressive-web-apps/
-[ohif-viewer-url]: https://www.npmjs.com/package/@ohif/app
-[configuration-url]: https://docs.ohif.org/configuring/
-[extensions-url]: https://docs.ohif.org/extensions/
-<!-- Platform -->
-[platform-core]: platform/core/README.md
-[core-npm]: https://www.npmjs.com/package/@ohif/core
-[platform-i18n]: platform/i18n/README.md
-[i18n-npm]: https://www.npmjs.com/package/@ohif/i18n
-[platform-ui]: platform/ui/README.md
-[ui-npm]: https://www.npmjs.com/package/@ohif/ui
-[platform-viewer]: platform/app/README.md
-[viewer-npm]: https://www.npmjs.com/package/@ohif/app
-<!-- Extensions -->
-[extension-cornerstone]: extensions/cornerstone/README.md
-[cornerstone-npm]: https://www.npmjs.com/package/@ohif/extension-cornerstone
-[extension-dicom-html]: extensions/dicom-html/README.md
-[html-npm]: https://www.npmjs.com/package/@ohif/extension-dicom-html
-[extension-dicom-microscopy]: extensions/dicom-microscopy/README.md
-[microscopy-npm]: https://www.npmjs.com/package/@ohif/extension-dicom-microscopy
-[extension-dicom-pdf]: extensions/dicom-pdf/README.md
-[pdf-npm]: https://www.npmjs.com/package/@ohif/extension-dicom-pdf
-[extension-vtk]: extensions/vtk/README.md
-[vtk-npm]: https://www.npmjs.com/package/@ohif/extension-vtk
-<!-- prettier-ignore-end -->
+## Intended use
 
-[![FOSSA Status](https://app.fossa.com/api/projects/git%2Bgithub.com%2FOHIF%2FViewers.svg?type=large&issueType=license)](https://app.fossa.com/projects/git%2Bgithub.com%2FOHIF%2FViewers?ref=badge_large&issueType=license)
+**Research use only.** The ODELIA Viewer and its AI workflows are research software. They are **not a medical device**, are **not CE-marked or FDA-cleared**, and must **not be used for clinical diagnosis or patient care**.
