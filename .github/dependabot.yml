@@ -2,27 +2,65 @@ version: 2
 enable-beta-ecosystems: true
 
 updates:
+  # ---------------------------------------------------------------------------
+  # Root npm workspace (the OHIF monorepo).
+  # ---------------------------------------------------------------------------
   - package-ecosystem: npm
     directory: /
     schedule:
-      interval: daily
+      interval: weekly
     open-pull-requests-limit: 10
+    # No `ignore` for framework majors on purpose: Dependabot `ignore` also
+    # suppresses security fixes that ship as a major bump, which would lose
+    # security coverage. Framework majors (react, react-router, ...) are
+    # production deps that match no group below, so they arrive as individual
+    # version-update PRs that can simply be closed if unwanted — while security
+    # coverage stays intact.
     groups:
-      npm-security-and-minor:
+      # Safe lane: every minor + patch version update collapses into one PR.
+      npm-minor-and-patch:
         applies-to: version-updates
         update-types:
           - minor
           - patch
+      # Major bumps of dev-only deps bundle together instead of fanning out into
+      # one PR per dependency. Production majors still come individually so they
+      # get a deliberate review.
+      npm-dev-majors:
+        applies-to: version-updates
+        dependency-type: development
+        update-types:
+          - major
 
+  # ---------------------------------------------------------------------------
+  # Custom leaf packages — small, low-risk dev tooling. Group EVERYTHING so each
+  # package emits at most one PR per cycle instead of one PR per dependency.
+  # ---------------------------------------------------------------------------
   - package-ecosystem: npm
     directory: /custom/extension/labeling
     schedule:
       interval: weekly
+    groups:
+      labeling-extension:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+          - major
 
   - package-ecosystem: npm
     directory: /custom/mode/labeling-mode
     schedule:
       interval: weekly
+    groups:
+      labeling-mode:
+        patterns:
+          - "*"
+        update-types:
+          - minor
+          - patch
+          - major
 
   # /platform/docs deps are pinned to match upstream OHIF (platform/docs/package.json).
   # open-pull-requests-limit: 0 disables version-update PRs while leaving security
