@@ -5,6 +5,7 @@ import { useSystem } from '@ohif/core';
 import { useImageViewer } from '@ohif/ui';
 import { useViewportGrid } from '@ohif/ui-next';
 import { useChatService } from '../../hooks/useChatService';
+import { useActiveStudyUID } from '../../hooks/useActiveStudyUID';
 import { ChatMessage, ChatSeriesInfo } from '../../types/chatTypes';
 
 // Configure marked for synchronous rendering
@@ -163,23 +164,12 @@ const ChatPanel: React.FC = () => {
   }, [loadSettings]);
 
   // Get active study UID from viewport
-  const getStudyUIDFromActiveViewport = useCallback((): string | null => {
-    if (!activeViewportId || !viewports) {
-      return StudyInstanceUIDs?.[0] || null;
-    }
-
-    const activeViewport = viewports.get(activeViewportId);
-    const displaySetInstanceUIDs = activeViewport?.displaySetInstanceUIDs || [];
-
-    if (!displaySetInstanceUIDs.length) {
-      return StudyInstanceUIDs?.[0] || null;
-    }
-
-    const firstDisplaySetUID = displaySetInstanceUIDs[0];
-    const displaySet = displaySetService?.getDisplaySetByUID(firstDisplaySetUID);
-
-    return displaySet?.StudyInstanceUID || displaySet?.studyInstanceUID || null;
-  }, [activeViewportId, viewports, displaySetService, StudyInstanceUIDs]);
+  const getStudyUIDFromActiveViewport = useActiveStudyUID({
+    activeViewportId,
+    viewports,
+    displaySetService,
+    StudyInstanceUIDs,
+  });
 
   // Load series for active study
   const loadSeriesForStudy = useCallback(

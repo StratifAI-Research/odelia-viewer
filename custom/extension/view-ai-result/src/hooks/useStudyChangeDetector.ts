@@ -1,4 +1,5 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useRef } from 'react';
+import { useActiveStudyUID } from './useActiveStudyUID';
 
 interface StudyChangeDetectorConfig {
   servicesManager: any;
@@ -27,24 +28,12 @@ export const useStudyChangeDetector = (config: StudyChangeDetectorConfig): void 
   const activeStudyUIDRef = useRef<string | null>(null);
 
   // Helper to extract study UID from the active viewport
-  const getStudyUIDFromActiveViewport = useCallback((): string | null => {
-    if (!activeViewportId || !viewports) {
-      return StudyInstanceUIDs?.[0] || null; // Fallback to first study
-    }
-
-    const activeViewport = viewports.get(activeViewportId);
-    const displaySetInstanceUIDs = activeViewport?.displaySetInstanceUIDs || [];
-
-    if (!displaySetInstanceUIDs.length) {
-      return StudyInstanceUIDs?.[0] || null; // Fallback to first study
-    }
-
-    // Get the first display set's study UID
-    const firstDisplaySetUID = displaySetInstanceUIDs[0];
-    const displaySet = displaySetService?.getDisplaySetByUID(firstDisplaySetUID);
-
-    return displaySet?.StudyInstanceUID || displaySet?.studyInstanceUID || null;
-  }, [activeViewportId, viewports, displaySetService, StudyInstanceUIDs]);
+  const getStudyUIDFromActiveViewport = useActiveStudyUID({
+    activeViewportId,
+    viewports,
+    displaySetService,
+    StudyInstanceUIDs,
+  });
 
   // Track viewport changes and detect study changes
   useEffect(() => {
