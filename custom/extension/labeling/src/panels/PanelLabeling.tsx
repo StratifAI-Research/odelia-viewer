@@ -8,6 +8,7 @@ import LabelingTable from '../../ui/LabelingTable';
 import downloadCSVReport from '../utils/downloadCSVReport';
 import importCSVReport from '../utils/importCSVReport';
 import Config from '../utils/config';
+import { getPanelConfig } from '../utils/panelConfig';
 
 export default function PanelLabeling({
   name,
@@ -18,9 +19,7 @@ export default function PanelLabeling({
   const { measurementService, uiDialogService } = servicesManager.services;
 
   let total_config: Config = require('../utils/config.json');
-  let config = total_config.panel_configs.filter(
-    config => config.name == name
-  )[0];
+  let config = getPanelConfig(total_config, name);
   const { t } = useTranslation('PanelLabeling');
   const [displayMeasurements, setDisplayMeasurements] = useState([]);
 

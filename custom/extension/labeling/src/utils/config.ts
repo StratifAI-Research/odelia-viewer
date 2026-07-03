@@ -3,7 +3,7 @@ interface Label {
   type: "date" | "options"
   options: Array<string>
 }
-interface PanelConfig {
+export interface PanelConfig {
   name: string,
   label_options: Array<Label>;
 }

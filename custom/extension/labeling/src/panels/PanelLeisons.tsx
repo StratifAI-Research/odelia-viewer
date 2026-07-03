@@ -8,6 +8,7 @@ import CSVImporter from './CSVImporter'
 import debounce from 'lodash.debounce';
 import LabelingTable from '../../ui/LabelingTable';
 import Config from "../utils/config";
+import { getPanelConfig } from '../utils/panelConfig';
 
 
 import downloadCSVReport from '../utils/downloadCSVReport';
@@ -30,7 +31,7 @@ export default function PanelLeisonTable({
   const [displayMeasurements, setDisplayMeasurements] = useState<any[]>([]);
 
   let total_config: Config = require('../utils/config.json');
-  let config = total_config.panel_configs.filter(config => config.name == name)[0]
+  let config = getPanelConfig(total_config, name)
 
   useEffect(() => {
     const debouncedSetDisplayMeasurements = debounce(
