@@ -199,19 +199,6 @@ const toolbarButtons = [
       },
       items: [
         _createActionButton(
-          'Reset',
-          'tool-reset',
-          'Reset View',
-          [
-            {
-              commandName: 'resetViewport',
-              commandOptions: {},
-              context: 'CORNERSTONE',
-            },
-          ],
-          'Reset'
-        ),
-        _createActionButton(
           'rotate-right',
           'tool-rotate-right',
           'Rotate Right',

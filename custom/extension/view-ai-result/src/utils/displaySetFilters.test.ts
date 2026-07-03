@@ -1,4 +1,4 @@
-import { getPrimaryDisplaySets, getPrimaryDisplaySet } from './displaySetFilters';
+import { getPrimaryDisplaySets } from './displaySetFilters';
 
 const ds = (uid: string, Modality: string) => ({ displaySetInstanceUID: uid, Modality });
 
@@ -20,17 +20,5 @@ describe('getPrimaryDisplaySets', () => {
   it('keeps everything when nothing is an AI result', () => {
     const list = [ds('a', 'MR'), ds('b', 'US')];
     expect(getPrimaryDisplaySets(list)).toHaveLength(2);
-  });
-});
-
-describe('getPrimaryDisplaySet', () => {
-  it('returns the first primary display set', () => {
-    const list = [ds('sr', 'SR'), ds('first', 'MR'), ds('second', 'CT')];
-    expect(getPrimaryDisplaySet(list)!.displaySetInstanceUID).toBe('first');
-  });
-
-  it('returns null when there is no primary display set', () => {
-    expect(getPrimaryDisplaySet([ds('a', 'SR')])).toBeNull();
-    expect(getPrimaryDisplaySet([])).toBeNull();
   });
 });

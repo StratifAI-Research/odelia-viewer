@@ -151,7 +151,7 @@ describe('OrthancAIService — getModelManifest (+ cache)', () => {
   });
 });
 
-describe('OrthancAIService — routeStudyToAI / routeCurrentStudyToAI', () => {
+describe('OrthancAIService — routeStudyToAI', () => {
   let fetchMock: jest.Mock;
   let service: OrthancAIService;
 
@@ -218,19 +218,6 @@ describe('OrthancAIService — routeStudyToAI / routeCurrentStudyToAI', () => {
       .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
       .mockResolvedValueOnce(mockResponse({ ok: false, status: 502, text: '<html>Bad Gateway</html>' }));
     await expect(service.routeStudyToAI('1.2.3')).rejects.toThrow('HTTP error! status: 502');
-  });
-
-  it('routeCurrentStudyToAI succeeds when the URL carries a study UID', async () => {
-    setStudyUIDsInURL('1.2.3');
-    fetchMock
-      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
-      .mockResolvedValueOnce(mockResponse({ json: { status: 'success', message: 'ok' } }));
-    expect(await service.routeCurrentStudyToAI()).toMatchObject({ status: 'success' });
-  });
-
-  it('routeCurrentStudyToAI throws when the URL has no StudyInstanceUIDs', async () => {
-    setStudyUIDsInURL(null);
-    await expect(service.routeCurrentStudyToAI()).rejects.toThrow('Could not find StudyInstanceUID');
   });
 });
 

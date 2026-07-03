@@ -296,25 +296,6 @@ class OrthancAIService {
     this.manifestCache.clear();
   }
 
-  /**
-   * Routes the current study to the AI server
-   * Uses the StudyInstanceUID from the URL
-   */
-  async routeCurrentStudyToAI(): Promise<RoutingResponse> {
-    try {
-      const dicomStudyUID = this.getDicomStudyInstanceUIDFromURL();
-
-      if (!dicomStudyUID) {
-        throw new Error('Could not find StudyInstanceUID in the URL');
-      }
-
-      return this.routeStudyToAI(dicomStudyUID);
-    } catch (error) {
-      console.error('Error routing current study to AI:', error);
-      throw error;
-    }
-  }
-
   async routeStudyToAI(dicomStudyUID: string): Promise<RoutingResponse> {
     try {
       console.log('Starting AI routing for DICOM study UID:', dicomStudyUID);
@@ -495,16 +476,6 @@ class OrthancAIService {
       console.error('Error routing series to AI:', error);
       throw error;
     }
-  }
-
-  async getRoutingStatus(studyId: string): Promise<RoutingResponse> {
-    // Since we don't have a real endpoint, return a fake "completed" status
-    return {
-      status: 'completed',
-      message: 'AI processing completed',
-      study_id: studyId,
-      target: this.aiServerName
-    };
   }
 
   /**
