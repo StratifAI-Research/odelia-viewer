@@ -1,4 +1,3 @@
-// import { initToolGroups, toolbarButtons } from '@ohif/mode-longitudinal';
 import { id } from './id';
 import { ModeFactoryParams } from './types';
 import toolbarButtons from './toolbarButtons';
@@ -6,9 +5,7 @@ import toolbarButtons from './toolbarButtons';
 const ohif = {
   layout: 'view-ai-result.layoutTemplateModule.odeliaViewerLayout',
   sopClassHandler: '@ohif/extension-default.sopClassHandlerModule.stack',
-  hangingProtocol: '@ohif/extension-default.hangingProtocolModule.default',
   leftPanel: 'view-ai-result.panelModule.seriesList',
-  rightPanel: '@ohif/extension-cornerstone.panelModule.panelMeasurement',
 };
 
 const viewAIResult = {
@@ -130,7 +127,6 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
       segmentationService.destroy();
       cornerstoneViewportService.destroy();
     },
-    /** */
     validationTags: {
       study: [],
       series: [],
@@ -182,11 +178,8 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
     ],
     /** List of extensions that are used by the mode */
     extensions: extensionDependencies,
-    /** HangingProtocol used by the mode */
-    // hangingProtocol: [''],
     /** SopClassHandlers used by the mode */
     sopClassHandlers: [ohif.sopClassHandler],
-    /** hotkeys for mode */
   };
 }
 
