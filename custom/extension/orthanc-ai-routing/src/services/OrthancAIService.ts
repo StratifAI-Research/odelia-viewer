@@ -2,6 +2,7 @@
 // import { log } from '@ohif/core';
 // import { DicomMetadataStore } from '@ohif/core';
 import { AIEndpoint } from '../components/AIEndpointConfig';
+import { AI_ENDPOINTS_STORAGE_KEY } from '../constants';
 
 interface OrthancStudy {
   ID: string;
@@ -114,7 +115,7 @@ class OrthancAIService {
    */
   private loadCurrentEndpoint(): void {
     try {
-      const savedEndpoints = localStorage.getItem('aiEndpoints');
+      const savedEndpoints = localStorage.getItem(AI_ENDPOINTS_STORAGE_KEY);
       if (savedEndpoints) {
         const endpoints: AIEndpoint[] = JSON.parse(savedEndpoints);
         if (endpoints.length > 0) {
@@ -131,7 +132,7 @@ class OrthancAIService {
    */
   getAIEndpoints(): AIEndpoint[] {
     try {
-      const savedEndpoints = localStorage.getItem('aiEndpoints');
+      const savedEndpoints = localStorage.getItem(AI_ENDPOINTS_STORAGE_KEY);
       if (savedEndpoints) {
         return JSON.parse(savedEndpoints);
       }
@@ -158,13 +159,13 @@ class OrthancAIService {
 
     // Update the endpoint in localStorage
     try {
-      const savedEndpoints = localStorage.getItem('aiEndpoints');
+      const savedEndpoints = localStorage.getItem(AI_ENDPOINTS_STORAGE_KEY);
       if (savedEndpoints) {
         const endpoints: AIEndpoint[] = JSON.parse(savedEndpoints);
         const updatedEndpoints = endpoints.map(e =>
           e.id === endpoint.id ? endpoint : e
         );
-        localStorage.setItem('aiEndpoints', JSON.stringify(updatedEndpoints));
+        localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(updatedEndpoints));
       }
     } catch (error) {
       console.error('Failed to update AI endpoint in localStorage:', error);
@@ -296,6 +297,78 @@ class OrthancAIService {
     this.manifestCache.clear();
   }
 
+  /**
+   * Derives a user-facing message from a non-ok response.
+   *
+   * The body stream can only be consumed once, so we read it as text and then
+   * try to parse JSON — avoiding the previous double-consume (response.json()
+   * then response.text() on the same body), where the second read always threw
+   * "already consumed" and the text fallback was effectively dead. A non-JSON
+   * body (e.g. an HTML error page) falls back to the clean status message rather
+   * than surfacing raw markup.
+   */
+  private async extractErrorMessage(response: Response): Promise<string> {
+    const fallback = `HTTP error! status: ${response.status}`;
+    let bodyText: string;
+    try {
+      bodyText = await response.text();
+    } catch {
+      return fallback;
+    }
+    if (!bodyText) {
+      return fallback;
+    }
+    try {
+      const errorData = JSON.parse(bodyText);
+      return errorData.message || errorData.error || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  /**
+   * POSTs a routing request to the /send-to-ai endpoint with a 30s timeout and
+   * shared error handling. Shared by routeStudyToAI and routeSeriesToAI.
+   */
+  private async postRouting(
+    routingRequest: RoutingRequest & {
+      input_mapping?: InputMapping;
+      input_configuration_id?: string;
+    }
+  ): Promise<RoutingResponse> {
+    console.log('Routing request:', routingRequest);
+
+    // Set up timeout using AbortController
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
+    try {
+      const response = await fetch(`${this.orthancUrl}/send-to-ai`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(routingRequest),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        throw new Error(await this.extractErrorMessage(response));
+      }
+
+      const data = await response.json();
+      return data as RoutingResponse;
+    } catch (error: unknown) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timed out after 30 seconds');
+      }
+      throw error;
+    }
+  }
+
   async routeStudyToAI(dicomStudyUID: string): Promise<RoutingResponse> {
     try {
       console.log('Starting AI routing for DICOM study UID:', dicomStudyUID);
@@ -313,62 +386,10 @@ class OrthancAIService {
       const routingRequest: RoutingRequest = {
         study_id: orthancStudyId,
         target: this.currentEndpoint.name,
-        target_url: this.currentEndpoint.url
+        target_url: this.currentEndpoint.url,
       };
 
-      console.log('Routing request:', routingRequest);
-
-      // Set up timeout using AbortController
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-
-      try {
-        // Use the /send-to-ai endpoint
-        const response = await fetch(`${this.orthancUrl}/send-to-ai`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(routingRequest),
-          signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          // Try to extract error message from response body
-          let errorMessage = `HTTP error! status: ${response.status}`;
-          try {
-            const errorData = await response.json();
-            if (errorData.message) {
-              errorMessage = errorData.message;
-            } else if (errorData.error) {
-              errorMessage = errorData.error;
-            }
-          } catch (parseError) {
-            // If we can't parse the JSON, try to get text response
-            try {
-              const errorText = await response.text();
-              if (errorText) {
-                errorMessage = errorText;
-              }
-            } catch (textError) {
-              // Fall back to status-based message
-              console.warn('Could not parse error response:', textError);
-            }
-          }
-          throw new Error(errorMessage);
-        }
-
-        const data = await response.json();
-        return data as RoutingResponse;
-      } catch (error: unknown) {
-        clearTimeout(timeoutId);
-        if (error instanceof Error && error.name === 'AbortError') {
-          throw new Error('Request timed out after 30 seconds');
-        }
-        throw error;
-      }
+      return await this.postRouting(routingRequest);
     } catch (error) {
       console.error('Error routing study to AI:', error);
       throw error;
@@ -422,56 +443,7 @@ class OrthancAIService {
         routingRequest.input_configuration_id = inputConfigurationId;
       }
 
-      console.log('Routing request:', routingRequest);
-
-      // Set up timeout using AbortController
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
-
-      try {
-        // Use the /send-to-ai endpoint
-        const response = await fetch(`${this.orthancUrl}/send-to-ai`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(routingRequest),
-          signal: controller.signal
-        });
-
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          let errorMessage = `HTTP error! status: ${response.status}`;
-          try {
-            const errorData = await response.json();
-            if (errorData.message) {
-              errorMessage = errorData.message;
-            } else if (errorData.error) {
-              errorMessage = errorData.error;
-            }
-          } catch (parseError) {
-            try {
-              const errorText = await response.text();
-              if (errorText) {
-                errorMessage = errorText;
-              }
-            } catch (textError) {
-              console.warn('Could not parse error response:', textError);
-            }
-          }
-          throw new Error(errorMessage);
-        }
-
-        const data = await response.json();
-        return data as RoutingResponse;
-      } catch (error: unknown) {
-        clearTimeout(timeoutId);
-        if (error instanceof Error && error.name === 'AbortError') {
-          throw new Error('Request timed out after 30 seconds');
-        }
-        throw error;
-      }
+      return await this.postRouting(routingRequest);
     } catch (error) {
       console.error('Error routing series to AI:', error);
       throw error;
