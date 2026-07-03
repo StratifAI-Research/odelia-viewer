@@ -1,17 +1,24 @@
 // @ts-nocheck
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
+import DOMPurify from 'dompurify';
 import { useSystem } from '@ohif/core';
 import { useImageViewer } from '@ohif/ui';
 import { useViewportGrid } from '@ohif/ui-next';
 import { useChatService } from '../../hooks/useChatService';
 import { ChatMessage, ChatSeriesInfo } from '../../types/chatTypes';
 
-// Configure marked for safe, synchronous rendering
+// Configure marked for synchronous rendering
 marked.setOptions({
   breaks: true,   // Convert \n to <br> (matches chat UX expectations)
   gfm: true,      // GitHub Flavored Markdown (tables, strikethrough, etc.)
 });
+
+// `marked` does NOT sanitize HTML, so its output must never be injected raw into the
+// DOM. Chat content is model-generated and untrusted; sanitize with DOMPurify before
+// passing to dangerouslySetInnerHTML to prevent XSS.
+const renderMarkdown = (text: string): string =>
+  DOMPurify.sanitize(marked.parse(text || '') as string);
 
 // Debug API base URL - use relative path when proxied through nginx, fallback to localhost for dev
 const DEBUG_API_BASE = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
@@ -423,7 +430,7 @@ const ChatPanel: React.FC = () => {
               {isThinkingExpanded && (
                 <div className="mt-1 rounded bg-gray-900/60 px-2 py-1 max-h-40 overflow-y-auto">
                   <div className="text-[11px] break-words">
-                    <span dangerouslySetInnerHTML={{ __html: marked.parse(message.thinking || '') }} />
+                    <span dangerouslySetInnerHTML={{ __html: renderMarkdown(message.thinking || '') }} />
                   </div>
                 </div>
               )}
@@ -435,7 +442,7 @@ const ChatPanel: React.FC = () => {
             {isAssistant ? (
               <span
                 dangerouslySetInnerHTML={{
-                  __html: marked.parse(message.content || (message.isStreaming ? '...' : '')),
+                  __html: renderMarkdown(message.content || (message.isStreaming ? '...' : '')),
                 }}
               />
             ) : (
