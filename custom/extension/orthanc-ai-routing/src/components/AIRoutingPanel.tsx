@@ -105,6 +105,18 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
     };
   }, [activeViewportId, viewports, getStudyUIDFromActiveViewport, activeStudyUID, wizard]);
 
+  // If we reach the input-mapping step (3) without a valid selected model
+  // config, fall back to model selection (2). Done in an effect rather than
+  // during render to avoid updating wizard state while rendering.
+  useEffect(() => {
+    const hasSelectedConfig =
+      manifest &&
+      !!manifest.input_configurations.find(c => c.id === inputMappingHook.selectedConfigId);
+    if (wizard.currentStep === 3 && manifest && !hasSelectedConfig) {
+      wizard.goToStep(2);
+    }
+  }, [wizard.currentStep, manifest, inputMappingHook.selectedConfigId, wizard]);
+
   const selection = useStudySeriesSelection({
     displaySetService,
     activeStudyUID,
@@ -291,7 +303,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
         if (manifest) {
           const selectedConfig = getSelectedConfig();
           if (!selectedConfig) {
-            wizard.goToStep(2);
+            // Invalid state; the effect above will navigate back to step 2.
             return null;
           }
           return (

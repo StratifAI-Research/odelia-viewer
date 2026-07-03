@@ -4,7 +4,7 @@ import {
   ODELIA_LABELING_SOURCE_NAME,
   ODELIA_LABELING_SOURCE_VERSION,
 } from '../measuermentServiceMappings/ODELIALabel';
-import { DicomMetadataStore } from '@ohif/core';
+import { utils } from '@ohif/core';
 
 const unusedColumns = [
   'AnnotationType',
@@ -77,7 +77,7 @@ export default function importCSVReport(
         return obj;
       }, {});
     const annotation = {
-      annotationUID: 1,
+      annotationUID: utils.guid(),
       metadata: { source: 'imported' },
       data: {
         label_data: label_data,
@@ -159,7 +159,7 @@ function _parseLeisons(parsedMeasurements, leisonColumns) {
     console.log(leision_data);
 
     const annotation = {
-      annotationUID: 1,
+      annotationUID: utils.guid(),
       metadata: {
         toolName: 'CircleROI',
         FrameOfReferenceUID: element['FrameOfReferenceUID'],

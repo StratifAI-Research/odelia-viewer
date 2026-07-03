@@ -1,8 +1,12 @@
+import { utils } from "@ohif/core";
 import Config from "./utils/config";
 const config: Config = require('./utils/config.json');
 import { ODELIA_LABELING_SOURCE_NAME, ODELIA_LABELING_SOURCE_VERSION } from "./measuermentServiceMappings/ODELIALabel";
 export default function initLabels({ measurementService, extensionManager, StudyInstanceUID }) {
-  const { measurements } = measurementService.getMeasurements()
+  // getMeasurements() returns an array; destructuring `{ measurements }` off it
+  // yielded undefined and defeated the "already inited" guard below, so labels
+  // were re-hydrated on every call.
+  const measurements = measurementService.getMeasurements()
   const dataSource = extensionManager.getActiveDataSource()[0]
 
   const source = measurementService.getSource(ODELIA_LABELING_SOURCE_NAME, ODELIA_LABELING_SOURCE_VERSION)
@@ -31,7 +35,7 @@ export default function initLabels({ measurementService, extensionManager, Study
     });
   })
   const annotation = {
-    annotationUID: 1,
+    annotationUID: utils.guid(),
     metadata: { source: "inited" },
     data: { label_data: label_data },
     referenceStudyUID: StudyInstanceUID,
