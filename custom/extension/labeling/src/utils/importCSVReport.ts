@@ -18,7 +18,7 @@ const leisonToolColumns = ['FrameOfReferenceUID', 'points'];
 
 export default function importCSVReport(
   { measurementService, extensionManager },
-  csvData
+  csvData: { [key: string]: string }[]
 ) {
   measurementService.clearMeasurements();
 
@@ -48,24 +48,13 @@ export default function importCSVReport(
     config => config.name == 'leison table'
   )[0];
 
-  const keys = csvData[0];
-
-  const rawMeasurements = csvData.slice(1);
-
-  console.log('Raw Measurements', rawMeasurements);
-
-  let parsedMeasurements: { [key: string]: string }[] = [];
-
-  for (let i = 0; i < rawMeasurements.length; i++) {
-    const values = rawMeasurements[i];
-    const measurement: { [key: string]: string } = {};
-
-    for (let j = 0; j < keys.length; j++) {
-      const k = keys[j];
-      measurement[k] = values[j];
-    }
-    parsedMeasurements.push(measurement);
-  }
+  // CSVImporter parses with Papa `header: true`, so csvData is already one
+  // object per row keyed by the header names — exactly the shape
+  // _collateLabels and _parseLeisons expect. (This previously zipped
+  // csvData[0] as a header array against csvData.slice(1) as value arrays,
+  // which yielded empty rows and then crashed on undefined `points` once
+  // header:true was introduced upstream.)
+  const parsedMeasurements: { [key: string]: string }[] = csvData;
 
   let labels: any = _collateLabels(parsedMeasurements);
 
@@ -144,7 +133,13 @@ function _collateLabels(parsedMeasurements) {
 
 function _parseLeisons(parsedMeasurements, leisonColumns) {
   const parsedLeisions = [];
-  parsedMeasurements.map(element => {
+  parsedMeasurements.forEach(element => {
+    // Only rows carrying lesion geometry become lesion annotations; label-only
+    // rows have no `points`, so skip them (guards element['points'].split).
+    if (!element['points']) {
+      return;
+    }
+
     const leision_data = Object.keys(element)
       .filter(
         key =>
