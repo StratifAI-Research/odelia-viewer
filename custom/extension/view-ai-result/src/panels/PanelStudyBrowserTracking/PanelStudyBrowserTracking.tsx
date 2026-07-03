@@ -1046,4 +1046,6 @@ function _findTabAndStudyOfDisplaySet(displaySetInstanceUID, tabs) {
       }
     }
   }
+
+  return undefined;
 }

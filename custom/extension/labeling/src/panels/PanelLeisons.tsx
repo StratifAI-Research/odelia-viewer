@@ -27,7 +27,7 @@ export default function PanelLeisonTable({
     uiNotificationService,
     displaySetService,
   } = (servicesManager as any).services;
-  const [displayMeasurements, setDisplayMeasurements] = useState([]);
+  const [displayMeasurements, setDisplayMeasurements] = useState<any[]>([]);
 
   let total_config: Config = require('../utils/config.json');
   let config = total_config.panel_configs.filter(config => config.name == name)[0]
@@ -46,7 +46,7 @@ export default function PanelLeisonTable({
     const updated = measurementService.EVENTS.MEASUREMENT_UPDATED;
     const removed = measurementService.EVENTS.MEASUREMENT_REMOVED;
     const cleared = measurementService.EVENTS.MEASUREMENTS_CLEARED;
-    const subscriptions = [];
+    const subscriptions: any[] = [];
 
     [added, addedRaw, updated, removed, cleared].forEach(evt => {
       subscriptions.push(
@@ -218,7 +218,7 @@ function _mapMeasurementToDisplay(measurement, index, types) {
   const label = baseLabel || finding?.text || firstSite?.text || 'Leison not annotated';
   let displayText = baseDisplayText || [];
   if (findingSites) {
-    const siteText = [];
+    const siteText: any[] = [];
     findingSites.forEach(site => {
       if (site?.text !== label) siteText.push(site.text);
     });

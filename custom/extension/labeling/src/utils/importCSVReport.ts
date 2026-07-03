@@ -132,7 +132,7 @@ function _collateLabels(parsedMeasurements) {
 }
 
 function _parseLeisons(parsedMeasurements, leisonColumns) {
-  const parsedLeisions = [];
+  const parsedLeisions: any[] = [];
   parsedMeasurements.forEach(element => {
     // Only rows carrying lesion geometry become lesion annotations; label-only
     // rows have no `points`, so skip them (guards element['points'].split).
