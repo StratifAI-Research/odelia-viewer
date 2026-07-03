@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useSystem, utils } from '@ohif/core';
 import { useImageViewer, useUserAuthentication } from '@ohif/ui';

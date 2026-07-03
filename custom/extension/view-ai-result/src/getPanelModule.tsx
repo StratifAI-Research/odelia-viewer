@@ -1,4 +1,6 @@
-import type { Panel } from '@ohif/core';
+// `any` for the isolated custom typecheck (@ohif shimmed to any). Swap back to
+// `import type { Panel } from '@ohif/core'` when real platform types are wired.
+type Panel = any;
 import PanelStudyBrowserTracking from './panels/PanelStudyBrowserTracking/PanelStudyBrowserTracking';
 import i18n from 'i18next';
 import React, { useCallback } from 'react';

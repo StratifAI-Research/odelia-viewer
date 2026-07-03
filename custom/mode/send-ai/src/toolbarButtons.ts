@@ -1,4 +1,6 @@
-import type { Button } from '@ohif/core/types';
+// `any` for the isolated custom typecheck (@ohif shimmed to any). Swap back to
+// `import type { Button } from '@ohif/core/types'` when real types are wired.
+type Button = any;
 
 // Command definition reused by all tool buttons
 const setToolActiveCmd = {

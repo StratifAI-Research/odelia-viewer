@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { useState, useEffect, useRef } from 'react';
 import { utils, DicomMetadataStore } from '@ohif/core';
 import { SeriesInfo } from '../components/SeriesSelector';

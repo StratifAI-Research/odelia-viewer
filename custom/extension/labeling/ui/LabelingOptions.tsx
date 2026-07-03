@@ -34,7 +34,7 @@ const LabelingOptions = ({
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
       role="button"
-      tabIndex="0"
+      tabIndex={0}
       data-cy={'measurement-item'}
     >
       <div className="relative flex flex-col w-full p-1">

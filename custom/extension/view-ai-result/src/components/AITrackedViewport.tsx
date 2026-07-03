@@ -107,6 +107,7 @@ const AITrackedViewportInner = ({
         viewportOptions: enhancedViewportOptions,
         aiResult: currentAIResult, // Use current (old) AI result for closing
         viewportGridService,
+        servicesManager,
       });
     }
 

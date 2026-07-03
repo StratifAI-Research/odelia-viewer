@@ -1,4 +1,3 @@
-// @ts-nocheck
 import React, { useEffect, useState, useCallback } from 'react';
 import { useImageViewer } from '@ohif/ui';
 import { useViewportGrid } from '@ohif/ui-next';

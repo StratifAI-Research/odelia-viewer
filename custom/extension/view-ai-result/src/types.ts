@@ -1,4 +1,9 @@
-import type { DisplaySet } from '@ohif/core';
+// Placeholder for the isolated custom typecheck (@ohif is shimmed to any; see
+// custom/types/ohif-any.d.ts). `Record<string, any>` rather than `any` so that
+// intersections like `DisplaySet & { SOPInstanceUID: string; ... }` below keep
+// checking their explicit members. Swap back to
+// `import type { DisplaySet } from '@ohif/core'` when real types are wired in.
+type DisplaySet = Record<string, any>;
 
 export interface Classification {
   side: 'Left' | 'Right';
@@ -47,10 +52,6 @@ export interface AIResult {
     algorithmName?: string;
     algorithmVersion?: string;
   };
-}
-
-export interface MockAIResults {
-  [studyInstanceUID: string]: AIResult;
 }
 
 export interface AISideBySideViewportProps {

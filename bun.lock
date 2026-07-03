@@ -23,6 +23,7 @@
         "patch-package": "^8.0.0",
         "prettier": "^3.3.3",
         "prettier-plugin-tailwindcss": "0.6.9",
+        "typescript": "5.5.4",
       },
       "optionalDependencies": {
         "@percy/cypress": "^3.1.1",
@@ -230,7 +231,7 @@
       "version": "0.0.1",
       "dependencies": {
         "@babel/runtime": "^7.20.13",
-        "dompurify": "^3",
+        "dompurify": "^3.4.11",
         "marked": "^4.3.0",
         "react-resize-detector": "^7.0.0",
       },

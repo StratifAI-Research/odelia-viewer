@@ -44,7 +44,7 @@ export default {
     servicesManager,
     commandsManager,
     extensionManager,
-  }): Types.Panel[] => {
+  }): any[] => {
     const wrappedPanelLabeling = name => {
       return () => {
         return (

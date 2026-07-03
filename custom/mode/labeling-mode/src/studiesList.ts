@@ -1,6 +1,8 @@
-import { DicomMetadataStore, Types } from '@ohif/core';
+import { DicomMetadataStore } from '@ohif/core';
 
-type StudyMetadata = Types.StudyMetadata;
+// `any` for the isolated custom typecheck (@ohif shimmed to any). Swap back to
+// `Types.StudyMetadata` from '@ohif/core' when real platform types are wired.
+type StudyMetadata = any;
 
 /**
  * Compare function for sorting

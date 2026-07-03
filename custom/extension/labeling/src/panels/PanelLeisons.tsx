@@ -18,7 +18,7 @@ export default function PanelLeisonTable({
   servicesManager,
   commandsManager,
   extensionManager,
-}): React.FunctionComponent {
+}) {
   const [viewportGrid, viewportGridService] = useViewportGrid();
   const { activeViewportIndex, viewports } = viewportGrid;
   const {
@@ -26,7 +26,7 @@ export default function PanelLeisonTable({
     uiDialogService,
     uiNotificationService,
     displaySetService,
-  } = (servicesManager as ServicesManager).services;
+  } = (servicesManager as any).services;
   const [displayMeasurements, setDisplayMeasurements] = useState([]);
 
   let total_config: Config = require('../utils/config.json');
@@ -68,7 +68,7 @@ export default function PanelLeisonTable({
 
   async function exportReport() {
     const measurements = measurementService.getMeasurements();
-    downloadCSVReport(measurements, measurementService);
+    downloadCSVReport(measurements);
   }
 
   async function clearMeasurements() {
@@ -86,8 +86,10 @@ export default function PanelLeisonTable({
     //Todo: why we are jumping to image?
     // jumpToImage({ id, isActive });
 
-    const onSubmitHandler = ({ action, value }) => {
-      switch (action.id) {
+    // Defaulted so the Enter-key handler can call this with no args without
+    // crashing on `action.id` (previously threw); Enter then just dismisses.
+    const onSubmitHandler = ({ action }: { action?: any } = {}) => {
+      switch (action?.id) {
         case 'delete': {
           measurementService.remove(uid)
         }

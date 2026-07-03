@@ -6,7 +6,6 @@ import Papa from 'papaparse';
 type CSVRow = Record<string, string>;
 
 type CSVImporterProps = {
-  onChange: (data: CSVRow[]) => void;
   onClick: (data: CSVRow[]) => void;
 };
 
