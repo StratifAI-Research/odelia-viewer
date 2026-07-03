@@ -16,7 +16,7 @@ export function getStaticDate(displaySet: any): string {
   }
 
   // Try to get the best available date and make it static
-  let dateValue = null;
+  let dateValue: any = null;
 
   // For AI results (SR/SC), try AI result creation date first
   if (displaySet.Modality === 'SR' || displaySet.Modality === 'SC') {

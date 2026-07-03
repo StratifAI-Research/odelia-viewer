@@ -18,7 +18,7 @@ export default function PanelLeisonTable({
   servicesManager,
   commandsManager,
   extensionManager,
-}): React.FunctionComponent {
+}) {
   const [viewportGrid, viewportGridService] = useViewportGrid();
   const { activeViewportIndex, viewports } = viewportGrid;
   const {
@@ -26,8 +26,8 @@ export default function PanelLeisonTable({
     uiDialogService,
     uiNotificationService,
     displaySetService,
-  } = (servicesManager as ServicesManager).services;
-  const [displayMeasurements, setDisplayMeasurements] = useState([]);
+  } = (servicesManager as any).services;
+  const [displayMeasurements, setDisplayMeasurements] = useState<any[]>([]);
 
   let total_config: Config = require('../utils/config.json');
   let config = total_config.panel_configs.filter(config => config.name == name)[0]
@@ -46,7 +46,7 @@ export default function PanelLeisonTable({
     const updated = measurementService.EVENTS.MEASUREMENT_UPDATED;
     const removed = measurementService.EVENTS.MEASUREMENT_REMOVED;
     const cleared = measurementService.EVENTS.MEASUREMENTS_CLEARED;
-    const subscriptions = [];
+    const subscriptions: any[] = [];
 
     [added, addedRaw, updated, removed, cleared].forEach(evt => {
       subscriptions.push(
@@ -68,7 +68,7 @@ export default function PanelLeisonTable({
 
   async function exportReport() {
     const measurements = measurementService.getMeasurements();
-    downloadCSVReport(measurements, measurementService);
+    downloadCSVReport(measurements);
   }
 
   async function clearMeasurements() {
@@ -86,8 +86,10 @@ export default function PanelLeisonTable({
     //Todo: why we are jumping to image?
     // jumpToImage({ id, isActive });
 
-    const onSubmitHandler = ({ action, value }) => {
-      switch (action.id) {
+    // Defaulted so the Enter-key handler can call this with no args without
+    // crashing on `action.id` (previously threw); Enter then just dismisses.
+    const onSubmitHandler = ({ action }: { action?: any } = {}) => {
+      switch (action?.id) {
         case 'delete': {
           measurementService.remove(uid)
         }
@@ -216,7 +218,7 @@ function _mapMeasurementToDisplay(measurement, index, types) {
   const label = baseLabel || finding?.text || firstSite?.text || 'Leison not annotated';
   let displayText = baseDisplayText || [];
   if (findingSites) {
-    const siteText = [];
+    const siteText: any[] = [];
     findingSites.forEach(site => {
       if (site?.text !== label) siteText.push(site.text);
     });

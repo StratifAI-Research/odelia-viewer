@@ -10,7 +10,7 @@ import './DateRange.css';
 
 const renderYearsOptions = () => {
   const currentYear = moment().year();
-  const options = [];
+  const options: any[] = [];
 
   for (let i = 0; i < 100; i++) {
     const year = currentYear - i;
@@ -30,12 +30,6 @@ const DatePicker = (props) => {
   const renderYearsOptionsCallback = useCallback(renderYearsOptions, []);
 
   const renderMonthElement = ({ month, onMonthSelect, onYearSelect }) => {
-    renderMonthElement.propTypes = {
-      month: PropTypes.object,
-      onMonthSelect: PropTypes.func,
-      onYearSelect: PropTypes.func,
-    };
-
     const handleMonthChange = (event) => {
       onMonthSelect(month, event.target.value);
     };

@@ -1,6 +1,8 @@
-import { DicomMetadataStore, Types } from '@ohif/core';
+import { DicomMetadataStore } from '@ohif/core';
 
-type StudyMetadata = Types.StudyMetadata;
+// `any` for the isolated custom typecheck (@ohif shimmed to any). Swap back to
+// `Types.StudyMetadata` from '@ohif/core' when real platform types are wired.
+type StudyMetadata = any;
 
 /**
  * Compare function for sorting
@@ -21,7 +23,7 @@ const compare = (a, b, defaultCompare = 0): number => {
  * order or in study instance UID order - not very useful, but
  * if not specifically specified then at least making it consistent is useful.
  */
-const getStudiesfromDisplaySets = (displaysets): StudyMetadata[] => {
+const getStudiesfromDisplaySets = (displaySets: any[]): StudyMetadata[] => {
   const studyMap = {};
 
   const ret = displaySets.reduce((prev, curr) => {
@@ -48,13 +50,16 @@ const getStudiesfromDisplaySets = (displaysets): StudyMetadata[] => {
  * The studies retrieve from the Uids is faster and gets the studies
  * in the original order, as specified.
  */
-const getStudiesFromUIDs = (studyUids: string[]): StudyMetadata[] => {
+// Returns undefined (not []) when there are no UIDs, so the `||` fallback in
+// getStudies falls through to getStudiesfromDisplaySets — an empty array would
+// be truthy and suppress the fallback.
+const getStudiesFromUIDs = (studyUids?: string[]): StudyMetadata[] | undefined => {
   if (!studyUids?.length) return;
   return studyUids.map(uid => DicomMetadataStore.getStudy(uid));
 };
 
 /** Gets the array of studies */
-const getStudies = (studyUids?: string[], displaySets): StudyMetadata[] => {
+const getStudies = (studyUids: string[] | undefined, displaySets: any[]): StudyMetadata[] => {
   return (
     getStudiesFromUIDs(studyUids) || getStudiesfromDisplaySets(displaySets)
   );

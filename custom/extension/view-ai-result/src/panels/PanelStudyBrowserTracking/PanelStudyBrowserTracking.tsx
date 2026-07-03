@@ -173,20 +173,14 @@ export default function PanelStudyBrowserTracking({
       // This will update the UI to reflect the deletion
       const currentDisplaySets = displaySetService.activeDisplaySets;
       if (currentDisplaySets.length > 0) {
-        const mappedDisplaySets = _mapDisplaySets(
-          currentDisplaySets,
-          displaySetsLoadingState,
+        const mappedDisplaySets = _mapDisplaySets({
+          displaySets: currentDisplaySets,
+          displaySetLoadingState: displaySetsLoadingState,
           thumbnailImageSrcMap,
-          [],
-          selectedSRUIDRef.current,
-          viewports,
-          viewportGridService,
-          dataSource,
-          displaySetService,
-          uiDialogService,
-          uiNotificationService,
-          thumbnailPropsCache
-        );
+          trackedSeriesInstanceUIDs: [],
+          selectedSRUID: selectedSRUIDRef.current,
+          thumbnailPropsCache,
+        });
         setDisplaySets(mappedDisplaySets);
       }
     };
@@ -426,20 +420,14 @@ export default function PanelStudyBrowserTracking({
       return;
     }
 
-    const mappedDisplaySets = _mapDisplaySets(
-      currentDisplaySets,
-      displaySetsLoadingState,
+    const mappedDisplaySets = _mapDisplaySets({
+      displaySets: currentDisplaySets,
+      displaySetLoadingState: displaySetsLoadingState,
       thumbnailImageSrcMap,
-      [],
-      selectedSRUIDRef.current,
-      viewports,
-      viewportGridService,
-      dataSource,
-      displaySetService,
-      uiDialogService,
-      uiNotificationService,
-      thumbnailPropsCache
-    );
+      trackedSeriesInstanceUIDs: [],
+      selectedSRUID: selectedSRUIDRef.current,
+      thumbnailPropsCache,
+    });
 
     setDisplaySets(mappedDisplaySets);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -477,20 +465,14 @@ export default function PanelStudyBrowserTracking({
 
   // Helper to perform expensive remap and state update
   const runMapping = (displaySetsInput) => {
-    const mappedDisplaySets = _mapDisplaySets(
-      displaySetsInput,
-      displaySetsLoadingStateRef.current,
-      thumbnailImageSrcMapRef.current,
-      [],
-      selectedSRUIDRef.current,
-      viewportsRef.current,
-      viewportGridService,
-      dataSource,
-      displaySetService,
-      uiDialogService,
-      uiNotificationService,
-      thumbnailPropsCache
-    );
+    const mappedDisplaySets = _mapDisplaySets({
+      displaySets: displaySetsInput,
+      displaySetLoadingState: displaySetsLoadingStateRef.current,
+      thumbnailImageSrcMap: thumbnailImageSrcMapRef.current,
+      trackedSeriesInstanceUIDs: [],
+      selectedSRUID: selectedSRUIDRef.current,
+      thumbnailPropsCache,
+    });
 
     const sig = mappedDisplaySets
       .map(ds => `${ds.displaySetInstanceUID}:${ds.loadingProgress || 0}`)
@@ -835,15 +817,14 @@ function _mapDataSourceStudies(studies) {
   });
 }
 
-function _mapDisplaySets(
+function _mapDisplaySets({
   displaySets,
   displaySetLoadingState,
   thumbnailImageSrcMap,
   trackedSeriesInstanceUIDs,
   selectedSRUID,
   thumbnailPropsCache = new Map(),
-  ...extraArgs
-) {
+}) {
   console.log(`[DisplaySets] _mapDisplaySets called with ${displaySets.length} display sets at:`, new Date().toISOString());
   console.log(`[DisplaySets] Display set IDs:`, displaySets.map(ds => `${ds.Modality}-${ds.displaySetInstanceUID?.substring(0, 8)}`));
 
@@ -1065,4 +1046,6 @@ function _findTabAndStudyOfDisplaySet(displaySetInstanceUID, tabs) {
       }
     }
   }
+
+  return undefined;
 }

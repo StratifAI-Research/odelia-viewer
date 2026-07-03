@@ -51,6 +51,7 @@
     "preinstall": "node preinstall.js",
     "start": "bun run dev",
     "test": "bun run test:unit",
+    "typecheck:custom": "tsc --noEmit -p tsconfig.custom.json",
     "test:data": "git submodule update --init -f testdata",
     "test-watch": "jest --collectCoverage --watchAll",
     "test:unit": "jest --collectCoverage",
@@ -95,9 +96,11 @@
     "@babel/preset-env": "7.24.7",
     "@babel/preset-react": "^7.16.7",
     "@babel/preset-typescript": "^7.13.0",
-    "prettier": "^3.3.3",
+    "@types/jest": "^29",
     "patch-package": "^8.0.0",
-    "prettier-plugin-tailwindcss": "0.6.9"
+    "prettier": "^3.3.3",
+    "prettier-plugin-tailwindcss": "0.6.9",
+    "typescript": "5.5.4"
   },
   "husky": {
     "hooks": {

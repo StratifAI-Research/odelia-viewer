@@ -102,7 +102,8 @@ describe('useAIOverlay', () => {
     const { services, config } = makeConfig();
     const { result } = renderHook(() => useAIOverlay(config));
     act(() => {
-      result.current.setupHeatmapActionCorner(sampleResult, jest.fn(), false, true);
+      // sampleResult is a deliberately minimal fixture; cast for this typed call.
+      result.current.setupHeatmapActionCorner(sampleResult as any, jest.fn(), false, true);
     });
     const toggleCalls = addCalls(services, 'heatmapToggle');
     const added = toggleCalls.find((a: any) => a.component !== null);

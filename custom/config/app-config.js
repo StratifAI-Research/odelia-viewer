@@ -76,5 +76,3 @@ window.config = {
       revokeAccessTokenOnSignout: true
     }],
 };
-// Add global debug logging
-console.log('OHIF Viewer Configuration:', window.config);

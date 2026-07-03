@@ -94,9 +94,38 @@ export default function downloadCSVReport(measurementData) {
 
   let csvContent =
     'data:text/csv;charset=utf-8,' +
-    results.map(res => res.join(',')).join('\n');
+    results.map(row => row.map(_escapeCsvValue).join(',')).join('\n');
 
   _createAndDownloadFile(csvContent);
+}
+
+// Escape a single CSV cell. Prevents two classes of problems:
+// 1. Structural corruption — values containing a comma, double-quote, CR or LF
+//    are wrapped in quotes with embedded quotes doubled (RFC 4180).
+// 2. Formula injection — a leading =, +, -, @, tab or CR lets a spreadsheet
+//    interpret the cell as a formula, so it is prefixed with a single quote.
+// `Array.prototype.map` preserves holes in the sparse row arrays, so empty
+// columns still render as empty fields and column alignment is kept.
+function _escapeCsvValue(value) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+
+  let str = String(value);
+
+  // Neutralize a leading =, +, -, @, tab or CR that a spreadsheet could execute
+  // as a formula — but exempt plain numbers (e.g. "-12.5") so negative values
+  // still round-trip for machine consumers.
+  const isPlainNumber = /^[-+]?(\d+\.?\d*|\.\d+)([eE][-+]?\d+)?$/.test(str);
+  if (!isPlainNumber && /^[=+\-@\t\r]/.test(str)) {
+    str = `'${str}`;
+  }
+
+  if (/[",\r\n]/.test(str)) {
+    str = `"${str.replace(/"/g, '""')}"`;
+  }
+
+  return str;
 }
 
 function _mapReportsToRowArray(reportMap, columns) {

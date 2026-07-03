@@ -17,6 +17,22 @@ env:
   YAMLLINT_VERSION: '1.35.1'
 
 jobs:
+  # Enforcing (unlike ESLint below): fails the build on any type error in custom/.
+  typecheck-custom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Type-check custom/
+        run: bun run typecheck:custom
+
   lint-js:
     runs-on: ubuntu-latest
     steps:

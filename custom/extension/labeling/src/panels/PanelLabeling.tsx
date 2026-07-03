@@ -39,7 +39,7 @@ export default function PanelLabeling({
     const updated = measurementService.EVENTS.MEASUREMENT_UPDATED;
     const removed = measurementService.EVENTS.MEASUREMENT_REMOVED;
     const cleared = measurementService.EVENTS.MEASUREMENTS_CLEARED;
-    const subscriptions = [];
+    const subscriptions: any[] = [];
 
     [added, addedRaw, updated, removed, cleared].forEach(evt => {
       subscriptions.push(

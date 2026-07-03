@@ -17,15 +17,13 @@ export function useAIRouting({
   const [status, setStatus] = useState<'idle' | 'routing' | 'checking' | 'refreshing'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
-  const [currentEndpoint, setCurrentEndpoint] = useState<AIEndpoint | null>(null);
+  // Initialize from the service once, on mount (lazy initializer — avoids a
+  // setState-during-render side effect).
+  const [currentEndpoint, setCurrentEndpoint] = useState<AIEndpoint | null>(
+    () => orthancAIService.getCurrentEndpoint()
+  );
   const [workitemUid, setWorkitemUid] = useState<string | null>(null);
   const [progressDescription, setProgressDescription] = useState<string | null>(null);
-
-  // Load current endpoint on mount
-  useState(() => {
-    const endpoint = orthancAIService.getCurrentEndpoint();
-    setCurrentEndpoint(endpoint);
-  });
 
   const handleEndpointChange = (endpoint: AIEndpoint) => {
     setCurrentEndpoint(endpoint);

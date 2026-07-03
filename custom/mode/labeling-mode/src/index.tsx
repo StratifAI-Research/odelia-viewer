@@ -184,7 +184,7 @@ function modeFactory({ modeConfiguration }) {
             measurementService
           } = servicesManager.services;
 
-          const unsubscriptions = [];
+          const unsubscriptions: any[] = [];
           const initLabels = extensionManager.getModuleEntry(
             "labeling.utilityModule.initLabels"
           ).exports;

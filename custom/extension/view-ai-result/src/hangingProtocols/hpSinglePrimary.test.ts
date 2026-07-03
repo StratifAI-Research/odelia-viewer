@@ -24,7 +24,7 @@ describe('hpSinglePrimary protocol', () => {
 
     const rules = hpSinglePrimary.displaySetSelectors.primaryDisplaySetId.seriesMatchingRules;
     // Require imaging frames; exclude SR; exclude SC; prefer URL display sets.
-    const required = rules.find((r: any) => r.attribute === 'numImageFrames');
+    const required = rules.find((r: any) => r.attribute === 'numImageFrames')!;
     expect(required.required).toBe(true);
     expect(required.constraint).toEqual({ greaterThan: { value: 0 } });
 
@@ -36,7 +36,7 @@ describe('hpSinglePrimary protocol', () => {
       .filter((r: any) => r.attribute === 'Modality')
       .forEach((r: any) => expect(r.weight).toBe(-100));
 
-    const urlRule = rules.find((r: any) => r.attribute === 'isDisplaySetFromUrl');
+    const urlRule = rules.find((r: any) => r.attribute === 'isDisplaySetFromUrl')!;
     expect(urlRule.constraint).toEqual({ equals: true });
   });
 

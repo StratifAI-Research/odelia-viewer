@@ -4,7 +4,7 @@ import {
   ODELIA_LABELING_SOURCE_NAME,
   ODELIA_LABELING_SOURCE_VERSION,
 } from '../measuermentServiceMappings/ODELIALabel';
-import { DicomMetadataStore } from '@ohif/core';
+import { utils } from '@ohif/core';
 
 const unusedColumns = [
   'AnnotationType',
@@ -12,13 +12,15 @@ const unusedColumns = [
   'Patient Name',
   'StudyInstanceUID',
   'Leison ID',
+  'Label',
 ];
 
-const leisonToolColumns = ['FrameOfReferenceUID', 'points'];
+// Lesion geometry/metadata columns — never part of an ODELIA label's label_data.
+const leisonToolColumns = ['FrameOfReferenceUID', 'points', 'referencedImageId'];
 
 export default function importCSVReport(
   { measurementService, extensionManager },
-  csvData
+  csvData: { [key: string]: string }[]
 ) {
   measurementService.clearMeasurements();
 
@@ -48,36 +50,34 @@ export default function importCSVReport(
     config => config.name == 'leison table'
   )[0];
 
-  const keys = csvData[0];
-
-  const rawMeasurements = csvData.slice(1);
-
-  console.log('Raw Measurements', rawMeasurements);
-
-  let parsedMeasurements: { [key: string]: string }[] = [];
-
-  for (let i = 0; i < rawMeasurements.length; i++) {
-    const values = rawMeasurements[i];
-    const measurement: { [key: string]: string } = {};
-
-    for (let j = 0; j < keys.length; j++) {
-      const k = keys[j];
-      measurement[k] = values[j];
-    }
-    parsedMeasurements.push(measurement);
-  }
+  // CSVImporter parses with Papa `header: true`, so csvData is already one
+  // object per row keyed by the header names — exactly the shape
+  // _collateLabels and _parseLeisons expect. (This previously zipped
+  // csvData[0] as a header array against csvData.slice(1) as value arrays,
+  // which yielded empty rows and then crashed on undefined `points` once
+  // header:true was introduced upstream.)
+  const parsedMeasurements: { [key: string]: string }[] = csvData;
 
   let labels: any = _collateLabels(parsedMeasurements);
 
   Object.keys(labels).forEach(patientID => {
     const label_data = Object.keys(labels[patientID])
-      .filter(key => !unusedColumns.includes(key) && !(key in leisonConfig))
+      // Keep only label-panel columns: drop identifiers, lesion geometry, and
+      // lesion-label columns (the last mirrors _parseLeisons' filter below).
+      // Previously `!(key in leisonConfig)` tested the config object's own keys
+      // (name/label_options), so lesion columns leaked into the label.
+      .filter(
+        key =>
+          !unusedColumns.includes(key) &&
+          !leisonToolColumns.includes(key) &&
+          !(key in leisonConfig.label_options[0])
+      )
       .reduce((obj, key) => {
         obj[key] = labels[patientID][key];
         return obj;
       }, {});
     const annotation = {
-      annotationUID: 1,
+      annotationUID: utils.guid(),
       metadata: { source: 'imported' },
       data: {
         label_data: label_data,
@@ -143,8 +143,14 @@ function _collateLabels(parsedMeasurements) {
 }
 
 function _parseLeisons(parsedMeasurements, leisonColumns) {
-  const parsedLeisions = [];
-  parsedMeasurements.map(element => {
+  const parsedLeisions: any[] = [];
+  parsedMeasurements.forEach(element => {
+    // Only rows carrying lesion geometry become lesion annotations; label-only
+    // rows have no `points`, so skip them (guards element['points'].split).
+    if (!element['points']) {
+      return;
+    }
+
     const leision_data = Object.keys(element)
       .filter(
         key =>
@@ -159,7 +165,7 @@ function _parseLeisons(parsedMeasurements, leisonColumns) {
     console.log(leision_data);
 
     const annotation = {
-      annotationUID: 1,
+      annotationUID: utils.guid(),
       metadata: {
         toolName: 'CircleROI',
         FrameOfReferenceUID: element['FrameOfReferenceUID'],

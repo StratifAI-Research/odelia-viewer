@@ -3,9 +3,10 @@ import PropTypes from 'prop-types';
 import { Button, ButtonGroup } from '@ohif/ui';
 import Papa from 'papaparse';
 
+type CSVRow = Record<string, string>;
+
 type CSVImporterProps = {
-  onChange: (data: string[][]) => void;
-  onClick: (data: string[][]) => void;
+  onClick: (data: CSVRow[]) => void;
 };
 
 const CSVImporter = ({ onClick }: CSVImporterProps) => {
@@ -15,7 +16,7 @@ const CSVImporter = ({ onClick }: CSVImporterProps) => {
     if (e.target.files) {
       try {
         const file = e.target.files[0];
-        Papa.parse<string[]>(file, {
+        Papa.parse<CSVRow>(file, {
           worker: true,
           complete: ({ data }) => onClick(data),
           header: true,
