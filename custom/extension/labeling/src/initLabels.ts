@@ -17,7 +17,14 @@ export default function initLabels({ measurementService, extensionManager, Study
 
   console.log(StudyInstanceUID)
 
-  if (measurements && measurements.some((element) => element.referenceStudyUID == StudyInstanceUID)) {
+  // Skip only when THIS study already has an ODELIALabel measurement — not any
+  // measurement (e.g. a lesion CircleROI), which would wrongly suppress init.
+  if (
+    measurements &&
+    measurements.some(
+      (element) => element.type === 'ODELIALabel' && element.referenceStudyUID == StudyInstanceUID
+    )
+  ) {
     console.log("Measurement already inited, skipping")
     return
   }

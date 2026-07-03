@@ -12,9 +12,11 @@ const unusedColumns = [
   'Patient Name',
   'StudyInstanceUID',
   'Leison ID',
+  'Label',
 ];
 
-const leisonToolColumns = ['FrameOfReferenceUID', 'points'];
+// Lesion geometry/metadata columns — never part of an ODELIA label's label_data.
+const leisonToolColumns = ['FrameOfReferenceUID', 'points', 'referencedImageId'];
 
 export default function importCSVReport(
   { measurementService, extensionManager },
@@ -60,7 +62,16 @@ export default function importCSVReport(
 
   Object.keys(labels).forEach(patientID => {
     const label_data = Object.keys(labels[patientID])
-      .filter(key => !unusedColumns.includes(key) && !(key in leisonConfig))
+      // Keep only label-panel columns: drop identifiers, lesion geometry, and
+      // lesion-label columns (the last mirrors _parseLeisons' filter below).
+      // Previously `!(key in leisonConfig)` tested the config object's own keys
+      // (name/label_options), so lesion columns leaked into the label.
+      .filter(
+        key =>
+          !unusedColumns.includes(key) &&
+          !leisonToolColumns.includes(key) &&
+          !(key in leisonConfig.label_options[0])
+      )
       .reduce((obj, key) => {
         obj[key] = labels[patientID][key];
         return obj;
