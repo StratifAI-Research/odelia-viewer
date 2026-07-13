@@ -1,6 +1,3 @@
-// Remove the incorrect import
-// import { log } from '@ohif/core';
-// import { DicomMetadataStore } from '@ohif/core';
 import { AIEndpoint } from '../components/AIEndpointConfig';
 import { AI_ENDPOINTS_STORAGE_KEY } from '../constants';
 
@@ -301,11 +298,8 @@ class OrthancAIService {
    * Derives a user-facing message from a non-ok response.
    *
    * The body stream can only be consumed once, so we read it as text and then
-   * try to parse JSON — avoiding the previous double-consume (response.json()
-   * then response.text() on the same body), where the second read always threw
-   * "already consumed" and the text fallback was effectively dead. A non-JSON
-   * body (e.g. an HTML error page) falls back to the clean status message rather
-   * than surfacing raw markup.
+   * try to parse JSON. A non-JSON body (e.g. an HTML error page) falls back to
+   * the clean status message rather than surfacing raw markup.
    */
   private async extractErrorMessage(response: Response): Promise<string> {
     const fallback = `HTTP error! status: ${response.status}`;

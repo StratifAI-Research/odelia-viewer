@@ -11,7 +11,7 @@ interface ActiveStudyUIDConfig {
  * Returns a stable callback that resolves the StudyInstanceUID of the active
  * viewport's first display set, falling back to the first entry of
  * StudyInstanceUIDs. Shared by ChatPanel, FeedbackPanel, and
- * useStudyChangeDetector (which previously each held an identical copy).
+ * useStudyChangeDetector.
  */
 export function useActiveStudyUID({
   activeViewportId,

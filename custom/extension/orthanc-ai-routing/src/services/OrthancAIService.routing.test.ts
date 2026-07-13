@@ -211,8 +211,7 @@ describe('OrthancAIService — routeStudyToAI', () => {
 
   // extractErrorMessage reads the body once as text and tries to JSON.parse it.
   // A non-JSON body (e.g. an HTML error page) is not surfaced raw — we prefer the
-  // clean status-based message. (This replaces the old double-consume path that
-  // called json() then text() on the same stream and swallowed the second read.)
+  // clean status-based message.
   it('falls back to the status-based message when the error body is not JSON', async () => {
     fetchMock
       .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
