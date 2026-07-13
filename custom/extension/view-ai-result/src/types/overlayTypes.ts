@@ -1,24 +1,7 @@
-import { ReactNode } from 'react';
 import { AIResult } from '../types';
 
 export interface AIClassificationOverlayProps {
   aiResult: AIResult;
-}
-
-export interface OverlayCustomization {
-  id: string;
-  inheritsFrom: string;
-  title: string;
-  color: string;
-  contentF: () => ReactNode;
-}
-
-export interface ViewportActionComponent {
-  viewportId: string;
-  id: string;
-  component: ReactNode;
-  location: string;
-  indexPriority: number;
 }
 
 export interface AIOverlayHookConfig {

@@ -3,6 +3,7 @@ import { useSystem, utils } from '@ohif/core';
 import { useImageViewer, useUserAuthentication } from '@ohif/ui';
 import { useViewportGrid } from '@ohif/ui-next';
 import { FooterAction } from '@ohif/ui-next';
+import { useActiveStudyUID } from '../../hooks/useActiveStudyUID';
 
 /**
  * Mock Feedback Panel – allows radiologists to mark Agree / Unsure / Disagree per breast side.
@@ -102,24 +103,12 @@ const FeedbackPanel: React.FC = () => {
   }, []);
 
   // Helper to extract study UID from the active viewport
-  const getStudyUIDFromActiveViewport = useCallback((): string | null => {
-    if (!activeViewportId || !viewports) {
-      return StudyInstanceUIDs?.[0] || null; // Fallback to first study
-    }
-
-    const activeViewport = viewports.get(activeViewportId);
-    const displaySetInstanceUIDs = activeViewport?.displaySetInstanceUIDs || [];
-
-    if (!displaySetInstanceUIDs.length) {
-      return StudyInstanceUIDs?.[0] || null; // Fallback to first study
-    }
-
-    // Get the first display set's study UID
-    const firstDisplaySetUID = displaySetInstanceUIDs[0];
-    const displaySet = displaySetService?.getDisplaySetByUID(firstDisplaySetUID);
-
-    return displaySet?.StudyInstanceUID || displaySet?.studyInstanceUID || null;
-  }, [activeViewportId, viewports, displaySetService, StudyInstanceUIDs]);
+  const getStudyUIDFromActiveViewport = useActiveStudyUID({
+    activeViewportId,
+    viewports,
+    displaySetService,
+    StudyInstanceUIDs,
+  });
 
   // Helper to refresh dropdown list & selection info
   const refreshMeta = useCallback(() => {

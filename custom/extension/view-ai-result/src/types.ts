@@ -64,16 +64,3 @@ export interface AISideBySideViewportProps {
   onElementEnabled?: (evt: any) => void;
   onElementDisabled?: () => void;
 }
-
-export interface Layout {
-  numRows: number;
-  numCols: number;
-  layoutType: string;
-  findOrCreateViewport?: (position: number) => {
-    displaySetInstanceUIDs: string[];
-    viewportOptions: {
-      viewportId: string;
-      toolGroupId: string;
-    };
-  };
-}

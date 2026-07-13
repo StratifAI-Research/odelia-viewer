@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Button, Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '@ohif/ui-next';
+import { AI_ENDPOINTS_STORAGE_KEY } from '../constants';
 
 // Interface for AI endpoint configuration
 export interface AIEndpoint {
@@ -47,7 +48,7 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
     let loadedEndpoints: AIEndpoint[] = [];
 
     // First, check if user has saved endpoints (priority)
-    const savedEndpoints = localStorage.getItem('aiEndpoints');
+    const savedEndpoints = localStorage.getItem(AI_ENDPOINTS_STORAGE_KEY);
     if (savedEndpoints) {
       try {
         loadedEndpoints = JSON.parse(savedEndpoints);
@@ -67,7 +68,7 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
         loadedEndpoints = [DEFAULT_ENDPOINT];
       }
       // Save to localStorage for future
-      localStorage.setItem('aiEndpoints', JSON.stringify(loadedEndpoints));
+      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(loadedEndpoints));
     }
 
     setEndpoints(loadedEndpoints);
@@ -82,7 +83,7 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   // Save endpoints to localStorage whenever they change
   useEffect(() => {
     if (endpoints.length > 0) {
-      localStorage.setItem('aiEndpoints', JSON.stringify(endpoints));
+      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(endpoints));
     }
   }, [endpoints]);
 
@@ -168,14 +169,14 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
       const defaultEndpoint = { ...DEFAULT_ENDPOINT };
       setEndpoints([defaultEndpoint]);
       onEndpointChange(defaultEndpoint);
-      localStorage.setItem('aiEndpoints', JSON.stringify([defaultEndpoint]));
+      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify([defaultEndpoint]));
     } else {
       setEndpoints(updatedEndpoints);
       // If we're deleting the current endpoint, select another one
       if (currentEndpoint && currentEndpoint.id === endpointId) {
         onEndpointChange(updatedEndpoints[0]);
       }
-      localStorage.setItem('aiEndpoints', JSON.stringify(updatedEndpoints));
+      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(updatedEndpoints));
     }
 
     handleCloseForm();

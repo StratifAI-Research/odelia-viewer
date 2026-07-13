@@ -151,7 +151,7 @@ describe('OrthancAIService — getModelManifest (+ cache)', () => {
   });
 });
 
-describe('OrthancAIService — routeStudyToAI / routeCurrentStudyToAI', () => {
+describe('OrthancAIService — routeStudyToAI', () => {
   let fetchMock: jest.Mock;
   let service: OrthancAIService;
 
@@ -209,28 +209,14 @@ describe('OrthancAIService — routeStudyToAI / routeCurrentStudyToAI', () => {
     await expect(service.routeStudyToAI('1.2.3')).rejects.toThrow('validation failed');
   });
 
-  // When the error body is not JSON, response.json() consumes the stream and throws;
-  // the source's response.text() fallback then throws "already consumed" too, so the
-  // surfaced message is the status-based one. The text() fallback (OrthancAIService.ts
-  // :369-377) is effectively dead in a real browser — FIXME(ODV-160): surface as a bug.
+  // extractErrorMessage reads the body once as text and tries to JSON.parse it.
+  // A non-JSON body (e.g. an HTML error page) is not surfaced raw — we prefer the
+  // clean status-based message.
   it('falls back to the status-based message when the error body is not JSON', async () => {
     fetchMock
       .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
       .mockResolvedValueOnce(mockResponse({ ok: false, status: 502, text: '<html>Bad Gateway</html>' }));
     await expect(service.routeStudyToAI('1.2.3')).rejects.toThrow('HTTP error! status: 502');
-  });
-
-  it('routeCurrentStudyToAI succeeds when the URL carries a study UID', async () => {
-    setStudyUIDsInURL('1.2.3');
-    fetchMock
-      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
-      .mockResolvedValueOnce(mockResponse({ json: { status: 'success', message: 'ok' } }));
-    expect(await service.routeCurrentStudyToAI()).toMatchObject({ status: 'success' });
-  });
-
-  it('routeCurrentStudyToAI throws when the URL has no StudyInstanceUIDs', async () => {
-    setStudyUIDsInURL(null);
-    await expect(service.routeCurrentStudyToAI()).rejects.toThrow('Could not find StudyInstanceUID');
   });
 });
 

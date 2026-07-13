@@ -34,13 +34,9 @@ if (!window.config.aiServerUrl) {
   window.config.aiServerUrl = 'http://orthanc-ai:8042';
 }
 
-/**
- * You can remove any of the following modules if you don't need them.
- */
 export default {
   /**
    * Only required property. Should be a unique value across all extensions.
-   * You ID can be anything you want, but it should be unique.
    */
   id,
 
@@ -73,10 +69,7 @@ export default {
   },
 
   /**
-   * PanelModule should provide a list of panels that will be available in OHIF
-   * for Modes to consume and render. Each panel is defined by a {name,
-   * iconName, iconLabel, label, component} object. Example of a panel module
-   * is the StudyBrowserPanel that is provided by the default extension in OHIF.
+   * PanelModule provides the "Analyze with AI" routing panel rendered in the sidebar.
    */
   getPanelModule: ({ servicesManager, commandsManager, extensionManager }: any) => {
     const wrappedAIRoutingPanel = () => {
@@ -99,35 +92,7 @@ export default {
   },
 
   /**
-   * LayoutTemplateMOdule should provide a list of layout templates that will be
-   * available in OHIF for Modes to consume and use to layout the viewer.
-   * Each layout template is defined by a { name, id, component}. Examples include
-   * the default layout template provided by the default extension which renders
-   * a Header, left and right sidebars, and a viewport section in the middle
-   * of the viewer.
-   */
-  getLayoutTemplateModule: ({ servicesManager, commandsManager, extensionManager }: any) => {},
-
-  /**
-   * SopClassHandlerModule should provide a list of sop class handlers that will be
-   * available in OHIF for Modes to consume and use to create displaySets from Series.
-   * Each sop class handler is defined by a { name, sopClassUids, getDisplaySetsFromSeries}.
-   * Examples include the default sop class handler provided by the default extension
-   */
-  getSopClassHandlerModule: ({ servicesManager, commandsManager, extensionManager }: any) => {},
-
-  /**
-   * HangingProtocolModule should provide a list of hanging protocols that will be
-   * available in OHIF for Modes to use to decide on the structure of the viewports
-   * and also the series that hung in the viewports. Each hanging protocol is defined by
-   * { name, protocols}. Examples include the default hanging protocol provided by
-   * the default extension that shows 2x2 viewports.
-   */
-  getHangingProtocolModule: ({ servicesManager, commandsManager, extensionManager }: any) => {},
-
-  /**
-   * CommandsModule should provide a list of commands that will be available in OHIF
-   * for Modes to consume and use in the viewports.
+   * CommandsModule exposes the routeToAI command used to send a study to the AI server.
    */
   getCommandsModule: ({ servicesManager, commandsManager, extensionManager }: any) => {
     return {
@@ -142,19 +107,4 @@ export default {
       ],
     };
   },
-
-  /**
-   * ContextModule should provide a list of context that will be available in OHIF
-   * and will be provided to the Modes. A context is a state that is shared OHIF.
-   * Context is defined by an object of { name, context, provider }. Examples include
-   * the measurementTracking context provided by the measurementTracking extension.
-   */
-  getContextModule: ({ servicesManager, commandsManager, extensionManager }: any) => {},
-
-  /**
-   * DataSourceModule should provide a list of data sources to be used in OHIF.
-   * DataSources can be used to map the external data formats to the OHIF's
-   * native format. DataSources are defined by an object of { name, type, createDataSource }.
-   */
-  getDataSourcesModule: ({ servicesManager, commandsManager, extensionManager }: any) => {},
 };

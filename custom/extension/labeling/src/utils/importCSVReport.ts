@@ -1,4 +1,5 @@
 import Config from '../utils/config';
+import { getPanelConfig } from '../utils/panelConfig';
 const config: Config = require('../utils/config.json');
 import {
   ODELIA_LABELING_SOURCE_NAME,
@@ -46,9 +47,7 @@ export default function importCSVReport(
 
   console.log('Matched Mapping', matchingMapping);
 
-  const leisonConfig = config.panel_configs.filter(
-    config => config.name == 'leison table'
-  )[0];
+  const leisonConfig = getPanelConfig(config, 'leison table');
 
   // CSVImporter parses with Papa `header: true`, so csvData is already one
   // object per row keyed by the header names — exactly the shape

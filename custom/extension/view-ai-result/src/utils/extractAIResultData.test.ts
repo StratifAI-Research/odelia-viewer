@@ -1,8 +1,4 @@
-import {
-  extractAIResultData,
-  formatClassificationPreview,
-  getModelDisplayName,
-} from './extractAIResultData';
+import { extractAIResultData } from './extractAIResultData';
 
 const concept = (meaning: string) => ({
   ConceptNameCodeSequence: [{ CodeMeaning: meaning }],
@@ -121,52 +117,5 @@ describe('extractAIResultData', () => {
   it('does not throw on malformed input', () => {
     expect(() => extractAIResultData({} as any)).not.toThrow();
     expect(extractAIResultData({} as any)).toBeNull();
-  });
-});
-
-describe('formatClassificationPreview', () => {
-  it('returns empty string for empty or missing input', () => {
-    expect(formatClassificationPreview([])).toBe('');
-    expect(formatClassificationPreview(undefined as any)).toBe('');
-  });
-
-  it('formats a result with confidence to one decimal', () => {
-    expect(
-      formatClassificationPreview([{ side: 'Left', result: 'Malignant', confidence: 87.49 }])
-    ).toBe('Left: Malignant (87.5%)');
-  });
-
-  it('uses "Unknown" when result is null and omits confidence when null', () => {
-    expect(
-      formatClassificationPreview([{ side: 'Right', result: null, confidence: null }])
-    ).toBe('Right: Unknown');
-  });
-
-  it('renders an error entry and joins multiple entries with a comma', () => {
-    expect(
-      formatClassificationPreview([
-        { side: 'Left', result: 'Benign', confidence: 10 },
-        { side: 'Right', result: null, confidence: null, errorMessage: 'oops' },
-      ])
-    ).toBe('Left: Benign (10.0%), Right: Error');
-  });
-});
-
-describe('getModelDisplayName', () => {
-  it('returns the default name when modelInfo is missing', () => {
-    expect(getModelDisplayName(null)).toBe('AI Model');
-  });
-
-  it('combines algorithm name and version when both present', () => {
-    expect(getModelDisplayName({ algorithmName: 'algo', algorithmVersion: '3' })).toBe('algo v3');
-  });
-
-  it('returns just the algorithm name when version is absent', () => {
-    expect(getModelDisplayName({ algorithmName: 'algo' })).toBe('algo');
-  });
-
-  it('falls back to name then the default', () => {
-    expect(getModelDisplayName({ name: 'Friendly' })).toBe('Friendly');
-    expect(getModelDisplayName({})).toBe('AI Model');
   });
 });

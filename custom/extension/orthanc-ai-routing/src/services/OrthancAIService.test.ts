@@ -50,12 +50,6 @@ describe('OrthancAIService', () => {
     service.clearManifestCache();
   });
 
-  it('getRoutingStatus returns completed status', async () => {
-    const status = await service.getRoutingStatus('study-123');
-    expect(status.status).toBe('completed');
-    expect(status.study_id).toBe('study-123');
-  });
-
   it('stopWorkitemPolling is safe to call when not polling', () => {
     service.stopWorkitemPolling();
   });
