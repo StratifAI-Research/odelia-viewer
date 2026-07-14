@@ -12,7 +12,7 @@ import { ModelSelectionStep } from './steps/ModelSelectionStep';
 import { SeriesSelectionStep } from './steps/SeriesSelectionStep';
 import { InputModeSelectionStep } from './steps/InputModeSelectionStep';
 import { InputMappingStep } from './steps/InputMappingStep';
-import { EndpointSelectionStep } from './steps/EndpointSelectionStep';
+import { ConfirmStep } from './steps/ConfirmStep';
 import { ProgressStep } from './steps/ProgressStep';
 
 interface ServicesManager {
@@ -319,7 +319,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
           );
         }
         return (
-          <EndpointSelectionStep
+          <ConfirmStep
             currentEndpoint={routing.currentEndpoint}
             studyDescription={getStudyDescription()}
             selectedSeriesCount={selection.selectedSeriesUIDs.size}
@@ -333,7 +333,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
       case 4: {
         if (manifest) {
           return (
-            <EndpointSelectionStep
+            <ConfirmStep
               currentEndpoint={routing.currentEndpoint}
               studyDescription={getStudyDescription()}
               selectedSeriesCount={inputMappingHook.getSelectedSeriesUIDs().length}

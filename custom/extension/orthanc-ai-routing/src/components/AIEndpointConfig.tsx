@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Button, Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '@ohif/ui-next';
-import { AI_ENDPOINTS_STORAGE_KEY } from '../constants';
+import {
+  AI_ENDPOINTS_STORAGE_KEY,
+  DEFAULT_AI_ENDPOINT_NAME,
+  DEFAULT_AI_ENDPOINT_URL,
+} from '../constants';
 
 // Interface for AI endpoint configuration
 export interface AIEndpoint {
@@ -20,9 +24,17 @@ interface AIEndpointConfigProps {
 // Default AI endpoint configuration
 const DEFAULT_ENDPOINT: AIEndpoint = {
   id: 'default-ai-server',
-  name: 'ai-server',
-  url: 'http://orthanc-router:8042/dicom-web',
+  name: DEFAULT_AI_ENDPOINT_NAME,
+  url: DEFAULT_AI_ENDPOINT_URL,
 };
+
+/**
+ * Remove secrets (password) from endpoints before persisting them. Credentials must
+ * never be written to localStorage in plaintext; they are not transmitted by routing
+ * requests anyway, so persisting them is pure liability.
+ */
+export const stripEndpointSecrets = (endpoints: AIEndpoint[]): AIEndpoint[] =>
+  endpoints.map(({ password, ...rest }) => rest);
 
 const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   onEndpointChange,
@@ -68,7 +80,7 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
         loadedEndpoints = [DEFAULT_ENDPOINT];
       }
       // Save to localStorage for future
-      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(loadedEndpoints));
+      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(stripEndpointSecrets(loadedEndpoints)));
     }
 
     setEndpoints(loadedEndpoints);
@@ -83,7 +95,7 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   // Save endpoints to localStorage whenever they change
   useEffect(() => {
     if (endpoints.length > 0) {
-      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(endpoints));
+      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(stripEndpointSecrets(endpoints)));
     }
   }, [endpoints]);
 
@@ -169,14 +181,14 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
       const defaultEndpoint = { ...DEFAULT_ENDPOINT };
       setEndpoints([defaultEndpoint]);
       onEndpointChange(defaultEndpoint);
-      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify([defaultEndpoint]));
+      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(stripEndpointSecrets([defaultEndpoint])));
     } else {
       setEndpoints(updatedEndpoints);
       // If we're deleting the current endpoint, select another one
       if (currentEndpoint && currentEndpoint.id === endpointId) {
         onEndpointChange(updatedEndpoints[0]);
       }
-      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(updatedEndpoints));
+      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(stripEndpointSecrets(updatedEndpoints)));
     }
 
     handleCloseForm();

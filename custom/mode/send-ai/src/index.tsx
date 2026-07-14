@@ -39,7 +39,9 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
      * is used to identify the mode in the viewer's state.
      */
     id,
-    routeName: 'template',
+    // Drives the launch URL (/{routeName}/...); the WorkList builds mode links from
+    // this, so it stays self-consistent. Renamed off the OHIF-template placeholder.
+    routeName: 'send-ai',
     /**
      * Mode name, which is displayed in the viewer's UI in the workList, for the
      * user to select the mode.

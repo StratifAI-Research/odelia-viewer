@@ -4,6 +4,7 @@ import { useImageViewer, useUserAuthentication } from '@ohif/ui';
 import { useViewportGrid } from '@ohif/ui-next';
 import { FooterAction } from '@ohif/ui-next';
 import { useActiveStudyUID } from '../../hooks/useActiveStudyUID';
+import { resultTsFromDisplaySet } from '../../utils/dicomDateTime';
 
 /**
  * Mock Feedback Panel – allows radiologists to mark Agree / Unsure / Disagree per breast side.
@@ -228,15 +229,6 @@ const FeedbackPanel: React.FC = () => {
     );
   }, [currentResult]);
 
-  const toIsoFromDicom = (dateStr?: string, timeStr?: string, tz?: string | null): string | undefined => {
-    try {
-      const { dicomDateTimeToIsoUtc } = require('../../utils/dicomDateTime');
-      return dicomDateTimeToIsoUtc(dateStr, timeStr, tz);
-    } catch (_) {
-      return undefined;
-    }
-  };
-
   const resultTs: string | undefined = useMemo(() => {
     // Prefer AIResultsService-provided timestamp
     const r = currentResult || {};
@@ -246,10 +238,7 @@ const FeedbackPanel: React.FC = () => {
     try {
       const dss = servicesManager?.services?.displaySetService;
       const sr = selectedUID ? dss?.getDisplaySetByUID(selectedUID) : null;
-      const dicomDate = sr?.instance?.InstanceCreationDate || sr?.SeriesDate || sr?.ContentDate || sr?.StudyDate;
-      const dicomTime = sr?.instance?.InstanceCreationTime || sr?.SeriesTime || sr?.ContentTime || sr?.StudyTime;
-      const tz = sr?.instance?.TimezoneOffsetFromUTC || null;
-      return toIsoFromDicom(dicomDate, dicomTime, tz);
+      return resultTsFromDisplaySet(sr);
     } catch (_) {
       return undefined;
     }
@@ -342,10 +331,7 @@ const FeedbackPanel: React.FC = () => {
               try {
                 const dss = servicesManager?.services?.displaySetService;
                 const ds = dss?.getDisplaySetByUID(m.displaySetInstanceUID);
-                const dicomDate = ds?.instance?.InstanceCreationDate || ds?.SeriesDate || ds?.ContentDate || ds?.StudyDate;
-                const dicomTime = ds?.instance?.InstanceCreationTime || ds?.SeriesTime || ds?.ContentTime || ds?.StudyTime;
-                const tz = ds?.instance?.TimezoneOffsetFromUTC || null;
-                return toIsoFromDicom(dicomDate, dicomTime, tz);
+                return resultTsFromDisplaySet(ds);
               } catch (_) {
                 return undefined;
               }

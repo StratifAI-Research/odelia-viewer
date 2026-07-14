@@ -1,6 +1,6 @@
 import { AIResult, Classification } from '../types';
 import { extractAIResultData } from '../utils/extractAIResultData';
-import { dicomDateTimeToIsoUtc } from '../utils/dicomDateTime';
+import { resultTsFromDisplaySet } from '../utils/dicomDateTime';
 
 /**
  * Service for extracting AI results from DICOM files
@@ -26,10 +26,6 @@ export class AIResultsService {
 
   constructor(uiNotificationService: any) {
     this.uiNotificationService = uiNotificationService;
-  }
-
-  private toIsoFromDicom(dateStr?: string, timeStr?: string, tzOffset?: string | null): string | undefined {
-    return dicomDateTimeToIsoUtc(dateStr, timeStr, tzOffset);
   }
 
   /**
@@ -111,11 +107,7 @@ export class AIResultsService {
               aiResultData.modelInfo?.name
             );
 
-            const resultTs = this.toIsoFromDicom(
-              srDisplaySet.instance?.InstanceCreationDate || srDisplaySet.SeriesDate || srDisplaySet.ContentDate || srDisplaySet.StudyDate,
-              srDisplaySet.instance?.InstanceCreationTime || srDisplaySet.SeriesTime || srDisplaySet.ContentTime || srDisplaySet.StudyTime,
-              srDisplaySet.instance?.TimezoneOffsetFromUTC || null
-            );
+            const resultTs = resultTsFromDisplaySet(srDisplaySet);
 
             const aiResult: AIResult = {
               studyInstanceUID,
@@ -137,11 +129,7 @@ export class AIResultsService {
           console.warn('Error parsing AI results from SR:', error);
 
           // Create error result
-          const resultTs = this.toIsoFromDicom(
-            srDisplaySet.instance?.InstanceCreationDate || srDisplaySet.SeriesDate || srDisplaySet.ContentDate || srDisplaySet.StudyDate,
-            srDisplaySet.instance?.InstanceCreationTime || srDisplaySet.SeriesTime || srDisplaySet.ContentTime || srDisplaySet.StudyTime,
-            srDisplaySet.instance?.TimezoneOffsetFromUTC || null
-          );
+          const resultTs = resultTsFromDisplaySet(srDisplaySet);
           const errorResult: AIResult = {
             studyInstanceUID,
             displaySetInstanceUID: srDisplaySet.displaySetInstanceUID,
@@ -440,11 +428,7 @@ export class AIResultsService {
         aiResultData.modelInfo?.name
       );
 
-      const resultTs = this.toIsoFromDicom(
-        displaySet.instance?.InstanceCreationDate || displaySet.SeriesDate || displaySet.ContentDate || displaySet.StudyDate,
-        displaySet.instance?.InstanceCreationTime || displaySet.SeriesTime || displaySet.ContentTime || displaySet.StudyTime,
-        displaySet.instance?.TimezoneOffsetFromUTC || null
-      );
+      const resultTs = resultTsFromDisplaySet(displaySet);
 
       return {
         studyInstanceUID,
@@ -727,14 +711,4 @@ export class AIResultsService {
       });
     }
   }
-}
-
-// Export singleton instance
-let aiResultsServiceInstance: AIResultsService | null = null;
-
-export function getAIResultsService(uiNotificationService?: any): AIResultsService {
-  if (!aiResultsServiceInstance) {
-    aiResultsServiceInstance = new AIResultsService(uiNotificationService);
-  }
-  return aiResultsServiceInstance;
 }

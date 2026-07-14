@@ -1,9 +1,12 @@
 import { getStaticDate } from './dateCache';
 import { extractAIResultData } from './extractAIResultData';
 import { formatDicomDateTime } from './dicomDateTime';
-
-// Re-use the real-display-set cache from the flat util to avoid re-computing.
-const displaySetCache = new Map<string, any>();
+import {
+  isAIResult,
+  getRealDisplaySet,
+  getCreationTzOffset,
+  clearAITabCache,
+} from './aiTabHelpers';
 
 /**
  * Build a nested tab structure with a single "All Studies" tab containing all studies.
@@ -19,41 +22,6 @@ export function createStudyAIBrowserTabsNested(
   displaySets: any[],
   servicesManager: any = null
 ) {
-  // Helper – is this thumbnail an AI result?
-  const isAIResult = (ds: any) => {
-    const modality = ds.Modality || ds.modality;
-    return modality === 'SR' || modality === 'SC';
-  };
-
-  // Helper – resolve displaySet from service (expensive) but cache the result.
-  const getRealDisplaySet = (thumbDS: any) => {
-    const key = thumbDS.displaySetInstanceUID;
-    if (displaySetCache.has(key)) {
-      return displaySetCache.get(key);
-    }
-
-    const dss = servicesManager?.services?.displaySetService;
-    if (!dss) {
-      displaySetCache.set(key, thumbDS);
-      return thumbDS;
-    }
-
-    let real;
-    try {
-      real = dss.getDisplaySetByUID(thumbDS.displaySetInstanceUID) || thumbDS;
-    } catch {
-      real = thumbDS;
-    }
-    displaySetCache.set(key, real);
-    return real;
-  };
-
-  // Helper – date/time → "YYYY-MM-DD HH:mm:ss" respecting timezone offset when provided
-  const formatDateTime = (date?: string, time?: string, offset?: string | null) => {
-    if (!date) return null;
-    return formatDicomDateTime(date, time, offset);
-  };
-
   // Index studies by StudyInstanceUID for quick metadata look-up
   const studyMetaByUID = new Map<string, any>();
   studyDisplayList.forEach(studyMeta => {
@@ -95,11 +63,11 @@ export function createStudyAIBrowserTabsNested(
     // First pass: Group AI results by datetime key
     studyDisplaySets.forEach(thumbDS => {
       if (isAIResult(thumbDS)) {
-        const realDS = getRealDisplaySet(thumbDS);
+        const realDS = getRealDisplaySet(thumbDS, servicesManager);
         const date = realDS?.instance?.InstanceCreationDate;
         const time = realDS?.instance?.InstanceCreationTime;
-        const tz = realDS?.instance?.TimezoneOffsetFromUTC || realDS?.instance?.TimezoneOffset || null;
-        const dateTime = formatDateTime(date, time, tz);
+        const tz = getCreationTzOffset(realDS);
+        const dateTime = formatDicomDateTime(date, time, tz);
         const key = dateTime || `UNKNOWN_${realDS.displaySetInstanceUID}`;
 
         if (!aiGroupsMap.has(key)) {
@@ -122,7 +90,7 @@ export function createStudyAIBrowserTabsNested(
 
       // Search through all display sets (SR + SC) to find model name
       for (const thumbDS of group.displaySets) {
-        const realDS = getRealDisplaySet(thumbDS);
+        const realDS = getRealDisplaySet(thumbDS, servicesManager);
         const aiInfo = extractAIResultData(realDS);
 
         if (aiInfo?.modelInfo?.name) {
@@ -169,5 +137,5 @@ export function createStudyAIBrowserTabsNested(
 }
 
 export function clearNestedTabCache() {
-  displaySetCache.clear();
+  clearAITabCache();
 }

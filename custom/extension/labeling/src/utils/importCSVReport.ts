@@ -6,6 +6,7 @@ import {
   ODELIA_LABELING_SOURCE_VERSION,
 } from '../measurementServiceMappings/ODELIALabel';
 import { utils } from '@ohif/core';
+import { makeLabelAnnotation } from '../measurementServiceMappings/makeLabelAnnotation';
 
 const unusedColumns = [
   'AnnotationType',
@@ -78,17 +79,11 @@ export default function importCSVReport(
         obj[key] = labels[patientID][key];
         return obj;
       }, {});
-    const annotation = {
-      annotationUID: utils.guid(),
-      metadata: { source: 'imported' },
-      data: {
-        label_data: label_data,
-      },
+    const annotation = makeLabelAnnotation({
+      labelData: label_data,
       referenceStudyUID: labels[patientID].StudyInstanceUID,
-      toolName: 'ODELIALabel',
-      displayText: 'displayText',
-      type: 'ODELIALabel',
-    };
+      source: 'imported',
+    });
     measurementService.addRawMeasurement(
       labelSource,
       annotationType,

@@ -1,13 +1,8 @@
 import { renderHook } from '@testing-library/react';
-
-const mockGetSelectedAIResult = jest.fn();
-jest.mock('../services/AIResultsService', () => ({
-  getAIResultsService: () => ({ getSelectedAIResult: mockGetSelectedAIResult }),
-}));
-
 import { useAIResult } from './useAIResult';
 
-const sm = { services: {} };
+const mockGetSelectedAIResult = jest.fn();
+const sm = { services: { aiResultsService: { getSelectedAIResult: mockGetSelectedAIResult } } };
 
 describe('useAIResult', () => {
   beforeEach(() => mockGetSelectedAIResult.mockReset());

@@ -1,4 +1,4 @@
-import { AIResultsService, getAIResultsService } from './AIResultsService';
+import { AIResultsService } from './AIResultsService';
 import { makeServicesManager } from '../test-utils/harness';
 
 // Build a realistic SR display set whose ContentSequence yields classifications
@@ -342,14 +342,6 @@ describe('AIResultsService', () => {
       svc.subscribe(AIResultsService.EVENTS.STUDY_CHANGED, changed);
       svc.notifyStudyChange('study-1', sm);
       expect(changed).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('getAIResultsService singleton', () => {
-    it('returns the same instance on repeated calls', () => {
-      const a = getAIResultsService({ show: jest.fn() });
-      const b = getAIResultsService();
-      expect(a).toBe(b);
     });
   });
 });

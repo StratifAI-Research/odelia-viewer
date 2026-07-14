@@ -115,6 +115,22 @@ describe('AIEndpointConfig — form validation & add', () => {
     expect(stored.some((e: AIEndpoint) => e.name === 'Gamma')).toBe(true);
   });
 
+  it('does not persist the entered password to localStorage', () => {
+    seed([epA]);
+    render(<AIEndpointConfig onEndpointChange={jest.fn()} currentEndpoint={epA} />);
+    fireEvent.click(screen.getByText('Add New'));
+    fireEvent.change(screen.getByPlaceholderText('AI Server Name'), { target: { value: 'Secure' } });
+    fireEvent.change(screen.getByPlaceholderText('http://ai-server:8042'), { target: { value: 'http://secure:8042' } });
+    fireEvent.change(screen.getByPlaceholderText('Password'), { target: { value: 'hunter2' } });
+    fireEvent.click(screen.getByText('Add'));
+
+    const raw = localStorage.getItem('aiEndpoints')!;
+    expect(raw).not.toContain('hunter2');
+    const added = JSON.parse(raw).find((e: AIEndpoint) => e.name === 'Secure');
+    expect(added).toBeTruthy();
+    expect(added.password).toBeUndefined();
+  });
+
   it('Cancel closes the form without saving', () => {
     seed([epA]);
     render(<AIEndpointConfig onEndpointChange={jest.fn()} currentEndpoint={epA} />);
