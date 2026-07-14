@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { id } from './id.js';
+import { id } from './id';
 import AITrackedViewport from './components/AITrackedViewport';
 import DisclaimerBanner from './components/DisclaimerBanner';
 import getPanelModule from './getPanelModule';
@@ -20,42 +20,34 @@ export default {
    * this extension is providing.
    */
   preRegistration: ({ servicesManager, commandsManager, configuration = {} }) => {
-    console.log('🚀 AIResultsService preRegistration called');
-
     try {
       // Create service definition (matching orthanc-ai-routing pattern)
       const aiResultsServiceDefinition = {
         name: 'aiResultsService',
         create: ({ configuration = {} }) => {
-          console.log('🔧 Creating AIResultsService instance');
           return new AIResultsService(servicesManager.services?.uiNotificationService);
         },
       };
 
       // Register the AIResultsService
-      console.log('📝 Registering AIResultsService...');
       servicesManager.registerService(aiResultsServiceDefinition);
-      console.log('✅ AIResultsService registered successfully');
 
       // Register custom heatmap synchronizer type
       const { syncGroupService } = servicesManager.services;
       const { default: createHeatmapImageSliceSynchronizer } = require('./utils/createHeatmapImageSliceSynchronizer');
 
       syncGroupService.addSynchronizerType('heatmapImageSlice', createHeatmapImageSliceSynchronizer);
-      console.log('✅ Custom heatmap synchronizer registered');
 
       // Register ChatService for AI Chat panel
       const chatServiceDefinition = {
         name: 'chatService',
         create: ({ configuration = {} }) => {
-          console.log('🔧 Creating ChatService instance');
           return new ChatService();
         },
       };
       servicesManager.registerService(chatServiceDefinition);
-      console.log('✅ ChatService registered successfully');
     } catch (error) {
-      console.error('❌ Error during registration:', error);
+      console.error('Error during registration:', error);
     }
   },
 
@@ -123,7 +115,7 @@ export default {
     ];
   },
   /**
-   * LayoutTemplateMOdule should provide a list of layout templates that will be
+   * LayoutTemplateModule should provide a list of layout templates that will be
    * available in OHIF for Modes to consume and use to layout the viewer.
    * Each layout template is defined by a { name, id, component}. Examples include
    * the default layout template provided by the default extension which renders

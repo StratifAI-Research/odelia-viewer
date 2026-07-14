@@ -7,7 +7,8 @@ export function applyAIThumbnailStyles() {
     // Find all text elements in thumbnails that contain robot emoji
     const allTextElements = document.querySelectorAll('div[class*="text-"], span[class*="text-"]');
 
-    allTextElements.forEach(element => {
+    allTextElements.forEach(node => {
+      const element = node as HTMLElement;
       if (element.textContent && element.textContent.includes('🤖')) {
         // Only apply styles if the element is inside an AI-result thumbnail
         const thumbnailRoot = element.closest('.ai-result-thumbnail');
@@ -35,8 +36,9 @@ export function applyAIThumbnailStyles() {
         element.style.fontSize = '10px';
         element.style.maxHeight = '60px';
         element.style.display = '-webkit-box';
-        element.style.webkitLineClamp = '4';
-        element.style.webkitBoxOrient = 'vertical';
+        // Non-standard webkit clamp properties are not in CSSStyleDeclaration's type.
+        (element.style as any).webkitLineClamp = '4';
+        (element.style as any).webkitBoxOrient = 'vertical';
 
         // Mark as styled to prevent re-styling
         element.dataset.aiStyled = 'true';
@@ -57,34 +59,39 @@ export function applyAIThumbnailStyles() {
   }, 100);
 }
 
-let observerDebounceTimer = null;
+let observerDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 /**
  * Set up a mutation observer to handle dynamically added thumbnails
  */
 export function setupAIThumbnailObserver() {
+  const win = window as any;
+
   // Clear any existing observer
-  if (window.aiThumbnailObserver) {
-    window.aiThumbnailObserver.disconnect();
+  if (win.aiThumbnailObserver) {
+    win.aiThumbnailObserver.disconnect();
   }
 
   const observer = new MutationObserver((mutations) => {
     // Debounce to prevent excessive calls
-    clearTimeout(observerDebounceTimer);
+    if (observerDebounceTimer) {
+      clearTimeout(observerDebounceTimer);
+    }
     observerDebounceTimer = setTimeout(() => {
       let shouldApplyStyles = false;
 
       mutations.forEach((mutation) => {
         if (mutation.addedNodes.length > 0) {
           // Only trigger if we actually added thumbnail-related nodes
-          for (let node of mutation.addedNodes) {
+          for (const node of mutation.addedNodes) {
             if (node.nodeType === 1) { // Element node
+              const element = node as Element;
               // Safe className check - ensure it's a string before calling includes
-              const className = node.className;
-              const classNameStr = typeof className === 'string' ? className : className?.toString?.() || '';
+              const className: unknown = (element as any).className;
+              const classNameStr = typeof className === 'string' ? className : (className as any)?.toString?.() || '';
 
               if (classNameStr.includes('thumbnail') ||
-                  (node.querySelector && node.querySelector('[class*="thumbnail"]'))) {
+                  (element.querySelector && element.querySelector('[class*="thumbnail"]'))) {
                 shouldApplyStyles = true;
                 break;
               }
@@ -110,5 +117,5 @@ export function setupAIThumbnailObserver() {
   });
 
   // Store observer globally so we can clean it up
-  window.aiThumbnailObserver = observer;
+  win.aiThumbnailObserver = observer;
 }

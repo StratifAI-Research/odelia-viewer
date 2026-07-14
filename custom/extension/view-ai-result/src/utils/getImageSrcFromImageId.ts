@@ -1,11 +1,11 @@
 /**
  * Returns a data URI thumbnail for given cornerstone imageId.
- * @param {*} cornerstone - cornerstone library (from getCornerstoneLibraries())
- * @param {string} imageId - the cornerstone imageId to load
- * @returns {Promise<string>} resolves to base64 data URI
+ * @param cornerstone - cornerstone library (from getCornerstoneLibraries())
+ * @param imageId - the cornerstone imageId to load
+ * @returns resolves to base64 data URI
  */
-function getImageSrcFromImageId(cornerstone, imageId) {
-  return new Promise((resolve, reject) => {
+function getImageSrcFromImageId(cornerstone, imageId): Promise<string> {
+  return new Promise<string>((resolve, reject) => {
     const canvas = document.createElement('canvas');
     cornerstone.utilities
       .loadImageToCanvas({ canvas, imageId, thumbnail: true })

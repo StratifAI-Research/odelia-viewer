@@ -1,5 +1,5 @@
 import { id } from './id';
-import toolbarButtons from './toolbarButtons.js';
+import toolbarButtons from './toolbarButtons';
 import { DicomMetadataStore } from '@ohif/core';
 import getStudies from './studiesList';
 
@@ -18,7 +18,7 @@ const ohif = {
 const labeling = {
   patientPanel: 'labeling.panelModule.panelLabeling',
   studyPanel: 'labeling.panelModule.panelLabelingStudy',
-  leisonPanel: 'labeling.panelModule.panelLabelingLeison',
+  lesionPanel: 'labeling.panelModule.panelLabelingLesion',
 };
 
 const cornerstone = {
@@ -254,7 +254,7 @@ function modeFactory({ modeConfiguration }) {
             id: ohif.layout,
             props: {
               leftPanels: [ohif.leftPanel],
-              rightPanels: [labeling.patientPanel, labeling.studyPanel, labeling.leisonPanel],
+              rightPanels: [labeling.patientPanel, labeling.studyPanel, labeling.lesionPanel],
               viewports: [
                 {
                   namespace: cornerstone.viewport,

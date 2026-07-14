@@ -4,7 +4,7 @@ const config: Config = require('../utils/config.json');
 import {
   ODELIA_LABELING_SOURCE_NAME,
   ODELIA_LABELING_SOURCE_VERSION,
-} from '../measuermentServiceMappings/ODELIALabel';
+} from '../measurementServiceMappings/ODELIALabel';
 import { utils } from '@ohif/core';
 
 const unusedColumns = [
@@ -12,12 +12,15 @@ const unusedColumns = [
   'Patient ID',
   'Patient Name',
   'StudyInstanceUID',
+  // Kept spelled 'Leison ID' verbatim: this matches the column name emitted by
+  // the external annotation-export producer, not code we own. Renaming it here
+  // would stop the (misspelled) foreign column from being filtered out.
   'Leison ID',
   'Label',
 ];
 
 // Lesion geometry/metadata columns — never part of an ODELIA label's label_data.
-const leisonToolColumns = ['FrameOfReferenceUID', 'points', 'referencedImageId'];
+const lesionToolColumns = ['FrameOfReferenceUID', 'points', 'referencedImageId'];
 
 export default function importCSVReport(
   { measurementService, extensionManager },
@@ -27,7 +30,7 @@ export default function importCSVReport(
 
   const dataSource = extensionManager.getActiveDataSource()[0];
 
-  const label_source = measurementService.getSource(
+  const labelSource = measurementService.getSource(
     ODELIA_LABELING_SOURCE_NAME,
     ODELIA_LABELING_SOURCE_VERSION
   );
@@ -47,11 +50,11 @@ export default function importCSVReport(
 
   console.log('Matched Mapping', matchingMapping);
 
-  const leisonConfig = getPanelConfig(config, 'leison table');
+  const lesionConfig = getPanelConfig(config, 'lesion table');
 
   // CSVImporter parses with Papa `header: true`, so csvData is already one
   // object per row keyed by the header names — exactly the shape
-  // _collateLabels and _parseLeisons expect. (This previously zipped
+  // _collateLabels and _parseLesions expect. (This previously zipped
   // csvData[0] as a header array against csvData.slice(1) as value arrays,
   // which yielded empty rows and then crashed on undefined `points` once
   // header:true was introduced upstream.)
@@ -62,14 +65,14 @@ export default function importCSVReport(
   Object.keys(labels).forEach(patientID => {
     const label_data = Object.keys(labels[patientID])
       // Keep only label-panel columns: drop identifiers, lesion geometry, and
-      // lesion-label columns (the last mirrors _parseLeisons' filter below).
-      // Previously `!(key in leisonConfig)` tested the config object's own keys
+      // lesion-label columns (the last mirrors _parseLesions' filter below).
+      // Previously `!(key in lesionConfig)` tested the config object's own keys
       // (name/label_options), so lesion columns leaked into the label.
       .filter(
         key =>
           !unusedColumns.includes(key) &&
-          !leisonToolColumns.includes(key) &&
-          !(key in leisonConfig.label_options[0])
+          !lesionToolColumns.includes(key) &&
+          !(key in lesionConfig.label_options[0])
       )
       .reduce((obj, key) => {
         obj[key] = labels[patientID][key];
@@ -87,7 +90,7 @@ export default function importCSVReport(
       type: 'ODELIALabel',
     };
     measurementService.addRawMeasurement(
-      label_source,
+      labelSource,
       annotationType,
       { annotation },
       matchingMapping.toMeasurementSchema,
@@ -98,31 +101,31 @@ export default function importCSVReport(
   const CORNERSTONE_3D_TOOLS_SOURCE_NAME = 'Cornerstone3DTools';
   const CORNERSTONE_3D_TOOLS_SOURCE_VERSION = '0.1';
 
-  const leison_source = measurementService.getSource(
+  const lesionSource = measurementService.getSource(
     CORNERSTONE_3D_TOOLS_SOURCE_NAME,
     CORNERSTONE_3D_TOOLS_SOURCE_VERSION
   );
 
-  const leisonMappings = measurementService.getSourceMappings(
+  const lesionMappings = measurementService.getSourceMappings(
     CORNERSTONE_3D_TOOLS_SOURCE_NAME,
     CORNERSTONE_3D_TOOLS_SOURCE_VERSION
   );
-  const leisonAnnotationType = 'CircleROI';
-  console.log('Leision Mappings', leisonMappings);
-  const matchingLeisonMapping = leisonMappings.find(
-    m => m.annotationType === leisonAnnotationType
+  const lesionAnnotationType = 'CircleROI';
+  console.log('Lesion Mappings', lesionMappings);
+  const matchingLesionMapping = lesionMappings.find(
+    m => m.annotationType === lesionAnnotationType
   );
 
-  const leisons: any = _parseLeisons(parsedMeasurements, leisonConfig);
-  leisons.forEach(annotation => {
+  const lesions: any = _parseLesions(parsedMeasurements, lesionConfig);
+  lesions.forEach(annotation => {
     const uid = measurementService.addRawMeasurement(
-      leison_source,
-      leisonAnnotationType,
+      lesionSource,
+      lesionAnnotationType,
       { annotation },
-      matchingLeisonMapping.toMeasurementSchema,
+      matchingLesionMapping.toMeasurementSchema,
       dataSource
     );
-    // Initialize leisons labeling table
+    // Initialize lesions labeling table
     console.log(uid);
     const measurement = measurementService.getMeasurement(uid);
     measurement.label_data = {};
@@ -141,8 +144,8 @@ function _collateLabels(parsedMeasurements) {
   return collatedLabels;
 }
 
-function _parseLeisons(parsedMeasurements, leisonColumns) {
-  const parsedLeisions: any[] = [];
+function _parseLesions(parsedMeasurements, lesionColumns) {
+  const parsedLesions: any[] = [];
   parsedMeasurements.forEach(element => {
     // Only rows carrying lesion geometry become lesion annotations; label-only
     // rows have no `points`, so skip them (guards element['points'].split).
@@ -150,18 +153,18 @@ function _parseLeisons(parsedMeasurements, leisonColumns) {
       return;
     }
 
-    const leision_data = Object.keys(element)
+    const lesionData = Object.keys(element)
       .filter(
         key =>
-          !unusedColumns.includes(key) && key in leisonColumns.label_options[0]
+          !unusedColumns.includes(key) && key in lesionColumns.label_options[0]
       )
       .reduce((obj, key) => {
         obj[key] = element[key];
         return obj;
       }, {});
     console.log(element);
-    console.log(leisonColumns);
-    console.log(leision_data);
+    console.log(lesionColumns);
+    console.log(lesionData);
 
     const annotation = {
       annotationUID: utils.guid(),
@@ -171,7 +174,7 @@ function _parseLeisons(parsedMeasurements, leisonColumns) {
         referencedImageId: element['referencedImageId'],
       },
       data: {
-        label_data: leision_data,
+        label_data: lesionData,
         cachedStats: [],
         handles: {
           textBox: {},
@@ -186,7 +189,7 @@ function _parseLeisons(parsedMeasurements, leisonColumns) {
       type: 'value_type::circle',
     };
     console.log(element['points']);
-    parsedLeisions.push(annotation);
+    parsedLesions.push(annotation);
   });
-  return parsedLeisions;
+  return parsedLesions;
 }

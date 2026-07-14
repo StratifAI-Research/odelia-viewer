@@ -6,7 +6,7 @@ import i18n from 'i18next';
 import React, { useCallback } from 'react';
 import { useSystem } from '@ohif/core';
 import { requestDisplaySetCreationForStudy } from '@ohif/extension-default';
-import getImageSrcFromImageId from './panels/PanelStudyBrowserTracking/getImageSrcFromImageId';
+import getImageSrcFromImageId from './utils/getImageSrcFromImageId';
 import FeedbackPanel from './panels/FeedbackPanel/FeedbackPanel';
 import ChatPanel from './panels/ChatPanel/ChatPanel';
 

@@ -6,7 +6,7 @@ import ActionButtons from './ActionButtons';
 import CSVImporter from './CSVImporter'
 
 import debounce from 'lodash.debounce';
-import LabelingTable from '../../ui/LabelingTable';
+import LabelingTable from '../ui/LabelingTable';
 import Config from "../utils/config";
 import { getPanelConfig } from '../utils/panelConfig';
 
@@ -14,7 +14,7 @@ import { getPanelConfig } from '../utils/panelConfig';
 import downloadCSVReport from '../utils/downloadCSVReport';
 import importCSVReport from '../utils/importCSVReport';
 
-export default function PanelLeisonTable({
+export default function PanelLesionTable({
   name,
   servicesManager,
   commandsManager,
@@ -30,8 +30,8 @@ export default function PanelLeisonTable({
   } = (servicesManager as any).services;
   const [displayMeasurements, setDisplayMeasurements] = useState<any[]>([]);
 
-  let total_config: Config = require('../utils/config.json');
-  let config = getPanelConfig(total_config, name)
+  let totalConfig: Config = require('../utils/config.json');
+  let config = getPanelConfig(totalConfig, name)
 
   useEffect(() => {
     const debouncedSetDisplayMeasurements = debounce(
@@ -112,7 +112,7 @@ export default function PanelLeisonTable({
             const measurement = measurementService.getMeasurement(uid);
             measurement.label_data[label] = label_value
             console.log(measurement.label)
-            measurement.label = "Leision annotated"
+            measurement.label = "Lesion annotated"
             measurementService.update(uid, measurement)
           };
 
@@ -124,7 +124,7 @@ export default function PanelLeisonTable({
           return (
             <div className="p-4 bg-primary-dark">
               <LabelingTable
-                title='Leison annotation'
+                title='Lesion annotation'
                 measurement={measurement}
                 config={config}
                 onChange={onMeasurementItemEditHandler}
@@ -183,13 +183,13 @@ export default function PanelLeisonTable({
   );
 }
 
-PanelLeisonTable.propTypes = {
+PanelLesionTable.propTypes = {
   servicesManager: PropTypes.instanceOf(ServicesManager).isRequired,
 };
 
 function _getMappedMeasurements(measurementService) {
   const measurements = measurementService.getMeasurements();
-  const filteredMeasurements = measurements.filter((element) => element.toolName != "ODELIALabel")
+  const filteredMeasurements = measurements.filter((element) => element.toolName !== "ODELIALabel")
 
   const mappedMeasurements = filteredMeasurements.map((m, index) =>
     _mapMeasurementToDisplay(m, index, measurementService.VALUE_TYPES)
@@ -200,7 +200,7 @@ function _getMappedMeasurements(measurementService) {
 
 /**
  * Map the measurements to the display text.
- * Adds finding and site inforamtion to the displayText and/or label,
+ * Adds finding and site information to the displayText and/or label,
  * and provides as 'displayText' and 'label', while providing the original
  * values as baseDisplayText and baseLabel
  */
@@ -216,7 +216,7 @@ function _mapMeasurementToDisplay(measurement, index, types) {
   } = measurement;
 
   const firstSite = findingSites?.[0];
-  const label = baseLabel || finding?.text || firstSite?.text || 'Leison not annotated';
+  const label = baseLabel || finding?.text || firstSite?.text || 'Lesion not annotated';
   let displayText = baseDisplayText || [];
   if (findingSites) {
     const siteText: any[] = [];

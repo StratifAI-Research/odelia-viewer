@@ -127,7 +127,7 @@ export default function PanelStudyBrowserTracking({
   const [selectedSRUID, setSelectedSRUID] = useState<string | null>(null);
   const selectedSRUIDRef = useRef<string | null>(null);
 
-  // Keep ref in sync so subscripton callback always has latest value
+  // Keep ref in sync so subscription callback always has latest value
   useEffect(() => {
     selectedSRUIDRef.current = selectedSRUID;
   }, [selectedSRUID]);
@@ -318,28 +318,15 @@ export default function PanelStudyBrowserTracking({
       // Handle AI result selection
       const studyInstanceUID = displaySet.StudyInstanceUID || displaySet.studyInstanceUID;
 
-      console.log(`AI result clicked - Modality: ${modality}, StudyUID: ${studyInstanceUID}`);
-
-      // Debug: Check service availability
-      console.log('🔍 Debug service availability:', {
-        hasAIResultsService: !!aiResultsService,
-        hasStudyInstanceUID: !!studyInstanceUID,
-        studyInstanceUID,
-        serviceType: typeof aiResultsService,
-        serviceMethods: aiResultsService ? Object.getOwnPropertyNames(Object.getPrototypeOf(aiResultsService)) : 'N/A'
-      });
-
       // Set selected AI result using the service
       if (aiResultsService && studyInstanceUID) {
         try {
-          console.log('🚀 Calling aiResultsService.setSelectedAIResult...');
           aiResultsService.setSelectedAIResult(studyInstanceUID, displaySetInstanceUID, servicesManager);
-          console.log('✅ AI result event published successfully');
         } catch (error) {
-          console.error('❌ Error calling aiResultsService.setSelectedAIResult:', error);
+          console.error('Error calling aiResultsService.setSelectedAIResult:', error);
         }
       } else {
-        console.error('❌ aiResultsService not available or missing studyInstanceUID', {
+        console.error('aiResultsService not available or missing studyInstanceUID', {
           hasService: !!aiResultsService,
           hasUID: !!studyInstanceUID
         });

@@ -1,7 +1,7 @@
 import { utils } from "@ohif/core";
 import Config from "./utils/config";
 const config: Config = require('./utils/config.json');
-import { ODELIA_LABELING_SOURCE_NAME, ODELIA_LABELING_SOURCE_VERSION } from "./measuermentServiceMappings/ODELIALabel";
+import { ODELIA_LABELING_SOURCE_NAME, ODELIA_LABELING_SOURCE_VERSION } from "./measurementServiceMappings/ODELIALabel";
 export default function initLabels({ measurementService, extensionManager, StudyInstanceUID }) {
   // getMeasurements() returns an array; destructuring `{ measurements }` off it
   // yielded undefined and defeated the "already inited" guard below, so labels
@@ -22,7 +22,7 @@ export default function initLabels({ measurementService, extensionManager, Study
   if (
     measurements &&
     measurements.some(
-      (element) => element.type === 'ODELIALabel' && element.referenceStudyUID == StudyInstanceUID
+      (element) => element.type === 'ODELIALabel' && element.referenceStudyUID === StudyInstanceUID
     )
   ) {
     console.log("Measurement already inited, skipping")

@@ -1,5 +1,5 @@
 
-import { ODELIALabel, ODELIA_LABELING_SOURCE_NAME, ODELIA_LABELING_SOURCE_VERSION } from './measuermentServiceMappings/ODELIALabel';
+import { ODELIALabel, ODELIA_LABELING_SOURCE_NAME, ODELIA_LABELING_SOURCE_VERSION } from './measurementServiceMappings/ODELIALabel';
 
 const initMeasurementService = (
   measurementService,

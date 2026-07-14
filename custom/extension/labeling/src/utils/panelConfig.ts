@@ -4,7 +4,7 @@ import type { PanelConfig } from './config';
 /**
  * Returns the panel_configs entry with the given name, throwing if none matches.
  *
- * Shared by PanelLabeling, PanelLeisons, and importCSVReport.
+ * Shared by PanelLabeling, PanelLesions, and importCSVReport.
  *
  * NB: lives in its own module (not config.ts) because the labeling webpack
  * resolve order puts `.json` before `.ts`, so a runtime import of

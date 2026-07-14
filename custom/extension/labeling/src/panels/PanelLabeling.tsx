@@ -4,7 +4,7 @@ import ActionButtons from './ActionButtons';
 import CSVImporter from './CSVImporter';
 import debounce from 'lodash.debounce';
 import { useTranslation } from 'react-i18next';
-import LabelingTable from '../../ui/LabelingTable';
+import LabelingTable from '../ui/LabelingTable';
 import downloadCSVReport from '../utils/downloadCSVReport';
 import importCSVReport from '../utils/importCSVReport';
 import Config from '../utils/config';
@@ -18,8 +18,8 @@ export default function PanelLabeling({
 }) {
   const { measurementService, uiDialogService } = servicesManager.services;
 
-  let total_config: Config = require('../utils/config.json');
-  let config = getPanelConfig(total_config, name);
+  let totalConfig: Config = require('../utils/config.json');
+  let config = getPanelConfig(totalConfig, name);
   const { t } = useTranslation('PanelLabeling');
   const [displayMeasurements, setDisplayMeasurements] = useState([]);
 
@@ -61,7 +61,7 @@ export default function PanelLabeling({
   function _getMappedMeasurements(measurementService) {
     const measurements = measurementService.getMeasurements();
     const filteredMeasurements = measurements.filter(
-      element => element.toolName == 'ODELIALabel'
+      element => element.toolName === 'ODELIALabel'
     );
     return filteredMeasurements;
   }

@@ -1,4 +1,4 @@
-import { AIResult } from '../types';
+import { AIResult } from '.';
 
 export interface AIClassificationOverlayProps {
   aiResult: AIResult;
