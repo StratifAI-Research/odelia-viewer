@@ -11,6 +11,22 @@ test('should hydrate SR reports correctly', async ({ page }) => {
   await page.getByTestId('side-panel-header-right').click();
   await page.getByTestId('trackedMeasurements-btn').click();
   await page.getByTestId('study-browser-thumbnail-no-image').dblclick();
+
+  // Wait for the SR's referenced image to actually load and paint before the
+  // screenshot; under software rendering the referenced CT can still be blank
+  // (only the SR annotation overlay drawn) right after opening the SR.
+  await page.waitForFunction(
+    () => {
+      const cornerstone = window.cornerstone;
+      const viewport = cornerstone?.getEnabledElements?.()[0]?.viewport;
+      const imageIds = viewport?.getImageIds?.() ?? [];
+      return imageIds.length > 0;
+    },
+    undefined,
+    { timeout: 30000 }
+  );
+  await page.waitForTimeout(1500);
+
   await checkForScreenshot(page, page, screenShotPaths.srHydration.srPreHydration);
 
   await page.evaluate(() => {
