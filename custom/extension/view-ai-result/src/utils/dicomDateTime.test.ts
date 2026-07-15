@@ -1,4 +1,8 @@
-import { formatDicomDateTime, dicomDateTimeToIsoUtc } from './dicomDateTime';
+import {
+  formatDicomDateTime,
+  dicomDateTimeToIsoUtc,
+  resultTsFromDisplaySet,
+} from './dicomDateTime';
 
 describe('dicomDateTime utils', () => {
   describe('formatDicomDateTime', () => {
@@ -62,6 +66,44 @@ describe('dicomDateTime utils', () => {
       const utc = dicomDateTimeToIsoUtc('20240315', '120000', '+0000');
       const plus2 = dicomDateTimeToIsoUtc('20240315', '140000', '+0200');
       expect(utc).toEqual(plus2);
+    });
+  });
+
+  describe('resultTsFromDisplaySet', () => {
+    it('returns undefined for a null/undefined display set', () => {
+      expect(resultTsFromDisplaySet(undefined)).toBeUndefined();
+      expect(resultTsFromDisplaySet(null)).toBeUndefined();
+    });
+
+    it('prefers instance InstanceCreationDate/Time over series/study fields', () => {
+      const ds = {
+        instance: { InstanceCreationDate: '20240315', InstanceCreationTime: '120000' },
+        SeriesDate: '20200101',
+        StudyDate: '20100101',
+      };
+      expect(resultTsFromDisplaySet(ds)).toBe(dicomDateTimeToIsoUtc('20240315', '120000', null));
+    });
+
+    it('falls back through Series -> Content -> Study when instance is absent', () => {
+      expect(resultTsFromDisplaySet({ SeriesDate: '20240315', SeriesTime: '090000' })).toContain(
+        '2024-03-15'
+      );
+      expect(resultTsFromDisplaySet({ ContentDate: '20240316' })).toContain('2024-03-16');
+      expect(resultTsFromDisplaySet({ StudyDate: '20240317' })).toContain('2024-03-17');
+    });
+
+    it('applies the instance timezone offset', () => {
+      const utc = resultTsFromDisplaySet({
+        instance: { InstanceCreationDate: '20240315', InstanceCreationTime: '120000', TimezoneOffsetFromUTC: '+0000' },
+      });
+      const plus2 = resultTsFromDisplaySet({
+        instance: { InstanceCreationDate: '20240315', InstanceCreationTime: '140000', TimezoneOffsetFromUTC: '+0200' },
+      });
+      expect(utc).toEqual(plus2);
+    });
+
+    it('returns undefined when no date field is present', () => {
+      expect(resultTsFromDisplaySet({ instance: {} })).toBeUndefined();
     });
   });
 });

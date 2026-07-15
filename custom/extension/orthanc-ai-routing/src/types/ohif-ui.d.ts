@@ -1,24 +1,6 @@
-import { DialogAction } from '@ohif/ui';
-
 declare module '@ohif/ui' {
   export const Button: React.ComponentType<any>;
   export const LoadingIndicatorProgress: React.ComponentType<any>;
-
-  export interface DialogProps {
-    title?: string;
-    text: string;
-    onClose?: () => void;
-    noCloseButton?: boolean;
-    actions: DialogAction[];
-    onSubmit: () => void;
-    header?: React.ComponentType<any>;
-    body?: React.ComponentType<any>;
-    footer?: React.ComponentType<any>;
-    value?: Record<string, any>;
-    onShow?: () => void;
-  }
-
-  export const Dialog: React.FC<DialogProps>;
   // Add other components as needed
 }
 

@@ -127,7 +127,7 @@
           }
         },
         {
-          "Neoadjuvant Radiatio": {
+          "Neoadjuvant Radiation": {
             "type": "options",
             "options": [
               "Yes",
@@ -175,7 +175,7 @@
       ]
     },
     {
-      "name": "leison table",
+      "name": "lesion table",
       "label_options": [
         {
           "Type of Lesion": {

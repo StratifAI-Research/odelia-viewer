@@ -7,7 +7,7 @@ const LabelingTable = ({ title, measurement, config, onClick, onChange }) => {
   const label_options = Object.assign({}, ...config.label_options);
   // Fill in label data for new measurements
 
-  if (measurement.label == '') {
+  if (measurement.label === '') {
     measurement.label_data = {};
     console.log(measurement.label_data);
     Object.keys(label_options).forEach(element => {
@@ -27,7 +27,7 @@ const LabelingTable = ({ title, measurement, config, onClick, onChange }) => {
           Object.keys(measurement.label_data)
             .filter(key => key in label_options)
             .map((key, index) => {
-              if (label_options[key].type == 'options') {
+              if (label_options[key].type === 'options') {
                 return (
                   <LabelingOptions
                     key={key}

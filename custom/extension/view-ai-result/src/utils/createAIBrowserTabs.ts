@@ -1,9 +1,13 @@
 import { getStaticDate } from './dateCache';
 import { extractAIResultData } from './extractAIResultData';
 import { formatDicomDateTime } from './dicomDateTime';
-
-// Cache for expensive display set lookups - key: displaySetInstanceUID, value: realDisplaySet
-const displaySetCache = new Map();
+import {
+  isAIResult,
+  getRealDisplaySet,
+  getCreationTzOffset,
+  clearAITabCache,
+  getAITabCacheSize,
+} from './aiTabHelpers';
 
 /**
  * Creates tabs for the study browser that groups AI results by model name + datetime
@@ -19,69 +23,6 @@ export function createAIBrowserTabs(
   displaySets,
   servicesManager: any = null
 ) {
-  // Reduced logging for performance - only log on initial call or cache misses
-  if (displaySetCache.size === 0) {
-    console.log('createAIBrowserTabs called with:', {
-      primaryStudyInstanceUIDs,
-      displaySetsCount: displaySets?.length,
-      hasServicesManager: !!servicesManager
-    });
-  }
-
-  // Helper function to check if a display set is an AI result
-  const isAIResult = (displaySet) => {
-    if (!displaySet) return false;
-    const modality = displaySet.Modality || displaySet.modality;
-    return modality === 'SR' || modality === 'SC';
-  };
-
-  // Helper function to get real display set from service with caching
-  const getRealDisplaySet = (thumbnailDisplaySet) => {
-    if (!servicesManager?.services?.displaySetService) {
-      return thumbnailDisplaySet;
-    }
-
-    const cacheKey = thumbnailDisplaySet.displaySetInstanceUID;
-
-    // Check cache first - return immediately if found
-    if (displaySetCache.has(cacheKey)) {
-      return displaySetCache.get(cacheKey);
-    }
-
-    try {
-      const realDisplaySet = (servicesManager as any).services.displaySetService.getDisplaySetByUID(
-        thumbnailDisplaySet.displaySetInstanceUID
-      );
-
-      const result = realDisplaySet || thumbnailDisplaySet;
-
-      // Cache the result
-      displaySetCache.set(cacheKey, result);
-
-      // Only log when actually retrieving (not from cache)
-      if (realDisplaySet) {
-        console.log('Retrieved real display set:', {
-          displaySetInstanceUID: thumbnailDisplaySet.displaySetInstanceUID,
-          hasInstance: !!realDisplaySet?.instance,
-          instanceDate: realDisplaySet?.instance?.InstanceCreationDate,
-          instanceTime: realDisplaySet?.instance?.InstanceCreationTime
-        });
-      }
-
-      return result;
-    } catch (error) {
-      console.warn('Error getting real display set:', error);
-      // Cache the fallback too
-      displaySetCache.set(cacheKey, thumbnailDisplaySet);
-      return thumbnailDisplaySet;
-    }
-  };
-
-  // Helper that wraps the shared util; keeps call-sites simple
-  const formatDateTime = (date, time, offset) => {
-    return formatDicomDateTime(date, time, offset);
-  };
-
   // Group display sets
   const originalSeries = new Map();
   const aiResultGroups = new Map(); // Key: "modelName|datetime", Value: series data
@@ -90,7 +31,7 @@ export function createAIBrowserTabs(
   displaySets.forEach(thumbnailDisplaySet => {
     if (isAIResult(thumbnailDisplaySet)) {
       // Get the real display set with instance data
-      const realDisplaySet = getRealDisplaySet(thumbnailDisplaySet);
+      const realDisplaySet = getRealDisplaySet(thumbnailDisplaySet, servicesManager);
 
       // Extract AI model info
       const aiResultData = extractAIResultData(realDisplaySet);
@@ -99,12 +40,9 @@ export function createAIBrowserTabs(
       // Extract creation date/time and possible timezone offset from real display set
       const creationDate = realDisplaySet?.instance?.InstanceCreationDate;
       const creationTime = realDisplaySet?.instance?.InstanceCreationTime;
-      const tzOffset =
-        realDisplaySet?.instance?.TimezoneOffsetFromUTC ||
-        realDisplaySet?.instance?.TimezoneOffset ||
-        null;
+      const tzOffset = getCreationTzOffset(realDisplaySet);
 
-      const formattedDateTime = formatDateTime(creationDate, creationTime, tzOffset);
+      const formattedDateTime = formatDicomDateTime(creationDate, creationTime, tzOffset);
 
       // Reduced logging - only log when datetime formatting fails
       if (!formattedDateTime && creationDate) {
@@ -239,16 +177,16 @@ export function createAIBrowserTabs(
 }
 
 /**
- * Clear the display set cache to prevent memory leaks
+ * Clear the display set cache to prevent memory leaks. Delegates to the shared cache in
+ * aiTabHelpers; kept as a named export for existing callers and tests.
  */
 export function clearDisplaySetCache() {
-  console.log('Clearing display set cache, size was:', displaySetCache.size);
-  displaySetCache.clear();
+  clearAITabCache();
 }
 
 /**
- * Get cache size for debugging
+ * Get cache size for debugging. Delegates to the shared cache in aiTabHelpers.
  */
 export function getDisplaySetCacheSize() {
-  return displaySetCache.size;
+  return getAITabCacheSize();
 }

@@ -23,7 +23,7 @@ const compare = (a, b, defaultCompare = 0): number => {
  * order or in study instance UID order - not very useful, but
  * if not specifically specified then at least making it consistent is useful.
  */
-const getStudiesfromDisplaySets = (displaySets: any[]): StudyMetadata[] => {
+const getStudiesFromDisplaySets = (displaySets: any[]): StudyMetadata[] => {
   const studyMap = {};
 
   const ret = displaySets.reduce((prev, curr) => {
@@ -51,7 +51,7 @@ const getStudiesfromDisplaySets = (displaySets: any[]): StudyMetadata[] => {
  * in the original order, as specified.
  */
 // Returns undefined (not []) when there are no UIDs, so the `||` fallback in
-// getStudies falls through to getStudiesfromDisplaySets — an empty array would
+// getStudies falls through to getStudiesFromDisplaySets — an empty array would
 // be truthy and suppress the fallback.
 const getStudiesFromUIDs = (studyUids?: string[]): StudyMetadata[] | undefined => {
   if (!studyUids?.length) return;
@@ -61,10 +61,10 @@ const getStudiesFromUIDs = (studyUids?: string[]): StudyMetadata[] | undefined =
 /** Gets the array of studies */
 const getStudies = (studyUids: string[] | undefined, displaySets: any[]): StudyMetadata[] => {
   return (
-    getStudiesFromUIDs(studyUids) || getStudiesfromDisplaySets(displaySets)
+    getStudiesFromUIDs(studyUids) || getStudiesFromDisplaySets(displaySets)
   );
 };
 
 export default getStudies;
 
-export { getStudies, getStudiesFromUIDs, getStudiesfromDisplaySets, compare };
+export { getStudies, getStudiesFromUIDs, getStudiesFromDisplaySets, compare };

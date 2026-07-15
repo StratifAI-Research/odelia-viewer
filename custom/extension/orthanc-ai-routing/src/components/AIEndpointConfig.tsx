@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Button, Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '@ohif/ui-next';
-import { AI_ENDPOINTS_STORAGE_KEY } from '../constants';
+import {
+  AI_ENDPOINTS_STORAGE_KEY,
+  DEFAULT_AI_ENDPOINT_NAME,
+  DEFAULT_AI_ENDPOINT_URL,
+} from '../constants';
 
 // Interface for AI endpoint configuration
 export interface AIEndpoint {
@@ -20,9 +24,31 @@ interface AIEndpointConfigProps {
 // Default AI endpoint configuration
 const DEFAULT_ENDPOINT: AIEndpoint = {
   id: 'default-ai-server',
-  name: 'ai-server',
-  url: 'http://orthanc-router:8042/dicom-web',
+  name: DEFAULT_AI_ENDPOINT_NAME,
+  url: DEFAULT_AI_ENDPOINT_URL,
 };
+
+/** Persistence-safe endpoint shape: everything except the secret `password`. */
+export type PersistedEndpoint = Omit<AIEndpoint, 'password'>;
+
+/**
+ * Return a persistence-safe copy of the endpoints, keeping only the non-secret fields.
+ * The password must never be written to localStorage in plaintext; it is not
+ * transmitted by routing requests anyway, so persisting it is pure liability.
+ *
+ * This is an explicit allow-list (rebuild from known-safe fields) rather than a
+ * `{ password, ...rest }` deny-list: it guarantees any secret-bearing field added to
+ * AIEndpoint later cannot silently leak into storage. The `PersistedEndpoint` return
+ * type carries no `password` field, so the value written to storage is statically
+ * password-free (both at runtime and in the type that reaches the sink).
+ *
+ * NOTE: do not put "secret"/"password"/"credential" in this function's name — CodeQL's
+ * sensitive-data heuristic classifies a call's return value as sensitive purely from the
+ * callee name, so a name like `stripEndpointSecrets` produces false-positive clear-text
+ * storage alerts even though the returned value provably contains no secret.
+ */
+export const toPersistableEndpoints = (endpoints: AIEndpoint[]): PersistedEndpoint[] =>
+  endpoints.map(({ id, name, url, username }) => ({ id, name, url, username }));
 
 const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   onEndpointChange,
@@ -68,7 +94,7 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
         loadedEndpoints = [DEFAULT_ENDPOINT];
       }
       // Save to localStorage for future
-      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(loadedEndpoints));
+      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(toPersistableEndpoints(loadedEndpoints)));
     }
 
     setEndpoints(loadedEndpoints);
@@ -83,7 +109,7 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   // Save endpoints to localStorage whenever they change
   useEffect(() => {
     if (endpoints.length > 0) {
-      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(endpoints));
+      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(toPersistableEndpoints(endpoints)));
     }
   }, [endpoints]);
 
@@ -169,14 +195,14 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
       const defaultEndpoint = { ...DEFAULT_ENDPOINT };
       setEndpoints([defaultEndpoint]);
       onEndpointChange(defaultEndpoint);
-      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify([defaultEndpoint]));
+      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(toPersistableEndpoints([defaultEndpoint])));
     } else {
       setEndpoints(updatedEndpoints);
       // If we're deleting the current endpoint, select another one
       if (currentEndpoint && currentEndpoint.id === endpointId) {
         onEndpointChange(updatedEndpoints[0]);
       }
-      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(updatedEndpoints));
+      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(toPersistableEndpoints(updatedEndpoints)));
     }
 
     handleCloseForm();

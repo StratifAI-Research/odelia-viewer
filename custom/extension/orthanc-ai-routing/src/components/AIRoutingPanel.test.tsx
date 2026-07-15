@@ -30,8 +30,8 @@ jest.mock('./steps/InputModeSelectionStep', () => ({
 jest.mock('./steps/InputMappingStep', () => ({
   InputMappingStep: (p: any) => { mockProps.mapping = p; return <div data-testid="step-mapping" />; },
 }));
-jest.mock('./steps/EndpointSelectionStep', () => ({
-  EndpointSelectionStep: (p: any) => { mockProps.confirm = p; return <div data-testid="step-confirm" />; },
+jest.mock('./steps/ConfirmStep', () => ({
+  ConfirmStep: (p: any) => { mockProps.confirm = p; return <div data-testid="step-confirm" />; },
 }));
 jest.mock('./steps/ProgressStep', () => ({
   ProgressStep: (p: any) => { mockProps.progress = p; return <div data-testid="step-progress" />; },

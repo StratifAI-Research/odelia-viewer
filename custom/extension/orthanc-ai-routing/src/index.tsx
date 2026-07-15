@@ -2,6 +2,7 @@ import React from 'react';
 import { id } from './id';
 import OrthancAIService from './services/OrthancAIService';
 import AIRoutingPanel from './components/AIRoutingPanel';
+import { DEFAULT_AI_ENDPOINT_NAME, DEFAULT_AI_ENDPOINT_URL } from './constants';
 
 // Add TypeScript declaration for the window.config
 declare global {
@@ -27,11 +28,11 @@ if (!window.config.orthancUrl) {
 
 // Set AI Server configuration defaults
 if (!window.config.aiServerName) {
-  window.config.aiServerName = 'ai-server';
+  window.config.aiServerName = DEFAULT_AI_ENDPOINT_NAME;
 }
 
 if (!window.config.aiServerUrl) {
-  window.config.aiServerUrl = 'http://orthanc-ai:8042';
+  window.config.aiServerUrl = DEFAULT_AI_ENDPOINT_URL;
 }
 
 export default {

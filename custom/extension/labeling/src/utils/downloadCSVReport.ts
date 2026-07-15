@@ -10,10 +10,10 @@ export default function downloadCSVReport(measurementData) {
 
   const reportMap = {};
   const labelMeasurements = measurementData.filter(
-    measurement => measurement.type == 'ODELIALabel'
+    measurement => measurement.type === 'ODELIALabel'
   );
-  const leisonMeasurements = measurementData.filter(
-    measurement => measurement.type == 'value_type::circle'
+  const lesionMeasurements = measurementData.filter(
+    measurement => measurement.type === 'value_type::circle'
   );
   labelMeasurements.forEach(measurement => {
     const {
@@ -24,8 +24,8 @@ export default function downloadCSVReport(measurementData) {
       type,
     } = measurement;
 
-    //if (type != "ODELIALabel") {
-    //  console.warn('Skipping leisons for now');
+    //if (type !== "ODELIALabel") {
+    //  console.warn('Skipping lesions for now');
     //  return;
     //}
     if (!getReport) {
@@ -43,30 +43,30 @@ export default function downloadCSVReport(measurementData) {
     const commonRowItems = _getCommonRowItems(measurement, seriesMetadata);
     const report = getReport(measurement);
 
-    //Filter leisions same as current study AND that has been annotated
-    const filteredLeisions = leisonMeasurements
-      .filter(measurement => measurement.referenceStudyUID == referenceStudyUID)
+    //Filter lesions same as current study AND that has been annotated
+    const filteredLesions = lesionMeasurements
+      .filter(measurement => measurement.referenceStudyUID === referenceStudyUID)
       .filter(measurement => measurement.label_data !== undefined);
 
-    // Duplicate ODELIA label for each leision and add leision report, otherwise return ODELIALAbel
-    if (filteredLeisions.length != 0) {
-      filteredLeisions.forEach(leisonMeasurement => {
-        const { getReport, uid, metadata } = leisonMeasurement;
+    // Duplicate ODELIA label for each lesion and add lesion report, otherwise return ODELIALabel
+    if (filteredLesions.length !== 0) {
+      filteredLesions.forEach(lesionMeasurement => {
+        const { getReport, uid, metadata } = lesionMeasurement;
 
-        const leisionReport = getReport(leisonMeasurement);
+        const lesionReport = getReport(lesionMeasurement);
 
         // TODO: Replace with proper getReport function for lesions
-        Object.keys(leisonMeasurement.label_data).forEach(key => {
-          leisionReport.columns.push(key);
-          leisionReport.values.push(leisonMeasurement.label_data[key]);
+        Object.keys(lesionMeasurement.label_data).forEach(key => {
+          lesionReport.columns.push(key);
+          lesionReport.values.push(lesionMeasurement.label_data[key]);
         });
 
-        leisionReport.columns = [...report.columns, ...leisionReport.columns];
-        leisionReport.values = [...report.values, ...leisionReport.values];
-        leisionReport.columns.push('referencedImageId');
-        leisionReport.values.push(metadata['referencedImageId']);
+        lesionReport.columns = [...report.columns, ...lesionReport.columns];
+        lesionReport.values = [...report.values, ...lesionReport.values];
+        lesionReport.columns.push('referencedImageId');
+        lesionReport.values.push(metadata['referencedImageId']);
         reportMap[uid] = {
-          report: leisionReport,
+          report: lesionReport,
           commonRowItems,
         };
       });
@@ -132,7 +132,7 @@ function _mapReportsToRowArray(reportMap, columns) {
   const results = [columns];
   Object.keys(reportMap).forEach(id => {
     const { report, commonRowItems } = reportMap[id];
-    const row = [];
+    const row: any[] = [];
     // For commonRowItems, find the correct index and add the value to the
     // correct row in the results array
     Object.keys(commonRowItems).forEach(key => {

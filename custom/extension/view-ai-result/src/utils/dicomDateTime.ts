@@ -110,3 +110,28 @@ export function dicomDateTimeToIsoUtc(
   const utcMillis = localMillis - offsetMinutes * 60 * 1000;
   return new Date(utcMillis).toISOString();
 }
+
+/**
+ * Derive an ISO-8601 UTC timestamp for an AI result from a display set, using the
+ * standard DICOM date/time fallback chain (InstanceCreation → Series → Content → Study)
+ * plus the instance timezone offset. Returns undefined when no usable date is present.
+ * Consolidates the fallback chain previously inlined in AIResultsService/FeedbackPanel.
+ */
+export function resultTsFromDisplaySet(displaySet?: any): string | undefined {
+  if (!displaySet) {
+    return undefined;
+  }
+  const instance = displaySet.instance;
+  const date =
+    instance?.InstanceCreationDate ||
+    displaySet.SeriesDate ||
+    displaySet.ContentDate ||
+    displaySet.StudyDate;
+  const time =
+    instance?.InstanceCreationTime ||
+    displaySet.SeriesTime ||
+    displaySet.ContentTime ||
+    displaySet.StudyTime;
+  const tzOffset = instance?.TimezoneOffsetFromUTC || null;
+  return dicomDateTimeToIsoUtc(date, time, tzOffset);
+}

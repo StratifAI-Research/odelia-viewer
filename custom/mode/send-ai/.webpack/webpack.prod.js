@@ -39,12 +39,6 @@ const config = {
         amd: '@ohif/ui',
         root: '@ohif/ui',
       },
-      '@ohif/mode-longitudinal': {
-        commonjs2: '@ohif/mode-longitudinal',
-        commonjs: '@ohif/mode-longitudinal',
-        amd: '@ohif/mode-longitudinal',
-        root: '@ohif/mode-longitudinal',
-      }
     },
   ],
   module: {

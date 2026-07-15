@@ -1,8 +1,8 @@
 import { id } from './id';
 import React from 'react';
 import PanelLabeling from './panels/PanelLabeling';
-import PanelLeisonTable from './panels/PanelLeisons';
-import { initMeasurementService } from './initMesurementService';
+import PanelLesionTable from './panels/PanelLesions';
+import { initMeasurementService } from './initMeasurementService';
 import initLabels from './initLabels';
 
 export default {
@@ -49,10 +49,10 @@ export default {
         );
       };
     };
-    const wrappedPanelLeisons = name => {
+    const wrappedPanelLesions = name => {
       return () => {
         return (
-          <PanelLeisonTable
+          <PanelLesionTable
             name={name}
             commandsManager={commandsManager}
             servicesManager={servicesManager}
@@ -78,11 +78,11 @@ export default {
         component: wrappedPanelLabeling('study table'),
       },
       {
-        name: 'panelLabelingLeison',
+        name: 'panelLabelingLesion',
         iconName: 'tool-circle',
-        iconLabel: 'Leison labels',
-        label: 'Leison labels',
-        component: wrappedPanelLeisons('leison table'),
+        iconLabel: 'Lesion labels',
+        label: 'Lesion labels',
+        component: wrappedPanelLesions('lesion table'),
       },
     ];
   },

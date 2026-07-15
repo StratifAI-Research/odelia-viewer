@@ -2,7 +2,7 @@ import React from 'react';
 import { Button } from '@ohif/ui';
 import type { AIEndpoint } from '../AIEndpointConfig';
 
-interface EndpointSelectionStepProps {
+interface ConfirmStepProps {
   currentEndpoint: AIEndpoint | null;
   studyDescription: string;
   selectedSeriesCount: number;
@@ -12,7 +12,7 @@ interface EndpointSelectionStepProps {
   error?: string | null;
 }
 
-export const EndpointSelectionStep: React.FC<EndpointSelectionStepProps> = ({
+export const ConfirmStep: React.FC<ConfirmStepProps> = ({
   currentEndpoint,
   studyDescription,
   selectedSeriesCount,

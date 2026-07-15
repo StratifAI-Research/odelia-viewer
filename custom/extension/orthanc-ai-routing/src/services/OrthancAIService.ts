@@ -1,5 +1,9 @@
-import { AIEndpoint } from '../components/AIEndpointConfig';
-import { AI_ENDPOINTS_STORAGE_KEY } from '../constants';
+import { AIEndpoint, toPersistableEndpoints } from '../components/AIEndpointConfig';
+import {
+  AI_ENDPOINTS_STORAGE_KEY,
+  DEFAULT_AI_ENDPOINT_NAME,
+  DEFAULT_AI_ENDPOINT_URL,
+} from '../constants';
 
 interface OrthancStudy {
   ID: string;
@@ -100,8 +104,8 @@ class OrthancAIService {
 
   constructor({ configuration = {} }: { configuration?: OrthancAIServiceConfig }) {
     this.orthancUrl = configuration.orthancUrl || 'http://localhost:45821';
-    this.aiServerName = configuration.aiServerName || 'ai-server';
-    this.aiServerUrl = configuration.aiServerUrl || 'http://orthanc-ai:8042/dicom-web';
+    this.aiServerName = configuration.aiServerName || DEFAULT_AI_ENDPOINT_NAME;
+    this.aiServerUrl = configuration.aiServerUrl || DEFAULT_AI_ENDPOINT_URL;
 
     // Try to load the current endpoint from localStorage
     this.loadCurrentEndpoint();
@@ -162,7 +166,10 @@ class OrthancAIService {
         const updatedEndpoints = endpoints.map(e =>
           e.id === endpoint.id ? endpoint : e
         );
-        localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(updatedEndpoints));
+        localStorage.setItem(
+          AI_ENDPOINTS_STORAGE_KEY,
+          JSON.stringify(toPersistableEndpoints(updatedEndpoints))
+        );
       }
     } catch (error) {
       console.error('Failed to update AI endpoint in localStorage:', error);
