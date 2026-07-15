@@ -1,10 +1,9 @@
 import { getStaticDate } from './dateCache';
 import { extractAIResultData } from './extractAIResultData';
-import { formatDicomDateTime } from './dicomDateTime';
 import {
   isAIResult,
   getRealDisplaySet,
-  getCreationTzOffset,
+  formatCreationDateTime,
   clearAITabCache,
 } from './aiTabHelpers';
 
@@ -64,10 +63,7 @@ export function createStudyAIBrowserTabsNested(
     studyDisplaySets.forEach(thumbDS => {
       if (isAIResult(thumbDS)) {
         const realDS = getRealDisplaySet(thumbDS, servicesManager);
-        const date = realDS?.instance?.InstanceCreationDate;
-        const time = realDS?.instance?.InstanceCreationTime;
-        const tz = getCreationTzOffset(realDS);
-        const dateTime = formatDicomDateTime(date, time, tz);
+        const dateTime = formatCreationDateTime(realDS);
         const key = dateTime || `UNKNOWN_${realDS.displaySetInstanceUID}`;
 
         if (!aiGroupsMap.has(key)) {
