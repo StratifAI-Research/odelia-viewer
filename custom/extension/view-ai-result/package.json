@@ -16,19 +16,21 @@
   ],
   "module": "src/index.tsx",
   "engines": {
-    "node": ">=14",
+    "node": ">=18",
     "npm": ">=6"
   },
   "scripts": {
     "build": "cross-env NODE_ENV=production webpack --config .webpack/webpack.prod.js",
     "build:package": "bun run build",
-    "test:unit": "jest --config jest.config.js --watchAll",
+    "test:unit": "jest --config jest.config.js",
+    "test:unit:watch": "jest --config jest.config.js --watchAll",
     "test:unit:ci": "jest --config jest.config.js --ci --runInBand --collectCoverage"
   },
   "peerDependencies": {
     "@ohif/core": "workspace:*",
     "@ohif/extension-default": "workspace:*",
     "@ohif/extension-cornerstone": "workspace:*",
+    "@ohif/ui-next": "workspace:*",
     "@ohif/i18n": "^1.0.0",
     "prop-types": "^15.6.2",
     "react": "^18.3.1",

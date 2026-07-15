@@ -40,6 +40,12 @@ const config = {
         amd: '@ohif/ui',
         root: '@ohif/ui',
       },
+      '@ohif/ui-next': {
+        commonjs2: '@ohif/ui-next',
+        commonjs: '@ohif/ui-next',
+        amd: '@ohif/ui-next',
+        root: '@ohif/ui-next',
+      },
     },
   ],
   module: {

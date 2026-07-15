@@ -16,12 +16,17 @@
   ],
   "module": "src/index.tsx",
   "engines": {
-    "node": ">=14",
+    "node": ">=18",
     "npm": ">=6"
   },
   "scripts": {
     "build": "cross-env NODE_ENV=production webpack --config .webpack/webpack.prod.js",
-    "build:package": "bun run build"
+    "build:package": "bun run build",
+    "lint": "eslint src --ext .ts,.tsx",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "test:unit": "jest --config jest.config.js",
+    "test:unit:watch": "jest --config jest.config.js --watchAll",
+    "test:unit:ci": "jest --config jest.config.js --ci --runInBand --collectCoverage --coverageProvider=v8 --passWithNoTests"
   },
   "peerDependencies": {
     "@ohif/core": "workspace:*",
