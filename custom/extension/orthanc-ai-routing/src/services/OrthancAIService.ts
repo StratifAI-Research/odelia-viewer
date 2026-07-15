@@ -1,4 +1,4 @@
-import { AIEndpoint, stripEndpointSecrets } from '../components/AIEndpointConfig';
+import { AIEndpoint, toPersistableEndpoints } from '../components/AIEndpointConfig';
 import {
   AI_ENDPOINTS_STORAGE_KEY,
   DEFAULT_AI_ENDPOINT_NAME,
@@ -168,7 +168,7 @@ class OrthancAIService {
         );
         localStorage.setItem(
           AI_ENDPOINTS_STORAGE_KEY,
-          JSON.stringify(stripEndpointSecrets(updatedEndpoints))
+          JSON.stringify(toPersistableEndpoints(updatedEndpoints))
         );
       }
     } catch (error) {
