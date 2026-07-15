@@ -189,21 +189,6 @@ function modeFactory({ modeConfiguration }) {
           //initLabels({ extensionManager, measurementService, StudyInstanceUID: 123 });
           initLabels({ extensionManager, measurementService, StudyInstanceUID: studyInstanceUIDs[0] });
 
-          const onDisplaySetsAdded = ({ displaySetsAdded, options }) => {
-            const displaySet = displaySetsAdded[0];
-            const { StudyInstanceUID } = displaySet;
-            //TODO: Fetch measurements from DICOM
-
-            //measurementService.addMeasurement(/**...**/);
-          };
-
-          // subscription to the DISPLAY_SETS_ADDED
-          const { unsubscribe: displaySetsAddedUnsubscribe } = displaySetService.subscribe(
-            displaySetService.EVENTS.DISPLAY_SETS_ADDED,
-            onDisplaySetsAdded
-          );
-          unsubscriptions.push(displaySetsAddedUnsubscribe);
-
           const {
             unsubscribe: instanceAddedUnsubscribe,
           } = DicomMetadataStore.subscribe(
@@ -273,7 +258,7 @@ function modeFactory({ modeConfiguration }) {
     /** SopClassHandlers used by the mode */
     sopClassHandlers: [ohif.sopClassHandler],
     /** hotkeys for mode */
-    hotkeys: [''],
+    hotkeys: [],
   };
 }
 

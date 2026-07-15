@@ -14,7 +14,7 @@ export function useAIRouting({
   uiNotificationService,
   onComplete
 }: UseAIRoutingProps) {
-  const [status, setStatus] = useState<'idle' | 'routing' | 'checking' | 'refreshing'>('idle');
+  const [status, setStatus] = useState<'idle' | 'routing' | 'checking'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
   // Initialize from the service once, on mount (lazy initializer — avoids a

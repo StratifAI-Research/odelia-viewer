@@ -1,9 +1,5 @@
 import { AIEndpoint, toPersistableEndpoints } from '../components/AIEndpointConfig';
-import {
-  AI_ENDPOINTS_STORAGE_KEY,
-  DEFAULT_AI_ENDPOINT_NAME,
-  DEFAULT_AI_ENDPOINT_URL,
-} from '../constants';
+import { AI_ENDPOINTS_STORAGE_KEY } from '../constants';
 
 interface OrthancStudy {
   ID: string;
@@ -21,8 +17,6 @@ interface RoutingRequest {
   study_id: string;
   target: string;
   target_url?: string;
-  username?: string;
-  password?: string;
   series_uids?: string[];
 }
 
@@ -36,8 +30,6 @@ interface RoutingResponse {
 
 interface OrthancAIServiceConfig {
   orthancUrl?: string;
-  aiServerName?: string;
-  aiServerUrl?: string;
 }
 
 // Model Input Manifest interfaces
@@ -96,16 +88,12 @@ interface OrthancLookupResponseItem {
 
 class OrthancAIService {
   private orthancUrl: string;
-  private aiServerName: string;
-  private aiServerUrl: string;
   private currentEndpoint: AIEndpoint | null = null;
   private workitemPollingInterval: number | null = null;
   private manifestCache: Map<string, ModelManifest | null> = new Map();
 
   constructor({ configuration = {} }: { configuration?: OrthancAIServiceConfig }) {
     this.orthancUrl = configuration.orthancUrl || 'http://localhost:45821';
-    this.aiServerName = configuration.aiServerName || DEFAULT_AI_ENDPOINT_NAME;
-    this.aiServerUrl = configuration.aiServerUrl || DEFAULT_AI_ENDPOINT_URL;
 
     // Try to load the current endpoint from localStorage
     this.loadCurrentEndpoint();
@@ -155,8 +143,6 @@ class OrthancAIService {
    */
   setCurrentEndpoint(endpoint: AIEndpoint): void {
     this.currentEndpoint = endpoint;
-    this.aiServerName = endpoint.name;
-    this.aiServerUrl = endpoint.url;
 
     // Update the endpoint in localStorage
     try {

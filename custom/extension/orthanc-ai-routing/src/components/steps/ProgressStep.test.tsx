@@ -47,12 +47,6 @@ describe('ProgressStep', () => {
     expect(screen.queryByText(/Start New Analysis/)).toBeNull();
   });
 
-  it('shows the refreshing title and default message', () => {
-    render(<ProgressStep {...base} status="refreshing" progress={60} />);
-    expect(screen.getByText('Loading Results...')).toBeTruthy();
-    expect(screen.getByText('Fetching AI results...')).toBeTruthy();
-  });
-
   it('shows no status message when idle at 0%', () => {
     render(<ProgressStep {...base} status="idle" progress={0} />);
     expect(screen.queryByText(/Uploading series/)).toBeNull();
