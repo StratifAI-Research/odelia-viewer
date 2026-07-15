@@ -1,4 +1,4 @@
-import { utilities, metaData } from '@cornerstonejs/core';
+import { metaData } from '@cornerstonejs/core';
 import OHIF, { DicomMetadataStore } from '@ohif/core';
 import getLabelFromDCMJSImportedToolData from './getLabelFromDCMJSImportedToolData';
 import { adaptersSR } from '@cornerstonejs/adapters';
@@ -88,15 +88,12 @@ export default function hydrateStructuredReport(
   // Mapping of legacy datasets is now directly handled by adapters module
   const datasetToUse = instance;
 
-  // Use dcmjs to generate toolState.
+  // Use the adapter to generate toolState from the DICOM SR.
+  // NOTE: the installed @cornerstonejs/adapters signature is
+  // generateToolState(dataset, sopInstanceUIDToImageIdMap, metadata, hooks).
   let storedMeasurementByAnnotationType = MeasurementReport.generateToolState(
     datasetToUse,
-    // NOTE: we need to pass in the imageIds to dcmjs since the we use them
-    // for the imageToWorld transformation. The following assumes that the order
-    // that measurements were added to the display set are the same order as
-    // the measurementGroups in the instance.
     sopInstanceUIDToImageId,
-    utilities.imageToWorldCoords,
     metaData
   );
 

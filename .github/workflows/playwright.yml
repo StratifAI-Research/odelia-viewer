@@ -12,14 +12,14 @@ permissions:
 jobs:
   playwright-tests:
     # The container's pre-baked browsers must match the Playwright version resolved
-    # in bun.lock (currently 1.59.1); otherwise browser launch fails with
+    # in bun.lock (currently 1.61.1); otherwise browser launch fails with
     # "Executable doesn't exist" since the workflow runs no `playwright install`.
     # Kept non-blocking until a fully green sharded run is confirmed.
     continue-on-error: true
     timeout-minutes: 60
     runs-on: ubuntu-latest
     container:
-      image: mcr.microsoft.com/playwright:v1.59.1-noble
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
     strategy:
       fail-fast: false
       matrix:
@@ -57,7 +57,7 @@ jobs:
     needs: [playwright-tests]
     runs-on: ubuntu-latest
     container:
-      image: mcr.microsoft.com/playwright:v1.59.1-noble
+      image: mcr.microsoft.com/playwright:v1.61.1-noble
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - name: Install unzip
