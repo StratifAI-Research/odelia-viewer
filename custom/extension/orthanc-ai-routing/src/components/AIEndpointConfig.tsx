@@ -28,6 +28,9 @@ const DEFAULT_ENDPOINT: AIEndpoint = {
   url: DEFAULT_AI_ENDPOINT_URL,
 };
 
+/** Persistence-safe endpoint shape: everything except the secret `password`. */
+export type PersistedEndpoint = Omit<AIEndpoint, 'password'>;
+
 /**
  * Return a persistence-safe copy of the endpoints, keeping only the non-secret fields.
  * Credentials (password) must never be written to localStorage in plaintext; they are
@@ -35,10 +38,11 @@ const DEFAULT_ENDPOINT: AIEndpoint = {
  *
  * This is an explicit allow-list (rebuild from known-safe fields) rather than a
  * `{ password, ...rest }` deny-list: it guarantees any secret-bearing field added to
- * AIEndpoint later cannot silently leak into storage, and it lets static analysis see
- * that the password never reaches the sink.
+ * AIEndpoint later cannot silently leak into storage. The `PersistedEndpoint` return
+ * type carries no `password` field, so the value written to storage is statically
+ * password-free (both at runtime and in the type that reaches the sink).
  */
-export const stripEndpointSecrets = (endpoints: AIEndpoint[]): AIEndpoint[] =>
+export const stripEndpointSecrets = (endpoints: AIEndpoint[]): PersistedEndpoint[] =>
   endpoints.map(({ id, name, url, username }) => ({ id, name, url, username }));
 
 const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
