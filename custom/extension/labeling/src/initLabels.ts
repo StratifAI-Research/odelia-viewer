@@ -15,8 +15,6 @@ export default function initLabels({ measurementService, extensionManager, Study
     ODELIA_LABELING_SOURCE_NAME, ODELIA_LABELING_SOURCE_VERSION);
   const annotationType = "ODELIALabel"
 
-  console.log(StudyInstanceUID)
-
   // Skip only when THIS study already has an ODELIALabel measurement — not any
   // measurement (e.g. a lesion CircleROI), which would wrongly suppress init.
   if (
@@ -25,7 +23,7 @@ export default function initLabels({ measurementService, extensionManager, Study
       (element) => element.type === 'ODELIALabel' && element.referenceStudyUID === StudyInstanceUID
     )
   ) {
-    console.log("Measurement already inited, skipping")
+
     return
   }
   const label_data = {}

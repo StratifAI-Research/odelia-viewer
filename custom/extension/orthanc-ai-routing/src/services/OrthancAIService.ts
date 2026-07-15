@@ -190,7 +190,7 @@ class OrthancAIService {
 
     // In case there are multiple UIDs, take the first one
     const firstStudyUID = studyUIDs.split(',')[0];
-    console.log('Found DICOM StudyInstanceUID in URL:', firstStudyUID);
+
     return firstStudyUID;
   }
 
@@ -206,7 +206,6 @@ class OrthancAIService {
    */
   async getOrthancStudyId(studyInstanceUID: string): Promise<string> {
     try {
-      console.log('Looking up Orthanc study ID for StudyInstanceUID:', studyInstanceUID);
 
       // Call Orthanc's lookup API with the StudyInstanceUID as plain text in the body
       const response = await fetch(`${this.orthancUrl}/tools/lookup`, {
@@ -234,7 +233,6 @@ class OrthancAIService {
 
       // The response is an array of lookup results
       const lookupResults: OrthancLookupResponseItem[] = await response.json();
-      console.log('Lookup response:', lookupResults);
 
       // Find the study result (there could be multiple results)
       const studyResult = lookupResults.find(result => result.Type === 'Study');
@@ -243,14 +241,12 @@ class OrthancAIService {
         throw new Error(`No Orthanc Study ID found for StudyInstanceUID: ${studyInstanceUID}`);
       }
 
-      console.log('Found Orthanc study ID:', studyResult.ID);
       return studyResult.ID;
     } catch (error) {
       console.error('Error getting Orthanc study ID:', error);
       throw error;
     }
   }
-
 
   /**
    * Fetch the model input manifest for a given AI endpoint URL.
@@ -337,7 +333,6 @@ class OrthancAIService {
       input_configuration_id?: string;
     }
   ): Promise<RoutingResponse> {
-    console.log('Routing request:', routingRequest);
 
     // Set up timeout using AbortController
     const controller = new AbortController();
@@ -372,7 +367,6 @@ class OrthancAIService {
 
   async routeStudyToAI(dicomStudyUID: string): Promise<RoutingResponse> {
     try {
-      console.log('Starting AI routing for DICOM study UID:', dicomStudyUID);
 
       // Check if we have a valid AI endpoint
       if (!this.currentEndpoint) {
@@ -381,7 +375,6 @@ class OrthancAIService {
 
       // Get the Orthanc study ID using the lookup API
       const orthancStudyId = await this.getOrthancStudyId(dicomStudyUID);
-      console.log('Found Orthanc study ID:', orthancStudyId);
 
       // Create the routing request with the Orthanc study ID
       const routingRequest: RoutingRequest = {
@@ -409,13 +402,6 @@ class OrthancAIService {
     inputConfigurationId?: string
   ): Promise<RoutingResponse> {
     try {
-      console.log('Starting AI routing for study:', dicomStudyUID);
-      console.log('Selected series UIDs:', seriesUIDs);
-      if (inputMapping) {
-        console.log('Input mapping:', inputMapping);
-        console.log('Input configuration ID:', inputConfigurationId);
-      }
-
       if (!this.currentEndpoint) {
         throw new Error('No AI endpoint configured. Please add an AI endpoint first.');
       }
@@ -425,7 +411,6 @@ class OrthancAIService {
       }
 
       const orthancStudyId = await this.getOrthancStudyId(dicomStudyUID);
-      console.log('Found Orthanc study ID:', orthancStudyId);
 
       const routingRequest: RoutingRequest & {
         input_mapping?: InputMapping;
@@ -492,7 +477,6 @@ class OrthancAIService {
         status.cancellationReason = cancellationTag.Value[0];
       }
 
-      console.log('Parsed workitem status:', status);
       return status;
     } catch (error) {
       console.error('Error parsing workitem status:', error);
@@ -507,7 +491,6 @@ class OrthancAIService {
    */
   async getWorkitemStatus(workitemUid: string): Promise<WorkitemStatus> {
     try {
-      console.log('Fetching workitem status for:', workitemUid);
 
       const response = await fetch(`${this.orthancUrl}/ups-rs/workitems/${workitemUid}`, {
         method: 'GET',
@@ -525,7 +508,6 @@ class OrthancAIService {
 
       // Get the response as text first to debug
       const responseText = await response.text();
-      console.log('Workitem response text:', responseText);
 
       // Parse the JSON
       let workitemJson: WorkitemDicomJson;
@@ -558,8 +540,6 @@ class OrthancAIService {
     // Stop any existing polling
     this.stopWorkitemPolling();
 
-    console.log(`Starting workitem polling for ${workitemUid} every ${interval}ms`);
-
     // Start polling
     this.workitemPollingInterval = window.setInterval(async () => {
       try {
@@ -568,7 +548,7 @@ class OrthancAIService {
 
         // Stop polling if workitem reached a terminal state
         if (status.state === 'COMPLETED' || status.state === 'CANCELED') {
-          console.log(`Workitem reached terminal state: ${status.state}. Stopping polling.`);
+
           this.stopWorkitemPolling();
         }
       } catch (error) {
@@ -585,7 +565,7 @@ class OrthancAIService {
     if (this.workitemPollingInterval !== null) {
       window.clearInterval(this.workitemPollingInterval);
       this.workitemPollingInterval = null;
-      console.log('Workitem polling stopped');
+
     }
   }
 }

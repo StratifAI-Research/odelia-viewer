@@ -197,7 +197,7 @@ const FeedbackPanel: React.FC = () => {
   useEffect(() => {
     const studyUID = getStudyUIDFromActiveViewport();
     if (studyUID && studyUID !== activeStudyUID) {
-      console.log(`FeedbackPanel: Study changed from ${activeStudyUID} to ${studyUID}`);
+
       setActiveStudyUID(studyUID);
       // Reset feedback state when study changes
       setFeedback({ Left: null, Right: null });

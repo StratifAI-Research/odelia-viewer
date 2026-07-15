@@ -90,16 +90,12 @@ export default function PanelStudyBrowserTracking({
     aiResultsService,
   } = servicesManager.services;
 
-
   const navigate = useNavigate();
   const studyMode = customizationService.getCustomization('studyBrowser.studyMode');
   const tabMode = customizationService.getCustomization('studyBrowser.tabMode');
 
   /*
-  console.log('PanelStudyBrowserTracking state:', {
-    studyMode,
-    customizationService: customizationService.getCustomization('studyBrowser'),
-  });
+
   */
   const { t } = useTranslation('Common');
 
@@ -152,20 +148,19 @@ export default function PanelStudyBrowserTracking({
     }
 
     const selectionHandler = (evt: { studyInstanceUID: string; displaySetInstanceUID: string }) => {
-      console.log('[PanelStudyBrowser] AI result selected:', evt.displaySetInstanceUID);
+
       setSelectedSRUID(evt.displaySetInstanceUID);
     };
 
     const clearedHandler = (evt: { studyInstanceUID: string; displaySetUIDs?: string[]; reason?: string }) => {
-      console.log('[PanelStudyBrowser] AI result cleared:', evt);
 
       // If the currently selected AI result was deleted, clear selection
       if (evt.displaySetUIDs && selectedSRUIDRef.current && evt.displaySetUIDs.includes(selectedSRUIDRef.current)) {
-        console.log('[PanelStudyBrowser] Selected AI result was deleted, clearing selection');
+
         setSelectedSRUID(null);
       } else if (evt.reason === 'no_results' || evt.reason === 'cache_cleared') {
         // If all results were cleared, clear selection
-        console.log('[PanelStudyBrowser] All AI results cleared, clearing selection');
+
         setSelectedSRUID(null);
       }
 
@@ -265,7 +260,7 @@ export default function PanelStudyBrowserTracking({
 
     // Don't change viewport for AI results
     if (isAIResult) {
-      console.log('Double-click on AI result ignored - use single click to switch AI results');
+
       return;
     }
 
@@ -296,19 +291,11 @@ export default function PanelStudyBrowserTracking({
     const displaySet = displaySets.find((ds: DisplaySet) => ds.displaySetInstanceUID === displaySetInstanceUID);
 
     if (!displaySet) {
-      console.log('No display set found for:', displaySetInstanceUID);
+
       return;
     }
 
     // Debug: Log the display set properties to see what's available
-    console.log('Clicked display set:', {
-      displaySetInstanceUID,
-      modality: displaySet.modality,
-      Modality: displaySet.Modality,
-      description: displaySet.description,
-      seriesDescription: displaySet.seriesDescription,
-      allProperties: Object.keys(displaySet)
-    });
 
     // Check multiple modality property variations
     const modality = displaySet.modality || displaySet.Modality;
@@ -334,10 +321,9 @@ export default function PanelStudyBrowserTracking({
 
       // Local selection state removed – the global service event will update UI
 
-      console.log(`AI result selected: ${modality} - ${displaySet.description || displaySet.seriesDescription}`);
     } else {
       // For medical images, we could implement different behavior if needed
-      console.log('Medical image clicked - Modality:', modality);
+
     }
   };
 
@@ -812,8 +798,6 @@ function _mapDisplaySets({
   selectedSRUID,
   thumbnailPropsCache = new Map(),
 }) {
-  console.log(`[DisplaySets] _mapDisplaySets called with ${displaySets.length} display sets at:`, new Date().toISOString());
-  console.log(`[DisplaySets] Display set IDs:`, displaySets.map(ds => `${ds.Modality}-${ds.displaySetInstanceUID?.substring(0, 8)}`));
 
   const thumbnailDisplaySets: any[] = [];
   const thumbnailNoImageDisplaySets: any[] = [];
@@ -836,7 +820,7 @@ function _mapDisplaySets({
       const cacheKey = `${displaySetInstanceUID}-${ds.SeriesDate || ds.StudyDate || ds.instance?.InstanceCreationDate}`;
 
       if (thumbnailPropsCache.has(cacheKey)) {
-        console.log(`[ThumbnailCache] Using cached props for ${ds.Modality} ${displaySetInstanceUID}`);
+
         const cachedProps = thumbnailPropsCache.get(cacheKey);
         // Update dynamic properties that can change
         cachedProps.loadingProgress = loadingProgress;
@@ -851,37 +835,15 @@ function _mapDisplaySets({
       }
 
       // If not cached, calculate the thumbnail props
-      console.log(`[ThumbnailCache] Calculating new props for ${ds.Modality} ${displaySetInstanceUID}`);
 
       // Extract AI result data for AI results
       const aiResultData = extractAIResultData(ds);
-
-      // Debug: Log AI result data for debugging
-      if (aiResultData) {
-        console.log('AI Result Data for', ds.SeriesDescription, ':', aiResultData);
-      }
 
       // Enhanced description for AI results - show all info directly
       let enhancedDescription = ds.SeriesDescription || '';
 
       // Get static date for this display set (prevent constant refreshing)
       const staticDate = getStaticDate(ds);
-
-      // Debug logging for SRs and SCs
-      if (ds.Modality === 'SR' || ds.Modality === 'SC') {
-        console.log(`${ds.Modality} Display Set:`, {
-          SeriesDescription: ds.SeriesDescription,
-          Modality: ds.Modality,
-          aiResultData,
-          hasInstance: !!ds.instance,
-          originalDescription: enhancedDescription,
-          staticDate,
-          InstanceCreationDate: ds.instance?.InstanceCreationDate,
-          InstanceCreationTime: ds.instance?.InstanceCreationTime,
-          SeriesDate: ds.SeriesDate,
-          StudyDate: ds.StudyDate
-        });
-      }
 
       if (aiResultData && aiResultData.modelInfo) {
         // Show all information directly - CSS should handle wrapping
@@ -911,36 +873,26 @@ function _mapDisplaySets({
 
         // Join with line breaks - CSS should make this work
         enhancedDescription = lines.join('\n');
-        console.log(`Real AI data found for ${ds.Modality}:`, enhancedDescription);
+
       } else if (ds.Modality === 'SR') {
         // Show meaningful info for SRs without parseable AI data
         enhancedDescription = `🤖 AI Result\n${ds.SeriesDescription || 'Structured Report'}`;
-        console.log(`SR fallback applied:`, enhancedDescription);
+
       } else if (ds.Modality === 'SC') {
         // Clean format for SC - show as Heatmap
         enhancedDescription = `🤖 Heatmap`;
-        console.log(`SC enhanced:`, enhancedDescription);
+
       }
 
       // Final safety check
       if (!enhancedDescription || enhancedDescription.trim() === '') {
         enhancedDescription = 'Unknown Series';
-        console.log(`Final fallback applied:`, enhancedDescription);
+
       }
 
       // Add custom CSS class for AI results (SR and SC) to enable multiline text
       const isAIResult = aiResultData || ds.Modality === 'SR' || ds.Modality === 'SC';
       const customClassName = isAIResult ? `ai-result-thumbnail${isSelectedSR ? ' selected' : ''}` : '';
-
-      // Debug: Log final thumbnail props for SRs
-      if (ds.Modality === 'SR') {
-        console.log(`Final SR thumbnail props:`, {
-          displaySetInstanceUID,
-          description: enhancedDescription,
-          modality: ds.Modality,
-          seriesDate: staticDate
-        });
-      }
 
       // Cache the calculated thumbnail props (static properties only)
       const cacheableProps = {
@@ -968,7 +920,6 @@ function _mapDisplaySets({
 
       // Save to cache for future use
       thumbnailPropsCache.set(cacheKey, { ...cacheableProps });
-      console.log(`[ThumbnailCache] Cached props for ${ds.Modality} ${displaySetInstanceUID} with date:`, staticDate);
 
       array.push(cacheableProps);
     });

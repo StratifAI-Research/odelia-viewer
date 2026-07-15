@@ -90,23 +90,17 @@ export class HeatmapLayoutManager {
   }
 
   static toggleHeatmapLayout(showHeatmap: boolean, config: LayoutConfig) {
-    console.log('[HeatmapLayoutManager] toggleHeatmapLayout:', {
-      showHeatmap,
-      viewportId: config.viewportId,
-      hasHeatmap: config.aiResult?.hasHeatmap,
-      hasHeatmapDisplaySet: !!config.aiResult?.heatmapDisplaySet
-    });
 
     if (!config.aiResult?.hasHeatmap || !config.aiResult.heatmapDisplaySet) {
-      console.log('[HeatmapLayoutManager] No heatmap or heatmap display set, skipping');
+
       return;
     }
 
     if (showHeatmap) {
-      console.log('[HeatmapLayoutManager] Creating side-by-side layout');
+
       this.createSideBySideLayout(config);
     } else {
-      console.log('[HeatmapLayoutManager] Creating single layout');
+
       this.createSingleLayout(config);
     }
   }

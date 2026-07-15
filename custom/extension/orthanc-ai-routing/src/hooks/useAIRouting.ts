@@ -38,7 +38,6 @@ export function useAIRouting({
   };
 
   const handleWorkitemStatusUpdate = (workitemStatus: any) => {
-    console.log('Workitem status update:', workitemStatus);
 
     // Map workitem states to local status
     switch (workitemStatus.state) {
