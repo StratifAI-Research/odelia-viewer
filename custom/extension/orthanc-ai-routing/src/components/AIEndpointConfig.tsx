@@ -29,12 +29,17 @@ const DEFAULT_ENDPOINT: AIEndpoint = {
 };
 
 /**
- * Remove secrets (password) from endpoints before persisting them. Credentials must
- * never be written to localStorage in plaintext; they are not transmitted by routing
- * requests anyway, so persisting them is pure liability.
+ * Return a persistence-safe copy of the endpoints, keeping only the non-secret fields.
+ * Credentials (password) must never be written to localStorage in plaintext; they are
+ * not transmitted by routing requests anyway, so persisting them is pure liability.
+ *
+ * This is an explicit allow-list (rebuild from known-safe fields) rather than a
+ * `{ password, ...rest }` deny-list: it guarantees any secret-bearing field added to
+ * AIEndpoint later cannot silently leak into storage, and it lets static analysis see
+ * that the password never reaches the sink.
  */
 export const stripEndpointSecrets = (endpoints: AIEndpoint[]): AIEndpoint[] =>
-  endpoints.map(({ password, ...rest }) => rest);
+  endpoints.map(({ id, name, url, username }) => ({ id, name, url, username }));
 
 const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   onEndpointChange,
