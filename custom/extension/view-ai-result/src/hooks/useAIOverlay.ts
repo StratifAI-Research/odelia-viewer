@@ -44,12 +44,12 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
     // Build the text content strings first
     const leftBreastText = leftBreast ? (
       leftBreast.errorMessage ? leftBreast.errorMessage :
-      `${leftBreast.result || 'Unknown'} (${leftBreast.confidence ? leftBreast.confidence.toFixed(1) : '--'}%)`
+      `${leftBreast.result || 'Unknown'} (${leftBreast.confidence != null ? leftBreast.confidence.toFixed(1) : '--'}%)`
     ) : '--';
 
     const rightBreastText = rightBreast ? (
       rightBreast.errorMessage ? rightBreast.errorMessage :
-      `${rightBreast.result || 'Unknown'} (${rightBreast.confidence ? rightBreast.confidence.toFixed(1) : '--'}%)`
+      `${rightBreast.result || 'Unknown'} (${rightBreast.confidence != null ? rightBreast.confidence.toFixed(1) : '--'}%)`
     ) : '--';
 
         // Create container with flex-col that overrides ViewportActionCorners horizontal layout

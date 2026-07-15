@@ -125,11 +125,15 @@ describe('OrthancAIService — getModelManifest (+ cache)', () => {
     expect(await service.getModelManifest(EP)).toEqual(data);
   });
 
-  it('returns null and caches null on non-ok', async () => {
+  it('returns null on non-ok WITHOUT caching, so a later call retries (OAR-M-manifest)', async () => {
     fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 404 }));
     expect(await service.getModelManifest(EP)).toBeNull();
-    expect(await service.getModelManifest(EP)).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // A transient failure must not be cached: the next call re-fetches and can
+    // recover the real manifest (previously null was frozen until reload).
+    const manifest = { model_id: 'm', model_name: 'M', version: '1', input_configurations: [] };
+    fetchMock.mockResolvedValueOnce(mockResponse({ json: { manifest } }));
+    expect(await service.getModelManifest(EP)).toEqual(manifest);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('returns null when fetch throws', async () => {
@@ -422,6 +426,28 @@ describe('OrthancAIService — workitem polling', () => {
     await jest.advanceTimersByTimeAsync(500); // recovers
     expect(cb).toHaveBeenCalledTimes(1);
     service.stopWorkitemPolling();
+  });
+
+  it('stops polling and reports a timeout after the max duration (OAR-M4)', async () => {
+    // Never terminal: always IN_PROGRESS.
+    fetchMock.mockResolvedValue(
+      mockResponse({ text: JSON.stringify({ '00741000': { vr: 'CS', Value: ['IN_PROGRESS'] } }) })
+    );
+    const cb = jest.fn();
+    // interval 500ms, cap 1000ms => maxAttempts = 2.
+    await service.startWorkitemPolling('w1', cb, 500, 1000);
+
+    await jest.advanceTimersByTimeAsync(500); // attempt 1: IN_PROGRESS
+    await jest.advanceTimersByTimeAsync(500); // attempt 2: IN_PROGRESS, then hits the cap
+
+    const lastCall = cb.mock.calls[cb.mock.calls.length - 1][0];
+    expect(lastCall).toMatchObject({ state: 'CANCELED' });
+    expect(lastCall.cancellationReason).toMatch(/timed out/i);
+
+    // No further ticks run after the timeout stops the interval.
+    const callsAfterTimeout = cb.mock.calls.length;
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(cb.mock.calls.length).toBe(callsAfterTimeout);
   });
 
   it('a second startWorkitemPolling call cancels the first interval', async () => {

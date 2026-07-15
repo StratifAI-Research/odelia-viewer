@@ -19,6 +19,7 @@ const RECONNECT_MULTIPLIER = 2;
 export class ChatService {
   private ws: WebSocket | null = null;
   private sessionId: string | null = null;
+  private connectPromise: Promise<string> | null = null;
   private wsUrl: string;
   private eventListeners: Map<string, Array<(data: any) => void>> = new Map();
   private reconnectAttempts = 0;
@@ -66,49 +67,91 @@ export class ChatService {
    * Connect to WebSocket server
    */
   connect(): Promise<string> {
-    return new Promise((resolve, reject) => {
-      if (this.ws?.readyState === WebSocket.OPEN) {
-        if (this.sessionId) {
-          resolve(this.sessionId);
-          return;
+    // Reuse a fully-established connection.
+    if (this.ws?.readyState === WebSocket.OPEN && this.sessionId) {
+      return Promise.resolve(this.sessionId);
+    }
+    // Reuse an in-flight connection rather than opening a competing socket. A
+    // manual "Reconnect" racing a scheduled reconnect (or two callers awaiting
+    // connect at once) would otherwise overwrite this.ws and orphan the previous
+    // socket + its handlers.
+    if (this.connectPromise) {
+      return this.connectPromise;
+    }
+
+    const promise = new Promise<string>((resolve, reject) => {
+      // Detach and close any superseded socket before opening a new one.
+      if (this.ws) {
+        this.ws.onopen = this.ws.onmessage = this.ws.onerror = this.ws.onclose = null;
+        try {
+          this.ws.close();
+        } catch {
+          /* ignore */
         }
+        this.ws = null;
       }
 
       this.isIntentionalClose = false;
-      this.ws = new WebSocket(this.wsUrl);
+      let settled = false;
+      const ws = new WebSocket(this.wsUrl);
+      this.ws = ws;
+
+      // Settle the connection promise exactly once, clearing the timeout and
+      // releasing the in-flight guard. Previously connect() only ever rejected
+      // from the timeout (and only when the socket was not OPEN), so a socket
+      // that opened but never sent CONNECTED — or that errored/closed before the
+      // handshake — left the promise pending forever ("Connecting…" with no
+      // recovery).
+      const settle = (action: () => void) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        clearTimeout(connectionTimeout);
+        this.connectPromise = null;
+        action();
+      };
 
       const connectionTimeout = setTimeout(() => {
-        if (this.ws?.readyState !== WebSocket.OPEN) {
-          this.ws?.close();
-          reject(new Error('Connection timeout'));
+        // Reject regardless of readyState: an OPEN socket that never sends a
+        // CONNECTED frame must not leave connect() pending forever. Settle first
+        // so the reported reason is the timeout, then close (its onclose is a
+        // no-op once settled).
+        settle(() => reject(new Error('Connection timeout')));
+        try {
+          ws.close();
+        } catch {
+          /* ignore */
         }
       }, 10000);
 
-      this.ws.onopen = () => {
-
+      ws.onopen = () => {
         this.reconnectAttempts = 0;
       };
 
-      this.ws.onmessage = (event) => {
+      ws.onmessage = (event) => {
         try {
           const message: ServerMessage = JSON.parse(event.data);
-          this.handleServerMessage(message, resolve);
+          this.handleServerMessage(message, (sessionId) => settle(() => resolve(sessionId)));
         } catch (e) {
           console.error('[ChatService] Error parsing message:', e);
         }
       };
 
-      this.ws.onerror = (error) => {
+      ws.onerror = (error) => {
         console.error('[ChatService] WebSocket error:', error);
-        clearTimeout(connectionTimeout);
         this.publish(CHAT_EVENTS.ERROR, { error: 'Connection error' });
+        settle(() => reject(new Error('Connection error')));
       };
 
-      this.ws.onclose = (event) => {
-
-        clearTimeout(connectionTimeout);
+      ws.onclose = (event) => {
         this.sessionId = null;
         this.publish(CHAT_EVENTS.DISCONNECTED, { code: event.code, reason: event.reason });
+        // If the socket closed before a session was established, fail the pending
+        // connect (no-op once already settled by CONNECTED).
+        settle(() =>
+          reject(new Error(`Connection closed before session was established (code ${event.code})`))
+        );
 
         // Attempt reconnection if not intentionally closed
         if (!this.isIntentionalClose && !event.wasClean) {
@@ -116,6 +159,21 @@ export class ChatService {
         }
       };
     });
+
+    this.connectPromise = promise;
+    // If the executor threw synchronously (e.g. `new WebSocket(malformedUrl)`),
+    // settle() never ran to release the in-flight guard, leaving a rejected
+    // promise cached that would block every later reconnect. Clear it so a
+    // subsequent connect() retries. The identity guard avoids clobbering a newer
+    // in-flight promise; settle() already nulls connectPromise on normal
+    // rejections, so this is a no-op there.
+    promise.catch(() => {
+      if (this.connectPromise === promise) {
+        this.connectPromise = null;
+      }
+    });
+
+    return promise;
   }
 
   /**
@@ -230,6 +288,7 @@ export class ChatService {
       this.ws = null;
     }
     this.sessionId = null;
+    this.connectPromise = null;
   }
 
   /**

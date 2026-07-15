@@ -12,6 +12,7 @@ export class AIResultsService {
   private selectionChangeListeners: Map<string, Array<() => void>> = new Map(); // studyUID -> callbacks
   private eventListeners: Map<string, Array<(data: any) => void>> = new Map(); // event -> callbacks
   private currentStudyUID: string | null = null; // Track current active study
+  private displaySetService: any = null; // set lazily; used to invalidate the cache when display sets load
 
   // Event constants
   static EVENTS = {
@@ -29,9 +30,35 @@ export class AIResultsService {
   }
 
   /**
+   * Subscribe (once) to displaySetService so the per-study result cache is
+   * invalidated when display sets load. SR and SC series stream in
+   * asynchronously; if a study's results were cached from the SR before its
+   * matching SC (heatmap) display set arrived, `hasHeatmap` was frozen as
+   * `false` and the heatmap toggle stayed permanently unavailable. Dropping the
+   * cache on DISPLAY_SETS_ADDED lets the next read recompute against the now
+   * complete set. Lazy because the service only receives servicesManager per call.
+   */
+  private ensureDisplaySetInvalidation(servicesManager: any): void {
+    if (this.displaySetService) {
+      return;
+    }
+    const displaySetService = servicesManager?.services?.displaySetService;
+    const addedEvent = displaySetService?.EVENTS?.DISPLAY_SETS_ADDED;
+    if (!displaySetService?.subscribe || !addedEvent) {
+      return;
+    }
+    this.displaySetService = displaySetService;
+    displaySetService.subscribe(addedEvent, () => {
+      this.cache.clear();
+    });
+  }
+
+  /**
    * Get all AI results for a study, with caching
    */
   getAllAIResults(studyInstanceUID: string, servicesManager: any): AIResult[] {
+    this.ensureDisplaySetInvalidation(servicesManager);
+
     // Check cache first
     if (this.cache.has(studyInstanceUID)) {
       const cachedResults = this.cache.get(studyInstanceUID)!;

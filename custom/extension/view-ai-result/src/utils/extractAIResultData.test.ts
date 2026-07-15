@@ -72,6 +72,18 @@ describe('extractAIResultData', () => {
     expect(out.classifications[0].confidence).toBeNull();
   });
 
+  it('preserves a real 0 confidence (VAR-M3: a 0.0% probability must not become null)', () => {
+    const ds = srDisplaySet([sideProbability('Left', 'Benign', '0')]);
+    const out = extractAIResultData(ds)!;
+    expect(out.classifications[0].confidence).toBe(0);
+  });
+
+  it('normalizes a non-numeric NumericValue to null (not NaN)', () => {
+    const ds = srDisplaySet([sideProbability('Right', 'Malignant', 'abc')]);
+    const out = extractAIResultData(ds)!;
+    expect(out.classifications[0].confidence).toBeNull();
+  });
+
   it('skips a Side Probability item that has no code meaning', () => {
     const ds = srDisplaySet([
       { ...concept('Left Side Probability') }, // no ConceptCodeSequence

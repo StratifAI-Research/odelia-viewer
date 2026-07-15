@@ -44,6 +44,11 @@ describe('dicomDateTime utils', () => {
       expect(dicomDateTimeToIsoUtc('2024')).toBeUndefined();
     });
 
+    it('returns undefined (does not throw) for a non-numeric 8-char date', () => {
+      expect(() => dicomDateTimeToIsoUtc('2024ABCD')).not.toThrow();
+      expect(dicomDateTimeToIsoUtc('2024ABCD')).toBeUndefined();
+    });
+
     it('converts date-only to ISO UTC', () => {
       const result = dicomDateTimeToIsoUtc('20240315');
       expect(result).toBeDefined();

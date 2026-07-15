@@ -107,7 +107,9 @@ describe('ChatService', () => {
   it('honors an explicit wsUrl from window.config', () => {
     (window as any).config = { chatMiddleware: { wsUrl: 'ws://custom/ws' } };
     const svc = new ChatService();
-    svc.connect();
+    // connect() now rejects when the socket closes before the session handshake
+    // (VAR-H1); this test tears the socket down deliberately, so swallow it.
+    svc.connect().catch(() => {});
     const ws = lastWs();
     expect(ws.url).toBe('ws://custom/ws');
     // Tear the socket down so the 10s connection timeout armed by connect() is
@@ -307,5 +309,83 @@ describe('ChatService', () => {
       ws.emitMessage({ type: ServerMessageType.TOKEN, content: 'late' });
       expect(token).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('ChatService connect settling (VAR-H1 / VAR-M4)', () => {
+  it('rejects on the 10s timeout when the socket opens but no CONNECTED arrives (VAR-H1)', async () => {
+    jest.useFakeTimers();
+    const svc = new ChatService();
+    const p = svc.connect();
+    const ws = lastWs();
+    ws.emitOpen(); // OPEN, but the middleware never sends CONNECTED
+    const assertion = expect(p).rejects.toThrow('Connection timeout');
+    jest.advanceTimersByTime(10000);
+    await assertion;
+    expect(svc.isConnected()).toBe(false);
+  });
+
+  it('rejects when the socket closes before the session handshake (VAR-H1)', async () => {
+    const svc = new ChatService();
+    const p = svc.connect();
+    lastWs().emitClose(1006, 'boom', false);
+    await expect(p).rejects.toThrow(/closed before session/i);
+    svc.disconnect(); // clear any armed reconnect timer
+  });
+
+  it('rejects when the socket errors before the session handshake (VAR-H1)', async () => {
+    const svc = new ChatService();
+    const p = svc.connect();
+    lastWs().emitError();
+    await expect(p).rejects.toThrow('Connection error');
+    svc.disconnect();
+  });
+
+  it('reuses the in-flight connection promise instead of opening a second socket (VAR-M4)', async () => {
+    const svc = new ChatService();
+    const p1 = svc.connect();
+    const p2 = svc.connect(); // called again while still CONNECTING
+    expect(p2).toBe(p1);
+    expect(FakeWebSocket.instances.length).toBe(1);
+    const ws = lastWs();
+    ws.emitOpen();
+    ws.emitMessage({ type: ServerMessageType.CONNECTED, session_id: 's' });
+    await p1;
+  });
+
+  it('returns immediately for an already-established connection without a new socket (VAR-M4)', async () => {
+    const svc = new ChatService();
+    await connect(svc, 's1');
+    const before = FakeWebSocket.instances.length;
+    await expect(svc.connect()).resolves.toBe('s1');
+    expect(FakeWebSocket.instances.length).toBe(before);
+  });
+});
+
+describe('ChatService synchronous construction failure (P3)', () => {
+  it('clears the cached promise when WebSocket construction throws, allowing a later retry', async () => {
+    const svc = new ChatService();
+    let throwOnce = true;
+    const ThrowingWS: any = function (url: string) {
+      if (throwOnce) {
+        throwOnce = false;
+        throw new Error('bad url');
+      }
+      return new FakeWebSocket(url);
+    };
+    ThrowingWS.OPEN = FakeWebSocket.OPEN;
+    (global as any).WebSocket = ThrowingWS;
+
+    // First attempt: construction throws synchronously -> promise rejects.
+    await expect(svc.connect()).rejects.toThrow('bad url');
+
+    // The rejected in-flight promise must not stay cached: a later connect()
+    // creates a fresh socket instead of returning the same rejection.
+    const p = svc.connect();
+    const ws = lastWs();
+    expect(ws).toBeInstanceOf(FakeWebSocket);
+    ws.emitOpen();
+    ws.emitMessage({ type: ServerMessageType.CONNECTED, session_id: 's2' });
+    await expect(p).resolves.toBe('s2');
   });
 });

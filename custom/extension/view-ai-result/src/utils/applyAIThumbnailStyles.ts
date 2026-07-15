@@ -62,9 +62,13 @@ export function applyAIThumbnailStyles() {
 let observerDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 /**
- * Set up a mutation observer to handle dynamically added thumbnails
+ * Set up a mutation observer to handle dynamically added thumbnails.
+ * Returns a disposer that disconnects the observer and clears the pending
+ * debounce timer — callers (a React effect) must invoke it on unmount, otherwise
+ * the observer keeps running a full-subtree querySelectorAll sweep for the life
+ * of the page.
  */
-export function setupAIThumbnailObserver() {
+export function setupAIThumbnailObserver(): () => void {
   const win = window as any;
 
   // Clear any existing observer
@@ -118,4 +122,15 @@ export function setupAIThumbnailObserver() {
 
   // Store observer globally so we can clean it up
   win.aiThumbnailObserver = observer;
+
+  return () => {
+    observer.disconnect();
+    if (observerDebounceTimer) {
+      clearTimeout(observerDebounceTimer);
+      observerDebounceTimer = undefined;
+    }
+    if (win.aiThumbnailObserver === observer) {
+      win.aiThumbnailObserver = undefined;
+    }
+  };
 }

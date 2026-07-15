@@ -185,18 +185,11 @@ function _mapMeasurementToDisplay(measurement, index, types) {
 
   const firstSite = findingSites?.[0];
   const label = baseLabel || finding?.text || firstSite?.text || 'Lesion not annotated';
-  let displayText = baseDisplayText || [];
-  if (findingSites) {
-    const siteText: any[] = [];
-    findingSites.forEach(site => {
-      if (site?.text !== label) siteText.push(site.text);
-    });
-    displayText = [...siteText, ...displayText];
-  }
-  if (finding && finding?.text !== label) {
-    displayText = [finding.text, ...displayText];
-  }
-  displayText = []
+  // displayText is intentionally empty: the site/finding text was computed here
+  // and then unconditionally discarded (`displayText = []`), so the computation
+  // was dead code. Preserve the shipped behavior (empty displayText) without the
+  // dead branch. baseDisplayText/finding/findingSites are still returned below.
+  const displayText: any[] = [];
   return {
     uid,
     label,

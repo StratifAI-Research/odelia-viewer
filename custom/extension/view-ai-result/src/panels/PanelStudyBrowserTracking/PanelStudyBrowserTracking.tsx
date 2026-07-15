@@ -381,7 +381,14 @@ export default function PanelStudyBrowserTracking({
       });
     }
 
-    StudyInstanceUIDs.forEach(sid => fetchStudiesForPatient(sid));
+    // Catch each invocation: fetchStudiesForPatient throws 'Invalid study URL'
+    // after navigating to /notfoundstudy, which would otherwise surface as an
+    // unhandled promise rejection (the navigation is the real side effect).
+    StudyInstanceUIDs.forEach(sid =>
+      fetchStudiesForPatient(sid).catch(error => {
+        console.warn('fetchStudiesForPatient failed', error);
+      })
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [StudyInstanceUIDs, getStudiesForPatientByMRN]);
 
@@ -616,7 +623,7 @@ export default function PanelStudyBrowserTracking({
   // Setup dynamic styling for AI thumbnails
   useEffect(() => {
     // Set up the mutation observer to watch for new thumbnails
-    setupAIThumbnailObserver();
+    const disconnectObserver = setupAIThumbnailObserver();
 
     // Apply initial styling
     applyAIThumbnailStyles();
@@ -629,6 +636,9 @@ export default function PanelStudyBrowserTracking({
 
     return () => {
       clearTimeout(timeoutId);
+      // Disconnect the MutationObserver on unmount; previously it kept running a
+      // full-subtree querySelectorAll sweep for the life of the page.
+      disconnectObserver();
     };
   }, [tabs, activeTabName]);
 
@@ -860,9 +870,10 @@ function _mapDisplaySets({
             } else if (classification.result !== null) {
               // Handle successful classification (3-class: Malignant, Benign, No lesion)
               const result = classification.result;
-              const confidence = classification.confidence
-                ? ` ${classification.confidence.toFixed(1)}%`
-                : '';
+              const confidence =
+                classification.confidence != null
+                  ? ` ${classification.confidence.toFixed(1)}%`
+                  : '';
               lines.push(`${side}: ${result}${confidence}`);
             }
           });

@@ -3,17 +3,12 @@ import PropTypes from 'prop-types';
 import { Icon } from '@ohif/ui';
 import LabelingOptions from './LabelingOptions';
 import LabelingDate from './LabelingDate';
+import { seedDefaultLabelData } from '../utils/labelData';
 const LabelingTable = ({ title, measurement, config, onClick, onChange }) => {
   const label_options = Object.assign({}, ...config.label_options);
-  // Fill in label data for new measurements
-
-  if (measurement.label === '') {
-    measurement.label_data = {};
-
-    Object.keys(label_options).forEach(element => {
-      measurement.label_data[element] = label_options[element].options[0];
-    });
-  }
+  // Seed default label data only for genuinely-uninitialised measurements.
+  // Never overwrite existing/imported label_data (see seedDefaultLabelData).
+  seedDefaultLabelData(measurement, label_options);
 
   return (
     <div>
