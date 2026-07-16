@@ -93,7 +93,9 @@ class OrthancAIService {
   private manifestCache: Map<string, ModelManifest | null> = new Map();
 
   constructor({ configuration = {} }: { configuration?: OrthancAIServiceConfig }) {
-    this.orthancUrl = configuration.orthancUrl || 'http://localhost:45821';
+    // Same-origin fallback; the extension's preRegistration always provides
+    // window.config.orthancUrl (defaulting to window.location.origin).
+    this.orthancUrl = configuration.orthancUrl || window.location.origin;
 
     // Try to load the current endpoint from localStorage
     this.loadCurrentEndpoint();
@@ -456,7 +458,10 @@ class OrthancAIService {
         // Extract Procedure Step Progress (00741004)
         const progressTag = progressItem['00741004'];
         if (progressTag?.Value?.[0]) {
-          status.progress = parseFloat(progressTag.Value[0]);
+          const parsedProgress = parseFloat(progressTag.Value[0]);
+          if (Number.isFinite(parsedProgress)) {
+            status.progress = parsedProgress;
+          }
         }
 
         // Extract Procedure Step Progress Description (00741006)
@@ -525,14 +530,15 @@ class OrthancAIService {
    * Start polling for workitem status updates
    * @param workitemUid The workitem UID to poll
    * @param callback Function to call with status updates
-   * @param interval Polling interval in milliseconds (default: 2000ms)
+   * @param interval Polling interval in milliseconds (default: 500ms)
+   * @param maxDurationMs Maximum total polling duration before timing out
    */
-  async startWorkitemPolling(
+  startWorkitemPolling(
     workitemUid: string,
     callback: (status: WorkitemStatus) => void,
     interval: number = 500,
     maxDurationMs: number = 10 * 60 * 1000
-  ): Promise<void> {
+  ): void {
     // Stop any existing polling
     this.stopWorkitemPolling();
 

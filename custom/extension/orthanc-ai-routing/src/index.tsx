@@ -37,7 +37,7 @@ export default {
    */
   preRegistration: ({ servicesManager, commandsManager, configuration = {} }: any) => {
     // Create a service factory function
-    const createOrthancAIService = (servicesManager: any) => {
+    const createOrthancAIService = () => {
       return {
         name: 'orthancAIService',
         create: ({ configuration = {} }: any) => {
@@ -52,7 +52,7 @@ export default {
     };
 
     // Register the OrthancAIService using the factory pattern
-    servicesManager.registerService(createOrthancAIService(servicesManager));
+    servicesManager.registerService(createOrthancAIService());
   },
 
   /**

@@ -32,7 +32,7 @@ const extensionDependencies = {
   'view-ai-result': '^0.0.1',
 };
 
-function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
+function modeFactory() {
   return {
     /**
      * Mode ID, which should be unique among modes used by the viewer. This ID
@@ -135,7 +135,7 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
     },
     /**
      * A boolean return value that indicates whether the mode is valid for the
-     * modalities of the selected studies. For instance a PET/CT mode should be
+     * modalities of the selected studies. This mode accepts any study.
      */
     isValidMode: ({ modalities }) => {
       return { valid: true };

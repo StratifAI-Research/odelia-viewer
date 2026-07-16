@@ -36,7 +36,7 @@ const extensionDependencies = {
   "view-ai-result": "^0.0.1"
 };
 
-function modeFactory({ modeConfiguration }) {
+function modeFactory() {
   return {
     /**
      * Mode ID, which should be unique among modes used by the viewer. This ID
@@ -143,18 +143,17 @@ function modeFactory({ modeConfiguration }) {
       ]);
     },
     onModeExit: ({ servicesManager }) => {
-      const { toolGroupService, measurementService, toolbarService } =
-        servicesManager.services;
+      const { toolGroupService } = servicesManager.services;
 
       toolGroupService.destroy();
-    },    /** */
+    },
     validationTags: {
       study: [],
       series: [],
     },
     /**
      * A boolean return value that indicates whether the mode is valid for the
-     * modalities of the selected studies. For instance a PET/CT mode should be
+     * modalities of the selected studies. This mode accepts any study.
      */
     isValidMode: ({ modalities }) => true,
     /**
@@ -186,7 +185,6 @@ function modeFactory({ modeConfiguration }) {
           const initLabels = extensionManager.getModuleEntry(
             "labeling.utilityModule.initLabels"
           ).exports;
-          //initLabels({ extensionManager, measurementService, StudyInstanceUID: 123 });
           initLabels({ extensionManager, measurementService, StudyInstanceUID: studyInstanceUIDs[0] });
 
           const {
