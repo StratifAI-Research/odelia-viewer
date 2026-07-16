@@ -59,6 +59,15 @@ function modeFactory() {
       const utilityModule = extensionManager.getModuleEntry(
         '@ohif/extension-cornerstone.utilityModule.tools'
       );
+
+      // MODE-L8: guard the module lookup (parity with send-ai) so a missing
+      // cornerstone tools module degrades gracefully instead of throwing during
+      // mode entry.
+      if (!utilityModule?.exports) {
+        console.warn('labeling-mode: Cornerstone tools utility module not found – tools not activated');
+        return;
+      }
+
       const { toolNames, Enums } = utilityModule.exports;
 
       const tools = {
@@ -185,6 +194,16 @@ function modeFactory() {
           const initLabels = extensionManager.getModuleEntry(
             "labeling.utilityModule.initLabels"
           ).exports;
+          // M-19: labeling-mode is an explicitly single-study workflow — only the
+          // first requested study is initialized/labelled. Warn (rather than
+          // silently label just one) if a multi-study route is opened, so the
+          // incomplete-labelling limitation is visible.
+          if (studyInstanceUIDs.length > 1) {
+            console.warn(
+              `labeling-mode: opened with ${studyInstanceUIDs.length} studies; only the first ` +
+                `(${studyInstanceUIDs[0]}) is initialized for labelling.`
+            );
+          }
           initLabels({ extensionManager, measurementService, StudyInstanceUID: studyInstanceUIDs[0] });
 
           const {

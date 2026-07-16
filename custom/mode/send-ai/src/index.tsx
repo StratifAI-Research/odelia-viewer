@@ -99,11 +99,13 @@ function modeFactory() {
         enabled: [],
       };
 
-      // Create tool group if missing and add tools
+      // Create tool group if missing and add tools. The group may already exist
+      // (benign on re-entry); log the actual error so a genuine tool/config
+      // failure isn't hidden behind an "already exists" assumption (MODE-L8).
       try {
         toolGroupService.createToolGroupAndAddTools('default', tools);
       } catch (err) {
-        console.warn('Tool group already exists – skipping creation');
+        console.warn('send-ai: createToolGroupAndAddTools failed (tool group may already exist):', err);
       }
 
       // Register toolbar buttons (safe to call multiple times – service de-dupes)
