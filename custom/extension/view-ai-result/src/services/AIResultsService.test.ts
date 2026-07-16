@@ -98,10 +98,7 @@ describe('AIResultsService', () => {
     });
 
     it('leaves hasHeatmap false when SC date/time does not match', () => {
-      const sm = managerWith([
-        srDisplaySet('sr-1'),
-        scDisplaySet('sc-1', { time: '120000' }),
-      ]);
+      const sm = managerWith([srDisplaySet('sr-1'), scDisplaySet('sc-1', { time: '120000' })]);
       const svc = new AIResultsService(sm.services.uiNotificationService);
       const results = svc.getAllAIResults('study-1', sm);
       expect(results[0].hasHeatmap).toBe(false);
@@ -127,7 +124,9 @@ describe('AIResultsService', () => {
       const second = svc.getAllAIResults('study-1', sm);
       expect(second).toHaveLength(1);
       // No further reads of the underlying display sets on cache hit.
-      expect(sm.services.displaySetService.getActiveDisplaySets.mock.calls.length).toBe(callsAfterFirst);
+      expect(sm.services.displaySetService.getActiveDisplaySets.mock.calls.length).toBe(
+        callsAfterFirst
+      );
     });
 
     it('re-evaluates hasHeatmap when the matching SC arrives after the SR was cached', () => {
@@ -166,7 +165,9 @@ describe('AIResultsService', () => {
       const bad = srDisplaySet('sr-bad');
       // Force extractAIResultData to throw via a getter that explodes.
       Object.defineProperty(bad.instance, 'ContentSequence', {
-        get() { throw new Error('boom'); },
+        get() {
+          throw new Error('boom');
+        },
       });
       const sm = managerWith([bad]);
       const svc = new AIResultsService(sm.services.uiNotificationService);
@@ -290,7 +291,9 @@ describe('AIResultsService', () => {
       const sm = managerWith([]);
       const svc = new AIResultsService(sm.services.uiNotificationService);
       const good = jest.fn();
-      svc.subscribe(AIResultsService.EVENTS.AI_RESULT_CLEARED, () => { throw new Error('x'); });
+      svc.subscribe(AIResultsService.EVENTS.AI_RESULT_CLEARED, () => {
+        throw new Error('x');
+      });
       svc.subscribe(AIResultsService.EVENTS.AI_RESULT_CLEARED, good);
       svc.clearStudyCache('study-1');
       expect(good).toHaveBeenCalledTimes(1);
@@ -305,7 +308,9 @@ describe('AIResultsService', () => {
       const before = sm.services.displaySetService.getActiveDisplaySets.mock.calls.length;
       svc.clearStudyCache('study-1');
       svc.getAllAIResults('study-1', sm);
-      expect(sm.services.displaySetService.getActiveDisplaySets.mock.calls.length).toBeGreaterThan(before);
+      expect(sm.services.displaySetService.getActiveDisplaySets.mock.calls.length).toBeGreaterThan(
+        before
+      );
     });
 
     it('removeDisplaySetsFromCache drops the removed result and emits cleared', () => {
@@ -327,7 +332,6 @@ describe('AIResultsService', () => {
       const svc = new AIResultsService(sm.services.uiNotificationService);
       expect(() => svc.removeDisplaySetsFromCache('study-1', ['x'])).not.toThrow();
     });
-
   });
 
   describe('notifyStudyChange', () => {

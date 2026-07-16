@@ -195,7 +195,11 @@ export function findMatch(source: any, candidates: any[], opts: FindMatchOptions
 }
 
 /** Find the heatmap (SC) that pairs with an AI result (SR). */
-export function findMatchingHeatmap(srDisplaySet: any, scDisplaySets: any[], modelName?: string): any | null {
+export function findMatchingHeatmap(
+  srDisplaySet: any,
+  scDisplaySets: any[],
+  modelName?: string
+): any | null {
   return findMatch(srDisplaySet, scDisplaySets, { modelName });
 }
 

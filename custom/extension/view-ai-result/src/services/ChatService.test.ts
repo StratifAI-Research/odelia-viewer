@@ -1,9 +1,5 @@
 import { ChatService, ChatConnectionState } from './ChatService';
-import {
-  CHAT_EVENTS,
-  ClientMessageType,
-  ServerMessageType,
-} from '../types/chatTypes';
+import { CHAT_EVENTS, ClientMessageType, ServerMessageType } from '../types/chatTypes';
 
 // Minimal fake WebSocket: records sends, exposes handlers, lets tests drive
 // open/message/close/error synchronously. No real network.
@@ -287,7 +283,9 @@ describe('ChatService', () => {
     it('an error in one subscriber does not block others', async () => {
       const svc = new ChatService();
       const good = jest.fn();
-      svc.subscribe(CHAT_EVENTS.TOKEN, () => { throw new Error('x'); });
+      svc.subscribe(CHAT_EVENTS.TOKEN, () => {
+        throw new Error('x');
+      });
       svc.subscribe(CHAT_EVENTS.TOKEN, good);
       const ws = await connect(svc);
       ws.emitMessage({ type: ServerMessageType.TOKEN, content: 'a' });

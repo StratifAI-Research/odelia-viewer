@@ -44,7 +44,7 @@ export default {
           // Use the window.config defaults
           const serviceConfig = {
             orthancUrl: window.config.orthancUrl,
-            ...configuration
+            ...configuration,
           };
           return new OrthancAIService({ configuration: serviceConfig });
         },
@@ -60,11 +60,7 @@ export default {
    */
   getPanelModule: ({ servicesManager, commandsManager, extensionManager }: any) => {
     const wrappedAIRoutingPanel = () => {
-      return (
-        <AIRoutingPanel
-          servicesManager={servicesManager}
-        />
-      );
+      return <AIRoutingPanel servicesManager={servicesManager} />;
     };
 
     return [

@@ -46,8 +46,14 @@ describe('useAIResultSubscription', () => {
   it('subscribes to selected and cleared events on mount', () => {
     const { aiResultsService, config } = makeConfig();
     renderHook(() => useAIResultSubscription(config));
-    expect(aiResultsService.subscribe).toHaveBeenCalledWith('AI_RESULT_SELECTED', expect.any(Function));
-    expect(aiResultsService.subscribe).toHaveBeenCalledWith('AI_RESULT_CLEARED', expect.any(Function));
+    expect(aiResultsService.subscribe).toHaveBeenCalledWith(
+      'AI_RESULT_SELECTED',
+      expect.any(Function)
+    );
+    expect(aiResultsService.subscribe).toHaveBeenCalledWith(
+      'AI_RESULT_CLEARED',
+      expect.any(Function)
+    );
     expect(aiResultsService.subscribe).toHaveBeenCalledTimes(2);
   });
 
@@ -56,7 +62,10 @@ describe('useAIResultSubscription', () => {
     renderHook(() => useAIResultSubscription(config));
     const aiResult = { studyInstanceUID: 's1' };
     act(() => {
-      aiResultsService.emit('AI_RESULT_SELECTED', { aiResult, clickedDisplaySetInstanceUID: 'ds9' });
+      aiResultsService.emit('AI_RESULT_SELECTED', {
+        aiResult,
+        clickedDisplaySetInstanceUID: 'ds9',
+      });
     });
     expect(config.onAIResultSelected).toHaveBeenCalledWith(aiResult, 'ds9');
   });
@@ -66,7 +75,10 @@ describe('useAIResultSubscription', () => {
     renderHook(() => useAIResultSubscription(config));
     const aiResult = { studyInstanceUID: 's1' };
     act(() => {
-      aiResultsService.emit('AI_RESULT_SELECTED', { aiResult, displaySetInstanceUID: 'dsFallback' });
+      aiResultsService.emit('AI_RESULT_SELECTED', {
+        aiResult,
+        displaySetInstanceUID: 'dsFallback',
+      });
     });
     expect(config.onAIResultSelected).toHaveBeenCalledWith(aiResult, 'dsFallback');
   });
@@ -90,7 +102,9 @@ describe('useAIResultSubscription', () => {
 
   it('does not re-subscribe when re-rendered with stable deps', () => {
     const { aiResultsService, config } = makeConfig();
-    const { rerender } = renderHook((c: any) => useAIResultSubscription(c), { initialProps: config });
+    const { rerender } = renderHook((c: any) => useAIResultSubscription(c), {
+      initialProps: config,
+    });
     rerender(config);
     rerender(config);
     expect(aiResultsService.subscribe).toHaveBeenCalledTimes(2);

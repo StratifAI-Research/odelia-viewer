@@ -8,14 +8,20 @@ import type OrthancAIService from '../services/OrthancAIService';
 // not a compile-time drift guard.
 type MockService = Pick<
   OrthancAIService,
-  'getCurrentEndpoint' | 'setCurrentEndpoint' | 'routeSeriesToAI' | 'startWorkitemPolling' | 'stopWorkitemPolling'
+  | 'getCurrentEndpoint'
+  | 'setCurrentEndpoint'
+  | 'routeSeriesToAI'
+  | 'startWorkitemPolling'
+  | 'stopWorkitemPolling'
 >;
 
 function makeService(over: Record<string, any> = {}) {
   return {
     getCurrentEndpoint: jest.fn(() => AI_ENDPOINT),
     setCurrentEndpoint: jest.fn(),
-    routeSeriesToAI: jest.fn().mockResolvedValue({ status: 'success', workitem_uid: 'w1', message: 'ok' }),
+    routeSeriesToAI: jest
+      .fn()
+      .mockResolvedValue({ status: 'success', workitem_uid: 'w1', message: 'ok' }),
     startWorkitemPolling: jest.fn(),
     stopWorkitemPolling: jest.fn(),
     ...over,
@@ -54,7 +60,11 @@ describe('useAIRouting', () => {
   it.skip('re-derives currentEndpoint when the orthancAIService prop changes', () => {
     const ui = { show: jest.fn() };
     const { result, rerender } = renderHook(
-      ({ s }) => useAIRouting({ orthancAIService: s as unknown as OrthancAIService, uiNotificationService: ui }),
+      ({ s }) =>
+        useAIRouting({
+          orthancAIService: s as unknown as OrthancAIService,
+          uiNotificationService: ui,
+        }),
       { initialProps: { s: makeService({ getCurrentEndpoint: jest.fn(() => AI_ENDPOINT) }) } }
     );
     expect(result.current.currentEndpoint).toEqual(AI_ENDPOINT);

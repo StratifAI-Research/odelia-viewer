@@ -105,14 +105,23 @@ function modeFactory() {
       try {
         toolGroupService.createToolGroupAndAddTools('default', tools);
       } catch (err) {
-        console.warn('send-ai: createToolGroupAndAddTools failed (tool group may already exist):', err);
+        console.warn(
+          'send-ai: createToolGroupAndAddTools failed (tool group may already exist):',
+          err
+        );
       }
 
       // Register toolbar buttons (safe to call multiple times – service de-dupes)
       toolbarService?.addButtons?.(toolbarButtons);
 
       // Ensure buttons appear in primary section
-      toolbarService?.createButtonSection?.('primary', ['Zoom', 'WindowLevel', 'Pan', 'Reset', 'ImageSliceSync']);
+      toolbarService?.createButtonSection?.('primary', [
+        'Zoom',
+        'WindowLevel',
+        'Pan',
+        'Reset',
+        'ImageSliceSync',
+      ]);
     },
     onModeExit: ({ servicesManager }: ModeFactoryParams) => {
       const {

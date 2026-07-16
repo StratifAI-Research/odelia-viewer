@@ -28,7 +28,7 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
 }) => {
   if (series.length === 0) {
     return (
-      <div className="text-sm text-muted-foreground p-3 bg-secondary-dark rounded">
+      <div className="text-muted-foreground bg-secondary-dark rounded p-3 text-sm">
         No series available for this study
       </div>
     );
@@ -41,7 +41,7 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
   return (
     <div className="space-y-2">
       {/* Series list - can be larger now since button is fixed at bottom */}
-      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+      <div className="max-h-64 space-y-2 overflow-y-auto pr-1">
         {series.map(seriesItem => {
           const isSelected = selectedSeriesUIDs.has(seriesItem.SeriesInstanceUID);
 
@@ -49,31 +49,25 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
             <div
               key={seriesItem.SeriesInstanceUID}
               onClick={() => onToggleSeries(seriesItem.SeriesInstanceUID)}
-              className={`
-                p-2 rounded cursor-pointer transition-colors
-                border border-secondary-light
-                ${isSelected
+              className={`border-secondary-light cursor-pointer rounded border p-2 transition-colors ${
+                isSelected
                   ? 'bg-primary-dark border-primary-light'
-                  : 'bg-black hover:bg-secondary-dark'
-                }
-              `}
+                  : 'hover:bg-secondary-dark bg-black'
+              } `}
             >
               <div className="flex items-start gap-3">
                 {/* Checkbox */}
                 <div className="mt-1 flex-shrink-0">
                   <div
-                    className={`
-                      w-4 h-4 rounded border-2
-                      flex items-center justify-center
-                      ${isSelected
+                    className={`flex h-4 w-4 items-center justify-center rounded border-2 ${
+                      isSelected
                         ? 'border-primary-light bg-primary-light'
                         : 'border-secondary-light'
-                      }
-                    `}
+                    } `}
                   >
                     {isSelected && (
                       <svg
-                        className="w-3 h-3 text-black"
+                        className="h-3 w-3 text-black"
                         fill="none"
                         strokeLinecap="round"
                         strokeLinejoin="round"
@@ -88,11 +82,11 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
                 </div>
 
                 {/* Series info */}
-                <div className="flex-1 min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-white">
                     {seriesItem.SeriesDescription || `Series ${seriesItem.SeriesNumber || 'N/A'}`}
                   </div>
-                  <div className="text-xs text-muted-foreground mt-1">
+                  <div className="text-muted-foreground mt-1 text-xs">
                     {seriesItem.Modality} · {seriesItem.numImageFrames || 0} instances
                   </div>
                 </div>
@@ -129,7 +123,7 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
       </div>
 
       {/* Selection summary - compact */}
-      <div className="text-xs text-muted-foreground px-2 py-1 bg-secondary-dark rounded">
+      <div className="text-muted-foreground bg-secondary-dark rounded px-2 py-1 text-xs">
         {selectedSeriesUIDs.size} series ({totalInstances} instances)
       </div>
     </div>

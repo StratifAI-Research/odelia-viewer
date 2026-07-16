@@ -34,7 +34,10 @@ export default {
 
       // Register custom heatmap synchronizer type
       const { syncGroupService } = servicesManager.services;
-      syncGroupService.addSynchronizerType('heatmapImageSlice', createHeatmapImageSliceSynchronizer);
+      syncGroupService.addSynchronizerType(
+        'heatmapImageSlice',
+        createHeatmapImageSliceSynchronizer
+      );
 
       // Register ChatService for AI Chat panel
       servicesManager.registerService({
@@ -110,7 +113,12 @@ export default {
    * a Header, left and right sidebars, and a viewport section in the middle
    * of the viewer.
    */
-  getLayoutTemplateModule: ({ servicesManager, commandsManager, extensionManager, hotkeysManager }) => {
+  getLayoutTemplateModule: ({
+    servicesManager,
+    commandsManager,
+    extensionManager,
+    hotkeysManager,
+  }) => {
     function OdeliaViewerLayout(props) {
       const DefaultLayout = useMemo(() => {
         const entry = extensionManager.getModuleEntry(

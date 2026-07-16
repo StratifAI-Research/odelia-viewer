@@ -39,7 +39,9 @@ describe('createStudyAIBrowserTabsNested', () => {
     expect(study.studyInstanceUid).toBe('study-1');
     expect(study.originals.map((d: any) => d.displaySetInstanceUID)).toEqual(['orig-1']);
     expect(study.aiGroups).toHaveLength(1);
-    expect(study.aiGroups[0].displaySets.map((d: any) => d.displaySetInstanceUID)).toEqual(['ai-1']);
+    expect(study.aiGroups[0].displaySets.map((d: any) => d.displaySetInstanceUID)).toEqual([
+      'ai-1',
+    ]);
   });
 
   it('collects SR and SC of the same run into one AI group', () => {
@@ -48,7 +50,10 @@ describe('createStudyAIBrowserTabsNested', () => {
     const tabs = createStudyAIBrowserTabsNested(['study-1'], [], [sr, sc]);
     const groups = tabs[0].studies[0].aiGroups;
     expect(groups).toHaveLength(1);
-    expect(groups[0].displaySets.map((d: any) => d.displaySetInstanceUID)).toEqual(['ai-sr', 'ai-sc']);
+    expect(groups[0].displaySets.map((d: any) => d.displaySetInstanceUID)).toEqual([
+      'ai-sr',
+      'ai-sc',
+    ]);
   });
 
   it('labels a group with the model name and includes a newline separator', () => {
@@ -83,7 +88,9 @@ describe('createStudyAIBrowserTabsNested', () => {
         instance: {
           InstanceCreationDate: '20240101',
           InstanceCreationTime: '120000',
-          ContentSequence: [{ ConceptNameCodeSequence: [{ CodeMeaning: 'AI Model' }], TextValue: model }],
+          ContentSequence: [
+            { ConceptNameCodeSequence: [{ CodeMeaning: 'AI Model' }], TextValue: model },
+          ],
         },
       });
     const tabs = createStudyAIBrowserTabsNested(

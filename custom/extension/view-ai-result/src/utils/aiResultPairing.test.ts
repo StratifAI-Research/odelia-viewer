@@ -42,7 +42,11 @@ describe('referencedSopInstanceUIDs / ownSopInstanceUIDs', () => {
       instance: {
         SOPInstanceUID: 'self',
         CurrentRequestedProcedureEvidenceSequence: [
-          { ReferencedSeriesSequence: [{ ReferencedSOPSequence: [{ ReferencedSOPInstanceUID: 'deep-1' }] }] },
+          {
+            ReferencedSeriesSequence: [
+              { ReferencedSOPSequence: [{ ReferencedSOPInstanceUID: 'deep-1' }] },
+            ],
+          },
         ],
         ReferencedImageSequence: [{ ReferencedSOPInstanceUID: 'img-1' }],
       },
@@ -145,6 +149,8 @@ describe('findMatchingHeatmap / findMatchingSRForHeatmap', () => {
     // Two heatmaps at the same instant; model-name hint breaks the tie.
     const a = sc('a', { time: '101010', desc: 'Heatmap ModelX overlay' });
     const b = sc('b', { time: '101010', desc: 'Heatmap ModelY overlay' });
-    expect(findMatchingHeatmap(sr('sr', { time: '101010' }), [a, b], 'ModelY')?.displaySetInstanceUID).toBe('b');
+    expect(
+      findMatchingHeatmap(sr('sr', { time: '101010' }), [a, b], 'ModelY')?.displaySetInstanceUID
+    ).toBe('b');
   });
 });

@@ -44,46 +44,41 @@ export function useInputMapping(manifest: ModelManifest | null): UseInputMapping
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
 
   const selectedConfig = useMemo(() => {
-    if (!manifest || !selectedConfigId) return null;
+    if (!manifest || !selectedConfigId) {
+      return null;
+    }
     return manifest.input_configurations.find(c => c.id === selectedConfigId) ?? null;
   }, [manifest, selectedConfigId]);
 
-  const setSelectedConfigId = useCallback(
-    (configId: string) => {
-      setSelectedConfigIdState(configId);
-      setMapping({});
-    },
-    []
-  );
+  const setSelectedConfigId = useCallback((configId: string) => {
+    setSelectedConfigIdState(configId);
+    setMapping({});
+  }, []);
 
-  const setInputSeries = useCallback(
-    (key: string, seriesUID: string | null) => {
-      setMapping(prev => ({ ...prev, [key]: seriesUID }));
-    },
-    []
-  );
+  const setInputSeries = useCallback((key: string, seriesUID: string | null) => {
+    setMapping(prev => ({ ...prev, [key]: seriesUID }));
+  }, []);
 
-  const autoDetect = useCallback(
-    (config: InputConfiguration, availableSeries: SeriesInfo[]) => {
-      const newMapping: Record<string, string | null> = {};
-      const usedUIDs = new Set<string>();
+  const autoDetect = useCallback((config: InputConfiguration, availableSeries: SeriesInfo[]) => {
+    const newMapping: Record<string, string | null> = {};
+    const usedUIDs = new Set<string>();
 
-      for (const input of config.inputs) {
-        const patterns = input.auto_detect_patterns ?? [];
-        const remaining = availableSeries.filter(s => !usedUIDs.has(s.SeriesInstanceUID));
-        const detected = tryAutoDetectSeries(patterns, remaining, input.modality);
-        newMapping[input.key] = detected;
-        if (detected) {
-          usedUIDs.add(detected);
-        }
+    for (const input of config.inputs) {
+      const patterns = input.auto_detect_patterns ?? [];
+      const remaining = availableSeries.filter(s => !usedUIDs.has(s.SeriesInstanceUID));
+      const detected = tryAutoDetectSeries(patterns, remaining, input.modality);
+      newMapping[input.key] = detected;
+      if (detected) {
+        usedUIDs.add(detected);
       }
-      setMapping(newMapping);
-    },
-    []
-  );
+    }
+    setMapping(newMapping);
+  }, []);
 
   const isValid = useMemo(() => {
-    if (!selectedConfig) return false;
+    if (!selectedConfig) {
+      return false;
+    }
     return selectedConfig.inputs
       .filter(input => input.required)
       .every(input => mapping[input.key] != null);

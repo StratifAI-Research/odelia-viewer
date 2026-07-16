@@ -66,8 +66,18 @@ export function buildErrorResult(srDisplaySet: any, studyInstanceUID: string): A
     displaySetInstanceUID: srDisplaySet.displaySetInstanceUID,
     hasHeatmap: false,
     classifications: [
-      { side: 'Left', result: null, confidence: null, errorMessage: 'AI results could not be parsed' },
-      { side: 'Right', result: null, confidence: null, errorMessage: 'AI results could not be parsed' },
+      {
+        side: 'Left',
+        result: null,
+        confidence: null,
+        errorMessage: 'AI results could not be parsed',
+      },
+      {
+        side: 'Right',
+        result: null,
+        confidence: null,
+        errorMessage: 'AI results could not be parsed',
+      },
     ],
     resultTs: resultTsFromDisplaySet(srDisplaySet),
     modelInfo: {
@@ -83,7 +93,10 @@ export function buildErrorResult(srDisplaySet: any, studyInstanceUID: string): A
  * that parse become {@link AIResult}s (paired with their heatmap); SRs that
  * throw become error results. Non-SR/SC display sets are ignored.
  */
-export function extractAIResultsForStudy(studyDisplaySets: any[], studyInstanceUID: string): AIResult[] {
+export function extractAIResultsForStudy(
+  studyDisplaySets: any[],
+  studyInstanceUID: string
+): AIResult[] {
   const srDisplaySets = studyDisplaySets.filter(ds => ds.Modality === 'SR');
   if (srDisplaySets.length === 0) {
     return [];

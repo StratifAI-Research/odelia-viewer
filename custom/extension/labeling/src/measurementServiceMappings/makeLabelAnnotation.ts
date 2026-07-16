@@ -14,7 +14,11 @@ export interface LabelAnnotationInput {
  * `MeasurementService.addRawMeasurement`. Shared by initLabels (source 'inited') and
  * importCSVReport (source 'imported'), which previously duplicated this literal.
  */
-export function makeLabelAnnotation({ labelData, referenceStudyUID, source }: LabelAnnotationInput) {
+export function makeLabelAnnotation({
+  labelData,
+  referenceStudyUID,
+  source,
+}: LabelAnnotationInput) {
   return {
     annotationUID: utils.guid(),
     metadata: { source },

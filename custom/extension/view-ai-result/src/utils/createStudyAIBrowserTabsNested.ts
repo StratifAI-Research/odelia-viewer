@@ -84,9 +84,14 @@ export function createStudyAIBrowserTabsNested(
     const srEntries = aiEntries.filter(e => e.modality === 'SR');
     const orderedEntries = [...srEntries, ...aiEntries.filter(e => e.modality !== 'SR')];
 
-    const keyForEntry = (entry: any): { key: string; dateTime: string | null; modelName: string } => {
+    const keyForEntry = (
+      entry: any
+    ): { key: string; dateTime: string | null; modelName: string } => {
       if (entry.modality === 'SC') {
-        const matchSR = findMatchingSRForHeatmap(entry.real, srEntries.map(s => s.real));
+        const matchSR = findMatchingSRForHeatmap(
+          entry.real,
+          srEntries.map(s => s.real)
+        );
         const paired = matchSR ? srEntries.find(s => s.real === matchSR) : undefined;
         if (paired) {
           const key = paired.dateTime
@@ -94,7 +99,9 @@ export function createStudyAIBrowserTabsNested(
             : `UNKNOWN_${paired.real.displaySetInstanceUID}`;
           return { key, dateTime: paired.dateTime, modelName: paired.modelName };
         }
-        const key = entry.dateTime ? `AI Model|${entry.dateTime}` : `UNKNOWN_${entry.real.displaySetInstanceUID}`;
+        const key = entry.dateTime
+          ? `AI Model|${entry.dateTime}`
+          : `UNKNOWN_${entry.real.displaySetInstanceUID}`;
         return { key, dateTime: entry.dateTime, modelName: 'AI Model' };
       }
       const key = entry.dateTime
@@ -118,7 +125,9 @@ export function createStudyAIBrowserTabsNested(
       aiGroupsMap.get(key).displaySets.push(entry.thumb);
     });
 
-    const aiGroups = Array.from(aiGroupsMap.values()).sort((a,b)=>a.sortKey.localeCompare(b.sortKey));
+    const aiGroups = Array.from(aiGroupsMap.values()).sort((a, b) =>
+      a.sortKey.localeCompare(b.sortKey)
+    );
 
     // -------------- Build study object --------------
     allStudies.push({
@@ -135,7 +144,9 @@ export function createStudyAIBrowserTabsNested(
   allStudies.sort((a, b) => {
     const aPrimary = primarySet.has(a.studyInstanceUid) ? 0 : 1;
     const bPrimary = primarySet.has(b.studyInstanceUid) ? 0 : 1;
-    if (aPrimary !== bPrimary) return aPrimary - bPrimary;
+    if (aPrimary !== bPrimary) {
+      return aPrimary - bPrimary;
+    }
     // if both same category, newest date first (VAR-N6: engine-independent key)
     return dateSortKey(b.date) - dateSortKey(a.date);
   });

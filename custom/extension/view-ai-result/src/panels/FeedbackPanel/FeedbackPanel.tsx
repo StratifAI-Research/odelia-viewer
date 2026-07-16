@@ -4,11 +4,7 @@ import { useImageViewer, useUserAuthentication } from '@ohif/ui';
 import { useViewportGrid } from '@ohif/ui-next';
 import { useActiveStudyUID } from '../../hooks/useActiveStudyUID';
 import { resultTsFromDisplaySet } from '../../utils/dicomDateTime';
-import {
-  fetchFeedbackStatus,
-  findUserVerdict,
-  submitFeedback,
-} from './feedbackApi';
+import { fetchFeedbackStatus, findUserVerdict, submitFeedback } from './feedbackApi';
 import { useFeedbackUser } from './useFeedbackUser';
 import { useResultIdentity, toResultKey, resultIdentityString } from './useResultIdentity';
 import { EditConfirmModal } from './EditConfirmModal';
@@ -76,7 +72,9 @@ const FeedbackPanel: React.FC = () => {
 
   // Helper to refresh dropdown list & selection info
   const refreshMeta = useCallback(() => {
-    if (!aiResultsService || !activeStudyUID) return;
+    if (!aiResultsService || !activeStudyUID) {
+      return;
+    }
     const meta = aiResultsService.getAIResultMetadata?.(activeStudyUID, servicesManager) || [];
     setAiMeta(meta);
     const selected = meta.find((m: any) => m.isSelected);
@@ -94,7 +92,9 @@ const FeedbackPanel: React.FC = () => {
 
   // Helper to refresh the currently displayed AI result
   const refreshCurrent = useCallback(() => {
-    if (!aiResultsService || !activeStudyUID) return;
+    if (!aiResultsService || !activeStudyUID) {
+      return;
+    }
     const res = aiResultsService.getSelectedAIResult?.(activeStudyUID, servicesManager);
     if (res) {
       setCurrentResult(res);
@@ -156,7 +156,9 @@ const FeedbackPanel: React.FC = () => {
 
   // Subscribe to global selection changes so panel stays in sync
   useEffect(() => {
-    if (!aiResultsService) return;
+    if (!aiResultsService) {
+      return;
+    }
     const { unsubscribe } = aiResultsService.subscribe(
       aiResultsService.EVENTS.AI_RESULT_SELECTED,
       () => {
@@ -178,9 +180,13 @@ const FeedbackPanel: React.FC = () => {
       const requestIdentity = statusIdentity;
       try {
         const data = await fetchFeedbackStatus(resultKey, signal);
-        if (data === null) return;
+        if (data === null) {
+          return;
+        }
         // Ignore the response if the selected result / reader changed while it was in flight.
-        if (signal?.aborted || requestIdentity !== statusIdentityRef.current) return;
+        if (signal?.aborted || requestIdentity !== statusIdentityRef.current) {
+          return;
+        }
         // Lock if current user already submitted; also prefill selections.
         const u = findUserVerdict(data, userId);
         if (u) {
@@ -243,7 +249,9 @@ const FeedbackPanel: React.FC = () => {
                   return undefined;
                 }
               })();
-            if (!name || !version || !ts) return [m.displaySetInstanceUID, false] as const;
+            if (!name || !version || !ts) {
+              return [m.displaySetInstanceUID, false] as const;
+            }
             const data = await fetchFeedbackStatus({
               studyUID: String(activeStudyUID),
               modelName: String(name),
@@ -256,7 +264,9 @@ const FeedbackPanel: React.FC = () => {
           }
         })
       );
-      if (aborted) return;
+      if (aborted) {
+        return;
+      }
       const map: Record<string, boolean> = {};
       for (const [uid, has] of entries) {
         map[uid] = has;
@@ -278,12 +288,20 @@ const FeedbackPanel: React.FC = () => {
   };
 
   const handlePrevNext = (direction: -1 | 1) => {
-    if (!aiMeta.length) return;
+    if (!aiMeta.length) {
+      return;
+    }
     const index = aiMeta.findIndex(m => m.displaySetInstanceUID === selectedUID);
-    if (index === -1) return;
+    if (index === -1) {
+      return;
+    }
     let nextIndex = index + direction;
-    if (nextIndex < 0) nextIndex = aiMeta.length - 1;
-    if (nextIndex >= aiMeta.length) nextIndex = 0;
+    if (nextIndex < 0) {
+      nextIndex = aiMeta.length - 1;
+    }
+    if (nextIndex >= aiMeta.length) {
+      nextIndex = 0;
+    }
     const nextUID = aiMeta[nextIndex].displaySetInstanceUID;
     aiResultsService.setSelectedAIResult(activeStudyUID, nextUID, servicesManager);
   };
@@ -296,7 +314,9 @@ const FeedbackPanel: React.FC = () => {
 
   const handleSubmit = async () => {
     setSubmitMessage('');
-    if (!bothSidesChosen || !resultKey || !userId) return;
+    if (!bothSidesChosen || !resultKey || !userId) {
+      return;
+    }
     // Identity being submitted; its outcome is applied only while it stays current.
     const submitIdentity = statusIdentity;
     setIsSubmitting(true);
@@ -369,24 +389,26 @@ const FeedbackPanel: React.FC = () => {
 
   // Utility to format confidence nicely
   const formatConfidence = (v: number | null | undefined) => {
-    if (v === null || v === undefined) return '';
+    if (v === null || v === undefined) {
+      return '';
+    }
     return `${v.toFixed(1)}%`;
   };
 
   // --- Render helpers ---
   const renderNoUserPrompt = () => {
     return (
-      <div className="flex flex-col h-full p-3 overflow-y-auto text-white bg-black">
+      <div className="flex h-full flex-col overflow-y-auto bg-black p-3 text-white">
         <div className="mb-3 text-sm">Please enter your name to provide feedback.</div>
-        <div className="flex items-center space-x-2 mb-3">
+        <div className="mb-3 flex items-center space-x-2">
           <input
-            className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm"
+            className="flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-2 text-sm"
             placeholder="Your name"
             value={nameInput}
             onChange={e => setNameInput(e.target.value)}
           />
           <button
-            className={`px-3 py-2 rounded ${nameInput.trim().length > 0 ? 'bg-primary-main hover:bg-primary-light' : 'bg-gray-700 cursor-not-allowed'}`}
+            className={`rounded px-3 py-2 ${nameInput.trim().length > 0 ? 'bg-primary-main hover:bg-primary-light' : 'cursor-not-allowed bg-gray-700'}`}
             disabled={nameInput.trim().length === 0}
             onClick={() => {
               saveLocalUser(nameInput);
@@ -401,13 +423,18 @@ const FeedbackPanel: React.FC = () => {
     );
   };
   const renderSideSection = (side: 'Left' | 'Right') => {
-    if (!currentResult) return null;
+    if (!currentResult) {
+      return null;
+    }
     const classification = currentResult.classifications?.find((c: any) => c.side === side);
     const aiLabel = classification?.result || 'Unknown';
     return (
-      <div key={side} className="border rounded p-2 mb-3">
-        <div className="font-semibold mb-1">{side} Breast</div>
-        <div className="text-xs mb-2 text-gray-400">
+      <div
+        key={side}
+        className="mb-3 rounded border p-2"
+      >
+        <div className="mb-1 font-semibold">{side} Breast</div>
+        <div className="mb-2 text-xs text-gray-400">
           AI Prediction: {aiLabel} {formatConfidence(classification?.confidence)}
         </div>
         <div className="flex space-x-4">
@@ -440,11 +467,11 @@ const FeedbackPanel: React.FC = () => {
                     cursor: locked ? 'not-allowed' : 'pointer',
                   }}
                 />
-                <span className={`text-sm font-medium ${
-                  locked && isChecked ? 'text-blue-400' :
-                  locked ? 'text-gray-500' :
-                  'text-white'
-                }`}>
+                <span
+                  className={`text-sm font-medium ${
+                    locked && isChecked ? 'text-blue-400' : locked ? 'text-gray-500' : 'text-white'
+                  }`}
+                >
                   {opt}
                 </span>
               </label>
@@ -456,146 +483,155 @@ const FeedbackPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full p-3 overflow-y-auto text-white bg-black">
+    <div className="flex h-full flex-col overflow-y-auto bg-black p-3 text-white">
       {!userId ? (
         renderNoUserPrompt()
       ) : (
         <>
-      {/* Dropdown for AI result selection */}
-      <div className="mb-2">
-        <select
-          value={selectedUID}
-          onChange={handleDropdownChange}
-          className="w-full bg-gray-800 border border-gray-700 rounded px-1 py-1 text-sm"
-        >
-          {aiMeta.map(m => {
-            const uid = m.displaySetInstanceUID;
-            const mark = hasFeedbackByUID[uid] ? ' ✓' : '';
-            return (
-              <option key={uid} value={uid}>
-                {(m.modelName || 'AI Result') + mark}
-              </option>
-            );
-          })}
-        </select>
-      </div>
-
-      {/* Navigation buttons */}
-      <div className="flex justify-between items-center mb-3 space-x-2">
-        <button
-          className="flex-1 px-2 py-1 bg-gray-700 rounded hover:bg-gray-600"
-          title="Previous AI Result"
-          onClick={() => handlePrevNext(-1)}
-        >
-          ◀ Prev
-        </button>
-        <button
-          className="flex-1 px-2 py-1 bg-gray-700 rounded hover:bg-gray-600"
-          title="Next AI Result"
-          onClick={() => handlePrevNext(1)}
-        >
-          Next ▶
-        </button>
-      </div>
-
-      {/* Active Study Indicator */}
-      {activeStudyUID && (
-        <div className="mb-3 p-2 bg-gray-800 rounded text-xs">
-          <div className="text-gray-400">Active Study:</div>
-          <div className="font-mono text-gray-300 break-all">{activeStudyUID}</div>
-        </div>
-      )}
-
-      {/* AI model info */}
-      {currentResult ? (
-        <div className="mb-4 text-sm">
-          <div>
-            <span className="font-medium">Model:</span> {currentResult.modelInfo?.name || 'N/A'}
+          {/* Dropdown for AI result selection */}
+          <div className="mb-2">
+            <select
+              value={selectedUID}
+              onChange={handleDropdownChange}
+              className="w-full rounded border border-gray-700 bg-gray-800 px-1 py-1 text-sm"
+            >
+              {aiMeta.map(m => {
+                const uid = m.displaySetInstanceUID;
+                const mark = hasFeedbackByUID[uid] ? ' ✓' : '';
+                return (
+                  <option
+                    key={uid}
+                    value={uid}
+                  >
+                    {(m.modelName || 'AI Result') + mark}
+                  </option>
+                );
+              })}
+            </select>
           </div>
-          <div>
-            <span className="font-medium">Version:</span> {modelVersion || 'N/A'}
-          </div>
-          <div>
-            <span className="font-medium">Result time:</span> {resultTs || 'Unknown'}
-          </div>
-        </div>
-      ) : (
-        <div className="text-sm text-gray-400">No AI result selected.</div>
-      )}
 
-      {/* Feedback per side */}
-      {['Left', 'Right'].map(side => renderSideSection(side as 'Left' | 'Right'))}
-
-      {/* Submit button and status */}
-      <div className="mt-auto space-y-2">
-        <button
-          className={`w-full py-2 rounded ${
-            locked
-              ? 'bg-gray-700 cursor-not-allowed'
-              : bothSidesChosen && canQueryBackend && !isSubmitting
-              ? 'bg-primary-main hover:bg-primary-light'
-              : 'bg-gray-700 cursor-not-allowed'
-          }`}
-          disabled={locked || !bothSidesChosen || !canQueryBackend || isSubmitting}
-          onClick={handleSubmit}
-          title={
-            !bothSidesChosen
-              ? 'Select a verdict for both sides'
-              : !canQueryBackend
-              ? 'Missing model/version/timestamp to identify this AI result'
-              : locked
-              ? 'Already submitted'
-              : ''
-          }
-        >
-          {locked ? 'Submitted' : isSubmitting ? 'Saving…' : 'Submit Feedback'}
-        </button>
-        {locked ? (
-          <div>
+          {/* Navigation buttons */}
+          <div className="mb-3 flex items-center justify-between space-x-2">
             <button
-              className={`w-full py-2 rounded ${
-                isSubmitting
-                  ? 'bg-gray-700 cursor-not-allowed'
-                  : 'bg-primary-main hover:bg-primary-light'
+              className="flex-1 rounded bg-gray-700 px-2 py-1 hover:bg-gray-600"
+              title="Previous AI Result"
+              onClick={() => handlePrevNext(-1)}
+            >
+              ◀ Prev
+            </button>
+            <button
+              className="flex-1 rounded bg-gray-700 px-2 py-1 hover:bg-gray-600"
+              title="Next AI Result"
+              onClick={() => handlePrevNext(1)}
+            >
+              Next ▶
+            </button>
+          </div>
+
+          {/* Active Study Indicator */}
+          {activeStudyUID && (
+            <div className="mb-3 rounded bg-gray-800 p-2 text-xs">
+              <div className="text-gray-400">Active Study:</div>
+              <div className="break-all font-mono text-gray-300">{activeStudyUID}</div>
+            </div>
+          )}
+
+          {/* AI model info */}
+          {currentResult ? (
+            <div className="mb-4 text-sm">
+              <div>
+                <span className="font-medium">Model:</span> {currentResult.modelInfo?.name || 'N/A'}
+              </div>
+              <div>
+                <span className="font-medium">Version:</span> {modelVersion || 'N/A'}
+              </div>
+              <div>
+                <span className="font-medium">Result time:</span> {resultTs || 'Unknown'}
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-gray-400">No AI result selected.</div>
+          )}
+
+          {/* Feedback per side */}
+          {['Left', 'Right'].map(side => renderSideSection(side as 'Left' | 'Right'))}
+
+          {/* Submit button and status */}
+          <div className="mt-auto space-y-2">
+            <button
+              className={`w-full rounded py-2 ${
+                locked
+                  ? 'cursor-not-allowed bg-gray-700'
+                  : bothSidesChosen && canQueryBackend && !isSubmitting
+                    ? 'bg-primary-main hover:bg-primary-light'
+                    : 'cursor-not-allowed bg-gray-700'
               }`}
-              disabled={isSubmitting}
-              onClick={handleStartEdit}
-              title={isSubmitting ? 'Please wait…' : 'Enable editing for this feedback'}
+              disabled={locked || !bothSidesChosen || !canQueryBackend || isSubmitting}
+              onClick={handleSubmit}
+              title={
+                !bothSidesChosen
+                  ? 'Select a verdict for both sides'
+                  : !canQueryBackend
+                    ? 'Missing model/version/timestamp to identify this AI result'
+                    : locked
+                      ? 'Already submitted'
+                      : ''
+              }
             >
-              Edit Feedback
+              {locked ? 'Submitted' : isSubmitting ? 'Saving…' : 'Submit Feedback'}
             </button>
-          </div>
-        ) : (
-          submitMessage && <div className="text-xs text-gray-300">{submitMessage}</div>
-        )}
+            {locked ? (
+              <div>
+                <button
+                  className={`w-full rounded py-2 ${
+                    isSubmitting
+                      ? 'cursor-not-allowed bg-gray-700'
+                      : 'bg-primary-main hover:bg-primary-light'
+                  }`}
+                  disabled={isSubmitting}
+                  onClick={handleStartEdit}
+                  title={isSubmitting ? 'Please wait…' : 'Enable editing for this feedback'}
+                >
+                  Edit Feedback
+                </button>
+              </div>
+            ) : (
+              submitMessage && <div className="text-xs text-gray-300">{submitMessage}</div>
+            )}
 
-        {/* Footer: Signed in user and Change user */}
-        <div className="pt-2 border-t border-gray-800">
-          <div className="flex items-center justify-between text-xs text-gray-300">
-            <div>Signed in as <span className="font-medium">{userId}</span></div>
-            <button
-              className="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600"
-              onClick={() => {
-                try {
-                  const cfg = (window as any)?.config || {};
-                  const routerBasename = cfg?.routerBasename || '/';
-                  const configured = cfg?.oidc?.[0]?.post_logout_redirect_uri || '/';
-                  const absolute = new URL(configured, window.location.origin).href;
-                  const logoutPath = `${routerBasename}${routerBasename.endsWith('/') ? '' : '/'}logout`;
-                  window.location.assign(`${logoutPath}?redirect_uri=${encodeURIComponent(absolute)}`);
-                } catch (_) {
-                  // Fallback with routerBasename
-                  const routerBasename = ((window as any)?.config?.routerBasename || '/').replace(/\/$/, '');
-                  window.location.assign(`${routerBasename}/logout`);
-                }
-              }}
-              title="Change user"
-            >
-              Change user
-            </button>
+            {/* Footer: Signed in user and Change user */}
+            <div className="border-t border-gray-800 pt-2">
+              <div className="flex items-center justify-between text-xs text-gray-300">
+                <div>
+                  Signed in as <span className="font-medium">{userId}</span>
+                </div>
+                <button
+                  className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600"
+                  onClick={() => {
+                    try {
+                      const cfg = (window as any)?.config || {};
+                      const routerBasename = cfg?.routerBasename || '/';
+                      const configured = cfg?.oidc?.[0]?.post_logout_redirect_uri || '/';
+                      const absolute = new URL(configured, window.location.origin).href;
+                      const logoutPath = `${routerBasename}${routerBasename.endsWith('/') ? '' : '/'}logout`;
+                      window.location.assign(
+                        `${logoutPath}?redirect_uri=${encodeURIComponent(absolute)}`
+                      );
+                    } catch (_) {
+                      // Fallback with routerBasename
+                      const routerBasename = (
+                        (window as any)?.config?.routerBasename || '/'
+                      ).replace(/\/$/, '');
+                      window.location.assign(`${routerBasename}/logout`);
+                    }
+                  }}
+                  title="Change user"
+                >
+                  Change user
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
         </>
       )}
     </div>

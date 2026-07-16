@@ -12,7 +12,10 @@ import { PanelStudyBrowserHeader, MoreDropdownMenu } from '@ohif/extension-defau
 import { defaultActionIcons } from './constants';
 import { createAIBrowserTabs } from '../../utils/createAIBrowserTabs';
 import { createStudyAIBrowserTabsNested } from '../../utils/createStudyAIBrowserTabsNested';
-import { applyAIThumbnailStyles, setupAIThumbnailObserver } from '../../utils/applyAIThumbnailStyles';
+import {
+  applyAIThumbnailStyles,
+  setupAIThumbnailObserver,
+} from '../../utils/applyAIThumbnailStyles';
 import { useStudyChangeDetector } from '../../hooks/useStudyChangeDetector';
 import {
   thumbnailNoImageModalities,
@@ -146,7 +149,11 @@ export default function PanelStudyBrowserTracking({
   // Kept separate from the subscription (below) so it does not re-run on every
   // loading/thumbnail tick (VAR-M5).
   useEffect(() => {
-    const initialUID = resolveInitialSelectedSRUID(StudyInstanceUIDs, aiResultsService, servicesManager);
+    const initialUID = resolveInitialSelectedSRUID(
+      StudyInstanceUIDs,
+      aiResultsService,
+      servicesManager
+    );
     if (initialUID) {
       setSelectedSRUID(initialUID);
     }
@@ -164,9 +171,17 @@ export default function PanelStudyBrowserTracking({
       setSelectedSRUID(evt.displaySetInstanceUID);
     };
 
-    const clearedHandler = (evt: { studyInstanceUID: string; displaySetUIDs?: string[]; reason?: string }) => {
+    const clearedHandler = (evt: {
+      studyInstanceUID: string;
+      displaySetUIDs?: string[];
+      reason?: string;
+    }) => {
       // If the currently selected AI result was deleted, clear selection
-      if (evt.displaySetUIDs && selectedSRUIDRef.current && evt.displaySetUIDs.includes(selectedSRUIDRef.current)) {
+      if (
+        evt.displaySetUIDs &&
+        selectedSRUIDRef.current &&
+        evt.displaySetUIDs.includes(selectedSRUIDRef.current)
+      ) {
         setSelectedSRUID(null);
       } else if (evt.reason === 'no_results' || evt.reason === 'cache_cleared') {
         // If all results were cleared, clear selection
@@ -233,13 +248,14 @@ export default function PanelStudyBrowserTracking({
 
   const onDoubleClickThumbnailHandler = displaySetInstanceUID => {
     // Check if this is an AI result thumbnail
-    const displaySet = displaySets.find((ds: DisplaySet) => ds.displaySetInstanceUID === displaySetInstanceUID);
+    const displaySet = displaySets.find(
+      (ds: DisplaySet) => ds.displaySetInstanceUID === displaySetInstanceUID
+    );
     const modality = displaySet?.modality || displaySet?.Modality;
     const isAIResult = displaySet && isAIResultModality(modality);
 
     // Don't change viewport for AI results
     if (isAIResult) {
-
       return;
     }
 
@@ -267,10 +283,11 @@ export default function PanelStudyBrowserTracking({
 
   // Handle thumbnail click for AI result selection
   const onClickThumbnailHandler = (displaySetInstanceUID: string) => {
-    const displaySet = displaySets.find((ds: DisplaySet) => ds.displaySetInstanceUID === displaySetInstanceUID);
+    const displaySet = displaySets.find(
+      (ds: DisplaySet) => ds.displaySetInstanceUID === displaySetInstanceUID
+    );
 
     if (!displaySet) {
-
       return;
     }
 
@@ -287,27 +304,29 @@ export default function PanelStudyBrowserTracking({
       // Set selected AI result using the service
       if (aiResultsService && studyInstanceUID) {
         try {
-          aiResultsService.setSelectedAIResult(studyInstanceUID, displaySetInstanceUID, servicesManager);
+          aiResultsService.setSelectedAIResult(
+            studyInstanceUID,
+            displaySetInstanceUID,
+            servicesManager
+          );
         } catch (error) {
           console.error('Error calling aiResultsService.setSelectedAIResult:', error);
         }
       } else {
         console.error('aiResultsService not available or missing studyInstanceUID', {
           hasService: !!aiResultsService,
-          hasUID: !!studyInstanceUID
+          hasUID: !!studyInstanceUID,
         });
       }
 
       // Local selection state removed – the global service event will update UI
-
     } else {
       // For medical images, we could implement different behavior if needed
-
     }
   };
 
   const activeViewportDisplaySetInstanceUIDs = activeViewportId
-    ? (viewports.get(activeViewportId)?.displaySetInstanceUIDs || [])
+    ? viewports.get(activeViewportId)?.displaySetInstanceUIDs || []
     : [];
 
   useEffect(() => {
@@ -423,7 +442,7 @@ export default function PanelStudyBrowserTracking({
   const debounceTimeoutRef = useRef<number | null>(null);
 
   // Helper to perform expensive remap and state update
-  const runMapping = (displaySetsInput) => {
+  const runMapping = displaySetsInput => {
     const mappedDisplaySets = mapDisplaySets({
       displaySets: displaySetsInput,
       displaySetLoadingState: displaySetsLoadingStateRef.current,
@@ -480,7 +499,14 @@ export default function PanelStudyBrowserTracking({
       }
       SubscriptionDisplaySetsChanged.unsubscribe();
     };
-  }, [displaySetService, viewportGridService, dataSource, uiDialogService, uiNotificationService, thumbnailPropsCache]);
+  }, [
+    displaySetService,
+    viewportGridService,
+    dataSource,
+    uiDialogService,
+    uiNotificationService,
+    thumbnailPropsCache,
+  ]);
 
   // ~~ Initial Thumbnails
   useEffect(() => {
@@ -583,19 +609,15 @@ export default function PanelStudyBrowserTracking({
     };
   }, [displaySetService, dataSource, getImageSrc, hasLoadedViewports]);
 
-  const tabs = tabMode === 'study-ai-subtabs'
-    ? createStudyAIBrowserTabsNested(
-        StudyInstanceUIDs,
-        studyDisplayList,
-        displaySets,
-        servicesManager
-      )
-    : createAIBrowserTabs(
-        StudyInstanceUIDs,
-        studyDisplayList,
-        displaySets,
-        servicesManager
-      );
+  const tabs =
+    tabMode === 'study-ai-subtabs'
+      ? createStudyAIBrowserTabsNested(
+          StudyInstanceUIDs,
+          studyDisplayList,
+          displaySets,
+          servicesManager
+        )
+      : createAIBrowserTabs(StudyInstanceUIDs, studyDisplayList, displaySets, servicesManager);
 
   // Ensure activeTabName is valid
   useEffect(() => {
@@ -734,7 +756,6 @@ export default function PanelStudyBrowserTracking({
           })}
         />
       )}
-
     </>
   );
 }

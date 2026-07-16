@@ -41,9 +41,12 @@ const CSVImporter = ({ onClick }: CSVImporterProps) => {
 
   return (
     <React.Fragment>
-      <ButtonGroup color="black" size="inherit">
+      <ButtonGroup
+        color="black"
+        size="inherit"
+      >
         <Button
-          className="px-2 py-2 text-base mx-2"
+          className="mx-2 px-2 py-2 text-base"
           onClick={() => ref?.current?.click()}
         >
           Import CSV

@@ -10,34 +10,33 @@ interface AIResultSubscriptionConfig {
 }
 
 export const useAIResultSubscription = (config: AIResultSubscriptionConfig): void => {
-  const {
-    viewportId,
-    isHeatmapViewport,
-    servicesManager,
-    onAIResultSelected,
-    onAIResultCleared,
-  } = config;
+  const { viewportId, isHeatmapViewport, servicesManager, onAIResultSelected, onAIResultCleared } =
+    config;
 
   const { aiResultsService } = servicesManager.services;
 
-  const handleAIResultSelected = useCallback((eventData: any) => {
+  const handleAIResultSelected = useCallback(
+    (eventData: any) => {
+      if (eventData?.aiResult && !isHeatmapViewport) {
+        const clickedUID =
+          eventData.clickedDisplaySetInstanceUID ?? eventData.displaySetInstanceUID;
+        onAIResultSelected(eventData.aiResult, clickedUID);
+      }
+    },
+    [viewportId, isHeatmapViewport, onAIResultSelected]
+  );
 
-    if (eventData?.aiResult && !isHeatmapViewport) {
-      const clickedUID = eventData.clickedDisplaySetInstanceUID ?? eventData.displaySetInstanceUID;
-      onAIResultSelected(eventData.aiResult, clickedUID);
-    }
-  }, [viewportId, isHeatmapViewport, onAIResultSelected]);
-
-  const handleAIResultCleared = useCallback((eventData: any) => {
-
-    if (!isHeatmapViewport && onAIResultCleared) {
-      onAIResultCleared(eventData);
-    }
-  }, [viewportId, isHeatmapViewport, onAIResultCleared]);
+  const handleAIResultCleared = useCallback(
+    (eventData: any) => {
+      if (!isHeatmapViewport && onAIResultCleared) {
+        onAIResultCleared(eventData);
+      }
+    },
+    [viewportId, isHeatmapViewport, onAIResultCleared]
+  );
 
   useEffect(() => {
     if (!aiResultsService || isHeatmapViewport) {
-
       return;
     }
 
@@ -53,7 +52,6 @@ export const useAIResultSubscription = (config: AIResultSubscriptionConfig): voi
 
     // Cleanup function
     return () => {
-
       selectedSubscription.unsubscribe();
       clearedSubscription.unsubscribe();
     };
@@ -62,6 +60,6 @@ export const useAIResultSubscription = (config: AIResultSubscriptionConfig): voi
     viewportId,
     isHeatmapViewport,
     handleAIResultSelected,
-    handleAIResultCleared
+    handleAIResultCleared,
   ]);
 };

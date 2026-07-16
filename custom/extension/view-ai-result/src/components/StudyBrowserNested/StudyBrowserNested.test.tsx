@@ -14,7 +14,9 @@ function makeDialogService() {
     // Mirror ManagedDialog: the content's `hide` routes to the service-provided
     // onClose (the option's onClose, which overrides the provider default).
     const contentHide = () => options.onClose?.(options.id);
-    state.contentRender = render(<div data-testid="dialog-root">{options.content({ hide: contentHide })}</div>);
+    state.contentRender = render(
+      <div data-testid="dialog-root">{options.content({ hide: contentHide })}</div>
+    );
   });
   return { service: { show, hide }, state };
 }
@@ -327,9 +329,7 @@ describe('StudyBrowserNested', () => {
       console.error = original;
     }
 
-    const keyWarning = errors.some(
-      e => typeof e === 'string' && e.includes('unique "key"')
-    );
+    const keyWarning = errors.some(e => typeof e === 'string' && e.includes('unique "key"'));
     expect(keyWarning).toBe(false);
   });
 });

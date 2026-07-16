@@ -44,7 +44,12 @@ describe('getImageIdForThumbnail', () => {
   it('returns the middle image id of the middle time point for a dynamic volume', () => {
     const ds = {
       isDynamicVolume: true,
-      dynamicVolumeInfo: { timePoints: [['t0a', 't0b'], ['t1a', 't1b', 't1c']] },
+      dynamicVolumeInfo: {
+        timePoints: [
+          ['t0a', 't0b'],
+          ['t1a', 't1b', 't1c'],
+        ],
+      },
     };
     expect(getImageIdForThumbnail(ds, [])).toBe('t1b');
   });
@@ -53,7 +58,14 @@ describe('getImageIdForThumbnail', () => {
 describe('mapDataSourceStudies', () => {
   it('naturalizes the data source study shape', () => {
     const [out] = mapDataSourceStudies([
-      { studyInstanceUid: 's1', date: '20240315', description: 'CT', instances: 3, modalities: 'CT', mrn: 'm1' },
+      {
+        studyInstanceUid: 's1',
+        date: '20240315',
+        description: 'CT',
+        instances: 3,
+        modalities: 'CT',
+        mrn: 'm1',
+      },
     ]);
     expect(out).toMatchObject({
       StudyInstanceUID: 's1',
@@ -91,7 +103,12 @@ describe('mapDisplaySets', () => {
 
   it('does not mutate cached static props and returns fresh objects each call', () => {
     const cache = new Map();
-    const first = mapDisplaySets({ ...base, displaySets: [sr()], selectedSRUID: 'sr-1', thumbnailPropsCache: cache });
+    const first = mapDisplaySets({
+      ...base,
+      displaySets: [sr()],
+      selectedSRUID: 'sr-1',
+      thumbnailPropsCache: cache,
+    });
     // Second call: same cache, different dynamic inputs (deselected, loading, image).
     const second = mapDisplaySets({
       ...base,
@@ -114,7 +131,10 @@ describe('mapDisplaySets', () => {
   });
 
   it('skips display sets excluded from the thumbnail browser', () => {
-    const out = mapDisplaySets({ ...base, displaySets: [mr({ excludeFromThumbnailBrowser: true })] });
+    const out = mapDisplaySets({
+      ...base,
+      displaySets: [mr({ excludeFromThumbnailBrowser: true })],
+    });
     expect(out).toHaveLength(0);
   });
 });
@@ -135,9 +155,18 @@ describe('findTabAndStudyOfDisplaySet', () => {
   ];
 
   it('finds a display set in originals, aiGroups, or flat displaySets', () => {
-    expect(findTabAndStudyOfDisplaySet('mr-1', tabs)).toEqual({ tabName: 'all', StudyInstanceUID: 'study-1' });
-    expect(findTabAndStudyOfDisplaySet('sr-1', tabs)).toEqual({ tabName: 'all', StudyInstanceUID: 'study-1' });
-    expect(findTabAndStudyOfDisplaySet('ct-9', tabs)).toEqual({ tabName: 'all', StudyInstanceUID: 'study-2' });
+    expect(findTabAndStudyOfDisplaySet('mr-1', tabs)).toEqual({
+      tabName: 'all',
+      StudyInstanceUID: 'study-1',
+    });
+    expect(findTabAndStudyOfDisplaySet('sr-1', tabs)).toEqual({
+      tabName: 'all',
+      StudyInstanceUID: 'study-1',
+    });
+    expect(findTabAndStudyOfDisplaySet('ct-9', tabs)).toEqual({
+      tabName: 'all',
+      StudyInstanceUID: 'study-2',
+    });
   });
 
   it('returns undefined when the display set is not present', () => {

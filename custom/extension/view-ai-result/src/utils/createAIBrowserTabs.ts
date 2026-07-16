@@ -33,7 +33,10 @@ function aiGroupKey(entry: AIEntry, srEntries: AIEntry[]): string | null {
     return null;
   }
   if (entry.modality === 'SC') {
-    const matchSR = findMatchingSRForHeatmap(entry.real, srEntries.map(s => s.real));
+    const matchSR = findMatchingSRForHeatmap(
+      entry.real,
+      srEntries.map(s => s.real)
+    );
     const paired = matchSR ? srEntries.find(s => s.real === matchSR) : undefined;
     if (paired && paired.formattedDateTime) {
       return `${paired.modelName}|${paired.formattedDateTime}`;
@@ -76,7 +79,8 @@ export function createAIBrowserTabs(
       aiEntries.push({
         thumb: thumbnailDisplaySet,
         real: realDisplaySet,
-        modality: realDisplaySet?.Modality || thumbnailDisplaySet.Modality || thumbnailDisplaySet.modality,
+        modality:
+          realDisplaySet?.Modality || thumbnailDisplaySet.Modality || thumbnailDisplaySet.modality,
         modelName,
         formattedDateTime: formatDicomDateTime(creationDate, creationTime, tzOffset),
         sortKey: `${creationDate || '99999999'}${creationTime || '999999'}`,
@@ -115,7 +119,10 @@ export function createAIBrowserTabs(
       const missingGroupKey = 'UNKNOWN';
       if (!missingDateGroups.has(missingGroupKey)) {
         missingDateGroups.set(missingGroupKey, {
-          studyInstanceUid: `${entry.thumb.StudyInstanceUID}_AI_UNKNOWN`.replace(/[^a-zA-Z0-9._-]/g, '_'),
+          studyInstanceUid: `${entry.thumb.StudyInstanceUID}_AI_UNKNOWN`.replace(
+            /[^a-zA-Z0-9._-]/g,
+            '_'
+          ),
           date: 'Date Unknown',
           description: `AI Results - Date Unknown`,
           modalities: 'AI',
@@ -135,7 +142,10 @@ export function createAIBrowserTabs(
       // exists, so the label carries the report's model name for disambiguation.
       const named = entry.modelName && entry.modelName !== 'AI Model';
       aiResultGroups.set(groupKey, {
-        studyInstanceUid: `${entry.thumb.StudyInstanceUID}_AI_${groupKey}`.replace(/[^a-zA-Z0-9._-]/g, '_'),
+        studyInstanceUid: `${entry.thumb.StudyInstanceUID}_AI_${groupKey}`.replace(
+          /[^a-zA-Z0-9._-]/g,
+          '_'
+        ),
         date: entry.formattedDateTime,
         description: named
           ? `${entry.modelName} - ${entry.formattedDateTime}`
@@ -192,7 +202,7 @@ export function createAIBrowserTabs(
     const allStudies = [
       ...Array.from(originalSeries.values()),
       ...sortedAIGroups,
-      ...Array.from(missingDateGroups.values())
+      ...Array.from(missingDateGroups.values()),
     ];
 
     tabs.push({

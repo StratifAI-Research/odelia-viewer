@@ -42,7 +42,8 @@ export function getRealDisplaySet(thumbnailDisplaySet: any, servicesManager: any
 
   let result;
   try {
-    result = dss.getDisplaySetByUID(thumbnailDisplaySet.displaySetInstanceUID) || thumbnailDisplaySet;
+    result =
+      dss.getDisplaySetByUID(thumbnailDisplaySet.displaySetInstanceUID) || thumbnailDisplaySet;
   } catch (error) {
     result = thumbnailDisplaySet;
   }

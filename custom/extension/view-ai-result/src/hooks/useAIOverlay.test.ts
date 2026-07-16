@@ -90,7 +90,9 @@ describe('useAIOverlay', () => {
   });
 
   it('blocks overlays for heatmap viewports', () => {
-    const { services, config } = makeConfig({ config: { isHeatmapViewport: true, aiResult: sampleResult } });
+    const { services, config } = makeConfig({
+      config: { isHeatmapViewport: true, aiResult: sampleResult },
+    });
     renderHook(() => useAIOverlay(config));
     expect(services.customizationService.setCustomizations).not.toHaveBeenCalled();
     const overlayCalls = addCalls(services, 'aiOverlay');

@@ -58,8 +58,7 @@ const toolbarButtons = [
   {
     id: 'MeasurementTools',
     type: 'ohif.radioGroup',
-    props:
-    {
+    props: {
       type: 'tool',
       icon: 'tool-circle',
       label: 'Circle',

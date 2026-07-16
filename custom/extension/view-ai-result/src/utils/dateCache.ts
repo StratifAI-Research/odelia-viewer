@@ -50,7 +50,10 @@ export function getStaticDate(displaySet: any): string {
 
   // If still no date, try to extract from instance object
   if (!dateValue && displaySet.instance) {
-    dateValue = displaySet.instance.SeriesDate || displaySet.instance.StudyDate || displaySet.instance.InstanceCreationDate;
+    dateValue =
+      displaySet.instance.SeriesDate ||
+      displaySet.instance.StudyDate ||
+      displaySet.instance.InstanceCreationDate;
   }
 
   // If no standard DICOM date fields are available, return empty string

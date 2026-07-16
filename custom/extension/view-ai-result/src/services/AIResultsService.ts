@@ -298,7 +298,11 @@ export class AIResultsService {
     this.selectedAIResults.set(studyInstanceUID, targetDisplaySetUID);
 
     // Get the AI result for the event
-    const aiResult = this.getAIResultByDisplaySet(studyInstanceUID, targetDisplaySetUID, servicesManager);
+    const aiResult = this.getAIResultByDisplaySet(
+      studyInstanceUID,
+      targetDisplaySetUID,
+      servicesManager
+    );
 
     // Publish AI_RESULT_SELECTED event, including the original clicked UID (could be SC)
     this.publish(this.EVENTS.AI_RESULT_SELECTED, {
@@ -381,7 +385,11 @@ export class AIResultsService {
     if (hasAIResults && !this.selectedAIResults.has(studyInstanceUID)) {
       const firstResult = aiResults[0];
       if (firstResult.displaySetInstanceUID) {
-        this.setSelectedAIResult(studyInstanceUID, firstResult.displaySetInstanceUID, servicesManager);
+        this.setSelectedAIResult(
+          studyInstanceUID,
+          firstResult.displaySetInstanceUID,
+          servicesManager
+        );
       }
     }
   }

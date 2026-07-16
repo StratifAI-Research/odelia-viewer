@@ -58,7 +58,9 @@ export class HeatmapLayoutManager {
       } else if (position === 1) {
         // Heatmap viewport
         return {
-          displaySetInstanceUIDs: [aiResult.heatmapDisplaySet?.displaySetInstanceUID].filter(Boolean),
+          displaySetInstanceUIDs: [aiResult.heatmapDisplaySet?.displaySetInstanceUID].filter(
+            Boolean
+          ),
           viewportOptions: {
             ...viewportOptions,
             viewportId: heatmapViewportId,

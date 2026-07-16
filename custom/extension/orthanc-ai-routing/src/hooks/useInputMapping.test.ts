@@ -79,7 +79,9 @@ describe('useInputMapping', () => {
         { key: 'tx', label: 'TX', required: true, auto_detect_patterns: ['^NOPE'] },
       ],
     };
-    const { result } = renderHook(() => useInputMapping({ ...manifest, input_configurations: [cfg] }));
+    const { result } = renderHook(() =>
+      useInputMapping({ ...manifest, input_configurations: [cfg] })
+    );
     act(() => result.current.autoDetect(cfg, available));
     expect(result.current.mapping).toEqual({ t1: null, tx: null });
     expect(result.current.isValid).toBe(false);
@@ -110,7 +112,9 @@ describe('useInputMapping', () => {
       ],
     };
     const only = [series({ SeriesInstanceUID: 's1', SeriesDescription: 'T1 axial' })];
-    const { result } = renderHook(() => useInputMapping({ ...manifest, input_configurations: [cfg] }));
+    const { result } = renderHook(() =>
+      useInputMapping({ ...manifest, input_configurations: [cfg] })
+    );
     act(() => result.current.autoDetect(cfg, only));
     expect(result.current.mapping.a).toBe('s1');
     expect(result.current.mapping.b).toBeNull(); // not reused
@@ -126,7 +130,9 @@ describe('useInputMapping', () => {
       series({ SeriesInstanceUID: 's1', SeriesDescription: undefined, Modality: 'CT' }),
       series({ SeriesInstanceUID: 's2', SeriesDescription: 'T1 axial', Modality: 'CT' }),
     ];
-    const { result } = renderHook(() => useInputMapping({ ...manifest, input_configurations: [cfg] }));
+    const { result } = renderHook(() =>
+      useInputMapping({ ...manifest, input_configurations: [cfg] })
+    );
     act(() => result.current.autoDetect(cfg, srs));
     expect(result.current.mapping).toEqual({ a: 's2' });
   });
@@ -137,7 +143,9 @@ describe('useInputMapping', () => {
       name: 'cfg',
       inputs: [{ key: 'a', label: 'A', required: false }], // no auto_detect_patterns
     };
-    const { result } = renderHook(() => useInputMapping({ ...manifest, input_configurations: [cfg] }));
+    const { result } = renderHook(() =>
+      useInputMapping({ ...manifest, input_configurations: [cfg] })
+    );
     act(() => result.current.autoDetect(cfg, available));
     expect(result.current.mapping.a).toBeNull();
   });

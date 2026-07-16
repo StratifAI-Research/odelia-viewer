@@ -151,9 +151,7 @@ class OrthancAIService {
       const savedEndpoints = localStorage.getItem(AI_ENDPOINTS_STORAGE_KEY);
       if (savedEndpoints) {
         const endpoints: AIEndpoint[] = JSON.parse(savedEndpoints);
-        const updatedEndpoints = endpoints.map(e =>
-          e.id === endpoint.id ? endpoint : e
-        );
+        const updatedEndpoints = endpoints.map(e => (e.id === endpoint.id ? endpoint : e));
         localStorage.setItem(
           AI_ENDPOINTS_STORAGE_KEY,
           JSON.stringify(toPersistableEndpoints(updatedEndpoints))
@@ -198,7 +196,6 @@ class OrthancAIService {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
-
       // Call Orthanc's lookup API with the StudyInstanceUID as plain text in the body
       const response = await fetch(`${this.orthancUrl}/tools/lookup`, {
         method: 'POST',
@@ -330,7 +327,6 @@ class OrthancAIService {
       input_configuration_id?: string;
     }
   ): Promise<RoutingResponse> {
-
     // Set up timeout using AbortController
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
@@ -364,7 +360,6 @@ class OrthancAIService {
 
   async routeStudyToAI(dicomStudyUID: string): Promise<RoutingResponse> {
     try {
-
       // Check if we have a valid AI endpoint
       if (!this.currentEndpoint) {
         throw new Error('No AI endpoint configured. Please add an AI endpoint first.');
@@ -440,7 +435,7 @@ class OrthancAIService {
    */
   private parseWorkitemStatus(workitemJson: WorkitemDicomJson): WorkitemStatus {
     const status: WorkitemStatus = {
-      state: 'UNKNOWN'
+      state: 'UNKNOWN',
     };
 
     try {
@@ -491,11 +486,10 @@ class OrthancAIService {
    */
   async getWorkitemStatus(workitemUid: string): Promise<WorkitemStatus> {
     try {
-
       const response = await fetch(`${this.orthancUrl}/ups-rs/workitems/${workitemUid}`, {
         method: 'GET',
         headers: {
-          'Accept': 'application/dicom+json, application/json',
+          Accept: 'application/dicom+json, application/json',
         },
       });
 
@@ -580,7 +574,6 @@ class OrthancAIService {
     if (this.workitemPollingInterval !== null) {
       window.clearInterval(this.workitemPollingInterval);
       this.workitemPollingInterval = null;
-
     }
   }
 }

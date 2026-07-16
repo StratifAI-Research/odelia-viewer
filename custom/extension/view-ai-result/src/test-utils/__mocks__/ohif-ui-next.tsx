@@ -1,7 +1,10 @@
 import React from 'react';
-const Pass = (tid: string) => ({ children }: any) => <div data-testid={tid}>{children}</div>;
+const Pass =
+  (tid: string) =>
+  ({ children }: any) => <div data-testid={tid}>{children}</div>;
 export const FooterAction = Object.assign(Pass('footer-action'), {
-  Right: Pass('footer-action-right'), Left: Pass('footer-action-left'),
+  Right: Pass('footer-action-right'),
+  Left: Pass('footer-action-left'),
 });
 export const Separator = () => <hr data-testid="separator" />;
 // StudyBrowser stub: surfaces tab names + thumbnail UIDs as clickable elements so
@@ -16,7 +19,11 @@ export const StudyBrowser = (props: any) => {
     (study.displaySets || []).forEach((ds: any) => thumbs.push(ds))
   );
   return (
-    <div data-testid="study-browser" data-count={tabs.length} data-active-tab={props?.activeTabName}>
+    <div
+      data-testid="study-browser"
+      data-count={tabs.length}
+      data-active-tab={props?.activeTabName}
+    >
       {tabs.map((tab: any) => (
         <button
           key={tab.name}
@@ -27,7 +34,10 @@ export const StudyBrowser = (props: any) => {
         </button>
       ))}
       {thumbs.map((ds: any) => (
-        <div key={ds.displaySetInstanceUID} data-testid={`sb-thumb-${ds.displaySetInstanceUID}`}>
+        <div
+          key={ds.displaySetInstanceUID}
+          data-testid={`sb-thumb-${ds.displaySetInstanceUID}`}
+        >
           <button
             data-testid={`sb-thumb-click-${ds.displaySetInstanceUID}`}
             onClick={() => props?.onClickThumbnail?.(ds.displaySetInstanceUID)}
@@ -43,10 +53,18 @@ export const StudyBrowser = (props: any) => {
 };
 export const StudyBrowserViewOptions = Pass('study-browser-view-options');
 export const StudyBrowserSort = Pass('study-browser-sort');
-export const ThumbnailList = (props: any) => <div data-testid="thumbnail-list" data-count={props?.thumbnails?.length} />;
+export const ThumbnailList = (props: any) => (
+  <div
+    data-testid="thumbnail-list"
+    data-count={props?.thumbnails?.length}
+  />
+);
 export const Accordion = Pass('accordion');
 export const AccordionItem = Pass('accordion-item');
 export const AccordionTrigger = Pass('accordion-trigger');
 export const AccordionContent = Pass('accordion-content');
 export const Icons = new Proxy({}, { get: () => () => <span data-testid="icon" /> });
-export const useViewportGrid = () => [{ activeViewportId: 'v1', viewports: new Map() }, { setActiveViewportId: jest.fn() }];
+export const useViewportGrid = () => [
+  { activeViewportId: 'v1', viewports: new Map() },
+  { setActiveViewportId: jest.fn() },
+];

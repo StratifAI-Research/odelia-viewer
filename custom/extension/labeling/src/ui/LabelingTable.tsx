@@ -22,12 +22,10 @@ const LabelingTable = ({ title, measurement, config, onClick, onChange }: Labeli
 
   return (
     <div>
-      <div className="flex justify-between px-2 py-1 bg-secondary-main">
-        <span className="text-base font-bold tracking-widest text-white uppercase">
-          {title}
-        </span>
+      <div className="bg-secondary-main flex justify-between px-2 py-1">
+        <span className="text-base font-bold uppercase tracking-widest text-white">{title}</span>
       </div>
-      <div className="overflow-x-hidden overflow-y-auto ohif-scrollbar max-h-64">
+      <div className="ohif-scrollbar max-h-64 overflow-y-auto overflow-x-hidden">
         {!!measurement.label_data &&
           Object.keys(measurement.label_data)
             .filter(key => key in label_options)

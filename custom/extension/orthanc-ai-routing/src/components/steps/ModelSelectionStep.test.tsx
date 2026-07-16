@@ -46,7 +46,9 @@ describe('ModelSelectionStep', () => {
   it('fetches the manifest on mount and reports it upward', async () => {
     const props = base();
     render(<ModelSelectionStep {...props} />);
-    await waitFor(() => expect(props.orthancAIService.getModelManifest).toHaveBeenCalledWith(AI_ENDPOINT.url));
+    await waitFor(() =>
+      expect(props.orthancAIService.getModelManifest).toHaveBeenCalledWith(AI_ENDPOINT.url)
+    );
     expect(props.onManifestLoaded).toHaveBeenCalledWith(manifest);
   });
 
@@ -59,13 +61,25 @@ describe('ModelSelectionStep', () => {
     const props = base();
     const { rerender } = render(<ModelSelectionStep {...props} />);
     await waitFor(() => expect(props.onManifestLoaded).toHaveBeenCalled());
-    rerender(<ModelSelectionStep {...props} manifest={manifest} />);
+    rerender(
+      <ModelSelectionStep
+        {...props}
+        manifest={manifest}
+      />
+    );
     expect(screen.getByText('BrainModel')).toBeTruthy();
     expect(screen.getByText('Version: 2.0')).toBeTruthy();
   });
 
   it('shows a "no input specification" note when the model has no manifest', async () => {
-    render(<ModelSelectionStep {...base()} orthancAIService={makeService({ getModelManifest: jest.fn().mockResolvedValue(null) }) as any} />);
+    render(
+      <ModelSelectionStep
+        {...base()}
+        orthancAIService={
+          makeService({ getModelManifest: jest.fn().mockResolvedValue(null) }) as any
+        }
+      />
+    );
     await waitFor(() => expect(screen.getByText(/No input specification/)).toBeTruthy());
   });
 
@@ -74,10 +88,14 @@ describe('ModelSelectionStep', () => {
     render(
       <ModelSelectionStep
         {...props}
-        orthancAIService={makeService({ getModelManifest: jest.fn().mockRejectedValue(new Error('x')) }) as any}
+        orthancAIService={
+          makeService({ getModelManifest: jest.fn().mockRejectedValue(new Error('x')) }) as any
+        }
       />
     );
-    await waitFor(() => expect(screen.getByText('Failed to fetch model configuration')).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByText('Failed to fetch model configuration')).toBeTruthy()
+    );
     expect(props.onManifestLoaded).toHaveBeenCalledWith(null);
   });
 
@@ -100,13 +118,23 @@ describe('ModelSelectionStep', () => {
   });
 
   it('renders an error banner from the error prop', () => {
-    render(<ModelSelectionStep {...base()} error="upstream error" />);
+    render(
+      <ModelSelectionStep
+        {...base()}
+        error="upstream error"
+      />
+    );
     expect(screen.getByText('upstream error')).toBeTruthy();
   });
 
   it('fires onNext', async () => {
     const onNext = jest.fn();
-    render(<ModelSelectionStep {...base()} onNext={onNext} />);
+    render(
+      <ModelSelectionStep
+        {...base()}
+        onNext={onNext}
+      />
+    );
     await waitFor(() => expect(screen.getByText(/Next/).closest('button')!.disabled).toBe(false));
     fireEvent.click(screen.getByText(/Next/));
     expect(onNext).toHaveBeenCalledTimes(1);

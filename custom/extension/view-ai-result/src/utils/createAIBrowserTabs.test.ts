@@ -84,7 +84,9 @@ describe('createAIBrowserTabs', () => {
     instance: {
       InstanceCreationDate: '20240101',
       InstanceCreationTime: '120000',
-      ContentSequence: [{ ConceptNameCodeSequence: [{ CodeMeaning: 'AI Model' }], TextValue: model }],
+      ContentSequence: [
+        { ConceptNameCodeSequence: [{ CodeMeaning: 'AI Model' }], TextValue: model },
+      ],
       ...over,
     },
   });

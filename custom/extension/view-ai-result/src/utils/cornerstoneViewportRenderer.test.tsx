@@ -12,7 +12,10 @@ const StubViewport = (props: any) => {
       <span data-testid="viewport-id">{props.viewportId}</span>
       <span data-testid="viewport-type">{props.viewportOptions.viewportType}</span>
       <span data-testid="tool-group">{props.viewportOptions.toolGroupId}</span>
-      <button data-testid="enable" onClick={() => props.onElementEnabled({ ok: true })}>
+      <button
+        data-testid="enable"
+        onClick={() => props.onElementEnabled({ ok: true })}
+      >
         enable
       </button>
     </div>

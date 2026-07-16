@@ -56,7 +56,13 @@ function makeDisplaySetService(active: any[] = []) {
 }
 
 function makeServices(opts: any = {}) {
-  const { active = [], tabMode = 'default', studyMode = 'all', aiResultsService, displaySetServiceOver } = opts;
+  const {
+    active = [],
+    tabMode = 'default',
+    studyMode = 'all',
+    aiResultsService,
+    displaySetServiceOver,
+  } = opts;
   const customizations: Record<string, any> = {
     'studyBrowser.studyMode': studyMode,
     'studyBrowser.tabMode': tabMode,
@@ -68,7 +74,9 @@ function makeServices(opts: any = {}) {
       uiDialogService: { show: jest.fn(), hide: jest.fn() },
       hangingProtocolService: {
         getActiveProtocol: jest.fn(() => ({})),
-        getViewportsRequireUpdate: jest.fn(() => [{ viewportId: 'v1', displaySetInstanceUIDs: ['mr-1'] }]),
+        getViewportsRequireUpdate: jest.fn(() => [
+          { viewportId: 'v1', displaySetInstanceUIDs: ['mr-1'] },
+        ]),
       },
       uiNotificationService: { show: jest.fn() },
       studyPrefetcherService: {
@@ -83,7 +91,7 @@ function makeServices(opts: any = {}) {
         getSelectedAIResult: jest.fn(() => null),
         getAIResultMetadata: jest.fn(() => []),
         setSelectedAIResult: jest.fn(),
-      notifyStudyChange: jest.fn(),
+        notifyStudyChange: jest.fn(),
       },
     },
     commandsManager: { runCommand: jest.fn() },
@@ -97,7 +105,11 @@ function makeProps(over: any = {}) {
     getStudiesForPatientByMRN: jest.fn(async (q: any) => q),
     requestDisplaySetCreationForStudy: jest.fn(),
     dataSource: {
-      query: { studies: { search: jest.fn(async () => [{ StudyInstanceUID: 'study-1', StudyDate: '20240315' }]) } },
+      query: {
+        studies: {
+          search: jest.fn(async () => [{ StudyInstanceUID: 'study-1', StudyDate: '20240315' }]),
+        },
+      },
       getImageIdsForDisplaySet: jest.fn(() => ['img-1', 'img-2', 'img-3']),
     },
     ...over,

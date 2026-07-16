@@ -21,10 +21,14 @@ export function deriveFeedbackApiBase(): string {
         return qidoRoot.slice(0, idx);
       }
       // if qidoRoot equals '/dicom-web', Orthanc is at root
-      if (qidoRoot === '/dicom-web') return '';
+      if (qidoRoot === '/dicom-web') {
+        return '';
+      }
       // otherwise use dirname as base
       const parts = qidoRoot.split('/').filter(Boolean);
-      if (parts.length > 0) return `/${parts[0]}`;
+      if (parts.length > 0) {
+        return `/${parts[0]}`;
+      }
     }
   } catch (_) {
     // ignore

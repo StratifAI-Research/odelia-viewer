@@ -1,6 +1,10 @@
 import { toResultKey, resultIdentityString } from './useResultIdentity';
 
-const identity = { modelName: 'BreastNet', modelVersion: '1.2.0', resultTs: '2024-03-15T10:00:00Z' };
+const identity = {
+  modelName: 'BreastNet',
+  modelVersion: '1.2.0',
+  resultTs: '2024-03-15T10:00:00Z',
+};
 
 describe('toResultKey', () => {
   it('builds a key when every field is present', () => {

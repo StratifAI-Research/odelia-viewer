@@ -20,8 +20,7 @@ export function seedDefaultLabelData(
   measurement: { label_data?: Record<string, unknown> },
   labelOptions: Record<string, LabelOptionDef>
 ): void {
-  const hasLabelData =
-    !!measurement.label_data && Object.keys(measurement.label_data).length > 0;
+  const hasLabelData = !!measurement.label_data && Object.keys(measurement.label_data).length > 0;
   if (hasLabelData) {
     return;
   }
