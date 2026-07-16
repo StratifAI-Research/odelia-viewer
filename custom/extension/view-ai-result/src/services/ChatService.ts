@@ -1,6 +1,13 @@
 /**
  * ChatService - Manages WebSocket connection to chat-middleware
  * Handles message streaming, reconnection, and event pub/sub
+ *
+ * The connection lifecycle is modelled as an explicit state machine
+ * ({@link ChatConnectionState}) rather than a set of independent booleans /
+ * readyState checks. Every transition goes through {@link setState}, and the
+ * reconnect decision and `isConnected()` derive from the current state. This
+ * replaces the old `isIntentionalClose` flag and scattered `readyState`
+ * inspection, and keeps the hard-won "settle exactly once" connect semantics.
  */
 import {
   ClientMessage,
@@ -15,6 +22,28 @@ import {
 const RECONNECT_INITIAL_DELAY = 1000;
 const RECONNECT_MAX_DELAY = 30000;
 const RECONNECT_MULTIPLIER = 2;
+const CONNECT_TIMEOUT_MS = 10000;
+
+/**
+ * Connection lifecycle states.
+ *
+ *   DISCONNECTED ──connect()──▶ CONNECTING ──CONNECTED msg──▶ CONNECTED
+ *        ▲                          │                             │
+ *        │                    error/close/timeout          unclean close
+ *        │                          │                             │
+ *        └──────────────────────────┴────────────┬────────────────┘
+ *                                                 ▼
+ *                                          RECONNECTING ──timer──▶ CONNECTING
+ *
+ * disconnect()/destroy() moves to CLOSED from any state and suppresses reconnect.
+ */
+export enum ChatConnectionState {
+  DISCONNECTED = 'DISCONNECTED',
+  CONNECTING = 'CONNECTING',
+  CONNECTED = 'CONNECTED',
+  RECONNECTING = 'RECONNECTING',
+  CLOSED = 'CLOSED',
+}
 
 export class ChatService {
   private ws: WebSocket | null = null;
@@ -24,7 +53,7 @@ export class ChatService {
   private eventListeners: Map<string, Array<(data: any) => void>> = new Map();
   private reconnectAttempts = 0;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
-  private isIntentionalClose = false;
+  private state: ChatConnectionState = ChatConnectionState.DISCONNECTED;
 
   // Event constants - instance access
   static EVENTS = CHAT_EVENTS;
@@ -33,6 +62,15 @@ export class ChatService {
   constructor() {
     // Try to get WebSocket URL from config, fallback to derived URL
     this.wsUrl = this.getWebSocketUrl();
+  }
+
+  /** Current connection lifecycle state. */
+  getConnectionState(): ChatConnectionState {
+    return this.state;
+  }
+
+  private setState(next: ChatConnectionState): void {
+    this.state = next;
   }
 
   /**
@@ -68,7 +106,7 @@ export class ChatService {
    */
   connect(): Promise<string> {
     // Reuse a fully-established connection.
-    if (this.ws?.readyState === WebSocket.OPEN && this.sessionId) {
+    if (this.state === ChatConnectionState.CONNECTED && this.sessionId) {
       return Promise.resolve(this.sessionId);
     }
     // Reuse an in-flight connection rather than opening a competing socket. A
@@ -91,9 +129,20 @@ export class ChatService {
         this.ws = null;
       }
 
-      this.isIntentionalClose = false;
+      this.setState(ChatConnectionState.CONNECTING);
       let settled = false;
-      const ws = new WebSocket(this.wsUrl);
+      let ws: WebSocket;
+      try {
+        ws = new WebSocket(this.wsUrl);
+      } catch (err) {
+        // The WebSocket constructor threw synchronously (e.g. a malformed
+        // configured wsUrl). No socket exists, so no onerror/onclose handler
+        // will ever fire — reset the machine to DISCONNECTED rather than leaving
+        // getConnectionState() stuck at CONNECTING. connectPromise is released by
+        // the promise.catch() guard below so a later connect() can retry.
+        this.setState(ChatConnectionState.DISCONNECTED);
+        throw err;
+      }
       this.ws = ws;
 
       // Settle the connection promise exactly once, clearing the timeout and
@@ -121,7 +170,7 @@ export class ChatService {
         } catch {
           /* ignore */
         }
-      }, 10000);
+      }, CONNECT_TIMEOUT_MS);
 
       ws.onopen = () => {
         this.reconnectAttempts = 0;
@@ -151,9 +200,16 @@ export class ChatService {
           reject(new Error(`Connection closed before session was established (code ${event.code})`))
         );
 
-        // Attempt reconnection if not intentionally closed
-        if (!this.isIntentionalClose && !event.wasClean) {
+        // A deliberate disconnect()/destroy() has already moved us to CLOSED;
+        // never reconnect from there. Otherwise an unclean drop schedules a
+        // reconnect, and a clean close returns to DISCONNECTED.
+        if (this.state === ChatConnectionState.CLOSED) {
+          return;
+        }
+        if (!event.wasClean) {
           this.scheduleReconnect();
+        } else {
+          this.setState(ChatConnectionState.DISCONNECTED);
         }
       };
     });
@@ -181,7 +237,10 @@ export class ChatService {
     switch (message.type) {
       case ServerMessageType.CONNECTED:
         this.sessionId = message.session_id || null;
-
+        // The handshake is only complete once we have a session id.
+        if (this.sessionId) {
+          this.setState(ChatConnectionState.CONNECTED);
+        }
         this.publish(CHAT_EVENTS.CONNECTED, { sessionId: this.sessionId });
         if (resolveConnect && this.sessionId) {
           resolveConnect(this.sessionId);
@@ -225,12 +284,15 @@ export class ChatService {
       clearTimeout(this.reconnectTimeout);
     }
 
+    this.setState(ChatConnectionState.RECONNECTING);
+
     const delay = Math.min(
       RECONNECT_INITIAL_DELAY * Math.pow(RECONNECT_MULTIPLIER, this.reconnectAttempts),
       RECONNECT_MAX_DELAY
     );
 
     this.reconnectTimeout = setTimeout(() => {
+      this.reconnectTimeout = null;
       this.reconnectAttempts++;
       this.connect().catch((e) => {
         console.error('[ChatService] Reconnect failed:', e);
@@ -276,7 +338,9 @@ export class ChatService {
    * Disconnect from WebSocket server
    */
   disconnect(): void {
-    this.isIntentionalClose = true;
+    // Enter CLOSED before closing the socket so the onclose handler suppresses
+    // any reconnect for this deliberate teardown.
+    this.setState(ChatConnectionState.CLOSED);
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
@@ -300,7 +364,7 @@ export class ChatService {
    * Check if connected
    */
   isConnected(): boolean {
-    return this.ws?.readyState === WebSocket.OPEN && this.sessionId !== null;
+    return this.state === ChatConnectionState.CONNECTED && this.sessionId !== null;
   }
 
   /**
