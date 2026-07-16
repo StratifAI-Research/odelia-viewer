@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useSystem, utils } from '@ohif/core';
 import { useImageViewer, useUserAuthentication } from '@ohif/ui';
 import { useViewportGrid } from '@ohif/ui-next';
@@ -244,6 +244,11 @@ const FeedbackPanel: React.FC = () => {
     }
   }, [currentResult, selectedUID, servicesManager]);
 
+  // Identity of the AI result currently on screen. A response is applied only if
+  // the identity it queried still matches this.
+  const statusIdentity = `${activeStudyUID}||${modelName}||${modelVersion}||${resultTs}`;
+  const statusIdentityRef = useRef<string>(statusIdentity);
+
   // Initial load
   useEffect(() => {
     refreshMeta();
@@ -268,7 +273,7 @@ const FeedbackPanel: React.FC = () => {
     activeStudyUID && modelName && modelVersion && resultTs
   );
 
-  const checkSubmissionStatus = useCallback(async () => {
+  const checkSubmissionStatus = useCallback(async (signal?: AbortSignal) => {
     if (!canQueryBackend) {
       setLocked(false);
       return;
@@ -277,6 +282,8 @@ const FeedbackPanel: React.FC = () => {
       setLocked(false);
       return;
     }
+    // Identity this request is for; compared against the live one before writing.
+    const requestIdentity = `${activeStudyUID}||${modelName}||${modelVersion}||${resultTs}`;
     try {
       const params = new URLSearchParams({
         study_uid: String(activeStudyUID),
@@ -285,9 +292,11 @@ const FeedbackPanel: React.FC = () => {
         result_ts: String(resultTs),
         includeUsers: 'true',
       });
-      const res = await fetch(`${FEEDBACK_API_BASE}/feedback?${params.toString()}`);
+      const res = await fetch(`${FEEDBACK_API_BASE}/feedback?${params.toString()}`, { signal });
       if (!res.ok) return;
       const data = await res.json();
+      // Ignore the response if the selected result changed while it was in flight.
+      if (signal?.aborted || requestIdentity !== statusIdentityRef.current) return;
       // Lock if current user already submitted; also prefill selections
       const u = Array.isArray(data.users) ? data.users.find((x: any) => x.user_id === userId) : null;
       if (u) {
@@ -299,13 +308,24 @@ const FeedbackPanel: React.FC = () => {
         setLocked(false);
       }
     } catch (e) {
-      // swallow; keep UI functional
+      // Aborted requests and network errors are non-fatal; keep the UI functional.
     }
   }, [activeStudyUID, modelName, modelVersion, resultTs, canQueryBackend, userId]);
 
-  useEffect(() => {
-    checkSubmissionStatus();
-  }, [selectedUID, modelName, modelVersion, resultTs, activeStudyUID, checkSubmissionStatus]);
+  useLayoutEffect(() => {
+    // Reset the form before paint when the identified result changes: point the
+    // identity ref at the current result (so late responses for the old one are
+    // rejected) and abort the in-flight fetch on cleanup.
+    statusIdentityRef.current = statusIdentity;
+    setFeedback({ Left: null, Right: null });
+    setLocked(false);
+    setIsEditMode(false);
+    setSubmitMessage('');
+
+    const controller = new AbortController();
+    checkSubmissionStatus(controller.signal);
+    return () => controller.abort();
+  }, [selectedUID, statusIdentity, checkSubmissionStatus]);
 
   // Compute markers for dropdown: whether current user has submitted feedback per AI result
   useEffect(() => {
@@ -405,6 +425,8 @@ const FeedbackPanel: React.FC = () => {
   const handleSubmit = async () => {
     setSubmitMessage('');
     if (!bothSidesChosen || !canQueryBackend || !userId) return;
+    // Identity being submitted; its outcome is applied only while it stays current.
+    const submitIdentity = statusIdentity;
     setIsSubmitting(true);
     try {
       const { uiNotificationService } = servicesManager.services || {};
@@ -423,6 +445,10 @@ const FeedbackPanel: React.FC = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
+      // Drop the outcome if the selected result changed while the POST was in flight.
+      if (submitIdentity !== statusIdentityRef.current) {
+        return;
+      }
       if (res.status === 201) {
         setLocked(true);
         setIsEditMode(false);
@@ -439,10 +465,16 @@ const FeedbackPanel: React.FC = () => {
         await checkSubmissionStatus();
       } else {
         const text = await res.text();
+        // Re-check after the second await (reading the body).
+        if (submitIdentity !== statusIdentityRef.current) {
+          return;
+        }
         setSubmitMessage(text || 'Error while saving');
       }
     } catch (e: any) {
-      setSubmitMessage(String(e?.message || e) || 'Network error');
+      if (submitIdentity === statusIdentityRef.current) {
+        setSubmitMessage(String(e?.message || e) || 'Network error');
+      }
     } finally {
       setIsSubmitting(false);
     }

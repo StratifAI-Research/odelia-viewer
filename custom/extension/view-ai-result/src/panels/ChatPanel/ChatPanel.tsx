@@ -20,10 +20,21 @@ marked.setOptions({
 const renderMarkdown = (text: string): string =>
   DOMPurify.sanitize(marked.parse(text || '') as string);
 
-// Debug API base URL - use relative path when proxied through nginx, fallback to localhost for dev
-const DEBUG_API_BASE = typeof window !== 'undefined' && window.location.hostname !== 'localhost'
-  ? '/chat-api'
-  : 'http://localhost:5560';
+// Base URL for the chat-middleware debug/settings endpoints. Defaults to the
+// same-origin nginx route (`/chat-api`); override via `window.config.chatApiBase`
+// when running the middleware directly. Read per call so a config injected after
+// the bundle evaluates is honored.
+const getChatApiBase = (): string => {
+  try {
+    const override = (window as any)?.config?.chatApiBase;
+    if (typeof override === 'string' && override.length > 0) {
+      return override;
+    }
+  } catch (_) {
+    // ignore config access errors
+  }
+  return '/chat-api';
+};
 
 // Slice strategy options
 const SLICE_STRATEGIES = [
@@ -93,7 +104,7 @@ const ChatPanel: React.FC = () => {
     setSettingsLoading(true);
     setSettingsError(null);
     try {
-      const res = await fetch(`${DEBUG_API_BASE}/debug/config`);
+      const res = await fetch(`${getChatApiBase()}/debug/config`);
       if (!res.ok) throw new Error(`Failed to load: ${res.status}`);
       const data = await res.json();
       setSystemPrompt(data.system_prompt || '');
@@ -116,7 +127,7 @@ const ChatPanel: React.FC = () => {
     setSettingsLoading(true);
     setSettingsError(null);
     try {
-      const res = await fetch(`${DEBUG_API_BASE}/debug/config`, {
+      const res = await fetch(`${getChatApiBase()}/debug/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -146,7 +157,7 @@ const ChatPanel: React.FC = () => {
   const clearCache = useCallback(async () => {
     setSettingsLoading(true);
     try {
-      const res = await fetch(`${DEBUG_API_BASE}/debug/cache`, { method: 'DELETE' });
+      const res = await fetch(`${getChatApiBase()}/debug/cache`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Failed to clear: ${res.status}`);
       const data = await res.json();
       alert(`Cache cleared: ${data.cleared_entries} entries removed`);
@@ -210,6 +221,25 @@ const ChatPanel: React.FC = () => {
       setSelectedSeriesUIDs(new Set());
     }
   }, [activeViewportId, viewports, getStudyUIDFromActiveViewport, activeStudyUID, loadSeriesForStudy]);
+
+  // Refresh the series context list when display sets arrive/change for the
+  // active study (the study-tracking effect above only reloads on study-UID change).
+  useEffect(() => {
+    if (!activeStudyUID || !displaySetService?.subscribe || !displaySetService?.EVENTS) {
+      return;
+    }
+    const events = [
+      displaySetService.EVENTS.DISPLAY_SETS_ADDED,
+      displaySetService.EVENTS.DISPLAY_SETS_CHANGED,
+    ].filter(Boolean);
+    if (events.length === 0) {
+      return;
+    }
+    const subscriptions = events.map(evt =>
+      displaySetService.subscribe(evt, () => loadSeriesForStudy(activeStudyUID))
+    );
+    return () => subscriptions.forEach(sub => sub?.unsubscribe?.());
+  }, [displaySetService, activeStudyUID, loadSeriesForStudy]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {

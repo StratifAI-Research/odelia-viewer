@@ -116,7 +116,6 @@ export function dicomDateTimeToIsoUtc(
  * Derive an ISO-8601 UTC timestamp for an AI result from a display set, using the
  * standard DICOM date/time fallback chain (InstanceCreation → Series → Content → Study)
  * plus the instance timezone offset. Returns undefined when no usable date is present.
- * Consolidates the fallback chain previously inlined in AIResultsService/FeedbackPanel.
  */
 export function resultTsFromDisplaySet(displaySet?: any): string | undefined {
   if (!displaySet) {

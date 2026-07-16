@@ -72,7 +72,7 @@ describe('extractAIResultData', () => {
     expect(out.classifications[0].confidence).toBeNull();
   });
 
-  it('preserves a real 0 confidence (VAR-M3: a 0.0% probability must not become null)', () => {
+  it('preserves a real 0 confidence (a 0.0% probability must not become null)', () => {
     const ds = srDisplaySet([sideProbability('Left', 'Benign', '0')]);
     const out = extractAIResultData(ds)!;
     expect(out.classifications[0].confidence).toBe(0);

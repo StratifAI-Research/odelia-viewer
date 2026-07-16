@@ -636,8 +636,7 @@ export default function PanelStudyBrowserTracking({
 
     return () => {
       clearTimeout(timeoutId);
-      // Disconnect the MutationObserver on unmount; previously it kept running a
-      // full-subtree querySelectorAll sweep for the life of the page.
+      // Disconnect the MutationObserver on unmount so its full-subtree sweep stops.
       disconnectObserver();
     };
   }, [tabs, activeTabName]);

@@ -22,14 +22,26 @@ const AITrackedViewportInner = ({
     displaySets.some(ds => ds.Modality === 'SC');
 
   const [showHeatmap, setShowHeatmap] = useState(false);
-  // State for the currently selected AI result (overrides initial AI result)
+  // Selected AI result, tagged with the primary content it belongs to.
   const [selectedAIResult, setSelectedAIResult] = useState(null);
+  const [selectionKey, setSelectionKey] = useState<string | null>(null);
 
   // Get initial AI result (for default state)
   const initialAIResult = useAIResult(displaySets, servicesManager);
 
-  // Use selected AI result if available, otherwise fall back to initial
-  const currentAIResult = selectedAIResult || initialAIResult;
+  // Filter to only primary imaging display sets for initial viewport
+  const primaryDisplaySets = getPrimaryDisplaySets(displaySets);
+
+  // Identity of the viewport's primary imaging content (excludes SR/SC), so a
+  // selection is tied to the study, not to a specific AI result within it.
+  const primaryDisplaySetKey = primaryDisplaySets
+    .map(ds => ds.displaySetInstanceUID)
+    .join('|');
+
+  // Ignore a selection once the primary content changes, so it can't carry into
+  // another study.
+  const activeSelectedAIResult = selectionKey === primaryDisplaySetKey ? selectedAIResult : null;
+  const currentAIResult = activeSelectedAIResult || initialAIResult;
 
   const { onElementEnabled, onElementDisabled } = useViewportElement();
 
@@ -42,9 +54,6 @@ const AITrackedViewportInner = ({
   };
   const { updateOverlay, setupHeatmapActionCorner } = useAIOverlay(overlayConfig);
 
-  // Filter to only primary imaging display sets for initial viewport
-  const primaryDisplaySets = getPrimaryDisplaySets(displaySets);
-
   // Use appropriate display sets based on viewport type
   const viewportDisplaySets = isHeatmapViewport ? displaySets : primaryDisplaySets;
 
@@ -55,7 +64,26 @@ const AITrackedViewportInner = ({
     ...viewportOptions,
   }), [viewportOptions, isHeatmapViewport]);
 
-    // Handle heatmap toggle (only for primary viewports)
+  // Apply the heatmap layout for an explicitly passed result, so callers can act
+  // on a selection before it is committed to state.
+  const applyHeatmapLayout = useCallback(
+    (show: boolean, aiResult) => {
+      if (isHeatmapViewport) return; // Never drive layout from a heatmap viewport
+      if (show && !aiResult?.hasHeatmap) return; // Nothing to open
+
+      HeatmapLayoutManager.toggleHeatmapLayout(show, {
+        viewportId,
+        displaySets: primaryDisplaySets, // Use filtered primary display sets
+        viewportOptions: enhancedViewportOptions, // Use memoized options
+        aiResult,
+        viewportGridService,
+        servicesManager,
+      });
+    },
+    [isHeatmapViewport, viewportId, primaryDisplaySets, enhancedViewportOptions, viewportGridService, servicesManager]
+  );
+
+  // Handle heatmap toggle (only for primary viewports)
   const handleHeatmapToggle = useCallback(() => {
     if (isHeatmapViewport) return; // Don't handle toggle on heatmap viewport
 
@@ -71,64 +99,48 @@ const AITrackedViewportInner = ({
     // Update the action corner toggle button state
     setupHeatmapActionCorner(currentAIResult, handleHeatmapToggle, newShowHeatmap, currentAIResult.hasHeatmap);
 
-    if (currentAIResult) {
-      HeatmapLayoutManager.toggleHeatmapLayout(newShowHeatmap, {
-        viewportId,
-        displaySets: primaryDisplaySets, // Use filtered primary display sets
-        viewportOptions: enhancedViewportOptions, // Use memoized options
-        aiResult: currentAIResult,
-        viewportGridService,
-        servicesManager,
-      });
-    }
-  }, [showHeatmap, currentAIResult, viewportId, primaryDisplaySets, enhancedViewportOptions, viewportGridService, isHeatmapViewport, setupHeatmapActionCorner]);
+    applyHeatmapLayout(newShowHeatmap, currentAIResult);
+  }, [showHeatmap, currentAIResult, isHeatmapViewport, setupHeatmapActionCorner, applyHeatmapLayout]);
 
   // Handle AI result selection from events
   const handleAIResultSelected = useCallback((newSelectedAIResult, clickedDisplaySetUID: string) => {
 
-    // Update the selected AI result state
     setSelectedAIResult(newSelectedAIResult);
+    setSelectionKey(primaryDisplaySetKey);
 
     // Update overlay (only for primary viewports)
     if (!isHeatmapViewport) {
       updateOverlay(newSelectedAIResult);
     }
 
-    // Close heatmap layout if currently showing (when switching AI results)
+    // Close the heatmap belonging to the outgoing result (currentAIResult).
     if (showHeatmap && !isHeatmapViewport && currentAIResult) {
-
       setShowHeatmap(false);
-      // Actually close the side-by-side layout
-      HeatmapLayoutManager.toggleHeatmapLayout(false, {
-        viewportId,
-        displaySets: primaryDisplaySets,
-        viewportOptions: enhancedViewportOptions,
-        aiResult: currentAIResult, // Use current (old) AI result for closing
-        viewportGridService,
-        servicesManager,
-      });
+      applyHeatmapLayout(false, currentAIResult);
     }
 
-    // Always setup heatmap action corner (only for primary viewports)
-    // Pass hasHeatmap flag to show disabled state when no heatmap is available
     if (!isHeatmapViewport && newSelectedAIResult) {
+      // Auto-open the heatmap when the click landed on this result's own SC
+      // thumbnail. Use newSelectedAIResult explicitly, not handleHeatmapToggle
+      // (its currentAIResult is not yet committed).
+      const shouldAutoOpen =
+        newSelectedAIResult.hasHeatmap &&
+        newSelectedAIResult.heatmapDisplaySet?.displaySetInstanceUID === clickedDisplaySetUID &&
+        !showHeatmap;
+
       setupHeatmapActionCorner(
         newSelectedAIResult,
         handleHeatmapToggle,
-        false,
+        shouldAutoOpen,
         newSelectedAIResult.hasHeatmap
       );
 
-      // Auto-enable heatmap if user clicked directly on the heatmap thumbnail (SC)
-      if (
-        newSelectedAIResult.hasHeatmap &&
-        newSelectedAIResult.heatmapDisplaySet?.displaySetInstanceUID === clickedDisplaySetUID &&
-        !showHeatmap
-      ) {
-        handleHeatmapToggle();
+      if (shouldAutoOpen) {
+        setShowHeatmap(true);
+        applyHeatmapLayout(true, newSelectedAIResult);
       }
     }
-  }, [viewportId, isHeatmapViewport, updateOverlay, setupHeatmapActionCorner, handleHeatmapToggle, showHeatmap, primaryDisplaySets, enhancedViewportOptions, currentAIResult, viewportGridService]);
+  }, [isHeatmapViewport, updateOverlay, setupHeatmapActionCorner, handleHeatmapToggle, showHeatmap, currentAIResult, applyHeatmapLayout, primaryDisplaySetKey]);
 
   // Subscribe to AI result selection events
   useAIResultSubscription({
@@ -137,6 +149,11 @@ const AITrackedViewportInner = ({
     servicesManager,
     onAIResultSelected: handleAIResultSelected,
   });
+
+  // Reset the heatmap toggle when the primary content changes.
+  useEffect(() => {
+    setShowHeatmap(false);
+  }, [primaryDisplaySetKey]);
 
   // Ensure heatmap toggle action corner is in sync
   useEffect(() => {

@@ -107,8 +107,8 @@ describe('ChatService', () => {
   it('honors an explicit wsUrl from window.config', () => {
     (window as any).config = { chatMiddleware: { wsUrl: 'ws://custom/ws' } };
     const svc = new ChatService();
-    // connect() now rejects when the socket closes before the session handshake
-    // (VAR-H1); this test tears the socket down deliberately, so swallow it.
+    // connect() rejects when the socket closes before the session handshake, and
+    // this test tears the socket down deliberately, so swallow it.
     svc.connect().catch(() => {});
     const ws = lastWs();
     expect(ws.url).toBe('ws://custom/ws');
@@ -312,8 +312,8 @@ describe('ChatService', () => {
   });
 });
 
-describe('ChatService connect settling (VAR-H1 / VAR-M4)', () => {
-  it('rejects on the 10s timeout when the socket opens but no CONNECTED arrives (VAR-H1)', async () => {
+describe('ChatService connect settling', () => {
+  it('rejects on the 10s timeout when the socket opens but no CONNECTED arrives', async () => {
     jest.useFakeTimers();
     const svc = new ChatService();
     const p = svc.connect();
@@ -325,7 +325,7 @@ describe('ChatService connect settling (VAR-H1 / VAR-M4)', () => {
     expect(svc.isConnected()).toBe(false);
   });
 
-  it('rejects when the socket closes before the session handshake (VAR-H1)', async () => {
+  it('rejects when the socket closes before the session handshake', async () => {
     const svc = new ChatService();
     const p = svc.connect();
     lastWs().emitClose(1006, 'boom', false);
@@ -333,7 +333,7 @@ describe('ChatService connect settling (VAR-H1 / VAR-M4)', () => {
     svc.disconnect(); // clear any armed reconnect timer
   });
 
-  it('rejects when the socket errors before the session handshake (VAR-H1)', async () => {
+  it('rejects when the socket errors before the session handshake', async () => {
     const svc = new ChatService();
     const p = svc.connect();
     lastWs().emitError();
@@ -341,7 +341,7 @@ describe('ChatService connect settling (VAR-H1 / VAR-M4)', () => {
     svc.disconnect();
   });
 
-  it('reuses the in-flight connection promise instead of opening a second socket (VAR-M4)', async () => {
+  it('reuses the in-flight connection promise instead of opening a second socket', async () => {
     const svc = new ChatService();
     const p1 = svc.connect();
     const p2 = svc.connect(); // called again while still CONNECTING
@@ -353,7 +353,7 @@ describe('ChatService connect settling (VAR-H1 / VAR-M4)', () => {
     await p1;
   });
 
-  it('returns immediately for an already-established connection without a new socket (VAR-M4)', async () => {
+  it('returns immediately for an already-established connection without a new socket', async () => {
     const svc = new ChatService();
     await connect(svc, 's1');
     const before = FakeWebSocket.instances.length;

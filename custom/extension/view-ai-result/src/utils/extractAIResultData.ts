@@ -46,10 +46,8 @@ export function extractAIResultData(displaySet) {
       const side = conceptMeaning.includes('Left') ? 'Left' : 'Right';
       const codeMeaning = item.ConceptCodeSequence?.[0]?.CodeMeaning;
       const rawConfidence = item.MeasuredValueSequence?.[0]?.NumericValue;
-      // Preserve a real 0 (a 0.0% probability): only null/undefined/'' map to
-      // null. Previously `confidence ? parseFloat(...) : null` turned a valid 0
-      // into null (rendered as '--'/'N/A'). A non-numeric value normalizes to
-      // null rather than NaN.
+      // Preserve a real 0 (0.0% probability): only null/undefined/'' map to null,
+      // and a non-numeric value normalizes to null rather than NaN.
       let confidence: number | null = null;
       if (rawConfidence != null && rawConfidence !== '') {
         const parsed = parseFloat(rawConfidence);

@@ -97,11 +97,9 @@ export class ChatService {
       this.ws = ws;
 
       // Settle the connection promise exactly once, clearing the timeout and
-      // releasing the in-flight guard. Previously connect() only ever rejected
-      // from the timeout (and only when the socket was not OPEN), so a socket
-      // that opened but never sent CONNECTED — or that errored/closed before the
-      // handshake — left the promise pending forever ("Connecting…" with no
-      // recovery).
+      // releasing the in-flight guard, so a socket that opens but never sends
+      // CONNECTED (or errors/closes before the handshake) can't leave connect()
+      // pending forever.
       const settle = (action: () => void) => {
         if (settled) {
           return;

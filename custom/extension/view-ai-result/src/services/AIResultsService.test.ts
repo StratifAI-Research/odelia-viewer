@@ -130,7 +130,7 @@ describe('AIResultsService', () => {
       expect(sm.services.displaySetService.getActiveDisplaySets.mock.calls.length).toBe(callsAfterFirst);
     });
 
-    it('re-evaluates hasHeatmap when the matching SC arrives after the SR was cached (VAR-H2)', () => {
+    it('re-evaluates hasHeatmap when the matching SC arrives after the SR was cached', () => {
       const displaySets: any[] = [srDisplaySet('sr-1')];
       const handlers: Array<() => void> = [];
       const displaySetService = {
