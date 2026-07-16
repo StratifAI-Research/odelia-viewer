@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import PropTypes from 'prop-types';
@@ -12,12 +12,18 @@ import { PanelStudyBrowserHeader, MoreDropdownMenu } from '@ohif/extension-defau
 import { defaultActionIcons } from './constants';
 import { createAIBrowserTabs } from '../../utils/createAIBrowserTabs';
 import { createStudyAIBrowserTabsNested } from '../../utils/createStudyAIBrowserTabsNested';
-import { extractAIResultData } from '../../utils/extractAIResultData';
 import { applyAIThumbnailStyles, setupAIThumbnailObserver } from '../../utils/applyAIThumbnailStyles';
 import { useStudyChangeDetector } from '../../hooks/useStudyChangeDetector';
+import {
+  thumbnailNoImageModalities,
+  mapDisplaySets,
+  mapDataSourceStudies,
+  getImageIdForThumbnail,
+  findTabAndStudyOfDisplaySet,
+} from './panelDisplaySetMapping';
+import { isAIResultModality, resolveInitialSelectedSRUID } from './panelAISelection';
 
 import '../../components/AIThumbnail.css';
-import { getStaticDate } from '../../utils/dateCache';
 
 const { formatDate } = utils;
 
@@ -55,18 +61,6 @@ const DIALOG_ID = {
   UNTRACK_SERIES: 'untrack-series',
   REJECT_REPORT: 'ds-reject-sr',
 };
-
-const thumbnailNoImageModalities = [
-  'SR',
-  'SEG',
-  'SM',
-  'RTSTRUCT',
-  'RTPLAN',
-  'RTDOSE',
-  'DOC',
-  'OT',
-  'PMAP',
-];
 
 /**
  *
@@ -131,6 +125,13 @@ export default function PanelStudyBrowserTracking({
   // Cache for thumbnail props to prevent constant recalculation of static data like dates
   const [thumbnailPropsCache] = useState(new Map());
 
+  // Refs mirror mutable state so the AI-selection subscription below can read
+  // the latest values without listing them as effect deps. Otherwise every
+  // loading/thumbnail tick tore down and re-created the subscription and re-ran
+  // the initial-selection loop (VAR-M5).
+  const displaySetsLoadingStateRef = useRef(displaySetsLoadingState);
+  const thumbnailImageSrcMapRef = useRef(thumbnailImageSrcMap);
+
   // Detect study changes and notify AIResultsService
   useStudyChangeDetector({
     servicesManager,
@@ -141,62 +142,53 @@ export default function PanelStudyBrowserTracking({
     StudyInstanceUIDs,
   });
 
-  // Subscribe once to global AI result selection and cleared events
+  // One-shot: resolve the initially-selected AI result for the open studies.
+  // Kept separate from the subscription (below) so it does not re-run on every
+  // loading/thumbnail tick (VAR-M5).
+  useEffect(() => {
+    const initialUID = resolveInitialSelectedSRUID(StudyInstanceUIDs, aiResultsService, servicesManager);
+    if (initialUID) {
+      setSelectedSRUID(initialUID);
+    }
+  }, [aiResultsService, StudyInstanceUIDs, servicesManager]);
+
+  // Subscribe once to global AI result selection and cleared events. Deps are
+  // limited to stable services so the subscription is not torn down on every
+  // loading tick; the cleared handler reads mutable state through refs.
   useEffect(() => {
     if (!aiResultsService) {
       return;
     }
 
     const selectionHandler = (evt: { studyInstanceUID: string; displaySetInstanceUID: string }) => {
-
       setSelectedSRUID(evt.displaySetInstanceUID);
     };
 
     const clearedHandler = (evt: { studyInstanceUID: string; displaySetUIDs?: string[]; reason?: string }) => {
-
       // If the currently selected AI result was deleted, clear selection
       if (evt.displaySetUIDs && selectedSRUIDRef.current && evt.displaySetUIDs.includes(selectedSRUIDRef.current)) {
-
         setSelectedSRUID(null);
       } else if (evt.reason === 'no_results' || evt.reason === 'cache_cleared') {
         // If all results were cleared, clear selection
-
         setSelectedSRUID(null);
       }
 
-      // Force remapping of display sets to refresh thumbnails
-      // This will update the UI to reflect the deletion
+      // Force remapping of display sets to refresh thumbnails so the UI reflects
+      // the deletion. Reads mutable state via refs to keep the subscription stable.
       const currentDisplaySets = displaySetService.activeDisplaySets;
       if (currentDisplaySets.length > 0) {
-        const mappedDisplaySets = _mapDisplaySets({
-          displaySets: currentDisplaySets,
-          displaySetLoadingState: displaySetsLoadingState,
-          thumbnailImageSrcMap,
-          trackedSeriesInstanceUIDs: [],
-          selectedSRUID: selectedSRUIDRef.current,
-          thumbnailPropsCache,
-        });
-        setDisplaySets(mappedDisplaySets);
+        setDisplaySets(
+          mapDisplaySets({
+            displaySets: currentDisplaySets,
+            displaySetLoadingState: displaySetsLoadingStateRef.current,
+            thumbnailImageSrcMap: thumbnailImageSrcMapRef.current,
+            trackedSeriesInstanceUIDs: [],
+            selectedSRUID: selectedSRUIDRef.current,
+            thumbnailPropsCache,
+          })
+        );
       }
     };
-
-    // Initial selection (if any)
-    if (StudyInstanceUIDs?.length) {
-      // Try each study, keep first valid selection we find
-      for (const sid of StudyInstanceUIDs) {
-        const initial = aiResultsService.getSelectedAIResult?.(sid, servicesManager as any);
-        // `getSelectedAIResult` returns AIResult | null without UID, so rely on metadata helper
-        if (!initial) {
-          continue;
-        }
-        const metaList = aiResultsService.getAIResultMetadata?.(sid, servicesManager as any);
-        const selectedMeta = metaList?.find(m => m.isSelected);
-        if (selectedMeta) {
-          setSelectedSRUID(selectedMeta.displaySetInstanceUID);
-          break;
-        }
-      }
-    }
 
     const selectedSubscription = aiResultsService.subscribe(
       aiResultsService.EVENTS.AI_RESULT_SELECTED,
@@ -212,20 +204,7 @@ export default function PanelStudyBrowserTracking({
       selectedSubscription.unsubscribe();
       clearedSubscription.unsubscribe();
     };
-  }, [
-    aiResultsService,
-    StudyInstanceUIDs,
-    servicesManager,
-    displaySetService,
-    displaySetsLoadingState,
-    thumbnailImageSrcMap,
-    viewports,
-    viewportGridService,
-    dataSource,
-    uiDialogService,
-    uiNotificationService,
-    thumbnailPropsCache
-  ]);
+  }, [aiResultsService, displaySetService, thumbnailPropsCache]);
 
   const [viewPresets, setViewPresets] = useState(
     customizationService.getCustomization('studyBrowser.viewPresets')
@@ -256,7 +235,7 @@ export default function PanelStudyBrowserTracking({
     // Check if this is an AI result thumbnail
     const displaySet = displaySets.find((ds: DisplaySet) => ds.displaySetInstanceUID === displaySetInstanceUID);
     const modality = displaySet?.modality || displaySet?.Modality;
-    const isAIResult = displaySet && (modality === 'SR' || modality === 'SC');
+    const isAIResult = displaySet && isAIResultModality(modality);
 
     // Don't change viewport for AI results
     if (isAIResult) {
@@ -299,7 +278,7 @@ export default function PanelStudyBrowserTracking({
 
     // Check multiple modality property variations
     const modality = displaySet.modality || displaySet.Modality;
-    const isAIResult = modality === 'SR' || modality === 'SC';
+    const isAIResult = isAIResultModality(modality);
 
     if (isAIResult) {
       // Handle AI result selection
@@ -359,7 +338,7 @@ export default function PanelStudyBrowserTracking({
         console.warn(error);
       }
 
-      const mappedStudies = _mapDataSourceStudies(qidoStudiesForPatient);
+      const mappedStudies = mapDataSourceStudies(qidoStudiesForPatient);
       const actuallyMappedStudies = mappedStudies.map(qidoStudy => {
         return {
           studyInstanceUid: qidoStudy.StudyInstanceUID,
@@ -400,7 +379,7 @@ export default function PanelStudyBrowserTracking({
       return;
     }
 
-    const mappedDisplaySets = _mapDisplaySets({
+    const mappedDisplaySets = mapDisplaySets({
       displaySets: currentDisplaySets,
       displaySetLoadingState: displaySetsLoadingState,
       thumbnailImageSrcMap,
@@ -438,14 +417,14 @@ export default function PanelStudyBrowserTracking({
 
   const lastSignatureRef = useRef<string>('');
   // Refs to hold latest dynamic state for the subscription callback
-  const displaySetsLoadingStateRef = useRef(displaySetsLoadingState);
-  const thumbnailImageSrcMapRef = useRef(thumbnailImageSrcMap);
+  // (displaySetsLoadingStateRef / thumbnailImageSrcMapRef are declared above,
+  // before the AI-selection subscription that reads them).
   const viewportsRef = useRef(viewports);
   const debounceTimeoutRef = useRef<number | null>(null);
 
   // Helper to perform expensive remap and state update
   const runMapping = (displaySetsInput) => {
-    const mappedDisplaySets = _mapDisplaySets({
+    const mappedDisplaySets = mapDisplaySets({
       displaySets: displaySetsInput,
       displaySetLoadingState: displaySetsLoadingStateRef.current,
       thumbnailImageSrcMap: thumbnailImageSrcMapRef.current,
@@ -679,7 +658,7 @@ export default function PanelStudyBrowserTracking({
 
     const displaySetInstanceUID = jumpToDisplaySet;
     // Set the activeTabName and expand the study
-    const thumbnailLocation = _findTabAndStudyOfDisplaySet(displaySetInstanceUID, tabs);
+    const thumbnailLocation = findTabAndStudyOfDisplaySet(displaySetInstanceUID, tabs);
     if (!thumbnailLocation) {
       console.warn('jumpToThumbnail: displaySet thumbnail not found.');
 
@@ -763,237 +742,3 @@ PanelStudyBrowserTracking.propTypes = {
   getStudiesForPatientByMRN: PropTypes.func.isRequired,
   requestDisplaySetCreationForStudy: PropTypes.func.isRequired,
 };
-
-function getImageIdForThumbnail(displaySet: any, imageIds: any) {
-  let imageId;
-  if (displaySet.isDynamicVolume) {
-    const timePoints = displaySet.dynamicVolumeInfo.timePoints;
-    const middleIndex = Math.floor(timePoints.length / 2);
-    const middleTimePointImageIds = timePoints[middleIndex];
-    imageId = middleTimePointImageIds[Math.floor(middleTimePointImageIds.length / 2)];
-  } else {
-    imageId = imageIds[Math.floor(imageIds.length / 2)];
-  }
-  return imageId;
-}
-
-/**
- * Maps from the DataSource's format to a naturalized object
- *
- * @param {*} studies
- */
-function _mapDataSourceStudies(studies) {
-  return studies.map(study => {
-    // TODO: Why does the data source return in this format?
-    return {
-      AccessionNumber: study.accession,
-      StudyDate: study.date,
-      StudyDescription: study.description,
-      NumInstances: study.instances,
-      ModalitiesInStudy: study.modalities,
-      PatientID: study.mrn,
-      PatientName: study.patientName,
-      StudyInstanceUID: study.studyInstanceUid,
-      StudyTime: study.time,
-    };
-  });
-}
-
-function _mapDisplaySets({
-  displaySets,
-  displaySetLoadingState,
-  thumbnailImageSrcMap,
-  trackedSeriesInstanceUIDs,
-  selectedSRUID,
-  thumbnailPropsCache = new Map(),
-}) {
-
-  const thumbnailDisplaySets: any[] = [];
-  const thumbnailNoImageDisplaySets: any[] = [];
-  displaySets
-    .filter(ds => !ds.excludeFromThumbnailBrowser)
-    .forEach(ds => {
-      const { thumbnailSrc, displaySetInstanceUID } = ds;
-      const componentType = _getComponentType(ds);
-
-      const array =
-        componentType === 'thumbnailTracked' ? thumbnailDisplaySets : thumbnailNoImageDisplaySets;
-
-      const loadingProgress = displaySetLoadingState?.[displaySetInstanceUID];
-
-      // Determine if this display set is an AI result (SR or SC)
-      const isAIResultQuick = ds.Modality === 'SR' || ds.Modality === 'SC';
-      const isSelectedSR = ds.Modality === 'SR' && displaySetInstanceUID === selectedSRUID;
-
-      // Check if we have cached thumbnail props for this display set
-      const cacheKey = `${displaySetInstanceUID}-${ds.SeriesDate || ds.StudyDate || ds.instance?.InstanceCreationDate}`;
-
-      if (thumbnailPropsCache.has(cacheKey)) {
-
-        const cachedProps = thumbnailPropsCache.get(cacheKey);
-        // Update dynamic properties that can change
-        cachedProps.loadingProgress = loadingProgress;
-        cachedProps.imageSrc = thumbnailSrc || thumbnailImageSrcMap[displaySetInstanceUID];
-        cachedProps.isTracked = trackedSeriesInstanceUIDs.includes(ds.SeriesInstanceUID);
-        // Ensure className is updated for AI result styling & selection
-        if (cachedProps && isAIResultQuick) {
-          cachedProps.className = `ai-result-thumbnail${isSelectedSR ? ' selected' : ''}`;
-        }
-        array.push(cachedProps);
-        return; // Skip recalculation
-      }
-
-      // If not cached, calculate the thumbnail props
-
-      // Extract AI result data for AI results
-      const aiResultData = extractAIResultData(ds);
-
-      // Enhanced description for AI results - show all info directly
-      let enhancedDescription = ds.SeriesDescription || '';
-
-      // Get static date for this display set (prevent constant refreshing)
-      const staticDate = getStaticDate(ds);
-
-      if (aiResultData && aiResultData.modelInfo) {
-        // Show all information directly - CSS should handle wrapping
-        let lines = [`🤖 ${aiResultData.modelInfo.name}`];
-
-        // Process real classification results from DICOM SR
-        if (aiResultData.isClassification && aiResultData.classifications.length > 0) {
-          aiResultData.classifications.forEach(classification => {
-            const side = classification.side;
-
-            if (classification.errorMessage) {
-              // Handle error cases
-              lines.push(`${side}: ${classification.errorMessage}`);
-            } else if (classification.result !== null) {
-              // Handle successful classification (3-class: Malignant, Benign, No lesion)
-              const result = classification.result;
-              const confidence =
-                classification.confidence != null
-                  ? ` ${classification.confidence.toFixed(1)}%`
-                  : '';
-              lines.push(`${side}: ${result}${confidence}`);
-            }
-          });
-        } else {
-          // No classification data found
-          lines.push('No classification results');
-        }
-
-        // Join with line breaks - CSS should make this work
-        enhancedDescription = lines.join('\n');
-
-      } else if (ds.Modality === 'SR') {
-        // Show meaningful info for SRs without parseable AI data
-        enhancedDescription = `🤖 AI Result\n${ds.SeriesDescription || 'Structured Report'}`;
-
-      } else if (ds.Modality === 'SC') {
-        // Clean format for SC - show as Heatmap
-        enhancedDescription = `🤖 Heatmap`;
-
-      }
-
-      // Final safety check
-      if (!enhancedDescription || enhancedDescription.trim() === '') {
-        enhancedDescription = 'Unknown Series';
-
-      }
-
-      // Add custom CSS class for AI results (SR and SC) to enable multiline text
-      const isAIResult = aiResultData || ds.Modality === 'SR' || ds.Modality === 'SC';
-      const customClassName = isAIResult ? `ai-result-thumbnail${isSelectedSR ? ' selected' : ''}` : '';
-
-      // Cache the calculated thumbnail props (static properties only)
-      const cacheableProps = {
-        displaySetInstanceUID,
-        description: enhancedDescription,
-        seriesNumber: ds.SeriesNumber,
-        modality: ds.Modality,
-        seriesDate: staticDate, // This is the static date we want to preserve
-        numInstances: ds.numImageFrames,
-        countIcon: ds.countIcon,
-        messages: null,
-        StudyInstanceUID: ds.StudyInstanceUID,
-        componentType,
-        dragData: {
-          type: 'displayset',
-          displaySetInstanceUID,
-        },
-        isHydratedForDerivedDisplaySet: ds.isHydrated,
-        // Dynamic properties that will be updated each time
-        loadingProgress: loadingProgress,
-        imageSrc: thumbnailSrc || thumbnailImageSrcMap[displaySetInstanceUID],
-        isTracked: trackedSeriesInstanceUIDs.includes(ds.SeriesInstanceUID),
-        className: customClassName,
-      };
-
-      // Save to cache for future use
-      thumbnailPropsCache.set(cacheKey, { ...cacheableProps });
-
-      array.push(cacheableProps);
-    });
-
-  return [...thumbnailDisplaySets, ...thumbnailNoImageDisplaySets];
-}
-
-function _getComponentType(ds) {
-  if (thumbnailNoImageModalities.includes(ds.Modality) || ds?.unsupported) {
-    return 'thumbnailNoImage';
-  }
-
-  return 'thumbnailTracked';
-}
-
-function _findTabAndStudyOfDisplaySet(displaySetInstanceUID, tabs) {
-  for (let t = 0; t < tabs.length; t++) {
-    const { studies } = tabs[t];
-
-    for (let s = 0; s < studies.length; s++) {
-      const study = studies[s];
-
-      // Check in originals array (for nested structure)
-      if (study.originals) {
-        for (let d = 0; d < study.originals.length; d++) {
-          if (study.originals[d].displaySetInstanceUID === displaySetInstanceUID) {
-            return {
-              tabName: tabs[t].name,
-              StudyInstanceUID: study.studyInstanceUid,
-            };
-          }
-        }
-      }
-
-      // Check in aiGroups array (for nested structure)
-      if (study.aiGroups) {
-        for (let g = 0; g < study.aiGroups.length; g++) {
-          const group = study.aiGroups[g];
-          if (group.displaySets) {
-            for (let d = 0; d < group.displaySets.length; d++) {
-              if (group.displaySets[d].displaySetInstanceUID === displaySetInstanceUID) {
-                return {
-                  tabName: tabs[t].name,
-                  StudyInstanceUID: study.studyInstanceUid,
-                };
-              }
-            }
-          }
-        }
-      }
-
-      // Fallback for flat structure (old tab mode)
-      if (study.displaySets) {
-        for (let d = 0; d < study.displaySets.length; d++) {
-          if (study.displaySets[d].displaySetInstanceUID === displaySetInstanceUID) {
-            return {
-              tabName: tabs[t].name,
-              StudyInstanceUID: study.studyInstanceUid,
-            };
-          }
-        }
-      }
-    }
-  }
-
-  return undefined;
-}
