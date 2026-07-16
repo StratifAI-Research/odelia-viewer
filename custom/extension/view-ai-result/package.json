@@ -4,12 +4,7 @@
   "description": "OHIF extension to display AI results for ODELIA project",
   "author": "Bulat Maksudov",
   "license": "MIT",
-  "main": "dist/umd/view-ai-result/index.umd.js",
-  "files": [
-    "dist/**",
-    "public/**",
-    "README.md"
-  ],
+  "main": "src/index.tsx",
   "repository": "OHIF/Viewers",
   "keywords": [
     "ohif-extension"
@@ -20,8 +15,6 @@
     "npm": ">=6"
   },
   "scripts": {
-    "build": "cross-env NODE_ENV=production webpack --config .webpack/webpack.prod.js",
-    "build:package": "bun run build",
     "test:unit": "jest --config jest.config.js",
     "test:unit:watch": "jest --config jest.config.js --watchAll",
     "test:unit:ci": "jest --config jest.config.js --ci --runInBand --collectCoverage"
@@ -62,17 +55,7 @@
     "@babel/preset-typescript": "^7.13.0",
     "@babel/plugin-proposal-private-property-in-object": "7.21.11",
     "babel-eslint": "9.x",
-    "babel-loader": "^8.2.4",
-    "@svgr/webpack": "^8.1.0",
     "babel-plugin-module-resolver": "^5.0.0",
-    "clean-webpack-plugin": "^4.0.0",
-    "copy-webpack-plugin": "^10.2.0",
-    "cross-env": "^7.0.3",
-    "dotenv": "^14.1.0",
-    "eslint": "^8.39.0",
-    "eslint-loader": "^2.0.0",
-    "webpack": "5.89.0",
-    "webpack-merge": "^5.7.3",
-    "webpack-cli": "^5.0.2"
+    "eslint": "^8.39.0"
   }
 }
