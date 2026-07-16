@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import OrthancAIService from '../services/OrthancAIService';
-import type { InputMapping } from '../services/OrthancAIService';
+import type { InputMapping, WorkitemStatus } from '../services/OrthancAIService';
 import { AIEndpoint } from '../components/AIEndpointConfig';
 
 interface UseAIRoutingProps {
@@ -37,7 +37,7 @@ export function useAIRouting({
     });
   };
 
-  const handleWorkitemStatusUpdate = (workitemStatus: any) => {
+  const handleWorkitemStatusUpdate = (workitemStatus: WorkitemStatus) => {
 
     // Map workitem states to local status
     switch (workitemStatus.state) {
@@ -78,7 +78,7 @@ export function useAIRouting({
         }
         break;
 
-      case 'CANCELED':
+      case 'CANCELED': {
         setStatus('idle');
         const errorMsg = workitemStatus.cancellationReason || 'Workitem was canceled';
         setError(errorMsg);
@@ -91,6 +91,7 @@ export function useAIRouting({
           duration: 5000,
         });
         break;
+      }
 
       default:
         console.warn('Unknown workitem state:', workitemStatus.state);

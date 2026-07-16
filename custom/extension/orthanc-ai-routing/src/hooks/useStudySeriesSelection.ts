@@ -119,6 +119,9 @@ export function useStudySeriesSelection({
             studyMap.set(studyUID, {
               studyInstanceUid: studyUID,
               date: formattedDate,
+              // Raw DICOM YYYYMMDD kept for a reliable sort (OAR-L4: Date.parse on
+              // the already-formatted `date` string yields NaN).
+              rawDate: studyDate,
               description: displayName,
               numInstances: 0,
               numSeries: 0,
@@ -132,10 +135,9 @@ export function useStudySeriesSelection({
 
         const studies = Array.from(studyMap.values());
 
-        // Sort studies by date desc
-        studies.sort((a, b) => {
-          return (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0);
-        });
+        // Sort studies by date desc, on the raw YYYYMMDD digits (OAR-L4).
+        const dateKey = (s: string) => Number(String(s ?? '').replace(/\D/g, '')) || 0;
+        studies.sort((a, b) => dateKey(b.rawDate) - dateKey(a.rawDate));
 
         setAvailableStudies(studies);
         setIsLoadingStudies(false);
@@ -345,7 +347,8 @@ export function useStudySeriesSelection({
       setSeriesError(null);
       setAvailableSeries([]);
       setSelectedSeriesUIDs(new Set());
-      // This will trigger the effect to reload
+      // Reload the series for the active study directly (OAR-L3: this is a
+      // direct call, not an effect trigger).
       loadSeriesForStudy(activeStudyUID);
     }
   };
