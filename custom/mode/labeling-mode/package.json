@@ -1,11 +1,15 @@
 {
   "name": "labeling-mode",
   "version": "0.0.1",
-  "description": "labeling mode for Odelia project",
+  "description": "OHIF mode: ODELIA labeling workflow (patient/study/lesion labels).",
   "author": "Bulat Maksudov",
   "license": "MIT",
   "main": "src/index.tsx",
-  "repository": "OHIF/Viewers",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StratifAI-Research/odelia-viewer.git",
+    "directory": "custom/mode/labeling-mode"
+  },
   "keywords": [
     "ohif-mode"
   ],

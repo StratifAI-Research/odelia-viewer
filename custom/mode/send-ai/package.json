@@ -1,11 +1,15 @@
 {
   "name": "send-ai",
   "version": "0.0.1",
-  "description": "Test send to ai functionality",
+  "description": "OHIF mode: ODELIA analyze-with-AI workflow (route a study to an AI model and review the result).",
   "author": "Bulat Maksudov",
   "license": "MIT",
   "main": "src/index.tsx",
-  "repository": "OHIF/Viewers",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StratifAI-Research/odelia-viewer.git",
+    "directory": "custom/mode/send-ai"
+  },
   "keywords": [
     "ohif-mode"
   ],

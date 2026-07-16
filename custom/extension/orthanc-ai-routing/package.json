@@ -5,7 +5,11 @@
   "author": "Bulat Maksudov",
   "license": "MIT",
   "main": "src/index.tsx",
-  "repository": "OHIF/Viewers",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StratifAI-Research/odelia-viewer.git",
+    "directory": "custom/extension/orthanc-ai-routing"
+  },
   "keywords": [
     "ohif-extension"
   ],
@@ -32,9 +36,7 @@
     "react-dom": "^18.3.1",
     "react-i18next": "^12.2.2",
     "react-router": "^6.23.1",
-    "react-router-dom": "^6.23.1",
-    "webpack": "5.89.0",
-    "webpack-merge": "^5.7.3"
+    "react-router-dom": "^6.23.1"
   },
   "dependencies": {
     "@babel/runtime": "^7.20.13",
