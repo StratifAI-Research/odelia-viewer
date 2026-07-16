@@ -1,6 +1,7 @@
 import { getStaticDate } from './dateCache';
 import { extractAIResultData } from './extractAIResultData';
 import { formatDicomDateTime } from './dicomDateTime';
+import { findMatchingSRForHeatmap } from './aiResultPairing';
 import {
   isAIResult,
   getRealDisplaySet,
@@ -8,6 +9,39 @@ import {
   clearAITabCache,
   getAITabCacheSize,
 } from './aiTabHelpers';
+
+interface AIEntry {
+  thumb: any;
+  real: any;
+  modality: string | undefined;
+  modelName: string;
+  formattedDateTime: string | null;
+  sortKey: string;
+}
+
+/**
+ * Group key for an AI entry (H-03). SR (report) display sets are keyed by
+ * model + run datetime so two *different* models produced at the same DICOM
+ * second stay in separate groups (previously they merged and were deleted
+ * together). An SC (heatmap) joins the group of the SR it pairs with — by
+ * referenced SOP UID / time proximity — so a report and its heatmap stay
+ * together; an unpaired heatmap falls back to a datetime-only key. Returns
+ * `null` when the entry has no usable date (handled as a missing-date group).
+ */
+function aiGroupKey(entry: AIEntry, srEntries: AIEntry[]): string | null {
+  if (!entry.formattedDateTime) {
+    return null;
+  }
+  if (entry.modality === 'SC') {
+    const matchSR = findMatchingSRForHeatmap(entry.real, srEntries.map(s => s.real));
+    const paired = matchSR ? srEntries.find(s => s.real === matchSR) : undefined;
+    if (paired && paired.formattedDateTime) {
+      return `${paired.modelName}|${paired.formattedDateTime}`;
+    }
+    return `AI Model|${entry.formattedDateTime}`;
+  }
+  return `${entry.modelName}|${entry.formattedDateTime}`;
+}
 
 /**
  * Creates tabs for the study browser that groups AI results by model name + datetime
@@ -26,65 +60,27 @@ export function createAIBrowserTabs(
   // Group display sets
   const originalSeries = new Map();
   const aiResultGroups = new Map(); // Key: "modelName|datetime", Value: series data
-  const missingDateGroups = new Map(); // Key: modelName, Value: series data
+  const missingDateGroups = new Map(); // Key: 'UNKNOWN', Value: series data
 
+  // First pass: split original series from AI results, resolving each AI
+  // thumbnail's real display set (instance metadata) once.
+  const aiEntries: AIEntry[] = [];
   displaySets.forEach(thumbnailDisplaySet => {
     if (isAIResult(thumbnailDisplaySet)) {
-      // Get the real display set with instance data
       const realDisplaySet = getRealDisplaySet(thumbnailDisplaySet, servicesManager);
-
-      // Extract AI model info
       const aiResultData = extractAIResultData(realDisplaySet);
       const modelName = aiResultData?.modelInfo?.name || 'AI Model';
-
-      // Extract creation date/time and possible timezone offset from real display set
       const creationDate = realDisplaySet?.instance?.InstanceCreationDate;
       const creationTime = realDisplaySet?.instance?.InstanceCreationTime;
       const tzOffset = getCreationTzOffset(realDisplaySet);
-
-      const formattedDateTime = formatDicomDateTime(creationDate, creationTime, tzOffset);
-
-      if (formattedDateTime) {
-        // Group by datetime ONLY (both SC and SR from same run together)
-        const groupKey = formattedDateTime;
-
-        if (!aiResultGroups.has(groupKey)) {
-          aiResultGroups.set(groupKey, {
-            studyInstanceUid: `${thumbnailDisplaySet.StudyInstanceUID}_AI_${formattedDateTime}`.replace(/[^a-zA-Z0-9._-]/g, '_'),
-            date: formattedDateTime,
-            description: `AI Results - ${formattedDateTime}`,
-            modalities: 'AI',
-            numInstances: 0,
-            displaySets: [],
-            modelName,
-            sortKey: `${creationDate || '99999999'}${creationTime || '999999'}` // For sorting
-          });
-        }
-
-        const group = aiResultGroups.get(groupKey);
-        group.displaySets.push(thumbnailDisplaySet);
-        group.numInstances += thumbnailDisplaySet.numInstances || 1;
-            } else {
-        // Group missing dates together (both SC and SR together)
-
-        const missingGroupKey = 'UNKNOWN';
-
-        if (!missingDateGroups.has(missingGroupKey)) {
-          missingDateGroups.set(missingGroupKey, {
-            studyInstanceUid: `${thumbnailDisplaySet.StudyInstanceUID}_AI_UNKNOWN`.replace(/[^a-zA-Z0-9._-]/g, '_'),
-            date: 'Date Unknown',
-            description: `AI Results - Date Unknown`,
-            modalities: 'AI',
-            numInstances: 0,
-            displaySets: [],
-            modelName
-          });
-        }
-
-        const group = missingDateGroups.get(missingGroupKey);
-        group.displaySets.push(thumbnailDisplaySet);
-        group.numInstances += thumbnailDisplaySet.numInstances || 1;
-      }
+      aiEntries.push({
+        thumb: thumbnailDisplaySet,
+        real: realDisplaySet,
+        modality: realDisplaySet?.Modality || thumbnailDisplaySet.Modality || thumbnailDisplaySet.modality,
+        modelName,
+        formattedDateTime: formatDicomDateTime(creationDate, creationTime, tzOffset),
+        sortKey: `${creationDate || '99999999'}${creationTime || '999999'}`,
+      });
     } else {
       // Original (non-AI) series
       const seriesKey = `${thumbnailDisplaySet.StudyInstanceUID}_${thumbnailDisplaySet.seriesNumber || thumbnailDisplaySet.SeriesInstanceUID}`;
@@ -104,6 +100,57 @@ export function createAIBrowserTabs(
       series.displaySets.push(thumbnailDisplaySet);
       series.numInstances += thumbnailDisplaySet.numInstances || 1;
     }
+  });
+
+  // Second pass: assign AI entries to groups. Process SR (report) entries first
+  // so each group's identity/order is anchored by its report and heatmaps
+  // resolve against a fully-populated SR list.
+  const srEntries = aiEntries.filter(e => e.modality === 'SR');
+  const orderedEntries = [...srEntries, ...aiEntries.filter(e => e.modality !== 'SR')];
+
+  orderedEntries.forEach(entry => {
+    const groupKey = aiGroupKey(entry, srEntries);
+
+    if (groupKey === null) {
+      const missingGroupKey = 'UNKNOWN';
+      if (!missingDateGroups.has(missingGroupKey)) {
+        missingDateGroups.set(missingGroupKey, {
+          studyInstanceUid: `${entry.thumb.StudyInstanceUID}_AI_UNKNOWN`.replace(/[^a-zA-Z0-9._-]/g, '_'),
+          date: 'Date Unknown',
+          description: `AI Results - Date Unknown`,
+          modalities: 'AI',
+          numInstances: 0,
+          displaySets: [],
+          modelName: entry.modelName,
+        });
+      }
+      const group = missingDateGroups.get(missingGroupKey);
+      group.displaySets.push(entry.thumb);
+      group.numInstances += entry.thumb.numInstances || 1;
+      return;
+    }
+
+    if (!aiResultGroups.has(groupKey)) {
+      // A group is created by the first entry seen for the key — an SR when one
+      // exists, so the label carries the report's model name for disambiguation.
+      const named = entry.modelName && entry.modelName !== 'AI Model';
+      aiResultGroups.set(groupKey, {
+        studyInstanceUid: `${entry.thumb.StudyInstanceUID}_AI_${groupKey}`.replace(/[^a-zA-Z0-9._-]/g, '_'),
+        date: entry.formattedDateTime,
+        description: named
+          ? `${entry.modelName} - ${entry.formattedDateTime}`
+          : `AI Results - ${entry.formattedDateTime}`,
+        modalities: 'AI',
+        numInstances: 0,
+        displaySets: [],
+        modelName: entry.modelName,
+        sortKey: entry.sortKey,
+      });
+    }
+
+    const group = aiResultGroups.get(groupKey);
+    group.displaySets.push(entry.thumb);
+    group.numInstances += entry.thumb.numInstances || 1;
   });
 
   // Create tabs in the specified order
