@@ -6,6 +6,25 @@ import { useAIOverlay } from '../hooks/useAIOverlay';
 import { useAIResultSubscription } from '../hooks/useAIResultSubscription';
 import { HeatmapLayoutManager, renderCornerstoneViewport, getPrimaryDisplaySets } from '../utils';
 
+/**
+ * Compose an optional external callback with our own (always-present) internal
+ * one, returning a single function that invokes the external first, then the
+ * internal. (M-05: an external onElementEnabled/Disabled must run alongside our
+ * own rather than clobber it or be clobbered by prop-spread order.)
+ */
+function composeCallbacks<T extends (...args: any[]) => void>(
+  external: T | undefined,
+  internal: T
+): (...args: Parameters<T>) => void {
+  if (!external) {
+    return internal;
+  }
+  return (...args: Parameters<T>) => {
+    external(...args);
+    internal(...args);
+  };
+}
+
 const AITrackedViewportInner = ({
   viewportId,
   servicesManager,
@@ -59,7 +78,10 @@ const AITrackedViewportInner = ({
 
   // Memoize enhanced viewport options to prevent cascade rerenders
   const enhancedViewportOptions = useMemo(() => ({
-    viewportType: 'stack', // keep stable to avoid viewport remounts
+    // VAR-L15: default to a stack viewport. This is NOT a stability guarantee —
+    // when a heatmap is toggled on, heatmapLayoutManager forces 'volume', which
+    // does remount the viewport. (`viewportOptions` below can also override it.)
+    viewportType: 'stack',
     showOverlays: !isHeatmapViewport,
     ...viewportOptions,
   }), [viewportOptions, isHeatmapViewport]);
@@ -165,6 +187,11 @@ const AITrackedViewportInner = ({
   return (
     <div className="relative flex h-full w-full flex-row overflow-hidden">
       {renderCornerstoneViewport({
+        // M-05: spread incoming props FIRST so our computed values win, and
+        // compose the element callbacks so an external onElementEnabled/Disabled
+        // (if the host passes one) runs alongside our own instead of clobbering
+        // — or being clobbered by — it.
+        ...props,
         viewportId,
         displaySets: viewportDisplaySets, // Use appropriate display sets based on viewport type
         viewportOptions: enhancedViewportOptions, // Use memoized options
@@ -172,9 +199,8 @@ const AITrackedViewportInner = ({
         extensionManager,
         servicesManager,
         commandsManager,
-        onElementEnabled,
-        onElementDisabled,
-        ...props,
+        onElementEnabled: composeCallbacks((props as any).onElementEnabled, onElementEnabled),
+        onElementDisabled: composeCallbacks((props as any).onElementDisabled, onElementDisabled),
       })}
 
       {/* Heatmap toggle is now injected via ViewportActionCornersService for better alignment */}
@@ -182,34 +208,10 @@ const AITrackedViewportInner = ({
   );
 };
 
-function areEqual(prevProps: AISideBySideViewportProps, nextProps: AISideBySideViewportProps) {
-  // Quick exits
-  if (prevProps.viewportId !== nextProps.viewportId) {
-    return false;
-  }
-
-  // Compare displaySetInstanceUIDs
-  const prevDS = prevProps.displaySets || [];
-  const nextDS = nextProps.displaySets || [];
-
-  if (prevDS.length !== nextDS.length) {
-    return false;
-  }
-
-  for (let i = 0; i < prevDS.length; i++) {
-    if (prevDS[i].displaySetInstanceUID !== nextDS[i].displaySetInstanceUID) {
-      return false;
-    }
-  }
-
-  // Compare viewportType and basic flags
-  const prevType = prevProps.viewportOptions?.viewportType;
-  const nextType = nextProps.viewportOptions?.viewportType;
-  if (prevType !== nextType) {
-    return false;
-  }
-
-  return true; // props are effectively equal, skip re-render
-}
-
-export default React.memo(AITrackedViewportInner, areEqual);
+// M-04: use React.memo's default shallow prop comparison. The previous custom
+// comparator only checked viewportId, display-set UIDs and viewportType, so it
+// suppressed re-renders on meaningful changes (late content hydration, changed
+// viewport options, services, callbacks) — leaving stale images/overlays. A
+// shallow compare is correct; reintroduce a narrower comparator only if
+// profiling proves it necessary and it compares a documented stable contract.
+export default React.memo(AITrackedViewportInner);

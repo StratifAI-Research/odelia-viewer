@@ -268,13 +268,6 @@ const FeedbackPanel: React.FC = () => {
     };
   }, [aiMeta, activeStudyUID, aiResultsService, servicesManager, displaySetService, userId]);
 
-  // Compute user markers only when a user is present
-  useEffect(() => {
-    if (!userId) {
-      setHasFeedbackByUID({});
-    }
-  }, [userId]);
-
   // --- Interaction handlers ---
   const handleDropdownChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const uid = e.target.value;

@@ -7,9 +7,6 @@ interface AIResultSubscriptionConfig {
   servicesManager: any;
   onAIResultSelected: (aiResult: AIResult, clickedDisplaySetUID: string) => void;
   onAIResultCleared?: (eventData: any) => void;
-  onStudyChanged?: (eventData: any) => void;
-  onHeatmapToggle?: () => void;
-  showHeatmap?: boolean;
 }
 
 export const useAIResultSubscription = (config: AIResultSubscriptionConfig): void => {
@@ -19,9 +16,6 @@ export const useAIResultSubscription = (config: AIResultSubscriptionConfig): voi
     servicesManager,
     onAIResultSelected,
     onAIResultCleared,
-    onStudyChanged,
-    onHeatmapToggle,
-    showHeatmap = false
   } = config;
 
   const { aiResultsService } = servicesManager.services;
@@ -40,13 +34,6 @@ export const useAIResultSubscription = (config: AIResultSubscriptionConfig): voi
       onAIResultCleared(eventData);
     }
   }, [viewportId, isHeatmapViewport, onAIResultCleared]);
-
-  const handleStudyChanged = useCallback((eventData: any) => {
-
-    if (!isHeatmapViewport && onStudyChanged) {
-      onStudyChanged(eventData);
-    }
-  }, [viewportId, isHeatmapViewport, onStudyChanged]);
 
   useEffect(() => {
     if (!aiResultsService || isHeatmapViewport) {

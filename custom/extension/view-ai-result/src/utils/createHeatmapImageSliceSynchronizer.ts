@@ -26,7 +26,7 @@ async function imageSliceSyncCallback(
   }
 
   // Get source image position
-  let sourceImageIndex = sViewport.getCurrentImageIdIndex();
+  const sourceImageIndex = sViewport.getCurrentImageIdIndex();
   const sourceImageIds = sViewport.getImageIds();
 
   // Note: We rely on spatial position matching (imagePositionPatient) rather than manual index reversal

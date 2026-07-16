@@ -10,6 +10,7 @@ import {
   Icons,
 } from '@ohif/ui-next';
 import { MoreDropdownMenu } from '@ohif/extension-default';
+import { deriveFeedbackApiBase } from '../../panels/FeedbackPanel/feedbackApi';
 
 interface DisplaySetThumbnail {
   displaySetInstanceUID: string;
@@ -152,8 +153,12 @@ export const StudyBrowserNested: React.FC<Props> = ({
       const { aiResultsService } = servicesManager.services;
       const removedDisplaySetUIDs: string[] = [];
 
-      // Delete from both Orthanc storage and OHIF viewer
-      // Note: /tools is at root level, /series is under /pacs
+      // Delete from both Orthanc storage and OHIF viewer.
+      // VAR-L12: derive the Orthanc series base from app-config (same source as
+      // the feedback API) so a deployment path change doesn't silently break
+      // deletion. `/tools/lookup` stays at root — that is where the proxy exposes
+      // Orthanc's lookup endpoint (distinct from the /pacs-mounted series ops).
+      const orthancSeriesBase = deriveFeedbackApiBase(); // e.g. '/pacs'
       const deleteResults = { viewer: 0, storage: 0, storageFailed: 0 };
 
       for (const displaySet of group.displaySets) {
@@ -188,7 +193,7 @@ export const StudyBrowserNested: React.FC<Props> = ({
 
                 if (seriesEntry?.ID) {
                   // Step 2: Delete using Orthanc internal ID (series operations are under /pacs)
-                  const deleteResponse = await fetch(`/pacs/series/${seriesEntry.ID}`, {
+                  const deleteResponse = await fetch(`${orthancSeriesBase}/series/${seriesEntry.ID}`, {
                     method: 'DELETE'
                   });
 
@@ -277,11 +282,13 @@ export const StudyBrowserNested: React.FC<Props> = ({
           </div>
         )}
 
-        {tabData?.studies.map(study => {
+        {tabData?.studies.map((study, studyIndex) => {
           const isExpanded = expandedStudyInstanceUIDs.includes(study.studyInstanceUid);
 
           return (
-            <div key={study.studyInstanceUid}>
+            // VAR-L13: fall back to the index when a study has no UID, so a
+            // UID-less study can't collide with (or duplicate) another key.
+            <div key={study.studyInstanceUid ?? `study-${studyIndex}`}>
               {/* Study Header */}
               <div
                 className={`first:border-0 border-t border-secondary-light hover:bg-secondary-main ${isExpanded ? 'bg-secondary-dark' : 'bg-black'} cursor-pointer select-none outline-none flex items-center gap-[6px] px-4 py-2`}

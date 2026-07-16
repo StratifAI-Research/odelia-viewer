@@ -11,7 +11,7 @@ describe('hpSinglePrimary protocol', () => {
     const [rule] = hpSinglePrimary.protocolMatchingRules;
     expect(rule.id).toBe('HasPrimaryImaging');
     expect(rule.attribute).toBe('numberOfDisplaySetsWithImages');
-    expect(rule.constraint).toEqual({ greaterThan: 0 });
+    expect(rule.constraint).toEqual({ greaterThan: { value: 0 } });
   });
 
   it('binds the default tool group', () => {

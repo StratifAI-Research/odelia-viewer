@@ -1,4 +1,4 @@
-import { getStaticDate } from './dateCache';
+import { getStaticDate, dateSortKey } from './dateCache';
 import { extractAIResultData } from './extractAIResultData';
 import { findMatchingSRForHeatmap } from './aiResultPairing';
 import {
@@ -136,8 +136,8 @@ export function createStudyAIBrowserTabsNested(
     const aPrimary = primarySet.has(a.studyInstanceUid) ? 0 : 1;
     const bPrimary = primarySet.has(b.studyInstanceUid) ? 0 : 1;
     if (aPrimary !== bPrimary) return aPrimary - bPrimary;
-    // if both same category, newest date first
-    return (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0);
+    // if both same category, newest date first (VAR-N6: engine-independent key)
+    return dateSortKey(b.date) - dateSortKey(a.date);
   });
 
   // Return single tab containing all studies

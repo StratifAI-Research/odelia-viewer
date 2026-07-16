@@ -14,7 +14,7 @@ const hpSinglePrimary = {
       weight: 100,
       attribute: 'numberOfDisplaySetsWithImages',
       constraint: {
-        greaterThan: 0,
+        greaterThan: { value: 0 },
       },
     },
   ],

@@ -1,5 +1,6 @@
 import React from 'react';
 import { render } from '@testing-library/react';
+import { AIResult } from '../types';
 
 export function makeServicesManager(overrides: Record<string, any> = {}) {
   return {
@@ -24,7 +25,9 @@ export function renderWithProviders(ui: React.ReactElement) {
 
 export const makeStudy = (o: Partial<any> = {}) => ({ StudyInstanceUID: 's1', StudyDate: '20240315', series: [], ...o });
 export const makeDisplaySet = (o: Partial<any> = {}) => ({ displaySetInstanceUID: 'ds1', SeriesInstanceUID: 'se1', Modality: 'MR', images: [], ...o });
-export const makeAIResult = (o: Partial<any> = {}) => ({ studyInstanceUID: 's1', classification: 'positive', score: 0.9, ...o });
+// VAR-N7: match the real `AIResult` shape (classifications array, hasHeatmap)
+// so the fixture cannot drift from production types.
+export const makeAIResult = (o: Partial<AIResult> = {}): AIResult => ({ studyInstanceUID: 's1', hasHeatmap: false, classifications: [], ...o });
 
 // Swallow only the environmental testing-library/React `ReactDOMTestUtils.act`
 // deprecation (it fires on first render and is not a real failure) while
