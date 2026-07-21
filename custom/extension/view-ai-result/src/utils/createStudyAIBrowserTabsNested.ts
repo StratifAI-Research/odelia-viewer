@@ -1,10 +1,12 @@
 import { getStaticDate, dateSortKey } from './dateCache';
 import { extractAIResultData } from './extractAIResultData';
-import { findMatchingSRForHeatmap } from './aiResultPairing';
+import { creationSortKey } from './dicomDateTime';
 import {
   isAIResult,
   getRealDisplaySet,
+  getCreationTzOffset,
   formatCreationDateTime,
+  resolveAIGroupIdentity,
   clearAITabCache,
 } from './aiTabHelpers';
 
@@ -64,12 +66,17 @@ export function createStudyAIBrowserTabsNested(
     const aiEntries = studyDisplaySets.reduce<any[]>((acc, thumbDS) => {
       if (isAIResult(thumbDS)) {
         const realDS = getRealDisplaySet(thumbDS, servicesManager);
+        const creationDate = realDS?.instance?.InstanceCreationDate;
+        const creationTime = realDS?.instance?.InstanceCreationTime;
         acc.push({
           thumb: thumbDS,
           real: realDS,
           modality: realDS?.Modality || thumbDS.Modality || thumbDS.modality,
           modelName: extractAIResultData(realDS)?.modelInfo?.name || 'AI Model',
           dateTime: formatCreationDateTime(realDS),
+          // Sort by the true UTC instant — timezone-independent and consistent
+          // with the labeled display order, not the localized string (ODV-223).
+          sortKey: creationSortKey(creationDate, creationTime, getCreationTzOffset(realDS)),
         });
       } else {
         originals.push(thumbDS);
@@ -77,49 +84,24 @@ export function createStudyAIBrowserTabsNested(
       return acc;
     }, []);
 
-    // Key SR (report) entries by model + datetime so two different models at the
-    // same instant stay in separate groups; a heatmap (SC) joins the group of
-    // the SR it pairs with by referenced UID / time proximity. Process
-    // SRs first so a group's model identity comes from its report.
+    // Key each group by its report's SOP Instance UID (ODV-223): two runs that
+    // share a model and creation second stay in separate groups, and a heatmap
+    // (SC) joins the group of the SR it pairs with. Process SRs first so each
+    // group is created — and its label/date/sort taken — from its report.
     const srEntries = aiEntries.filter(e => e.modality === 'SR');
+    const srReal = srEntries.map(e => e.real);
     const orderedEntries = [...srEntries, ...aiEntries.filter(e => e.modality !== 'SR')];
 
-    const keyForEntry = (
-      entry: any
-    ): { key: string; dateTime: string | null; modelName: string } => {
-      if (entry.modality === 'SC') {
-        const matchSR = findMatchingSRForHeatmap(
-          entry.real,
-          srEntries.map(s => s.real)
-        );
-        const paired = matchSR ? srEntries.find(s => s.real === matchSR) : undefined;
-        if (paired) {
-          const key = paired.dateTime
-            ? `${paired.modelName}|${paired.dateTime}`
-            : `UNKNOWN_${paired.real.displaySetInstanceUID}`;
-          return { key, dateTime: paired.dateTime, modelName: paired.modelName };
-        }
-        const key = entry.dateTime
-          ? `AI Model|${entry.dateTime}`
-          : `UNKNOWN_${entry.real.displaySetInstanceUID}`;
-        return { key, dateTime: entry.dateTime, modelName: 'AI Model' };
-      }
-      const key = entry.dateTime
-        ? `${entry.modelName}|${entry.dateTime}`
-        : `UNKNOWN_${entry.real.displaySetInstanceUID}`;
-      return { key, dateTime: entry.dateTime, modelName: entry.modelName };
-    };
-
     orderedEntries.forEach(entry => {
-      const { key, dateTime, modelName } = keyForEntry(entry);
+      const { key } = resolveAIGroupIdentity(entry.real, srReal);
       if (!aiGroupsMap.has(key)) {
         aiGroupsMap.set(key, {
           key,
-          dateTime,
+          dateTime: entry.dateTime,
           displaySets: [],
-          sortKey: dateTime || '00000000',
-          modelName,
-          label: `${modelName || 'AI Model'}\n${dateTime || 'Unknown Date'}`,
+          sortKey: entry.sortKey,
+          modelName: entry.modelName,
+          label: `${entry.modelName || 'AI Model'}\n${entry.dateTime || 'Unknown Date'}`,
         });
       }
       aiGroupsMap.get(key).displaySets.push(entry.thumb);

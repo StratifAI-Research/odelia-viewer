@@ -104,6 +104,35 @@ describe('createStudyAIBrowserTabsNested', () => {
     expect(labels).toEqual(['ModelA', 'ModelB']);
   });
 
+  it('keeps two runs of the same model at the same datetime in separate groups by SOP UID (ODV-223)', () => {
+    const run = (uid: string, sop: string) =>
+      aiThumb({
+        displaySetInstanceUID: uid,
+        instance: {
+          SOPInstanceUID: sop,
+          InstanceCreationDate: '20240101',
+          InstanceCreationTime: '120000',
+          ContentSequence: [
+            { ConceptNameCodeSequence: [{ CodeMeaning: 'AI Model' }], TextValue: 'SameModel' },
+          ],
+        },
+      });
+    const tabs = createStudyAIBrowserTabsNested(
+      ['study-1'],
+      [],
+      [run('sr-a', 'sop-a'), run('sr-b', 'sop-b')]
+    );
+    const groups = tabs[0].studies[0].aiGroups;
+    expect(groups).toHaveLength(2);
+    expect(groups.every((g: any) => g.label.split('\n')[0] === 'SameModel')).toBe(true);
+  });
+
+  it('labels the group datetime with the timezone policy (timezone unknown without an offset)', () => {
+    const tabs = createStudyAIBrowserTabsNested(['study-1'], [], [aiThumb()]);
+    const label = tabs[0].studies[0].aiGroups[0].label as string;
+    expect(label).toContain('(timezone unknown)');
+  });
+
   it('keeps AI results lacking a datetime in distinct per-display-set groups', () => {
     const a = aiThumb({ displaySetInstanceUID: 'nd-a', instance: {} });
     const b = aiThumb({ displaySetInstanceUID: 'nd-b', instance: {} });

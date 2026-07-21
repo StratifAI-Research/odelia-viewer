@@ -134,6 +134,93 @@ describe('createAIBrowserTabs', () => {
     expect(groupWithB.displaySets.map((d: any) => d.displaySetInstanceUID)).toEqual(['sr-b']);
   });
 
+  it('keeps two runs of the SAME model at the SAME datetime in separate groups by SOP UID (ODV-223)', () => {
+    // The pre-ODV-223 model|datetime key merged these into one group (and they
+    // were deleted together). Distinct SOP Instance UIDs must keep them apart.
+    const tabs = createAIBrowserTabs(
+      ['study-1'],
+      [],
+      [
+        srWithModel('sr-a', 'SameModel', { SOPInstanceUID: 'sop-a' }),
+        srWithModel('sr-b', 'SameModel', { SOPInstanceUID: 'sop-b' }),
+      ]
+    );
+    const aiGroups = tabs.filter(t => t.name.startsWith('ai-')).map(t => t.studies[0]);
+    expect(aiGroups).toHaveLength(2);
+    const contents = aiGroups.map(g => g.displaySets.map((d: any) => d.displaySetInstanceUID));
+    expect(contents).toEqual(expect.arrayContaining([['sr-a'], ['sr-b']]));
+  });
+
+  it('keeps a dateless heatmap in its dated report’s group, paired by referenced UID (ODV-223)', () => {
+    const sr = srWithModel('sr-1', 'ModelA', { SOPInstanceUID: 'sop-1' });
+    const scNoDate = {
+      StudyInstanceUID: 'study-1',
+      Modality: 'SC',
+      displaySetInstanceUID: 'sc-1',
+      numInstances: 1,
+      instance: { ReferencedImageSequence: [{ ReferencedSOPInstanceUID: 'sop-1' }] },
+    };
+    const tabs = createAIBrowserTabs(['study-1'], [], [sr, scNoDate]);
+    // No separate missing-date tab; the heatmap joined the report's dated group.
+    expect(tabs.map(t => t.name)).toEqual(['ai-0']);
+    expect(tabs[0].studies[0].displaySets.map((d: any) => d.displaySetInstanceUID).sort()).toEqual([
+      'sc-1',
+      'sr-1',
+    ]);
+  });
+
+  it('never pairs a heatmap with a report from a different study (ODV-223)', () => {
+    const mkSR = (study: string, uid: string, sop: string, time: string) => ({
+      StudyInstanceUID: study,
+      Modality: 'SR',
+      displaySetInstanceUID: uid,
+      numInstances: 1,
+      instance: { SOPInstanceUID: sop, InstanceCreationDate: '20240101', InstanceCreationTime: time },
+    });
+    const srA = mkSR('study-1', 'sr-a', 'sop-a', '120001'); // 1s from the SC, same study
+    const srB = mkSR('study-2', 'sr-b', 'sop-b', '120000'); // exact SC time, different study
+    const scA = {
+      StudyInstanceUID: 'study-1',
+      Modality: 'SC',
+      displaySetInstanceUID: 'sc-a',
+      numInstances: 1,
+      instance: { InstanceCreationDate: '20240101', InstanceCreationTime: '120000' },
+    };
+    const tabs = createAIBrowserTabs(['study-1', 'study-2'], [], [srA, srB, scA]);
+    const groups = tabs.filter(t => t.name.startsWith('ai-')).map(t => t.studies[0]);
+    const groupWithSC = groups.find(g =>
+      g.displaySets.some((d: any) => d.displaySetInstanceUID === 'sc-a')
+    );
+    // The heatmap joined study-1's report, not study-2's exact-time report.
+    expect(groupWithSC.displaySets.map((d: any) => d.displaySetInstanceUID).sort()).toEqual([
+      'sc-a',
+      'sr-a',
+    ]);
+  });
+
+  it('labels the AI group date as UTC when the DICOM offset is present (ODV-223)', () => {
+    const sr = aiThumb({
+      displaySetInstanceUID: 'ai-utc',
+      instance: {
+        InstanceCreationDate: '20240101',
+        InstanceCreationTime: '120000',
+        TimezoneOffsetFromUTC: '+0000',
+      },
+    });
+    const tabs = createAIBrowserTabs(['study-1'], [], [sr]);
+    const ai0 = tabs.find(t => t.name === 'ai-0')!;
+    expect(ai0.studies[0].date).toBe('2024-01-01 12:00:00 UTC');
+  });
+
+  it('keeps two dateless reports in separate missing-date tabs (ODV-223)', () => {
+    const a = aiThumb({ displaySetInstanceUID: 'nd-a', instance: { SOPInstanceUID: 'sop-a' } });
+    const b = aiThumb({ displaySetInstanceUID: 'nd-b', instance: { SOPInstanceUID: 'sop-b' } });
+    const tabs = createAIBrowserTabs(['study-1'], [], [a, b]);
+    // Two distinct dateless reports → two missing-date tabs (plus the All tab).
+    expect(tabs.filter(t => t.name.startsWith('ai-missing-'))).toHaveLength(2);
+    expect(tabs.map(t => t.name)).toEqual(['ai-missing-0', 'ai-missing-1', 'all']);
+  });
+
   it('orders AI groups by creation date/time ascending', () => {
     const early = aiThumb({
       displaySetInstanceUID: 'ai-early',
