@@ -21,7 +21,7 @@ ActionButtons.propTypes = {
 };
 
 ActionButtons.defaultProps = {
-  onClick: () => alert('Export'),
+  onClick: () => {},
 };
 
 export default ActionButtons;

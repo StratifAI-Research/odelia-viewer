@@ -10,7 +10,6 @@ import Config from "../utils/config";
 import { getPanelConfig } from '../utils/panelConfig';
 import { useMeasurementSubscription } from '../hooks/useMeasurementSubscription';
 
-
 import downloadCSVReport from '../utils/downloadCSVReport';
 import importCSVReport from '../utils/importCSVReport';
 
@@ -80,7 +79,7 @@ export default function PanelLesionTable({
           const onMeasurementItemEditHandler = (uid, label, label_value) => {
             const measurement = measurementService.getMeasurement(uid);
             measurement.label_data[label] = label_value
-            console.log(measurement.label)
+
             measurement.label = "Lesion annotated"
             measurementService.update(uid, measurement)
           };

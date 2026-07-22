@@ -1,6 +1,7 @@
 export function formatDicomDateTime(
   date?: string,
   time?: string,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   tzOffset?: string | null
 ): string | null {
   // Guard: date is required
@@ -18,6 +19,12 @@ export function formatDicomDateTime(
   const month = parseInt(date.substring(4, 6), 10) - 1; // zero-based
   const day = parseInt(date.substring(6, 8), 10);
 
+  // Reject non-numeric-but-8-char dates (e.g. "2024ABCD") so we never emit a
+  // "NaN-NaN-NaN" label.
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+    return null;
+  }
+
   // Default time components
   let hour = 0;
   let minute = 0;
@@ -32,34 +39,21 @@ export function formatDicomDateTime(
       second = parseInt(time.substring(4, 6), 10);
     }
   }
-
-  // Parse timezone offset from DICOM (0008,0201) if provided
-  // Accept formats "+HHMM", "-HHMM", "+HH:MM", "-HH:MM"
-  let offsetMinutes = 0;
-  if (tzOffset && /^[+-]\d{2}:?\d{2}$/.test(tzOffset)) {
-    const cleaned = tzOffset.replace(':', '');
-    const sign = cleaned[0] === '-' ? -1 : 1;
-    const offHours = parseInt(cleaned.substring(1, 3), 10);
-    const offMins = parseInt(cleaned.substring(3, 5), 10);
-    offsetMinutes = sign * (offHours * 60 + offMins);
+  if (Number.isNaN(hour) || Number.isNaN(minute) || Number.isNaN(second)) {
+    return null;
   }
 
-  // Build UTC timestamp (treat input as local in the given offset)
-  const utcMillis = Date.UTC(year, month, day, hour, minute, second) - offsetMinutes * 60 * 1000;
-
-  // Convert to browser's local time
-  const localDate = new Date(utcMillis);
-
-  // Format as YYYY-MM-DD HH:MM:SS in local TZ
+  // Render the DICOM wall-clock components verbatim as "YYYY-MM-DD HH:MM:SS".
+  // DICOM DA/TM values are naive, site-local timestamps. The previous
+  // implementation round-tripped them through Date.UTC() + local getters,
+  // which shifted the displayed value by the *viewer's* timezone (a date-only
+  // value rendered as "2024-03-15 01:00:00" on a UTC+1 machine) and made the
+  // suite fail off-UTC. This value is also used as an AI-tab grouping key, so a
+  // deterministic, timezone-independent string is required. tzOffset is kept in
+  // the signature for API compatibility but is intentionally not applied to a
+  // display label.
   const pad = (n: number) => n.toString().padStart(2, '0');
-  const yyyy = localDate.getFullYear();
-  const MM = pad(localDate.getMonth() + 1);
-  const dd = pad(localDate.getDate());
-  const HH = pad(localDate.getHours());
-  const mm = pad(localDate.getMinutes());
-  const ss = pad(localDate.getSeconds());
-
-  return `${yyyy}-${MM}-${dd} ${HH}:${mm}:${ss}`;
+  return `${year}-${pad(month + 1)}-${pad(day)} ${pad(hour)}:${pad(minute)}:${pad(second)}`;
 }
 
 /**

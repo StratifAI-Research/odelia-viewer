@@ -1,44 +1,50 @@
 {
   "name": "labeling",
   "version": "0.0.1",
-  "description": "Labeling",
-  "author": "",
+  "description": "OHIF extension: ODELIA study/lesion labeling panels with CSV import/export.",
+  "author": "Bulat Maksudov",
   "license": "MIT",
-  "main": "dist/umd/labeling/index.umd.js",
-  "files": [
-    "dist/**",
-    "public/**",
-    "README.md"
-  ],
-  "repository": "OHIF/Viewers",
+  "main": "src/index.tsx",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StratifAI-Research/odelia-viewer.git",
+    "directory": "custom/extension/labeling"
+  },
   "keywords": [
     "ohif-extension"
   ],
   "module": "src/index.tsx",
   "engines": {
-    "node": ">=14",
+    "node": ">=18",
     "npm": ">=6"
   },
   "scripts": {
-    "build": "cross-env NODE_ENV=production webpack --config .webpack/webpack.prod.js",
-    "build:package": "bun run build"
+    "lint": "eslint src --ext .ts,.tsx",
+    "format": "prettier --write \"src/**/*.{ts,tsx}\"",
+    "test:unit": "jest --config jest.config.js",
+    "test:unit:watch": "jest --config jest.config.js --watchAll",
+    "test:unit:ci": "jest --config jest.config.js --ci --runInBand --collectCoverage --coverageProvider=v8 --passWithNoTests"
   },
   "peerDependencies": {
     "@ohif/core": "workspace:*",
     "@ohif/extension-cornerstone": "workspace:*",
     "@ohif/extension-default": "workspace:*",
+    "@ohif/ui": "workspace:*",
     "@ohif/i18n": "^1.0.0",
     "prop-types": "^15.6.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-i18next": "^12.2.2",
     "react-router": "^6.8.1",
-    "react-router-dom": "^6.8.1",
-    "webpack": "^5.50.0"
+    "react-router-dom": "^6.8.1"
   },
   "dependencies": {
     "@babel/runtime": "^7.20.13",
-    "papaparse": "^5.4.1"
+    "classnames": "^2.5.1",
+    "lodash.debounce": "^4.0.8",
+    "moment": "^2.30.1",
+    "papaparse": "^5.4.1",
+    "react-dates": "^21.8.0"
   },
   "devDependencies": {
     "@babel/core": "^7.17.8",
@@ -50,10 +56,6 @@
     "@babel/preset-react": "^7.16.7",
     "@babel/preset-typescript": "^7.13.0",
     "@types/papaparse": "^5.3.7",
-    "babel-loader": "^8.0.0-beta.4",
-    "babel-plugin-inline-react-svg": "^2.0.1",
-    "cross-env": "^7.0.3",
-    "webpack": "^5.50.0",
-    "webpack-cli": "^4.7.2"
+    "babel-plugin-inline-react-svg": "^2.0.1"
   }
 }

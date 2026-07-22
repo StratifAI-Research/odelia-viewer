@@ -101,7 +101,7 @@ export function setupAIThumbnailObserver() {
       });
 
       if (shouldApplyStyles) {
-        console.log('[MutationObserver] Applying AI styles due to thumbnail changes');
+
         applyAIThumbnailStyles();
       }
     }, 200); // Debounce for 200ms

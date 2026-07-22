@@ -41,15 +41,11 @@ export default function importCSVReport(
     ODELIA_LABELING_SOURCE_VERSION
   );
 
-  console.log('Mappings', mappings);
-
   const annotationType = 'ODELIALabel';
 
   const matchingMapping = mappings.find(
     m => m.annotationType === annotationType
   );
-
-  console.log('Matched Mapping', matchingMapping);
 
   const lesionConfig = getPanelConfig(config, 'lesion table');
 
@@ -106,7 +102,7 @@ export default function importCSVReport(
     CORNERSTONE_3D_TOOLS_SOURCE_VERSION
   );
   const lesionAnnotationType = 'CircleROI';
-  console.log('Lesion Mappings', lesionMappings);
+
   const matchingLesionMapping = lesionMappings.find(
     m => m.annotationType === lesionAnnotationType
   );
@@ -121,10 +117,10 @@ export default function importCSVReport(
       dataSource
     );
     // Initialize lesions labeling table
-    console.log(uid);
+
     const measurement = measurementService.getMeasurement(uid);
     measurement.label_data = {};
-    console.log(measurement.label_data);
+
     measurement.label_data = annotation.data.label_data;
     measurement.label = '';
     measurementService.update(uid, measurement);
@@ -157,9 +153,6 @@ function _parseLesions(parsedMeasurements, lesionColumns) {
         obj[key] = element[key];
         return obj;
       }, {});
-    console.log(element);
-    console.log(lesionColumns);
-    console.log(lesionData);
 
     const annotation = {
       annotationUID: utils.guid(),
@@ -183,7 +176,7 @@ function _parseLesions(parsedMeasurements, lesionColumns) {
       displayText: '',
       type: 'value_type::circle',
     };
-    console.log(element['points']);
+
     parsedLesions.push(annotation);
   });
   return parsedLesions;

@@ -43,7 +43,7 @@ export default function PanelLabeling({
   const onMeasurementItemEditHandler = (uid, label, label_value) => {
     const measurement = measurementService.getMeasurement(uid);
     measurement.label_data[label] = label_value;
-    console.log(measurement.label_data[label]);
+
     measurementService.update(uid, measurement);
   };
 

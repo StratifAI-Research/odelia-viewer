@@ -35,33 +35,17 @@ export class AIResultsService {
     // Check cache first
     if (this.cache.has(studyInstanceUID)) {
       const cachedResults = this.cache.get(studyInstanceUID)!;
-      console.log(`[AIResultsService] Returning cached AI results:`, {
-        studyInstanceUID,
-        resultCount: cachedResults.length,
-        results: cachedResults.map(r => ({
-          modelName: r.modelInfo?.name,
-          hasHeatmap: r.hasHeatmap,
-          classificationCount: r.classifications.length
-        }))
-      });
+
       return cachedResults;
     }
 
     const results = this.extractAIResultsFromStudy(studyInstanceUID, servicesManager);
-    console.log(`[AIResultsService] Extracted fresh AI results:`, {
-      studyInstanceUID,
-      resultCount: results.length,
-      results: results.map(r => ({
-        modelName: r.modelInfo?.name,
-        hasHeatmap: r.hasHeatmap,
-        classificationCount: r.classifications.length
-      }))
-    });
+
     this.cache.set(studyInstanceUID, results);
 
     // If no results found, publish cleared event
     if (results.length === 0) {
-      console.log(`[AIResultsService] No AI results found for study ${studyInstanceUID}, publishing cleared event`);
+
       this.publish(AIResultsService.EVENTS.AI_RESULT_CLEARED, {
         studyInstanceUID,
         reason: 'no_results'
@@ -209,11 +193,10 @@ export class AIResultsService {
     });
 
     if (!matchingHeatmap) {
-      console.log(`[AIResultsService] No exact heatmap match found for SR (Date: ${srDate}, Time: ${srTime}). AI result will show without heatmap.`);
+
       return null;
     }
 
-    console.log(`[AIResultsService] Found matching heatmap for SR by date/time: ${matchingHeatmap.displaySetInstanceUID}`);
     return matchingHeatmap;
   }
 
@@ -245,11 +228,10 @@ export class AIResultsService {
     });
 
     if (!matchingSR) {
-      console.log(`[AIResultsService] No exact SR match found for SC heatmap (Date: ${scDate}, Time: ${scTime}). Heatmap will not be selectable.`);
+
       return null;
     }
 
-    console.log(`[AIResultsService] Found matching SR for SC heatmap by date/time: ${matchingSR.displaySetInstanceUID}`);
     return matchingSR;
   }
 
@@ -284,15 +266,11 @@ export class AIResultsService {
    */
   private notifySelectionChange(studyInstanceUID: string): void {
     const listeners = this.selectionChangeListeners.get(studyInstanceUID);
-    console.log(`[AIResultsService] notifySelectionChange:`, {
-      studyInstanceUID,
-      listenersCount: listeners?.length || 0
-    });
 
     if (listeners) {
       listeners.forEach((callback, index) => {
         try {
-          console.log(`[AIResultsService] Calling listener ${index}`);
+
           callback();
         } catch (error) {
           console.warn('Error in selection change listener:', error);
@@ -310,7 +288,7 @@ export class AIResultsService {
    * Clear cache for a specific study
    */
   clearStudyCache(studyInstanceUID: string): void {
-    console.log(`[AIResultsService] Clearing cache for study:`, studyInstanceUID);
+
     this.cache.delete(studyInstanceUID);
 
     // Also clear selection if it exists
@@ -330,15 +308,11 @@ export class AIResultsService {
    * Call this after deleting AI results to invalidate cache
    */
   removeDisplaySetsFromCache(studyInstanceUID: string, displaySetUIDs: string[]): void {
-    console.log(`[AIResultsService] Removing display sets from cache:`, {
-      studyInstanceUID,
-      displaySetUIDs
-    });
 
     // Get cached results
     const cachedResults = this.cache.get(studyInstanceUID);
     if (!cachedResults) {
-      console.log('[AIResultsService] No cached results found for study');
+
       return;
     }
 
@@ -350,19 +324,19 @@ export class AIResultsService {
     // Update cache
     if (updatedResults.length > 0) {
       this.cache.set(studyInstanceUID, updatedResults);
-      console.log(`[AIResultsService] Updated cache with ${updatedResults.length} remaining results`);
+
     } else {
       // No results left, clear the study cache
       this.cache.delete(studyInstanceUID);
       this.selectedAIResults.delete(studyInstanceUID);
-      console.log('[AIResultsService] No results remaining, cleared study cache');
+
     }
 
     // Clear selection if the selected result was deleted
     const selectedUID = this.selectedAIResults.get(studyInstanceUID);
     if (selectedUID && displaySetUIDs.includes(selectedUID)) {
       this.selectedAIResults.delete(studyInstanceUID);
-      console.log('[AIResultsService] Cleared selection as selected result was deleted');
+
     }
 
     // Publish cache cleared event
@@ -386,23 +360,12 @@ export class AIResultsService {
   getAIResultByDisplaySet(studyInstanceUID: string, displaySetInstanceUID: string, servicesManager: any): AIResult | null {
     const { displaySetService } = servicesManager.services;
 
-    console.log(`[AIResultsService] getAIResultByDisplaySet called:`, {
-      studyInstanceUID,
-      displaySetInstanceUID
-    });
-
     try {
       // Get the specific display set
       const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
-      console.log(`[AIResultsService] Retrieved display set:`, {
-        displaySetInstanceUID,
-        modality: displaySet?.Modality,
-        seriesDescription: displaySet?.SeriesDescription,
-        found: !!displaySet
-      });
 
       if (!displaySet || displaySet.Modality !== 'SR') {
-        console.log(`[AIResultsService] Invalid display set - not SR or not found`);
+
         return null;
       }
 
@@ -488,15 +451,9 @@ export class AIResultsService {
   setSelectedAIResult(studyInstanceUID: string, displaySetInstanceUID: string, servicesManager: any): void {
     const previousSelection = this.selectedAIResults.get(studyInstanceUID);
 
-    console.log(`[AIResultsService] setSelectedAIResult called:`, {
-      studyInstanceUID,
-      displaySetInstanceUID,
-      previousSelection
-    });
-
     // Don't do anything if it's already selected
     if (previousSelection === displaySetInstanceUID) {
-      console.log(`[AIResultsService] Already selected, skipping`);
+
       return;
     }
 
@@ -515,7 +472,7 @@ export class AIResultsService {
       const matchingSR = this.findMatchingSRForHeatmap(targetDisplaySet, srDisplaySets);
 
       if (matchingSR) {
-        console.log(`SC clicked: ${displaySetInstanceUID}, using matching SR: ${matchingSR.displaySetInstanceUID}`);
+
         targetDisplaySetUID = matchingSR.displaySetInstanceUID;
         targetDisplaySet = matchingSR;
       } else {
@@ -526,16 +483,6 @@ export class AIResultsService {
 
     // Update selection with the target SR
     this.selectedAIResults.set(studyInstanceUID, targetDisplaySetUID);
-
-    console.log(`[AIResultsService] Selection updated:`, {
-      studyInstanceUID,
-      originalDisplaySetUID: displaySetInstanceUID,
-      targetDisplaySetUID,
-      wasConverted: displaySetInstanceUID !== targetDisplaySetUID,
-      targetModality: targetDisplaySet?.Modality,
-      listenersCount: this.selectionChangeListeners.get(studyInstanceUID)?.length || 0,
-      allSelectionsAfterUpdate: Array.from(this.selectedAIResults.entries())
-    });
 
     // Get the AI result for the event
     const aiResult = this.getAIResultByDisplaySet(studyInstanceUID, targetDisplaySetUID, servicesManager);
@@ -598,36 +545,25 @@ export class AIResultsService {
   getSelectedAIResult(studyInstanceUID: string, servicesManager: any): AIResult | null {
     const selectedDisplaySetUID = this.selectedAIResults.get(studyInstanceUID);
 
-    console.log(`[AIResultsService] getSelectedAIResult:`, {
-      studyInstanceUID,
-      selectedDisplaySetUID,
-      hasSelection: !!selectedDisplaySetUID,
-      allSelections: Array.from(this.selectedAIResults.entries())
-    });
-
     if (selectedDisplaySetUID) {
-      console.log(`[AIResultsService] Calling getAIResultByDisplaySet with:`, {
-        studyInstanceUID,
-        selectedDisplaySetUID
-      });
+
       const result = this.getAIResultByDisplaySet(studyInstanceUID, selectedDisplaySetUID, servicesManager);
-      console.log(`[AIResultsService] Returning selected result:`, result);
+
       return result;
     }
 
     // If no selection, return the primary (first) result and set it as selected
-    console.log(`[AIResultsService] No selection found, getting primary result`);
+
     const primaryResult = this.getAIResults(studyInstanceUID, servicesManager);
     if (primaryResult) {
       // Find the display set UID for the primary result
       const metadata = this.getAIResultMetadata(studyInstanceUID, servicesManager);
       if (metadata.length > 0) {
-        console.log(`[AIResultsService] Setting primary result as selected:`, metadata[0].displaySetInstanceUID);
+
         this.selectedAIResults.set(studyInstanceUID, metadata[0].displaySetInstanceUID);
       }
     }
 
-    console.log(`[AIResultsService] Returning primary result:`, primaryResult);
     return primaryResult;
   }
 
@@ -642,7 +578,6 @@ export class AIResultsService {
       return;
     }
 
-    console.log(`[AIResultsService] Study changed from ${previousStudyUID} to ${studyInstanceUID}`);
     this.currentStudyUID = studyInstanceUID;
 
     // Get AI results for the new study
@@ -661,7 +596,7 @@ export class AIResultsService {
     if (hasAIResults && !this.selectedAIResults.has(studyInstanceUID)) {
       const firstResult = aiResults[0];
       if (firstResult.displaySetInstanceUID) {
-        console.log(`[AIResultsService] Auto-selecting first AI result for new study`);
+
         this.setSelectedAIResult(studyInstanceUID, firstResult.displaySetInstanceUID, servicesManager);
       }
     }

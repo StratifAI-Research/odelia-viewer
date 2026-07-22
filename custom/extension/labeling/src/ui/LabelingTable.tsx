@@ -9,7 +9,7 @@ const LabelingTable = ({ title, measurement, config, onClick, onChange }) => {
 
   if (measurement.label === '') {
     measurement.label_data = {};
-    console.log(measurement.label_data);
+
     Object.keys(label_options).forEach(element => {
       measurement.label_data[element] = label_options[element].options[0];
     });

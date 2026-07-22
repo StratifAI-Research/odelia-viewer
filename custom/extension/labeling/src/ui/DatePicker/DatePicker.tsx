@@ -78,7 +78,7 @@ const DatePicker = (props) => {
       /** REQUIRED */
       date={parsedDate}
       onDateChange={(date) => {
-        console.log(date)
+
         onChange({
           date: date.format('YYYYMMDD'),
         })
