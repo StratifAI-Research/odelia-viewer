@@ -72,3 +72,7 @@ __pycache__/
 # Docker volume mounts
 design_docs/
 deploy/volumes/
+
+# Tooling caches (also covers custom/* packages; per-package .gitignore removed, CC-6/N-02)
+*.tsbuildinfo
+.eslintcache

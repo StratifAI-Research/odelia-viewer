@@ -85,7 +85,7 @@ export class ChatService {
       }, 10000);
 
       this.ws.onopen = () => {
-        console.log('[ChatService] WebSocket connected');
+
         this.reconnectAttempts = 0;
       };
 
@@ -105,7 +105,7 @@ export class ChatService {
       };
 
       this.ws.onclose = (event) => {
-        console.log('[ChatService] WebSocket closed:', event.code, event.reason);
+
         clearTimeout(connectionTimeout);
         this.sessionId = null;
         this.publish(CHAT_EVENTS.DISCONNECTED, { code: event.code, reason: event.reason });
@@ -125,7 +125,7 @@ export class ChatService {
     switch (message.type) {
       case ServerMessageType.CONNECTED:
         this.sessionId = message.session_id || null;
-        console.log('[ChatService] Session established:', this.sessionId);
+
         this.publish(CHAT_EVENTS.CONNECTED, { sessionId: this.sessionId });
         if (resolveConnect && this.sessionId) {
           resolveConnect(this.sessionId);
@@ -173,8 +173,6 @@ export class ChatService {
       RECONNECT_INITIAL_DELAY * Math.pow(RECONNECT_MULTIPLIER, this.reconnectAttempts),
       RECONNECT_MAX_DELAY
     );
-
-    console.log(`[ChatService] Scheduling reconnect in ${delay}ms (attempt ${this.reconnectAttempts + 1})`);
 
     this.reconnectTimeout = setTimeout(() => {
       this.reconnectAttempts++;

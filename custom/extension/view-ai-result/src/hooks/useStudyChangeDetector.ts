@@ -49,7 +49,7 @@ export const useStudyChangeDetector = (config: StudyChangeDetectorConfig): void 
 
     // Check if study actually changed
     if (studyUID !== activeStudyUIDRef.current) {
-      console.log(`[useStudyChangeDetector] Study changed from ${activeStudyUIDRef.current} to ${studyUID}`);
+
       activeStudyUIDRef.current = studyUID;
 
       // Notify the service about the study change
@@ -71,7 +71,7 @@ export const useStudyChangeDetector = (config: StudyChangeDetectorConfig): void 
 
     const initialStudyUID = getStudyUIDFromActiveViewport();
     if (initialStudyUID) {
-      console.log(`[useStudyChangeDetector] Initial study: ${initialStudyUID}`);
+
       activeStudyUIDRef.current = initialStudyUID;
       aiResultsService.notifyStudyChange(initialStudyUID, servicesManager);
     }

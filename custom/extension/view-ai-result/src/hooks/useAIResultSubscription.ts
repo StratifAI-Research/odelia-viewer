@@ -27,7 +27,6 @@ export const useAIResultSubscription = (config: AIResultSubscriptionConfig): voi
   const { aiResultsService } = servicesManager.services;
 
   const handleAIResultSelected = useCallback((eventData: any) => {
-    console.log(`[useAIResultSubscription] AI result selected for ${viewportId}:`, eventData);
 
     if (eventData?.aiResult && !isHeatmapViewport) {
       const clickedUID = eventData.clickedDisplaySetInstanceUID ?? eventData.displaySetInstanceUID;
@@ -36,7 +35,6 @@ export const useAIResultSubscription = (config: AIResultSubscriptionConfig): voi
   }, [viewportId, isHeatmapViewport, onAIResultSelected]);
 
   const handleAIResultCleared = useCallback((eventData: any) => {
-    console.log(`[useAIResultSubscription] AI result cleared for ${viewportId}:`, eventData);
 
     if (!isHeatmapViewport && onAIResultCleared) {
       onAIResultCleared(eventData);
@@ -44,7 +42,6 @@ export const useAIResultSubscription = (config: AIResultSubscriptionConfig): voi
   }, [viewportId, isHeatmapViewport, onAIResultCleared]);
 
   const handleStudyChanged = useCallback((eventData: any) => {
-    console.log(`[useAIResultSubscription] Study changed for ${viewportId}:`, eventData);
 
     if (!isHeatmapViewport && onStudyChanged) {
       onStudyChanged(eventData);
@@ -53,11 +50,9 @@ export const useAIResultSubscription = (config: AIResultSubscriptionConfig): voi
 
   useEffect(() => {
     if (!aiResultsService || isHeatmapViewport) {
-      console.log(`[useAIResultSubscription] Skipping subscription for ${viewportId}: ${!aiResultsService ? 'no service' : 'heatmap viewport'}`);
+
       return;
     }
-
-    console.log(`[useAIResultSubscription] Setting up subscriptions for ${viewportId}`);
 
     const selectedSubscription = aiResultsService.subscribe(
       aiResultsService.EVENTS.AI_RESULT_SELECTED,
@@ -71,7 +66,7 @@ export const useAIResultSubscription = (config: AIResultSubscriptionConfig): voi
 
     // Cleanup function
     return () => {
-      console.log(`[useAIResultSubscription] Cleaning up subscriptions for ${viewportId}`);
+
       selectedSubscription.unsubscribe();
       clearedSubscription.unsubscribe();
     };

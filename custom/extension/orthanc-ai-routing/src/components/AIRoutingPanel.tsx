@@ -90,7 +90,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
 
     const studyUID = getStudyUIDFromActiveViewport();
     if (studyUID && studyUID !== activeStudyUID && mounted) {
-      console.log(`AIRoutingPanel: Study changed from ${activeStudyUID} to ${studyUID}`);
+
       setActiveStudyUID(studyUID);
       if (wizard.currentStep > 1) {
         wizard.reset();
@@ -125,7 +125,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
     orthancAIService,
     uiNotificationService,
     onComplete: () => {
-      console.log('AI analysis complete, reloading page to display new results...');
+
       setTimeout(() => {
         window.location.reload();
       }, 1000);

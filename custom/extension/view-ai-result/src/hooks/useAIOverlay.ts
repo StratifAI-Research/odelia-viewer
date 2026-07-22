@@ -14,7 +14,7 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
   // Keep track of current overlay state
   const currentOverlayRef = useRef<string | null>(null);
 
-  // AGGRESSIVELY clear default OHIF overlays that show underneath our AI overlays
+  // Clear the default OHIF overlays that would otherwise render underneath the AI overlays
   const clearDefaultOHIFOverlays = useCallback(() => {
     customizationService.setCustomizations({
       'viewportOverlay.topLeft': { $set: [] },
@@ -22,17 +22,17 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
       'viewportOverlay.bottomLeft': { $set: [] },
       'viewportOverlay.bottomRight': { $set: [] }
     });
-    console.log(`[useAIOverlay] NUKED all default OHIF overlays for viewport ${viewportId}`);
+
   }, [customizationService, viewportId]);
 
     const updateOverlay = useCallback((newAiResult: AIResult) => {
     // Only update overlays on primary viewports, not heatmap viewports
     if (isHeatmapViewport) {
-      console.log(`[useAIOverlay] Skipping overlay update for heatmap viewport ${viewportId}`);
+
       return;
     }
 
-    // AGGRESSIVELY NUKE default OHIF overlays first - they show underneath and cause clutter!
+    // Clear the default OHIF overlays first — they render underneath and clutter the AI overlay
     clearDefaultOHIFOverlays();
 
             // Create a SINGLE container that fights ViewportActionCorners' horizontal flexbox!
@@ -86,13 +86,13 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
     });
 
     currentOverlayRef.current = 'aiOverlay';
-    console.log(`[useAIOverlay] Updated AI overlay container with internal flex-col layout for primary viewport ${viewportId}`);
+
   }, [viewportId, isHeatmapViewport, viewportActionCornersService]);
 
   const clearOverlay = useCallback(() => {
     // Only clear overlays on primary viewports
     if (isHeatmapViewport) {
-      console.log(`[useAIOverlay] Skipping overlay clear for heatmap viewport ${viewportId}`);
+
       return;
     }
 
@@ -105,13 +105,13 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
     });
 
     currentOverlayRef.current = null;
-    console.log(`[useAIOverlay] Cleared AI overlay container for primary viewport ${viewportId}`);
+
   }, [viewportId, isHeatmapViewport, viewportActionCornersService]);
 
   const setupHeatmapActionCorner = useCallback((result: AIResult, onToggle: () => void, isActive: boolean, hasHeatmap: boolean = true) => {
     // Only setup action corners on primary viewports
     if (isHeatmapViewport) {
-      console.log(`[useAIOverlay] Skipping action corner setup for heatmap viewport ${viewportId}`);
+
       return;
     }
 
@@ -146,13 +146,12 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
       indexPriority: -100, // High priority
     });
 
-    console.log(`[useAIOverlay] Setup heatmap action corner for primary viewport ${viewportId} (disabled: ${isDisabled})`);
   }, [viewportId, isHeatmapViewport, viewportActionCornersService]);
 
   const clearActionCorners = useCallback(() => {
     // Only clear on primary viewports
     if (isHeatmapViewport) {
-      console.log(`[useAIOverlay] Skipping action corner clear for heatmap viewport ${viewportId}`);
+
       return;
     }
 
@@ -164,15 +163,13 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
       location: viewportActionCornersService.LOCATIONS.topRight,
     });
 
-    console.log(`[useAIOverlay] Cleared heatmap action corner for primary viewport ${viewportId}`);
   }, [viewportId, isHeatmapViewport, viewportActionCornersService]);
 
   // Update overlay when aiResult changes (only for primary viewports) - SINGLE EFFECT
   useEffect(() => {
-    // NEVER show overlays on heatmap viewports - they're for displaying heatmaps only!
+    // Do not show overlays on heatmap viewports — they are for displaying heatmaps only.
     if (isHeatmapViewport) {
-      console.log(`[useAIOverlay] BLOCKING overlay for heatmap viewport ${viewportId}`);
-      // Aggressively clear any overlays that might have been added
+      // Clear any overlays that might have been added
       viewportActionCornersService.addComponent({
         viewportId,
         id: 'aiOverlay',
@@ -196,9 +193,6 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
       if (!isHeatmapViewport) {
         clearOverlay();
         clearActionCorners();
-        console.log(`[useAIOverlay] Cleanup completed for primary viewport ${viewportId}`);
-      } else {
-        console.log(`[useAIOverlay] Skipping cleanup for heatmap viewport ${viewportId}`);
       }
     };
   }, [viewportId, isHeatmapViewport, clearOverlay, clearActionCorners]);

@@ -55,7 +55,7 @@ CSVImporter.propTypes = {
 };
 
 CSVImporter.defaultProps = {
-  onClick: () => alert('Export'),
+  onClick: () => {},
 };
 
 export default CSVImporter;

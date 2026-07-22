@@ -42,7 +42,7 @@ export function useStudySeriesSelection({
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      console.log('useStudySeriesSelection unmounting');
+
     };
   }, []);
 
@@ -56,7 +56,7 @@ export function useStudySeriesSelection({
         const displaySets = displaySetService.getActiveDisplaySets();
 
         if (!displaySets || displaySets.length === 0) {
-          console.log('No display sets available yet');
+
           setAvailableStudies([]);
           setIsLoadingStudies(false);
           return;
@@ -173,7 +173,6 @@ export function useStudySeriesSelection({
       return;
     }
 
-    console.log('Auto-loading series for active study:', activeStudyUID);
     let mounted = true;
     let retryCount = 0;
     const MAX_RETRIES = 10; // Wait up to ~1 second
@@ -181,7 +180,7 @@ export function useStudySeriesSelection({
 
     const attemptLoadSeries = () => {
       if (!mounted) {
-        console.log('Component unmounted, aborting series load');
+
         return;
       }
 
@@ -189,7 +188,7 @@ export function useStudySeriesSelection({
 
       if (!displaySets || displaySets.length === 0) {
         // Display sets not loaded yet - keep loading state and retry
-        console.log(`Display sets not available yet (attempt ${retryCount + 1}/${MAX_RETRIES}), waiting...`);
+
         retryCount++;
 
         if (retryCount < MAX_RETRIES) {
@@ -232,7 +231,7 @@ export function useStudySeriesSelection({
       displaySetService.EVENTS.DISPLAY_SETS_CHANGED,
       () => {
         if (mounted && retryCount > 0) {
-          console.log('Display sets changed, retrying series load...');
+
           attemptLoadSeries();
         }
       }
@@ -240,7 +239,7 @@ export function useStudySeriesSelection({
 
     // Cleanup function
     return () => {
-      console.log('Cleaning up series loading effect for study:', activeStudyUID);
+
       mounted = false;
 
       // Clear all pending timeouts
@@ -255,7 +254,6 @@ export function useStudySeriesSelection({
 
   // Load series for selected study (called after display sets are confirmed available)
   const loadSeriesForStudy = (studyUID: string) => {
-    console.log('Loading series for study:', studyUID);
 
     try {
       setIsLoadingSeries(true);
@@ -276,8 +274,6 @@ export function useStudySeriesSelection({
         ds.Modality !== 'SR' && // Exclude structured reports
         ds.Modality !== 'SC'    // Exclude secondary captures (AI heatmaps)
       );
-
-      console.log(`Found ${seriesForStudy.length} series for study ${studyUID}`);
 
       if (seriesForStudy.length === 0) {
         // Study has no processable series (only AI results)
@@ -305,7 +301,6 @@ export function useStudySeriesSelection({
       const allSeriesUIDs = new Set(mappedSeries.map(s => s.SeriesInstanceUID));
       setSelectedSeriesUIDs(allSeriesUIDs);
 
-      console.log(`Auto-selected ${allSeriesUIDs.size} series`);
       setIsLoadingSeries(false);
     } catch (error) {
       console.error('Error loading series:', error);
@@ -340,12 +335,12 @@ export function useStudySeriesSelection({
 
   const retrySeries = () => {
     if (!isMountedRef.current) {
-      console.log('Component unmounted, skipping retry');
+
       return;
     }
 
     if (activeStudyUID) {
-      console.log('Manual retry: reloading series for study:', activeStudyUID);
+
       setIsLoadingSeries(true);
       setSeriesError(null);
       setAvailableSeries([]);

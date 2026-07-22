@@ -44,16 +44,6 @@ export function createAIBrowserTabs(
 
       const formattedDateTime = formatDicomDateTime(creationDate, creationTime, tzOffset);
 
-      // Reduced logging - only log when datetime formatting fails
-      if (!formattedDateTime && creationDate) {
-        console.log('Processing AI result with incomplete datetime:', {
-          displaySetInstanceUID: thumbnailDisplaySet.displaySetInstanceUID,
-          modelName,
-          creationDate,
-          creationTime
-        });
-      }
-
       if (formattedDateTime) {
         // Group by datetime ONLY (both SC and SR from same run together)
         const groupKey = formattedDateTime;
@@ -76,7 +66,7 @@ export function createAIBrowserTabs(
         group.numInstances += thumbnailDisplaySet.numInstances || 1;
             } else {
         // Group missing dates together (both SC and SR together)
-        console.log('No datetime found for AI result, using missing date group');
+
         const missingGroupKey = 'UNKNOWN';
 
         if (!missingDateGroups.has(missingGroupKey)) {
@@ -164,14 +154,6 @@ export function createAIBrowserTabs(
       studies: allStudies,
     });
   }
-
-  console.log('Created tabs with datetime grouping:', {
-    tabsCount: tabs.length,
-    tabLabels: tabs.map(t => t.label),
-    originalCount: originalSeries.size,
-    aiGroupsCount: aiResultGroups.size,
-    missingDateCount: missingDateGroups.size
-  });
 
   return tabs;
 }

@@ -176,7 +176,7 @@ export const StudyBrowserNested: React.FC<Props> = ({
 
                   if (deleteResponse.ok) {
                     deleteResults.storage++;
-                    console.log(`✓ Deleted series ${realDisplaySet.SeriesInstanceUID} from Orthanc storage`);
+
                   } else {
                     deleteResults.storageFailed++;
                     console.error(`Failed to delete from Orthanc: ${deleteResponse.status} ${deleteResponse.statusText}`);
@@ -198,7 +198,6 @@ export const StudyBrowserNested: React.FC<Props> = ({
           // 2. Delete display set from OHIF viewer (always do this)
           displaySetService.deleteDisplaySet(displaySet.displaySetInstanceUID);
           deleteResults.viewer++;
-          console.log(`✓ Removed display set from viewer: ${displaySet.displaySetInstanceUID}`);
 
         } catch (err) {
           console.error(`Failed to delete display set ${displaySet.displaySetInstanceUID}:`, err);
@@ -207,7 +206,7 @@ export const StudyBrowserNested: React.FC<Props> = ({
 
       // Clear AI results cache after deletion
       if (aiResultsService && displaySetUIDs.length > 0) {
-        console.log('Clearing AI results cache for deleted display sets');
+
         aiResultsService.removeDisplaySetsFromCache(studyInstanceUid, displaySetUIDs);
       }
 
