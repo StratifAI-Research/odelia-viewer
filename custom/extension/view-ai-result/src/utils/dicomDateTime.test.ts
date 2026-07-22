@@ -16,20 +16,22 @@ describe('dicomDateTime utils', () => {
       expect(formatDicomDateTime('202401011')).toBeNull();
     });
 
-    it('formats date-only input', () => {
-      const result = formatDicomDateTime('20240315');
-      expect(result).toMatch(/2024-03-15 00:00:00/);
+    it('returns null for a non-numeric 8-char date', () => {
+      expect(formatDicomDateTime('2024ABCD')).toBeNull();
     });
 
-    it('formats date + time input', () => {
-      const result = formatDicomDateTime('20240315', '143022');
-      expect(result).toBeDefined();
-      expect(result).toContain('2024');
+    it('formats date-only input verbatim, independent of the runtime timezone', () => {
+      // Naive DICOM DA rendering: must be exactly midnight regardless of TZ.
+      expect(formatDicomDateTime('20240315')).toBe('2024-03-15 00:00:00');
     });
 
-    it('handles timezone offset', () => {
-      const result = formatDicomDateTime('20240315', '120000', '+0000');
-      expect(result).toBeDefined();
+    it('formats date + time input verbatim', () => {
+      expect(formatDicomDateTime('20240315', '143022')).toBe('2024-03-15 14:30:22');
+    });
+
+    it('ignores tzOffset for the display label (naive rendering)', () => {
+      expect(formatDicomDateTime('20240315', '120000', '+0000')).toBe('2024-03-15 12:00:00');
+      expect(formatDicomDateTime('20240315', '120000', '+0200')).toBe('2024-03-15 12:00:00');
     });
   });
 

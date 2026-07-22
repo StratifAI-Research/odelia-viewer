@@ -3,7 +3,6 @@ const pkg = require('./package');
 
 module.exports = {
   ...base,
-  name: pkg.name,
   displayName: pkg.name,
   coverageProvider: 'v8',
   moduleNameMapper: {
@@ -23,7 +22,7 @@ module.exports = {
     '!src/**/*.test.{js,jsx,ts,tsx}',
     '!src/index.tsx',
     '!src/**/index.{ts,tsx}',
-    '!src/id.js',
+    '!src/id.ts',
     '!src/__mocks__/**',
     '!src/test-utils/**',
     '!src/types/**',

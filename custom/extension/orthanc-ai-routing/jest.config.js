@@ -3,7 +3,6 @@ const pkg = require('./package');
 
 module.exports = {
   ...base,
-  name: pkg.name,
   displayName: pkg.name,
   // Match CI (tests.yml --coverageProvider=v8); istanbul vs v8 count differently.
   coverageProvider: 'v8',
@@ -25,7 +24,7 @@ module.exports = {
     '!src/**/*.test.{ts,tsx}',
     '!src/index.tsx',
     '!src/**/index.{ts,tsx}',
-    '!src/id.js',
+    '!src/id.ts',
     '!src/__mocks__/**',
     '!src/test-utils/**',
     '!src/types/**',

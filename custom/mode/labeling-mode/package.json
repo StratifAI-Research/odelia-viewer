@@ -1,28 +1,26 @@
 {
   "name": "labeling-mode",
   "version": "0.0.1",
-  "description": "labeling mode for Odelia project",
+  "description": "OHIF mode: ODELIA labeling workflow (patient/study/lesion labels).",
   "author": "Bulat Maksudov",
   "license": "MIT",
-  "main": "dist/umd/labeling-mode/index.umd.js",
-  "files": [
-    "dist/**",
-    "public/**",
-    "README.md"
-  ],
-  "repository": "OHIF/Viewers",
+  "main": "src/index.tsx",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/StratifAI-Research/odelia-viewer.git",
+    "directory": "custom/mode/labeling-mode"
+  },
   "keywords": [
     "ohif-mode"
   ],
   "module": "src/index.tsx",
   "engines": {
-    "node": ">=14",
+    "node": ">=18",
     "npm": ">=6"
   },
   "scripts": {
-    "build": "cross-env NODE_ENV=production webpack --config .webpack/webpack.prod.js",
-    "build:package": "bun run build",
-    "test:unit": "jest --watchAll",
+    "test:unit": "jest",
+    "test:unit:watch": "jest --watchAll",
     "test:unit:ci": "jest --ci --runInBand --collectCoverage --passWithNoTests"
   },
   "peerDependencies": {
@@ -40,10 +38,6 @@
     "@babel/preset-env": "^7.16.11",
     "@babel/preset-react": "^7.16.7",
     "@babel/preset-typescript": "^7.13.0",
-    "babel-loader": "^8.0.0-beta.4",
-    "babel-plugin-inline-react-svg": "^2.0.1",
-    "cross-env": "^7.0.3",
-    "webpack": "^5.50.0",
-    "webpack-cli": "^4.7.2"
+    "babel-plugin-inline-react-svg": "^2.0.1"
   }
 }
