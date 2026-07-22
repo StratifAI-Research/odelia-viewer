@@ -14,11 +14,10 @@ const LabelingDate = ({
   const [selectedOption, setSelectedOption] = useState(label_value);
 
   const onChangeValueHandler = ({ date }) => {
-    console.log(date)
+
     setSelectedOption(date)
     onChange(label, date);
   };
-
 
   const onMouseEnter = () => setIsHovering(true);
   const onMouseLeave = () => setIsHovering(false);

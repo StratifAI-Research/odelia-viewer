@@ -26,7 +26,7 @@ export function toggleHeatmapImageSliceSync({ servicesManager }) {
 
   if (someViewportHasSync) {
     // Disable sync by removing viewports from sync group
-    console.log('[HeatmapSync] Disabling synchronization');
+
     viewportArray.forEach((gridViewport: any) => {
       const { viewportId } = gridViewport.viewportOptions;
       const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
@@ -45,7 +45,7 @@ export function toggleHeatmapImageSliceSync({ servicesManager }) {
   }
 
   // Enable sync by adding viewports to sync group
-  console.log('[HeatmapSync] Enabling synchronization with custom heatmapImageSlice type');
+
   viewportArray.forEach((gridViewport: any) => {
     const { viewportId } = gridViewport.viewportOptions;
     const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);

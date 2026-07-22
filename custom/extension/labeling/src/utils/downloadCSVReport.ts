@@ -32,8 +32,7 @@ export default function downloadCSVReport(measurementData) {
       console.warn('Measurement does not have a getReport function');
       return;
     }
-    console.log(referenceStudyUID);
-    console.log(measurement);
+
     const studyMetadata = DicomMetadataStore.getStudy(referenceStudyUID);
     const seriesMetadata = DicomMetadataStore.getSeries(
       referenceStudyUID,
@@ -77,7 +76,7 @@ export default function downloadCSVReport(measurementData) {
       };
     }
   });
-  console.log(reportMap);
+
   // get columns names inside the report from each measurement and
   // add them to the rows array (this way we can add columns for any custom
   // measurements that may be added in the future)

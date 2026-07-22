@@ -55,14 +55,13 @@ const AITrackedViewportInner = ({
     ...viewportOptions,
   }), [viewportOptions, isHeatmapViewport]);
 
-
     // Handle heatmap toggle (only for primary viewports)
   const handleHeatmapToggle = useCallback(() => {
     if (isHeatmapViewport) return; // Don't handle toggle on heatmap viewport
 
     // Don't allow toggle if no heatmap is available
     if (!currentAIResult?.hasHeatmap) {
-      console.log('[AITrackedViewport] Cannot toggle heatmap - no heatmap available');
+
       return;
     }
 
@@ -86,7 +85,6 @@ const AITrackedViewportInner = ({
 
   // Handle AI result selection from events
   const handleAIResultSelected = useCallback((newSelectedAIResult, clickedDisplaySetUID: string) => {
-    console.log(`[AITrackedViewport] AI result selected for ${viewportId}:`, newSelectedAIResult);
 
     // Update the selected AI result state
     setSelectedAIResult(newSelectedAIResult);
@@ -98,7 +96,7 @@ const AITrackedViewportInner = ({
 
     // Close heatmap layout if currently showing (when switching AI results)
     if (showHeatmap && !isHeatmapViewport && currentAIResult) {
-      console.log('[AITrackedViewport] Closing heatmap layout due to AI result switch');
+
       setShowHeatmap(false);
       // Actually close the side-by-side layout
       HeatmapLayoutManager.toggleHeatmapLayout(false, {
@@ -140,62 +138,12 @@ const AITrackedViewportInner = ({
     onAIResultSelected: handleAIResultSelected,
   });
 
-  // === DEBUG: Log render and prop identity changes ===
-  const prevDisplaySetsRef = React.useRef(displaySets);
-  const prevViewportOptionsRef = React.useRef(viewportOptions);
-
-  useEffect(() => {
-    console.log(`[AITrackedViewport][Render] ${viewportId}`);
-
-    if (prevDisplaySetsRef.current !== displaySets) {
-      console.log(`[AITrackedViewport][PropChange] displaySets array identity changed for ${viewportId}. Length prev=${prevDisplaySetsRef.current?.length} curr=${displaySets?.length}`);
-    }
-
-    if (prevViewportOptionsRef.current !== viewportOptions) {
-      console.log(`[AITrackedViewport][PropChange] viewportOptions identity changed for ${viewportId}. prev:`, prevViewportOptionsRef.current, 'curr:', viewportOptions);
-    }
-
-    prevDisplaySetsRef.current = displaySets;
-    prevViewportOptionsRef.current = viewportOptions;
-  });
-  // === END DEBUG ===
-
-  // Debug effect to track AI result changes
-  useEffect(() => {
-    console.log(`[AITrackedViewport] ${viewportId} AI result state:`, {
-      hasInitialAIResult: !!initialAIResult,
-      hasSelectedAIResult: !!selectedAIResult,
-      currentHasHeatmap: currentAIResult?.hasHeatmap,
-      showHeatmap,
-      isHeatmapViewport,
-      shouldShowToggle: currentAIResult?.hasHeatmap && !isHeatmapViewport,
-      shouldShowOverlays: !isHeatmapViewport
-    });
-  }, [viewportId, initialAIResult, selectedAIResult, currentAIResult, showHeatmap, isHeatmapViewport]);
-
   // Ensure heatmap toggle action corner is in sync
   useEffect(() => {
     if (!isHeatmapViewport && currentAIResult) {
       setupHeatmapActionCorner(currentAIResult, handleHeatmapToggle, showHeatmap, currentAIResult.hasHeatmap);
     }
   }, [currentAIResult, showHeatmap, isHeatmapViewport, setupHeatmapActionCorner, handleHeatmapToggle]);
-
-  // Track changes in images length to detect late hydration
-  useEffect(() => {
-    displaySets.forEach(ds => {
-      const prev = (prevDisplaySetsRef.current as any[]).find(
-        p => p.displaySetInstanceUID === ds.displaySetInstanceUID
-      );
-      if (prev && (prev.images?.length || 0) !== (ds.images?.length || 0)) {
-        console.log(
-          `[AITrackedViewport][ImagesChange] ${viewportId} DS ${ds.displaySetInstanceUID} images:`,
-          prev.images?.length || 0,
-          '→',
-          ds.images?.length || 0
-        );
-      }
-    });
-  });
 
   return (
     <div className="relative flex h-full w-full flex-row overflow-hidden">
