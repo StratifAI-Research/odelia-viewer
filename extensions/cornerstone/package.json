@@ -53,7 +53,7 @@
     "@babel/runtime": "^7.20.13",
     "@cornerstonejs/adapters": "^3.7.17",
     "@cornerstonejs/core": "^3.7.17",
-    "@cornerstonejs/labelmap-interpolation": "^3.7.17",
+    "@cornerstonejs/labelmap-interpolation": "^5.6.9",
     "@cornerstonejs/polymorphic-segmentation": "^3.7.17",
     "@cornerstonejs/tools": "^3.7.17",
     "@itk-wasm/morphological-contour-interpolation": "1.1.0",
