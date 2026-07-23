@@ -208,10 +208,93 @@ const AITrackedViewportInner = ({
   );
 };
 
-// M-04: use React.memo's default shallow prop comparison. The previous custom
-// comparator only checked viewportId, display-set UIDs and viewportType, so it
-// suppressed re-renders on meaningful changes (late content hydration, changed
-// viewport options, services, callbacks) — leaving stale images/overlays. A
-// shallow compare is correct; reintroduce a narrower comparator only if
-// profiling proves it necessary and it compares a documented stable contract.
-export default React.memo(AITrackedViewportInner);
+/**
+ * Prop comparator for the memoized viewport, closely modeled on OHIF's base
+ * `OHIFCornerstoneViewport` `areEqual`
+ * (extensions/cornerstone/src/Viewport/OHIFCornerstoneViewport.tsx).
+ *
+ * Why a custom comparator (M-04): the OHIF ViewportGrid re-renders on every
+ * interaction and passes freshly-built `displaySets`/`viewportOptions` objects and
+ * a new inline `onElementEnabled` closure each time, so React.memo's DEFAULT shallow
+ * compare never skips — it would re-run every AI hook/effect on every grid frame
+ * (the "20 renders/sec" viewer-rendering-loop gotcha). We re-render only on OHIF's
+ * stable-contract signals plus this wrapper's own semantic inputs.
+ *
+ * `needsRerendering` note: this flag is OHIF's forced-rerender escape hatch, but it
+ * is dormant in this repo — nothing sets `displaySet.needsRerendering` or
+ * `viewportOptions.needsRerendering` to true (verified across platform/, extensions/,
+ * custom/ and @ohif/core; the only assignment is the base viewport CLEARING it). We
+ * honor the top-level prop to match OHIF's contract and stay future-proof, and
+ * intentionally ignore `viewportOptions.needsRerendering`: renderCornerstoneViewport
+ * hands the base viewport a COPIED options object, and the base clears the flag only
+ * on its own copy — so keying off the grid's original could re-render us on every
+ * grid frame. Nested needsRerendering is handled at the base layer, on the object it
+ * actually receives.
+ *
+ * Exported for unit testing.
+ */
+export function areEqual(
+  prevProps: AISideBySideViewportProps,
+  nextProps: AISideBySideViewportProps
+) {
+  if (nextProps.needsRerendering) {
+    return false;
+  }
+
+  if (prevProps.viewportId !== nextProps.viewportId) {
+    return false;
+  }
+
+  const prevOpts = prevProps.viewportOptions || {};
+  const nextOpts = nextProps.viewportOptions || {};
+  if (prevOpts.orientation !== nextOpts.orientation) {
+    return false;
+  }
+  if (prevOpts.toolGroupId !== nextOpts.toolGroupId) {
+    return false;
+  }
+  if (nextOpts.viewportType && prevOpts.viewportType !== nextOpts.viewportType) {
+    return false;
+  }
+
+  const prevDS = prevProps.displaySets || [];
+  const nextDS = nextProps.displaySets || [];
+  if (prevDS.length !== nextDS.length) {
+    return false;
+  }
+
+  for (let i = 0; i < prevDS.length; i++) {
+    const prev = prevDS[i];
+    const next = nextDS[i];
+
+    if (prev.displaySetInstanceUID !== next.displaySetInstanceUID) {
+      return false;
+    }
+    // Wrapper semantics: heatmap detection keys off Modality; AI-result selection
+    // keys off StudyInstanceUID. Cheap primitive compares, defensive against a
+    // replacement display set that reuses a UID. (In-place mutation of a shared
+    // object is undetectable here — same limitation as OHIF's base comparator —
+    // and remains the needsRerendering escape hatch's responsibility.)
+    if (prev.Modality !== next.Modality) {
+      return false;
+    }
+    if (prev.StudyInstanceUID !== next.StudyInstanceUID) {
+      return false;
+    }
+    // Per-image identity (mirrors OHIF) — catches same-length image-list changes.
+    if (prev.images?.length !== next.images?.length) {
+      return false;
+    }
+    if (prev.images?.length) {
+      for (let j = 0; j < prev.images.length; j++) {
+        if (prev.images[j].imageId !== next.images[j].imageId) {
+          return false;
+        }
+      }
+    }
+  }
+
+  return true; // effectively equal — skip re-render
+}
+
+export default React.memo(AITrackedViewportInner, areEqual);
