@@ -9,7 +9,7 @@
 /* Broad global white-space rule removed to avoid overriding specific styles */
 
 /* Allow the thumbnail container to auto-expand vertically */
-.ai-result-thumbnail .flex.h-\\[52px\\] {
+.ai-result-thumbnail .flex.h-\[52px\] {
   height: auto !important;
   overflow: visible !important;
 }
@@ -26,45 +26,12 @@
   border-left: 3px solid #00d4ff !important;
 }
 
-/* Target thumbnails containing robot emoji for AI results */
-[data-cy="study-browser-thumbnail"] div:has(div:contains("🤖")),
-[data-cy="study-browser-thumbnail-no-image"] div:has(div:contains("🤖")) {
-  /* Override container heights to allow more space */
-}
-
-/* More specific targeting of description text containing robot emoji */
-div[class*="text-ellipsis"]:has(text):contains("🤖"),
-div[class*="whitespace-nowrap"]:has(text):contains("🤖") {
-  white-space: pre-line !important;
-  text-overflow: clip !important;
-  overflow: hidden !important;
-  line-height: 1.1 !important;
-  max-height: 60px !important;
-  display: -webkit-box !important;
-  -webkit-line-clamp: 4 !important;
-  -webkit-box-orient: vertical !important;
-}
-
-/* Alternative approach - target by text content */
-div[class*="text-\\[12px\\]"]:contains("🤖"),
-div[class*="text-\\[13px\\]"]:contains("🤖") {
-  white-space: pre-line !important;
-  text-overflow: clip !important;
-  overflow: hidden !important;
-  line-height: 1.1 !important;
-  font-size: 10px !important;
-}
-
-/* Try broader targeting */
-.ohif-scrollbar div:contains("🤖") {
-  white-space: pre-line !important;
-  word-wrap: break-word !important;
-}
-
-/* Last resort - very broad targeting */
-*:contains("🤖") {
-  white-space: pre-line !important;
-}
+/*
+ * AI-thumbnail styling that depends on the 🤖 text content is applied in JS
+ * (applyAIThumbnailStyles) because CSS has no text-content selector. The
+ * previous :contains()/:has(text) rules here were invalid (a jQuery extension,
+ * never valid CSS) and were silently dropped by every browser.
+ */
 
 /* Prevent thumbnail overlap issues */
 [data-cy="study-browser-thumbnail-no-image"] {
@@ -91,7 +58,7 @@ div[class*="text-\\[13px\\]"]:contains("🤖") {
 }
 
 /* Let description wrap freely without truncation (grid preset) */
-.ai-result-thumbnail .min-h-\\[18px\\] {
+.ai-result-thumbnail .min-h-\[18px\] {
   white-space: pre-line !important;
   overflow: visible !important;
   text-overflow: clip !important;
@@ -108,7 +75,7 @@ div[class*="text-\\[13px\\]"]:contains("🤖") {
 }
 
 /* list preset – allow full wrapping, still disable pointer events to avoid hover reflow */
-.ai-result-thumbnail.h-\\[40px\\] .max-w-\\[160px\\]{
+.ai-result-thumbnail.h-\[40px\] .max-w-\[160px\] {
   white-space: pre-line !important;
   overflow: visible !important;
   text-overflow: clip !important;

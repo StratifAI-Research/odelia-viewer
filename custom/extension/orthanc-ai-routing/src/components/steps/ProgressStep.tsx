@@ -2,7 +2,7 @@ import React from 'react';
 import { Button } from '@ohif/ui';
 
 interface ProgressStepProps {
-  status: 'idle' | 'routing' | 'checking' | 'refreshing';
+  status: 'idle' | 'routing' | 'checking';
   progress: number;
   error?: string | null;
   progressDescription?: string | null;
@@ -25,7 +25,6 @@ export const ProgressStep: React.FC<ProgressStepProps> = ({
     if (error) return '❌ Error';
     if (status === 'routing') return 'Sending to AI...';
     if (status === 'checking') return 'Awaiting AI Results...';
-    if (status === 'refreshing') return 'Loading Results...';
     if (isComplete) return '✅ Complete!';
     return '';
   };
@@ -41,7 +40,6 @@ export const ProgressStep: React.FC<ProgressStepProps> = ({
     // Fallback to default messages
     if (status === 'routing') return 'Uploading series to AI server...';
     if (status === 'checking') return 'AI analysis in progress. Results will appear automatically.';
-    if (status === 'refreshing') return 'Fetching AI results...';
     if (isComplete) return 'AI analysis complete. Check the study browser for results.';
     return null;
   };

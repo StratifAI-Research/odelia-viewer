@@ -1,4 +1,4 @@
-import { ChatService } from './ChatService';
+import { ChatService, ChatConnectionState } from './ChatService';
 import {
   CHAT_EVENTS,
   ClientMessageType,
@@ -362,6 +362,59 @@ describe('ChatService connect settling', () => {
   });
 });
 
+describe('ChatService connection state machine', () => {
+  it('starts DISCONNECTED and becomes CONNECTING then CONNECTED', async () => {
+    const svc = new ChatService();
+    expect(svc.getConnectionState()).toBe(ChatConnectionState.DISCONNECTED);
+
+    const p = svc.connect();
+    expect(svc.getConnectionState()).toBe(ChatConnectionState.CONNECTING);
+
+    const ws = lastWs();
+    ws.emitOpen();
+    // Still CONNECTING until the session handshake completes.
+    expect(svc.getConnectionState()).toBe(ChatConnectionState.CONNECTING);
+    ws.emitMessage({ type: ServerMessageType.CONNECTED, session_id: 's' });
+    await p;
+    expect(svc.getConnectionState()).toBe(ChatConnectionState.CONNECTED);
+  });
+
+  it('returns to DISCONNECTED after a clean close but RECONNECTING after an unclean one', async () => {
+    jest.useFakeTimers();
+    const svc = new ChatService();
+    const p = svc.connect();
+    const ws = lastWs();
+    ws.emitOpen();
+    ws.emitMessage({ type: ServerMessageType.CONNECTED, session_id: 's' });
+    await p;
+
+    ws.emitClose(1006, '', false); // unclean
+    expect(svc.getConnectionState()).toBe(ChatConnectionState.RECONNECTING);
+    jest.advanceTimersByTime(1000);
+    expect(svc.getConnectionState()).toBe(ChatConnectionState.CONNECTING);
+    svc.disconnect();
+  });
+
+  it('a CONNECTED frame without a session id does not complete the handshake', async () => {
+    const svc = new ChatService();
+    svc.connect().catch(() => {});
+    const ws = lastWs();
+    ws.emitOpen();
+    ws.emitMessage({ type: ServerMessageType.CONNECTED }); // no session_id
+    expect(svc.getConnectionState()).toBe(ChatConnectionState.CONNECTING);
+    expect(svc.isConnected()).toBe(false);
+    ws.close();
+  });
+
+  it('disconnect() moves to CLOSED and suppresses reconnect', async () => {
+    const svc = new ChatService();
+    const ws = await connect(svc);
+    svc.disconnect();
+    expect(svc.getConnectionState()).toBe(ChatConnectionState.CLOSED);
+    expect(ws.closed).toEqual({ code: 1000, reason: 'Client disconnect' });
+  });
+});
+
 describe('ChatService synchronous construction failure (P3)', () => {
   it('clears the cached promise when WebSocket construction throws, allowing a later retry', async () => {
     const svc = new ChatService();
@@ -378,6 +431,9 @@ describe('ChatService synchronous construction failure (P3)', () => {
 
     // First attempt: construction throws synchronously -> promise rejects.
     await expect(svc.connect()).rejects.toThrow('bad url');
+    // The machine must not be left stuck in CONNECTING after a synchronous
+    // construction failure (no socket exists to drive it out of that state).
+    expect(svc.getConnectionState()).toBe(ChatConnectionState.DISCONNECTED);
 
     // The rejected in-flight promise must not stay cached: a later connect()
     // creates a fresh socket instead of returning the same rejection.

@@ -77,26 +77,17 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
   }, [activeViewportId, viewports, displaySetService, StudyInstanceUIDs, dicomStudyUID]);
 
   useEffect(() => {
-    let mounted = true;
-
     if (!activeStudyUID) {
       const initialStudyUID = getStudyUIDFromActiveViewport();
-      if (initialStudyUID && mounted) {
+      if (initialStudyUID) {
         setActiveStudyUID(initialStudyUID);
       }
     }
-
-    return () => {
-      mounted = false;
-    };
   }, [activeStudyUID, getStudyUIDFromActiveViewport]);
 
   useEffect(() => {
-    let mounted = true;
-
     const studyUID = getStudyUIDFromActiveViewport();
-    if (studyUID && studyUID !== activeStudyUID && mounted) {
-
+    if (studyUID && studyUID !== activeStudyUID) {
       setActiveStudyUID(studyUID);
       if (wizard.currentStep > 1) {
         wizard.reset();
@@ -104,10 +95,6 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
         inputMappingHook.reset();
       }
     }
-
-    return () => {
-      mounted = false;
-    };
   }, [activeViewportId, viewports, getStudyUIDFromActiveViewport, activeStudyUID, wizard]);
 
   // If we reach the input-mapping step (3) without a valid selected model

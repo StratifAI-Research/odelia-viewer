@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import HeatmapToggle from '../components/HeatmapToggle';
 import { AIOverlayHookConfig, AIOverlayHookReturn } from '../types/overlayTypes';
 import { AIResult } from '../types';
-import AIClassificationOverlay from '../components/overlays/AIClassificationOverlay';
 
 export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn => {
   const { viewportId, aiResult, isHeatmapViewport, servicesManager } = config;

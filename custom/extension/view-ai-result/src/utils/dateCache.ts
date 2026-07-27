@@ -1,5 +1,3 @@
-import { utils } from '@ohif/core';
-
 // Simple static date cache to prevent refreshing
 const staticDateCache = new Map<string, string>();
 

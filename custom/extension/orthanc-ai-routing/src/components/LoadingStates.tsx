@@ -1,5 +1,7 @@
 import React from 'react';
 
+// Public loading-state component for the AI routing panel's study list. Kept as
+// exported API for reuse across routing steps.
 export const StudyListSkeleton: React.FC = () => {
   return (
     <div className="space-y-2">

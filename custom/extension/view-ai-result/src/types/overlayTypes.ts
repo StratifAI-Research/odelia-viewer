@@ -1,9 +1,5 @@
 import { AIResult } from '.';
 
-export interface AIClassificationOverlayProps {
-  aiResult: AIResult;
-}
-
 export interface AIOverlayHookConfig {
   viewportId: string;
   aiResult: AIResult | null;
