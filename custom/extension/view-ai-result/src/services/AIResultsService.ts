@@ -20,7 +20,6 @@ export class AIResultsService {
   private cache: Map<string, AIResult[]> = new Map();
   private selectedAIResults: Map<string, string> = new Map(); // studyUID -> displaySetUID
   private uiNotificationService: any;
-  private selectionChangeListeners: Map<string, Array<() => void>> = new Map(); // studyUID -> callbacks
   private eventListeners: Map<string, Array<(data: any) => void>> = new Map(); // event -> callbacks
   private currentStudyUID: string | null = null; // Track current active study
   private displaySetService: any = null; // set lazily; used to invalidate the cache when display sets load
@@ -119,50 +118,6 @@ export class AIResultsService {
       console.error('Error extracting AI results:', error);
       return [];
     }
-  }
-
-  /**
-   * Add listener for selection changes
-   */
-  addSelectionChangeListener(studyInstanceUID: string, callback: () => void): void {
-    if (!this.selectionChangeListeners.has(studyInstanceUID)) {
-      this.selectionChangeListeners.set(studyInstanceUID, []);
-    }
-    this.selectionChangeListeners.get(studyInstanceUID)!.push(callback);
-  }
-
-  /**
-   * Remove listener for selection changes
-   */
-  removeSelectionChangeListener(studyInstanceUID: string, callback: () => void): void {
-    const listeners = this.selectionChangeListeners.get(studyInstanceUID);
-    if (listeners) {
-      const index = listeners.indexOf(callback);
-      if (index > -1) {
-        listeners.splice(index, 1);
-      }
-    }
-  }
-
-  /**
-   * Notify all listeners of selection change
-   */
-  private notifySelectionChange(studyInstanceUID: string): void {
-    const listeners = this.selectionChangeListeners.get(studyInstanceUID);
-    if (listeners) {
-      listeners.forEach(callback => {
-        try {
-          callback();
-        } catch (error) {
-          console.warn('Error in selection change listener:', error);
-        }
-      });
-    }
-  }
-
-  clearCache(): void {
-    this.cache.clear();
-    this.selectionChangeListeners.clear();
   }
 
   /**
@@ -352,9 +307,6 @@ export class AIResultsService {
       aiResult,
     });
 
-    // Notify listeners of selection change (legacy)
-    this.notifySelectionChange(studyInstanceUID);
-
     // Show notification
     if (aiResult && this.uiNotificationService) {
       const modelName = aiResult.modelInfo?.name || 'AI Model';
@@ -451,13 +403,6 @@ export class AIResultsService {
         this.setSelectedAIResult(studyInstanceUID, firstResult.displaySetInstanceUID, servicesManager);
       }
     }
-  }
-
-  /**
-   * Get current active study UID
-   */
-  getCurrentStudyUID(): string | null {
-    return this.currentStudyUID;
   }
 
   /**

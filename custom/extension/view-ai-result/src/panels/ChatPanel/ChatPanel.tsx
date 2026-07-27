@@ -160,13 +160,18 @@ const ChatPanel: React.FC = () => {
       const res = await fetch(`${getChatApiBase()}/debug/cache`, { method: 'DELETE' });
       if (!res.ok) throw new Error(`Failed to clear: ${res.status}`);
       const data = await res.json();
-      alert(`Cache cleared: ${data.cleared_entries} entries removed`);
+      servicesManager?.services?.uiNotificationService?.show({
+        title: 'Chat',
+        message: `Cache cleared: ${data.cleared_entries} entries removed`,
+        type: 'success',
+        duration: 3000,
+      });
     } catch (e: any) {
       setSettingsError(e.message || 'Failed to clear cache');
     } finally {
       setSettingsLoading(false);
     }
-  }, []);
+  }, [servicesManager]);
 
   // Open settings modal and load current config
   const openSettings = useCallback(() => {

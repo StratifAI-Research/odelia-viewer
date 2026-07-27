@@ -20,8 +20,6 @@ describe('OrthancAIService', () => {
     service = new OrthancAIService({
       configuration: {
         orthancUrl: 'http://test-orthanc:8042',
-        aiServerName: 'test-ai',
-        aiServerUrl: 'http://test-ai:5555',
       },
     });
   });

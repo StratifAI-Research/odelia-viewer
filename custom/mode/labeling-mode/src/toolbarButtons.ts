@@ -27,7 +27,6 @@ function _createButton(type, id, icon, label, commands, tooltip) {
 }
 
 const _createActionButton = _createButton.bind(null, 'action');
-const _createToggleButton = _createButton.bind(null, 'toggle');
 const _createToolButton = _createButton.bind(null, 'tool');
 
 /**
@@ -152,22 +151,6 @@ const toolbarButtons = [
     },
   },
   {
-    id: 'Capture',
-    type: 'ohif.action',
-    props: {
-      icon: 'tool-capture',
-      label: 'Capture',
-      type: 'action',
-      commands: [
-        {
-          commandName: 'showDownloadViewportModal',
-          commandOptions: {},
-          context: 'CORNERSTONE',
-        },
-      ],
-    },
-  },
-  {
     id: 'Layout',
     type: 'ohif.layoutSelector',
   },
@@ -268,23 +251,6 @@ const toolbarButtons = [
           'Calibration Line'
         ),
       ],
-    },
-  },
-  {
-    id: 'HeatmapToggle',
-    type: 'ohif.toggle',
-    props: {
-      icon: 'tool-heatmap',
-      label: 'Heatmap',
-      type: 'toggle',
-      commands: [
-        {
-          commandName: 'toggleHeatmapView',
-          commandOptions: {},
-          context: 'VIEWER',
-        },
-      ],
-      tooltip: 'Toggle Heatmap View',
     },
   },
 ];

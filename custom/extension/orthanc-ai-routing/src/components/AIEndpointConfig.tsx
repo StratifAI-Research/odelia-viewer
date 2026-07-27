@@ -11,8 +11,6 @@ export interface AIEndpoint {
   id: string;
   name: string;
   url: string;
-  username?: string;
-  password?: string;
 }
 
 interface AIEndpointConfigProps {
@@ -28,27 +26,18 @@ const DEFAULT_ENDPOINT: AIEndpoint = {
   url: DEFAULT_AI_ENDPOINT_URL,
 };
 
-/** Persistence-safe endpoint shape: everything except the secret `password`. */
-export type PersistedEndpoint = Omit<AIEndpoint, 'password'>;
+/** Persistence shape for endpoints: an explicit allow-list of fields to store. */
+export type PersistedEndpoint = Pick<AIEndpoint, 'id' | 'name' | 'url'>;
 
 /**
- * Return a persistence-safe copy of the endpoints, keeping only the non-secret fields.
- * The password must never be written to localStorage in plaintext; it is not
- * transmitted by routing requests anyway, so persisting it is pure liability.
- *
- * This is an explicit allow-list (rebuild from known-safe fields) rather than a
- * `{ password, ...rest }` deny-list: it guarantees any secret-bearing field added to
- * AIEndpoint later cannot silently leak into storage. The `PersistedEndpoint` return
- * type carries no `password` field, so the value written to storage is statically
- * password-free (both at runtime and in the type that reaches the sink).
- *
- * NOTE: do not put "secret"/"password"/"credential" in this function's name — CodeQL's
- * sensitive-data heuristic classifies a call's return value as sensitive purely from the
- * callee name, so a name like `stripEndpointSecrets` produces false-positive clear-text
- * storage alerts even though the returned value provably contains no secret.
+ * Return a persistence-safe copy of the endpoints, rebuilt from a known-safe
+ * allow-list of fields. This is deliberately an allow-list (not `{ ...rest }`)
+ * so that any field added to AIEndpoint later cannot silently leak into
+ * localStorage — the endpoint form previously also collected credentials that
+ * routing never used, and this guarded them out of storage.
  */
 export const toPersistableEndpoints = (endpoints: AIEndpoint[]): PersistedEndpoint[] =>
-  endpoints.map(({ id, name, url, username }) => ({ id, name, url, username }));
+  endpoints.map(({ id, name, url }) => ({ id, name, url }));
 
 const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   onEndpointChange,
@@ -62,8 +51,6 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
     id: '',
     name: '',
     url: '',
-    username: '',
-    password: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -136,8 +123,6 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
         id: '',
         name: '',
         url: '',
-        username: '',
-        password: '',
       });
     }
     setIsFormVisible(true);
@@ -277,7 +262,6 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
                   <div className="text-xs text-muted-foreground mt-2">
                     <div>Name: {currentEndpoint.name}</div>
                     <div>URL: {currentEndpoint.url}</div>
-                    {currentEndpoint.username && <div>Username: {currentEndpoint.username}</div>}
                   </div>
                 )}
               </>
@@ -316,32 +300,6 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
               className={`w-full p-2 border rounded ${errors.url ? 'border-red-500' : ''}`}
             />
             {errors.url && <p className="text-red-500 text-xs mt-1">{errors.url}</p>}
-          </div>
-
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Username (optional)
-            </label>
-            <input
-              type="text"
-              value={formData.username || ''}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, username: e.target.value })}
-              placeholder="Username"
-              className="w-full p-2 border rounded"
-            />
-          </div>
-
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Password (optional)
-            </label>
-            <input
-              type="password"
-              value={formData.password || ''}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, password: e.target.value })}
-              placeholder="Password"
-              className="w-full p-2 border rounded"
-            />
           </div>
 
           <div className="flex justify-end space-x-2">

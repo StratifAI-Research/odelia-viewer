@@ -45,10 +45,7 @@ export const renderCornerstoneViewport = (props: ViewportRendererProps) => {
       servicesManager={servicesManager}
       extensionManager={extensionManager}
       commandsManager={commandsManager}
-      onElementEnabled={evt => {
-        restProps.onElementEnabled?.(evt);
-        onElementEnabled(evt);
-      }}
+      onElementEnabled={onElementEnabled}
       onElementDisabled={onElementDisabled}
     />
   );
