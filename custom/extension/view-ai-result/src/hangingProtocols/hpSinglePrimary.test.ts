@@ -2,7 +2,7 @@ import hpSinglePrimary from './hpSinglePrimary';
 
 describe('hpSinglePrimary protocol', () => {
   it('declares the expected id and name', () => {
-    expect(hpSinglePrimary.id).toBe('@ohif/extension-view-ai-result.hpSinglePrimary');
+    expect(hpSinglePrimary.id).toBe('view-ai-result.hpSinglePrimary');
     expect(hpSinglePrimary.name).toBe('Single Primary Viewport');
   });
 

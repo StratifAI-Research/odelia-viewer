@@ -11,7 +11,7 @@ describe('getHangingProtocolModule', () => {
   it('keys the entry name by the protocol id', () => {
     const [entry] = getHangingProtocolModule();
     expect(entry.name).toBe(hpSinglePrimary.id);
-    expect(entry.name).toBe('@ohif/extension-view-ai-result.hpSinglePrimary');
+    expect(entry.name).toBe('view-ai-result.hpSinglePrimary');
   });
 
   it('exposes the exported hpSinglePrimary protocol object', () => {

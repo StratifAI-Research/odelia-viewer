@@ -271,7 +271,7 @@ function modeFactory() {
     /** List of extensions that are used by the mode */
     extensions: extensionDependencies,
     /** HangingProtocol used by the mode */
-    hangingProtocol: '@ohif/extension-view-ai-result.hpSinglePrimary',
+    hangingProtocol: 'view-ai-result.hpSinglePrimary',
     /** SopClassHandlers used by the mode */
     sopClassHandlers: [ohif.sopClassHandler],
     /** hotkeys for mode */
