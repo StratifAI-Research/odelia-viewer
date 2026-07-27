@@ -63,4 +63,7 @@ export interface AISideBySideViewportProps {
   viewportOptions?: any;
   onElementEnabled?: (evt: any) => void;
   onElementDisabled?: () => void;
+  // OHIF's forced-rerender escape hatch. The ViewportGrid passes this top-level
+  // prop (derived from `displaySet.needsRerendering`); the memo comparator honors it.
+  needsRerendering?: boolean;
 }

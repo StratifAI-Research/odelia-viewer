@@ -489,7 +489,10 @@ export default function PanelStudyBrowserTracking({
       if (activeViewportId) {
         // Delay a little to allow viewports to be hydrated first – improves perceived performance
         const delayMs = 250 + displaySetService.getActiveDisplaySets().length * 10;
-        window.setTimeout(() => setHasLoadedViewports(true), delayMs);
+        const timer = window.setTimeout(() => setHasLoadedViewports(true), delayMs);
+        // L-15: cancel the pending timer on unmount / dependency change so we
+        // don't call setState after unmount.
+        return () => window.clearTimeout(timer);
       }
 
       return; // Exit early until `hasLoadedViewports` is true
@@ -533,6 +536,8 @@ export default function PanelStudyBrowserTracking({
 
       setThumbnailImageSrcMap(prevState => ({ ...prevState, ...newImageSrcEntry }));
     });
+
+    return undefined; // only the pre-load branch above registers a cleanup
   }, [displaySetService, dataSource, getImageSrc, activeViewportId, hasLoadedViewports]);
 
   // ~~ subscriptions --> displaySets (DISPLAY_SETS_ADDED)

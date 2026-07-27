@@ -53,17 +53,14 @@ export default function PanelLabeling({
         {/* show labeling table */}
         <div className="mt-4">
           {!!displayMeasurements.length &&
-            displayMeasurements.map(measurement => {
+            displayMeasurements.map((measurement, index) => {
               return (
                 <LabelingTable
+                  key={measurement.uid ?? `measurement-${index}`}
                   title={t('Labels')}
                   measurement={measurement}
                   config={config}
-                  onClick={id => {}}
-                  onToggleVisibility={id => {}}
-                  onToggleVisibilityAll={ids => {
-                    ids.map(id => {});
-                  }}
+                  onClick={() => {}}
                   onChange={onMeasurementItemEditHandler}
                 />
               );

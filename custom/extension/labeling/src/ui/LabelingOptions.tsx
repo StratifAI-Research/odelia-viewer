@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import PropTypes from 'prop-types';
 import classnames from 'classnames';
-import { Icon } from '@ohif/ui';
 
 const LabelingOptions = ({
   id,
@@ -14,6 +13,12 @@ const LabelingOptions = ({
 }) => {
   const [isHovering, setIsHovering] = useState(false);
   const [selectedOption, setSelectedOption] = useState(label_value);
+
+  // LAB-L4/M-06: keep the control in sync when the incoming value changes
+  // (e.g. a CSV import updates label_value while this control stays mounted).
+  useEffect(() => {
+    setSelectedOption(label_value);
+  }, [label_value]);
 
   const onChangeValueHandler = event => {
     const new_value = event.target.value

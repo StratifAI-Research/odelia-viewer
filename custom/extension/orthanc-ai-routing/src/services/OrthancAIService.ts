@@ -61,7 +61,7 @@ export interface InputMapping {
 }
 
 // UPS Workitem interfaces
-interface WorkitemStatus {
+export interface WorkitemStatus {
   state: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELED' | 'UNKNOWN';
   progress?: number;
   progressDescription?: string;
@@ -506,16 +506,13 @@ class OrthancAIService {
         throw new Error(`Failed to get workitem status: ${response.status}`);
       }
 
-      // Get the response as text first to debug
-      const responseText = await response.text();
-
-      // Parse the JSON
+      // Parse the JSON body directly (OAR-L9: parity with getModelManifest;
+      // no need to read text first).
       let workitemJson: WorkitemDicomJson;
       try {
-        workitemJson = JSON.parse(responseText);
+        workitemJson = await response.json();
       } catch (parseError) {
         console.error('Failed to parse workitem JSON:', parseError);
-        console.error('Response text was:', responseText);
         throw new Error(`Failed to parse workitem JSON: ${parseError}`);
       }
 

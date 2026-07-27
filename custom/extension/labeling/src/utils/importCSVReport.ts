@@ -57,6 +57,11 @@ export default function importCSVReport(
   }
 
   const lesionConfig = getPanelConfig(config, 'lesion table');
+  // Merge every label_options entry into one { key -> def } map. Each entry is a
+  // single-key map and lesion labels are not guaranteed to all live in
+  // label_options[0], so merging (as initLabels/LabelingTable already do) avoids
+  // silently dropping lesion columns declared in later entries.
+  const lesionLabelKeys = Object.assign({}, ...lesionConfig.label_options);
 
   // CSVImporter parses with Papa `header: true`, so csvData is already one
   // object per row keyed by the header names — exactly the shape
@@ -73,7 +78,7 @@ export default function importCSVReport(
         key =>
           !unusedColumns.includes(key) &&
           !lesionToolColumns.includes(key) &&
-          !(key in lesionConfig.label_options[0])
+          !(key in lesionLabelKeys)
       )
       .reduce((obj, key) => {
         obj[key] = row[key];
@@ -86,7 +91,7 @@ export default function importCSVReport(
     });
   });
 
-  const lesionAnnotations: any[] = _parseLesions(csvData, lesionConfig);
+  const lesionAnnotations: any[] = _parseLesions(csvData, lesionLabelKeys);
 
   // Resolve the lesion (CircleROI) source/mapping, but only require it when
   // there are lesion rows to add. A label-only CSV produces no lesion
@@ -159,7 +164,7 @@ function _collateLabels(parsedMeasurements) {
   return collatedLabels;
 }
 
-function _parseLesions(parsedMeasurements, lesionColumns) {
+function _parseLesions(parsedMeasurements, lesionLabelKeys) {
   const parsedLesions: any[] = [];
   parsedMeasurements.forEach(element => {
     // Only rows carrying lesion geometry become lesion annotations; label-only
@@ -171,7 +176,7 @@ function _parseLesions(parsedMeasurements, lesionColumns) {
     const lesionData = Object.keys(element)
       .filter(
         key =>
-          !unusedColumns.includes(key) && key in lesionColumns.label_options[0]
+          !unusedColumns.includes(key) && key in lesionLabelKeys
       )
       .reduce((obj, key) => {
         obj[key] = element[key];

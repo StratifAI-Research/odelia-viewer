@@ -1,6 +1,7 @@
 import { AIResult } from '../types';
 import { extractAIResultData } from '../utils/extractAIResultData';
 import { findMatchingSRForHeatmap } from '../utils/aiResultPairing';
+import { formatDicomDateTime } from '../utils/dicomDateTime';
 import {
   buildAIResult,
   extractAIResultsForStudy,
@@ -311,31 +312,17 @@ export class AIResultsService {
     if (aiResult && this.uiNotificationService) {
       const modelName = aiResult.modelInfo?.name || 'AI Model';
 
+      // VAR-L2: reuse the shared DICOM date/time formatter instead of
+      // re-implementing the YYYYMMDD/HHMMSS slicing here.
       let dateTimeInfo = '';
       if (targetDisplaySet?.instance) {
         const creationDate = targetDisplaySet.instance.InstanceCreationDate;
         const creationTime = targetDisplaySet.instance.InstanceCreationTime;
-
-        if (creationDate && creationTime) {
-          // Format DICOM date (YYYYMMDD) and time (HHMMSS.FFFFFF)
-          const year = creationDate.substring(0, 4);
-          const month = creationDate.substring(4, 6);
-          const day = creationDate.substring(6, 8);
-
-          const hour = creationTime.substring(0, 2);
-          const minute = creationTime.substring(2, 4);
-          const second = creationTime.substring(4, 6);
-
-          const formattedDate = `${year}-${month}-${day}`;
-          const formattedTime = `${hour}:${minute}:${second}`;
-          dateTimeInfo = ` (Created: ${formattedDate} ${formattedTime})`;
-        } else if (creationDate) {
-          // Fallback to just date if time is not available
-          const year = creationDate.substring(0, 4);
-          const month = creationDate.substring(4, 6);
-          const day = creationDate.substring(6, 8);
-          const formattedDate = `${year}-${month}-${day}`;
-          dateTimeInfo = ` (Created: ${formattedDate})`;
+        const formatted = formatDicomDateTime(creationDate, creationTime);
+        if (formatted) {
+          // Drop the "00:00:00" clock when no time component was present.
+          const label = creationTime ? formatted : formatted.replace(/ 00:00:00$/, '');
+          dateTimeInfo = ` (Created: ${label})`;
         }
       }
 
@@ -358,17 +345,11 @@ export class AIResultsService {
       return this.getAIResultByDisplaySet(studyInstanceUID, selectedDisplaySetUID, servicesManager);
     }
 
-    // If no selection, return the primary (first) result and set it as selected
-    const primaryResult = this.getAIResults(studyInstanceUID, servicesManager);
-    if (primaryResult) {
-      // Find the display set UID for the primary result
-      const metadata = this.getAIResultMetadata(studyInstanceUID, servicesManager);
-      if (metadata.length > 0) {
-        this.selectedAIResults.set(studyInstanceUID, metadata[0].displaySetInstanceUID);
-      }
-    }
-
-    return primaryResult;
+    // VAR-L1: no explicit selection yet — return the primary (first) result
+    // WITHOUT persisting a selection from this read path. This getter is called
+    // from render, and a getter must not mutate service state. The default
+    // selection is established by `notifyStudyChange` when a study loads.
+    return this.getAIResults(studyInstanceUID, servicesManager);
   }
 
   /**

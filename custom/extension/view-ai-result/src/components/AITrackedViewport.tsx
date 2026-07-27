@@ -6,6 +6,25 @@ import { useAIOverlay } from '../hooks/useAIOverlay';
 import { useAIResultSubscription } from '../hooks/useAIResultSubscription';
 import { HeatmapLayoutManager, renderCornerstoneViewport, getPrimaryDisplaySets } from '../utils';
 
+/**
+ * Compose an optional external callback with our own (always-present) internal
+ * one, returning a single function that invokes the external first, then the
+ * internal. (M-05: an external onElementEnabled/Disabled must run alongside our
+ * own rather than clobber it or be clobbered by prop-spread order.)
+ */
+function composeCallbacks<T extends (...args: any[]) => void>(
+  external: T | undefined,
+  internal: T
+): (...args: Parameters<T>) => void {
+  if (!external) {
+    return internal;
+  }
+  return (...args: Parameters<T>) => {
+    external(...args);
+    internal(...args);
+  };
+}
+
 const AITrackedViewportInner = ({
   viewportId,
   servicesManager,
@@ -59,7 +78,10 @@ const AITrackedViewportInner = ({
 
   // Memoize enhanced viewport options to prevent cascade rerenders
   const enhancedViewportOptions = useMemo(() => ({
-    viewportType: 'stack', // keep stable to avoid viewport remounts
+    // VAR-L15: default to a stack viewport. This is NOT a stability guarantee —
+    // when a heatmap is toggled on, heatmapLayoutManager forces 'volume', which
+    // does remount the viewport. (`viewportOptions` below can also override it.)
+    viewportType: 'stack',
     showOverlays: !isHeatmapViewport,
     ...viewportOptions,
   }), [viewportOptions, isHeatmapViewport]);
@@ -165,6 +187,11 @@ const AITrackedViewportInner = ({
   return (
     <div className="relative flex h-full w-full flex-row overflow-hidden">
       {renderCornerstoneViewport({
+        // M-05: spread incoming props FIRST so our computed values win, and
+        // compose the element callbacks so an external onElementEnabled/Disabled
+        // (if the host passes one) runs alongside our own instead of clobbering
+        // — or being clobbered by — it.
+        ...props,
         viewportId,
         displaySets: viewportDisplaySets, // Use appropriate display sets based on viewport type
         viewportOptions: enhancedViewportOptions, // Use memoized options
@@ -172,9 +199,8 @@ const AITrackedViewportInner = ({
         extensionManager,
         servicesManager,
         commandsManager,
-        onElementEnabled,
-        onElementDisabled,
-        ...props,
+        onElementEnabled: composeCallbacks((props as any).onElementEnabled, onElementEnabled),
+        onElementDisabled: composeCallbacks((props as any).onElementDisabled, onElementDisabled),
       })}
 
       {/* Heatmap toggle is now injected via ViewportActionCornersService for better alignment */}
@@ -182,34 +208,93 @@ const AITrackedViewportInner = ({
   );
 };
 
-function areEqual(prevProps: AISideBySideViewportProps, nextProps: AISideBySideViewportProps) {
-  // Quick exits
+/**
+ * Prop comparator for the memoized viewport, closely modeled on OHIF's base
+ * `OHIFCornerstoneViewport` `areEqual`
+ * (extensions/cornerstone/src/Viewport/OHIFCornerstoneViewport.tsx).
+ *
+ * Why a custom comparator (M-04): the OHIF ViewportGrid re-renders on every
+ * interaction and passes freshly-built `displaySets`/`viewportOptions` objects and
+ * a new inline `onElementEnabled` closure each time, so React.memo's DEFAULT shallow
+ * compare never skips — it would re-run every AI hook/effect on every grid frame
+ * (the "20 renders/sec" viewer-rendering-loop gotcha). We re-render only on OHIF's
+ * stable-contract signals plus this wrapper's own semantic inputs.
+ *
+ * `needsRerendering` note: this flag is OHIF's forced-rerender escape hatch, but it
+ * is dormant in this repo — nothing sets `displaySet.needsRerendering` or
+ * `viewportOptions.needsRerendering` to true (verified across platform/, extensions/,
+ * custom/ and @ohif/core; the only assignment is the base viewport CLEARING it). We
+ * honor the top-level prop to match OHIF's contract and stay future-proof, and
+ * intentionally ignore `viewportOptions.needsRerendering`: renderCornerstoneViewport
+ * hands the base viewport a COPIED options object, and the base clears the flag only
+ * on its own copy — so keying off the grid's original could re-render us on every
+ * grid frame. Nested needsRerendering is handled at the base layer, on the object it
+ * actually receives.
+ *
+ * Exported for unit testing.
+ */
+export function areEqual(
+  prevProps: AISideBySideViewportProps,
+  nextProps: AISideBySideViewportProps
+) {
+  if (nextProps.needsRerendering) {
+    return false;
+  }
+
   if (prevProps.viewportId !== nextProps.viewportId) {
     return false;
   }
 
-  // Compare displaySetInstanceUIDs
+  const prevOpts = prevProps.viewportOptions || {};
+  const nextOpts = nextProps.viewportOptions || {};
+  if (prevOpts.orientation !== nextOpts.orientation) {
+    return false;
+  }
+  if (prevOpts.toolGroupId !== nextOpts.toolGroupId) {
+    return false;
+  }
+  if (nextOpts.viewportType && prevOpts.viewportType !== nextOpts.viewportType) {
+    return false;
+  }
+
   const prevDS = prevProps.displaySets || [];
   const nextDS = nextProps.displaySets || [];
-
   if (prevDS.length !== nextDS.length) {
     return false;
   }
 
   for (let i = 0; i < prevDS.length; i++) {
-    if (prevDS[i].displaySetInstanceUID !== nextDS[i].displaySetInstanceUID) {
+    const prev = prevDS[i];
+    const next = nextDS[i];
+
+    if (prev.displaySetInstanceUID !== next.displaySetInstanceUID) {
       return false;
+    }
+    // Wrapper semantics: heatmap detection keys off Modality; AI-result selection
+    // keys off StudyInstanceUID. Cheap primitive compares, defensive against a
+    // replacement display set that reuses a UID. (In-place mutation of a shared
+    // object is undetectable here — same limitation as OHIF's base comparator —
+    // and remains the needsRerendering escape hatch's responsibility.)
+    if (prev.Modality !== next.Modality) {
+      return false;
+    }
+    if (prev.StudyInstanceUID !== next.StudyInstanceUID) {
+      return false;
+    }
+    // Per-image identity (mirrors OHIF) — catches same-length image-list changes.
+    if (prev.images?.length !== next.images?.length) {
+      return false;
+    }
+    if (prev.images?.length) {
+      for (let j = 0; j < prev.images.length; j++) {
+        if (prev.images[j].imageId !== next.images[j].imageId) {
+          return false;
+        }
+      }
     }
   }
 
-  // Compare viewportType and basic flags
-  const prevType = prevProps.viewportOptions?.viewportType;
-  const nextType = nextProps.viewportOptions?.viewportType;
-  if (prevType !== nextType) {
-    return false;
-  }
-
-  return true; // props are effectively equal, skip re-render
+  return true; // effectively equal — skip re-render
 }
 
 export default React.memo(AITrackedViewportInner, areEqual);

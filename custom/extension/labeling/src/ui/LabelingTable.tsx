@@ -1,10 +1,20 @@
-import React, { useState } from 'react';
-import PropTypes from 'prop-types';
-import { Icon } from '@ohif/ui';
+import React from 'react';
 import LabelingOptions from './LabelingOptions';
 import LabelingDate from './LabelingDate';
 import { seedDefaultLabelData } from '../utils/labelData';
-const LabelingTable = ({ title, measurement, config, onClick, onChange }) => {
+
+// L-11: the props the component actually accepts, as a TypeScript interface
+// (replaces the stale prop-types that described `labels`/`activeLabelId`/... and
+// omitted the real `measurement`/`config`/`onChange`).
+interface LabelingTableProps {
+  title: string;
+  measurement: { uid: string; label_data?: Record<string, string> } & Record<string, unknown>;
+  config: { label_options: Array<Record<string, { type?: string; options?: string[] }>> };
+  onClick?: (labelKey: string) => void;
+  onChange: (uid: string, label: string, value: string) => void;
+}
+
+const LabelingTable = ({ title, measurement, config, onClick, onChange }: LabelingTableProps) => {
   const label_options = Object.assign({}, ...config.label_options);
   // Seed default label data only for genuinely-uninitialised measurements.
   // Never overwrite existing/imported label_data (see seedDefaultLabelData).
@@ -30,9 +40,9 @@ const LabelingTable = ({ title, measurement, config, onClick, onChange }) => {
                     index={index + 1}
                     label={key ?? `Label ${index + 1}`}
                     label_options={label_options[key].options ?? []}
-                    label_value={measurement.label_data[key]}
+                    label_value={measurement.label_data?.[key] ?? ''}
                     onClick={() => {
-                      onClick(key);
+                      onClick?.(key);
                     }}
                     onChange={(label, label_value) => {
                       onChange(measurement.uid, label, label_value);
@@ -46,9 +56,9 @@ const LabelingTable = ({ title, measurement, config, onClick, onChange }) => {
                     id={index}
                     index={index + 1}
                     label={key ?? `Label ${index + 1}`}
-                    label_value={measurement.label_data[key]}
+                    label_value={measurement.label_data?.[key] ?? ''}
                     onClick={() => {
-                      onClick(key);
+                      onClick?.(key);
                     }}
                     onChange={(label, label_value) => {
                       onChange(measurement.uid, label, label_value);
@@ -60,26 +70,6 @@ const LabelingTable = ({ title, measurement, config, onClick, onChange }) => {
       </div>
     </div>
   );
-};
-
-LabelingTable.propTypes = {
-  title: PropTypes.string.isRequired,
-  labels: PropTypes.array.isRequired,
-  activeLabelId: PropTypes.string.isRequired,
-  onClick: PropTypes.func.isRequired,
-  onEdit: PropTypes.func.isRequired,
-  onToggleVisibility: PropTypes.func.isRequired,
-  onToggleVisibilityAll: PropTypes.func.isRequired,
-};
-
-LabelingTable.defaultProps = {
-  title: '',
-  labels: [],
-  activeLabelId: '',
-  onClick: () => {},
-  onEdit: () => {},
-  onToggleVisibility: () => {},
-  onToggleVisibilityAll: () => {},
 };
 
 export default LabelingTable;

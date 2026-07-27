@@ -8,14 +8,14 @@ beforeEach(() => {
 });
 
 describe('getStaticDate', () => {
-  it('formats an 8-char DICOM date as MM/DD/YYYY', () => {
+  it('formats an 8-char DICOM date as ISO YYYY-MM-DD', () => {
     const ds = { displaySetInstanceUID: 'dc-fmt', StudyDate: '20240315' };
-    expect(getStaticDate(ds)).toBe('03/15/2024');
+    expect(getStaticDate(ds)).toBe('2024-03-15');
   });
 
   it('returns the same cached value once stored, ignoring later input changes', () => {
     const first = getStaticDate({ displaySetInstanceUID: 'dc-cache', StudyDate: '20240101' });
-    expect(first).toBe('01/01/2024');
+    expect(first).toBe('2024-01-01');
     // Same UID, different date -> cache hit returns the original stored value.
     const second = getStaticDate({ displaySetInstanceUID: 'dc-cache', StudyDate: '20251231' });
     expect(second).toBe(first);
@@ -28,28 +28,28 @@ describe('getStaticDate', () => {
       SeriesDate: '20200101',
       instance: { InstanceCreationDate: '20240620' },
     };
-    expect(getStaticDate(sr)).toBe('06/20/2024');
+    expect(getStaticDate(sr)).toBe('2024-06-20');
 
     const sc = {
       displaySetInstanceUID: 'dc-sc',
       Modality: 'SC',
       instance: { InstanceCreationDate: '20240101' },
     };
-    expect(getStaticDate(sc)).toBe('01/01/2024');
+    expect(getStaticDate(sc)).toBe('2024-01-01');
   });
 
   it('falls back to SeriesDate then StudyDate', () => {
     expect(
       getStaticDate({ displaySetInstanceUID: 'dc-series', SeriesDate: '20221111', StudyDate: '20200101' })
-    ).toBe('11/11/2022');
+    ).toBe('2022-11-11');
     expect(
       getStaticDate({ displaySetInstanceUID: 'dc-study', StudyDate: '20200101' })
-    ).toBe('01/01/2020');
+    ).toBe('2020-01-01');
   });
 
   it('falls back to dates nested in the instance object', () => {
     const ds = { displaySetInstanceUID: 'dc-inst', instance: { StudyDate: '20191225' } };
-    expect(getStaticDate(ds)).toBe('12/25/2019');
+    expect(getStaticDate(ds)).toBe('2019-12-25');
   });
 
   it('returns empty string when no date fields are present', () => {
