@@ -1,7 +1,23 @@
 import React from 'react';
 import { installConsoleErrorFilter } from '../../test-utils/harness';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import { StudyBrowserNested } from './StudyBrowserNested';
+
+// Drives the confirmation dialog: captures the options passed to
+// uiDialogService.show and renders its content with a `hide` that routes to the
+// service-provided onClose (matching how the real ManagedDialog wires `hide`).
+function makeDialogService() {
+  const state: { options: any; contentRender: any } = { options: null, contentRender: null };
+  const hide = jest.fn();
+  const show = jest.fn((options: any) => {
+    state.options = options;
+    // Mirror ManagedDialog: the content's `hide` routes to the service-provided
+    // onClose (the option's onClose, which overrides the provider default).
+    const contentHide = () => options.onClose?.(options.id);
+    state.contentRender = render(<div data-testid="dialog-root">{options.content({ hide: contentHide })}</div>);
+  });
+  return { service: { show, hide }, state };
+}
 
 const makeServices = (over: any = {}) => ({
   services: {
@@ -105,6 +121,182 @@ describe('StudyBrowserNested', () => {
     expect(services.services.uiDialogService.show).toHaveBeenCalledTimes(1);
     const arg = services.services.uiDialogService.show.mock.calls[0][0];
     expect(arg.id).toBe('delete-ai-result-confirmation');
+  });
+
+  // --- deletion must not desync the viewer from storage, and the confirmation
+  // dialog must resolve on every close path ---
+
+  it('keeps the display set in the viewer when the Orthanc DELETE fails', async () => {
+    const dialog = makeDialogService();
+    const displaySetService = {
+      getDisplaySetByUID: jest.fn(() => ({ SeriesInstanceUID: 'series-x' })),
+      deleteDisplaySet: jest.fn(),
+    };
+    const uiNotificationService = { show: jest.fn() };
+    const aiResultsService = { removeDisplaySetsFromCache: jest.fn() };
+    const svc = makeServices({
+      displaySetService,
+      uiDialogService: dialog.service,
+      uiNotificationService,
+      aiResultsService,
+    });
+    (global as any).fetch = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ Type: 'Series', ID: 'orthanc-1' }] }) // lookup
+      .mockResolvedValueOnce({ ok: false, status: 500, statusText: 'error' }); // DELETE fails
+
+    render(
+      <StudyBrowserNested
+        {...baseProps({ expandedStudyInstanceUIDs: ['study-1'], servicesManager: svc })}
+      />
+    );
+    fireEvent.click(screen.getByTitle('Delete AI Result'));
+    await act(async () => {
+      fireEvent.click(dialog.state.contentRender.getByText('Delete'));
+    });
+    await waitFor(() => expect(uiNotificationService.show).toHaveBeenCalled());
+
+    // Storage delete failed → the display set must stay in the viewer and cache,
+    // so the UI keeps matching PACS instead of hiding a series still on the server.
+    expect(displaySetService.deleteDisplaySet).not.toHaveBeenCalled();
+    expect(aiResultsService.removeDisplaySetsFromCache).not.toHaveBeenCalled();
+    const notif = uiNotificationService.show.mock.calls[0][0];
+    expect(notif.title).toBe('Deletion Incomplete');
+    expect(notif.type).toBe('warning');
+  });
+
+  it('removes the display set only after a successful storage DELETE', async () => {
+    const dialog = makeDialogService();
+    const displaySetService = {
+      getDisplaySetByUID: jest.fn(() => ({ SeriesInstanceUID: 'series-x' })),
+      deleteDisplaySet: jest.fn(),
+    };
+    const uiNotificationService = { show: jest.fn() };
+    const aiResultsService = { removeDisplaySetsFromCache: jest.fn() };
+    const svc = makeServices({
+      displaySetService,
+      uiDialogService: dialog.service,
+      uiNotificationService,
+      aiResultsService,
+    });
+    (global as any).fetch = jest
+      .fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => [{ Type: 'Series', ID: 'orthanc-1' }] }) // lookup
+      .mockResolvedValueOnce({ ok: true, status: 200 }); // DELETE succeeds
+
+    render(
+      <StudyBrowserNested
+        {...baseProps({ expandedStudyInstanceUIDs: ['study-1'], servicesManager: svc })}
+      />
+    );
+    fireEvent.click(screen.getByTitle('Delete AI Result'));
+    await act(async () => {
+      fireEvent.click(dialog.state.contentRender.getByText('Delete'));
+    });
+    await waitFor(() => expect(uiNotificationService.show).toHaveBeenCalled());
+
+    expect(displaySetService.deleteDisplaySet).toHaveBeenCalledWith('ai-1');
+    expect(aiResultsService.removeDisplaySetsFromCache).toHaveBeenCalledWith('study-1', ['ai-1']);
+    expect(uiNotificationService.show.mock.calls[0][0].type).toBe('success');
+  });
+
+  it('removes the display set when Orthanc reports no such series (already gone)', async () => {
+    const dialog = makeDialogService();
+    const displaySetService = {
+      getDisplaySetByUID: jest.fn(() => ({ SeriesInstanceUID: 'series-x' })),
+      deleteDisplaySet: jest.fn(),
+    };
+    const uiNotificationService = { show: jest.fn() };
+    const aiResultsService = { removeDisplaySetsFromCache: jest.fn() };
+    const svc = makeServices({
+      displaySetService,
+      uiDialogService: dialog.service,
+      uiNotificationService,
+      aiResultsService,
+    });
+    // Lookup succeeds but returns no Series entry → already absent from storage.
+    (global as any).fetch = jest.fn().mockResolvedValueOnce({ ok: true, json: async () => [] });
+
+    render(
+      <StudyBrowserNested
+        {...baseProps({ expandedStudyInstanceUIDs: ['study-1'], servicesManager: svc })}
+      />
+    );
+    fireEvent.click(screen.getByTitle('Delete AI Result'));
+    await act(async () => {
+      fireEvent.click(dialog.state.contentRender.getByText('Delete'));
+    });
+    await waitFor(() => expect(uiNotificationService.show).toHaveBeenCalled());
+
+    // Confirmed-absent series is dropped from the viewer (kept in sync), with no
+    // DELETE call attempted.
+    expect(displaySetService.deleteDisplaySet).toHaveBeenCalledWith('ai-1');
+    expect((global as any).fetch).toHaveBeenCalledTimes(1); // lookup only, no DELETE
+    expect(uiNotificationService.show.mock.calls[0][0].type).toBe('success');
+  });
+
+  it('skips a stale group entry that no longer resolves to a display set', async () => {
+    const dialog = makeDialogService();
+    // getDisplaySetByUID returns undefined → stale entry. Must NOT call
+    // deleteDisplaySet (which would splice at index -1 and drop the last set).
+    const displaySetService = {
+      getDisplaySetByUID: jest.fn(() => undefined),
+      deleteDisplaySet: jest.fn(),
+    };
+    const uiNotificationService = { show: jest.fn() };
+    const aiResultsService = { removeDisplaySetsFromCache: jest.fn() };
+    const svc = makeServices({
+      displaySetService,
+      uiDialogService: dialog.service,
+      uiNotificationService,
+      aiResultsService,
+    });
+    (global as any).fetch = jest.fn();
+
+    render(
+      <StudyBrowserNested
+        {...baseProps({ expandedStudyInstanceUIDs: ['study-1'], servicesManager: svc })}
+      />
+    );
+    fireEvent.click(screen.getByTitle('Delete AI Result'));
+    await act(async () => {
+      fireEvent.click(dialog.state.contentRender.getByText('Delete'));
+    });
+    await waitFor(() => expect(uiNotificationService.show).toHaveBeenCalled());
+
+    expect(displaySetService.deleteDisplaySet).not.toHaveBeenCalled();
+    expect((global as any).fetch).not.toHaveBeenCalled();
+  });
+
+  it('dismissing the dialog via Esc/overlay resolves without deleting', async () => {
+    const dialog = makeDialogService();
+    const displaySetService = { getDisplaySetByUID: jest.fn(), deleteDisplaySet: jest.fn() };
+    const uiNotificationService = { show: jest.fn() };
+    const svc = makeServices({
+      displaySetService,
+      uiDialogService: dialog.service,
+      uiNotificationService,
+    });
+    (global as any).fetch = jest.fn();
+
+    render(
+      <StudyBrowserNested
+        {...baseProps({ expandedStudyInstanceUIDs: ['study-1'], servicesManager: svc })}
+      />
+    );
+    fireEvent.click(screen.getByTitle('Delete AI Result'));
+    // Esc / overlay click: onClose fires with no button pressed, which must still
+    // settle the awaited Promise.
+    await act(async () => {
+      dialog.state.options.onClose(dialog.state.options.id);
+    });
+
+    expect((global as any).fetch).not.toHaveBeenCalled();
+    expect(displaySetService.deleteDisplaySet).not.toHaveBeenCalled();
+    expect(uiNotificationService.show).not.toHaveBeenCalled();
+    // The custom onClose must still dismiss the modal (the provider's spread
+    // overrides its own hide, so we dismiss explicitly via the service).
+    expect(dialog.service.hide).toHaveBeenCalledWith('delete-ai-result-confirmation');
   });
 
   it('falls back to "No Study Date" when the study has no date', () => {

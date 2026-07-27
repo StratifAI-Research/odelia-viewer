@@ -187,7 +187,8 @@ describe('ChatPanel', () => {
     await act(async () => {
       fireEvent.click(screen.getByTitle('Settings'));
     });
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/debug/config'));
+    // Uses the same-origin nginx route (jsdom's hostname is `localhost`).
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/chat-api/debug/config'));
     expect(screen.getByText('Chat Settings')).toBeTruthy();
     expect((screen.getByDisplayValue('You are helpful') as HTMLTextAreaElement)).toBeTruthy();
     expect((screen.getByDisplayValue('medgemma') as HTMLInputElement)).toBeTruthy();

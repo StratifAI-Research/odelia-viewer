@@ -2,20 +2,29 @@ import { useState, useEffect } from 'react';
 import { AIResult } from '../types';
 
 export const useAIResult = (displaySets: any[], servicesManager: any): AIResult | null => {
-  const [aiResult, setAIResult] = useState<AIResult | null>(null);
+  const studyInstanceUID: string | undefined =
+    displaySets.length > 0 ? displaySets[0].StudyInstanceUID : undefined;
+
+  // Track which study the resolved result belongs to.
+  const [resolved, setResolved] = useState<{ uid?: string; result: AIResult | null }>({
+    result: null,
+  });
 
   useEffect(() => {
-    if (displaySets.length > 0) {
-      const studyInstanceUID = displaySets[0].StudyInstanceUID;
+    if (studyInstanceUID) {
       // Use the extension-registered service (registered in preRegistration) so the
       // viewport's initial AI result shares selection state with every other consumer.
       const aiResultsService = servicesManager?.services?.aiResultsService;
-      if (studyInstanceUID && aiResultsService) {
+      if (aiResultsService) {
         const result = aiResultsService.getSelectedAIResult(studyInstanceUID, servicesManager);
-        setAIResult(result);
+        setResolved({ uid: studyInstanceUID, result });
+        return;
       }
     }
-  }, [displaySets, servicesManager]);
+    setResolved({ uid: studyInstanceUID, result: null });
+  }, [studyInstanceUID, servicesManager]);
 
-  return aiResult;
+  // Only surface a result resolved for the current study; return null until the
+  // effect re-resolves after a study change.
+  return resolved.uid === studyInstanceUID ? resolved.result : null;
 };

@@ -78,9 +78,10 @@ const DatePicker = (props) => {
       /** REQUIRED */
       date={parsedDate}
       onDateChange={(date) => {
-
+        // react-dates passes null when the field is cleared; guard against
+        // calling .format() on null (which previously crashed the panel).
         onChange({
-          date: date.format('YYYYMMDD'),
+          date: date ? date.format('YYYYMMDD') : '',
         })
       }}
       focused={focused}

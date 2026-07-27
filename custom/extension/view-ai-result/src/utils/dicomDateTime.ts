@@ -72,6 +72,13 @@ export function dicomDateTimeToIsoUtc(
   const month = parseInt(date.substring(4, 6), 10) - 1; // zero-based
   const day = parseInt(date.substring(6, 8), 10);
 
+  // Reject a malformed-but-8-char date (e.g. "2024ABCD"): parseInt yields NaN
+  // and `new Date(NaN).toISOString()` would throw a RangeError on unguarded
+  // callers (resultTsFromDisplaySet does not wrap this).
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+    return undefined;
+  }
+
   let hour = 0;
   let minute = 0;
   let second = 0;
@@ -109,7 +116,6 @@ export function dicomDateTimeToIsoUtc(
  * Derive an ISO-8601 UTC timestamp for an AI result from a display set, using the
  * standard DICOM date/time fallback chain (InstanceCreation → Series → Content → Study)
  * plus the instance timezone offset. Returns undefined when no usable date is present.
- * Consolidates the fallback chain previously inlined in AIResultsService/FeedbackPanel.
  */
 export function resultTsFromDisplaySet(displaySet?: any): string | undefined {
   if (!displaySet) {

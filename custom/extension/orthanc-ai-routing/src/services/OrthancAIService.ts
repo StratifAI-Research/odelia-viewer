@@ -205,6 +205,10 @@ class OrthancAIService {
    * @returns The Orthanc study ID
    */
   async getOrthancStudyId(studyInstanceUID: string): Promise<string> {
+    // Bound the lookup with a timeout (mirrors postRouting) so a hung Orthanc
+    // does not block routing indefinitely.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
 
       // Call Orthanc's lookup API with the StudyInstanceUID as plain text in the body
@@ -214,6 +218,7 @@ class OrthancAIService {
           'Content-Type': 'text/plain',
         },
         body: studyInstanceUID, // Send the UID directly as plain text
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -245,6 +250,8 @@ class OrthancAIService {
     } catch (error) {
       console.error('Error getting Orthanc study ID:', error);
       throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
@@ -263,8 +270,10 @@ class OrthancAIService {
       const response = await fetch(url);
 
       if (!response.ok) {
+        // Do not cache a transient fetch failure: a network blip would otherwise
+        // permanently degrade the model to flat series selection until
+        // clearManifestCache() (never called from the UI) or a page reload.
         console.warn(`Manifest fetch failed (${response.status}), falling back`);
-        this.manifestCache.set(endpointUrl, null);
         return null;
       }
 
@@ -284,8 +293,8 @@ class OrthancAIService {
       this.manifestCache.set(endpointUrl, manifest);
       return manifest;
     } catch (error) {
+      // Transient error — do not cache, so a later call can retry.
       console.warn('Error fetching model manifest:', error);
-      this.manifestCache.set(endpointUrl, null);
       return null;
     }
   }
@@ -535,25 +544,42 @@ class OrthancAIService {
   async startWorkitemPolling(
     workitemUid: string,
     callback: (status: WorkitemStatus) => void,
-    interval: number = 500
+    interval: number = 500,
+    maxDurationMs: number = 10 * 60 * 1000
   ): Promise<void> {
     // Stop any existing polling
     this.stopWorkitemPolling();
 
+    // Bound the number of ticks so a workitem that never reaches a terminal
+    // state — or a persistently failing/404-ing endpoint — cannot poll forever
+    // (previously it stopped only on COMPLETED/CANCELED and kept retrying on any
+    // error). On timeout, stop and surface it to the caller.
+    const maxAttempts = Math.max(1, Math.ceil(maxDurationMs / interval));
+    let attempts = 0;
+
     // Start polling
     this.workitemPollingInterval = window.setInterval(async () => {
+      attempts++;
       try {
         const status = await this.getWorkitemStatus(workitemUid);
         callback(status);
 
         // Stop polling if workitem reached a terminal state
         if (status.state === 'COMPLETED' || status.state === 'CANCELED') {
-
           this.stopWorkitemPolling();
+          return;
         }
       } catch (error) {
         console.error('Error during workitem polling:', error);
-        // Don't stop polling on error, continue trying
+        // Don't stop polling on a single error — a transient failure may recover.
+      }
+
+      if (attempts >= maxAttempts) {
+        this.stopWorkitemPolling();
+        callback({
+          state: 'CANCELED',
+          cancellationReason: `Polling timed out after ${maxAttempts} attempts`,
+        });
       }
     }, interval);
   }

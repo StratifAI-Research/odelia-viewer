@@ -130,6 +130,38 @@ describe('AIResultsService', () => {
       expect(sm.services.displaySetService.getActiveDisplaySets.mock.calls.length).toBe(callsAfterFirst);
     });
 
+    it('re-evaluates hasHeatmap when the matching SC arrives after the SR was cached', () => {
+      const displaySets: any[] = [srDisplaySet('sr-1')];
+      const handlers: Array<() => void> = [];
+      const displaySetService = {
+        EVENTS: { DISPLAY_SETS_ADDED: 'DISPLAY_SETS_ADDED' },
+        getActiveDisplaySets: jest.fn(() => displaySets),
+        getDisplaySetByUID: jest.fn(
+          (uid: string) => displaySets.find(d => d.displaySetInstanceUID === uid) ?? null
+        ),
+        subscribe: jest.fn((evt: string, cb: () => void) => {
+          if (evt === 'DISPLAY_SETS_ADDED') {
+            handlers.push(cb);
+          }
+          return { unsubscribe: () => {} };
+        }),
+      };
+      const sm = makeServicesManager({
+        services: { displaySetService, uiNotificationService: { show: jest.fn() } },
+      });
+      const svc = new AIResultsService(sm.services.uiNotificationService);
+
+      // First read: only the SR is loaded -> no heatmap, result cached.
+      expect(svc.getAllAIResults('study-1', sm)[0].hasHeatmap).toBe(false);
+
+      // The matching SC (heatmap) streams in a beat later.
+      displaySets.push(scDisplaySet('sc-1'));
+      handlers.forEach(cb => cb()); // displaySetService emits DISPLAY_SETS_ADDED
+
+      // Cache was invalidated -> hasHeatmap is re-evaluated as true.
+      expect(svc.getAllAIResults('study-1', sm)[0].hasHeatmap).toBe(true);
+    });
+
     it('produces an error result when extraction throws, without throwing', () => {
       const bad = srDisplaySet('sr-bad');
       // Force extractAIResultData to throw via a getter that explodes.

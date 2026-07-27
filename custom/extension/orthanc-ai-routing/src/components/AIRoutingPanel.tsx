@@ -38,6 +38,12 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
 
   const ProgressLoadingBar = customizationService.getCustomization('ui.progressLoadingBar');
 
+  // Read the URL-derived study UID on every render so it stays correct across
+  // in-app navigation (route/query changes while this panel stays mounted).
+  // It returns a stable string when the URL is unchanged, so it does not cause
+  // effect churn; the earlier per-render console.log (the real cost flagged in
+  // review) was removed in the debug-scaffolding pass. Do NOT memoize on the
+  // stable service — that would freeze it to the study active at mount.
   const dicomStudyUID = orthancAIService.getDicomStudyInstanceUIDFromURL();
 
   const { StudyInstanceUIDs } = useImageViewer();
@@ -121,12 +127,13 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
     activeStudyUID,
   });
 
+  const reloadTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const routing = useAIRouting({
     orthancAIService,
     uiNotificationService,
     onComplete: () => {
-
-      setTimeout(() => {
+      reloadTimeoutRef.current = setTimeout(() => {
         window.location.reload();
       }, 1000);
     },
@@ -135,6 +142,10 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
   useEffect(() => {
     return () => {
       orthancAIService.stopWorkitemPolling();
+      // Clear the pending post-completion reload so it can't fire after unmount.
+      if (reloadTimeoutRef.current) {
+        clearTimeout(reloadTimeoutRef.current);
+      }
     };
   }, [orthancAIService]);
 

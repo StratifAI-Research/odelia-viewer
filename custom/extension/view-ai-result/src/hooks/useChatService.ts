@@ -82,6 +82,40 @@ export function useChatService(): UseChatServiceReturn {
     return { visibleText, thinkingText };
   }, []);
 
+  // Reset the per-stream scratch refs. Safe to call from any teardown path.
+  const resetStreamingRefs = useCallback(() => {
+    currentStreamingMessageRef.current = null;
+    streamingContentRef.current = '';
+    streamingThinkingRef.current = '';
+    rawStreamingRef.current = '';
+    hasReceivedThinkingTokenRef.current = false;
+  }, []);
+
+  // Finalize the in-flight assistant placeholder (if any) and clear streaming
+  // state. Called from every path that ends a stream (done, cancel, clear, error,
+  // disconnect). `mutate` can adjust the finalized message (append a marker,
+  // backfill error text).
+  const finishStream = useCallback(
+    (mutate?: (msg: ChatMessage) => ChatMessage) => {
+      const messageId = currentStreamingMessageRef.current;
+      resetStreamingRefs();
+      setIsStreaming(false);
+      if (!messageId) {
+        return;
+      }
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (msg.id !== messageId) {
+            return msg;
+          }
+          const finalized: ChatMessage = { ...msg, isStreaming: false };
+          return mutate ? mutate(finalized) : finalized;
+        })
+      );
+    },
+    [resetStreamingRefs]
+  );
+
   // Connect to WebSocket
   const connect = useCallback(async () => {
     if (!chatService) {
@@ -106,7 +140,8 @@ export function useChatService(): UseChatServiceReturn {
     chatService.disconnect();
     setIsConnected(false);
     setSessionId(null);
-  }, [chatService]);
+    finishStream();
+  }, [chatService, finishStream]);
 
   // Send a message
   const sendMessage = useCallback(
@@ -157,38 +192,21 @@ export function useChatService(): UseChatServiceReturn {
   const cancelGeneration = useCallback(() => {
     if (!chatService) return;
     chatService.cancelGeneration();
-
-    // Mark current message as complete
-    const messageId = currentStreamingMessageRef.current;
-    if (messageId) {
-      currentStreamingMessageRef.current = null;
-      streamingContentRef.current = '';
-      streamingThinkingRef.current = '';
-      rawStreamingRef.current = '';
-      hasReceivedThinkingTokenRef.current = false;
-      setMessages((prev) =>
-        prev.map((msg) =>
-          msg.id === messageId
-            ? { ...msg, isStreaming: false, content: msg.content + ' [cancelled]' }
-            : msg
-        )
-      );
-    }
-    setIsStreaming(false);
-  }, [chatService]);
+    finishStream((msg) => ({ ...msg, content: msg.content + ' [cancelled]' }));
+  }, [chatService, finishStream]);
 
   // Clear message history
   const clearHistory = useCallback(() => {
+    // Cancel in-flight generation first so no more tokens arrive for the dropped
+    // messages, then clear the list and streaming state.
+    chatService?.cancelGeneration();
     setMessages([]);
     setError(null);
     setPreprocessingStatus(null);
     setPreprocessingProgress(null);
-    currentStreamingMessageRef.current = null;
-    streamingContentRef.current = '';
-    streamingThinkingRef.current = '';
-    rawStreamingRef.current = '';
-    hasReceivedThinkingTokenRef.current = false;
-  }, []);
+    resetStreamingRefs();
+    setIsStreaming(false);
+  }, [chatService, resetStreamingRefs]);
 
   // Subscribe to service events
   useEffect(() => {
@@ -210,7 +228,8 @@ export function useChatService(): UseChatServiceReturn {
       chatService.subscribe(CHAT_EVENTS.DISCONNECTED, () => {
         setIsConnected(false);
         setSessionId(null);
-        setIsStreaming(false);
+        // Finalize any message still marked streaming — no more frames will arrive.
+        finishStream();
       })
     );
 
@@ -275,22 +294,7 @@ export function useChatService(): UseChatServiceReturn {
     // Message complete event
     subscriptions.push(
       chatService.subscribe(CHAT_EVENTS.MESSAGE_COMPLETE, () => {
-        const messageId = currentStreamingMessageRef.current;
-        if (messageId) {
-          currentStreamingMessageRef.current = null;
-          streamingContentRef.current = '';
-          streamingThinkingRef.current = '';
-          rawStreamingRef.current = '';
-          hasReceivedThinkingTokenRef.current = false;
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === messageId
-                ? { ...msg, isStreaming: false }
-                : msg
-            )
-          );
-        }
-        setIsStreaming(false);
+        finishStream();
         setPreprocessingStatus(null);
         setPreprocessingProgress(null);
       })
@@ -300,27 +304,13 @@ export function useChatService(): UseChatServiceReturn {
     subscriptions.push(
       chatService.subscribe(CHAT_EVENTS.ERROR, (data) => {
         setError(data.error || 'Unknown error');
-        setIsStreaming(false);
         setPreprocessingStatus(null);
         setPreprocessingProgress(null);
-
-        // Update streaming message with error
-        const messageId = currentStreamingMessageRef.current;
-        if (messageId) {
-          currentStreamingMessageRef.current = null;
-          streamingContentRef.current = '';
-          setMessages((prev) =>
-            prev.map((msg) =>
-              msg.id === messageId
-                ? {
-                    ...msg,
-                    isStreaming: false,
-                    content: msg.content || `Error: ${data.error}`,
-                  }
-                : msg
-            )
-          );
-        }
+        // Finalize the placeholder, backfilling error text only if nothing streamed.
+        finishStream((msg) => ({
+          ...msg,
+          content: msg.content || `Error: ${data.error}`,
+        }));
       })
     );
 
@@ -336,7 +326,7 @@ export function useChatService(): UseChatServiceReturn {
     return () => {
       subscriptions.forEach((sub) => sub.unsubscribe());
     };
-  }, [chatService]);
+  }, [chatService, finishStream, splitThinkingFromContent]);
 
   // Auto-connect on mount if service available
   useEffect(() => {

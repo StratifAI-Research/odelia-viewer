@@ -88,8 +88,11 @@ export const StudyBrowserNested: React.FC<Props> = ({
 
     const { displaySetService, uiDialogService, uiNotificationService } = servicesManager.services;
 
-    // Show confirmation dialog
+    // Resolve from `onClose` (fired on every close path: button, Esc, overlay)
+    // rather than the buttons alone, so a dismissal always settles the Promise.
+    // The buttons record the decision; any other close defaults to "cancel".
     const confirmed = await new Promise<boolean>((resolve) => {
+      let decision = false;
       uiDialogService.show({
         id: 'delete-ai-result-confirmation',
         title: 'Delete AI Result',
@@ -108,8 +111,8 @@ export const StudyBrowserNested: React.FC<Props> = ({
               <button
                 className="px-4 py-2 bg-secondary-light hover:bg-secondary-main text-white rounded"
                 onClick={() => {
+                  decision = false;
                   hide('delete-ai-result-confirmation');
-                  resolve(false);
                 }}
               >
                 Cancel
@@ -117,8 +120,8 @@ export const StudyBrowserNested: React.FC<Props> = ({
               <button
                 className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded"
                 onClick={() => {
+                  decision = true;
                   hide('delete-ai-result-confirmation');
-                  resolve(true);
                 }}
               >
                 Delete
@@ -129,6 +132,12 @@ export const StudyBrowserNested: React.FC<Props> = ({
         containerClassName: 'max-w-md',
         shouldCloseOnEsc: true,
         shouldCloseOnOverlayClick: true,
+        // DialogProvider spreads show() options after its own onClose={hide}, so
+        // this onClose replaces the provider's dismiss — call hide() explicitly.
+        onClose: (dialogId?: string) => {
+          uiDialogService.hide(dialogId ?? 'delete-ai-result-confirmation');
+          resolve(decision);
+        },
       });
     });
 
@@ -141,20 +150,29 @@ export const StudyBrowserNested: React.FC<Props> = ({
 
     try {
       const { aiResultsService } = servicesManager.services;
-      const displaySetUIDs: string[] = [];
+      const removedDisplaySetUIDs: string[] = [];
 
       // Delete from both Orthanc storage and OHIF viewer
       // Note: /tools is at root level, /series is under /pacs
       const deleteResults = { viewer: 0, storage: 0, storageFailed: 0 };
 
       for (const displaySet of group.displaySets) {
+        const uid = displaySet.displaySetInstanceUID;
         try {
-          // Get the real display set to access SeriesInstanceUID
-          const realDisplaySet = displaySetService.getDisplaySetByUID(displaySet.displaySetInstanceUID);
-          displaySetUIDs.push(displaySet.displaySetInstanceUID);
+          // Unresolvable UID means a stale group entry already gone from the
+          // viewer. Skip it — deleteDisplaySet() splices at the findIndex result,
+          // so an unknown UID would splice at -1 and drop an unrelated display set.
+          const realDisplaySet = displaySetService.getDisplaySetByUID(uid);
+          if (!realDisplaySet) {
+            continue;
+          }
 
-          // 1. Delete from Orthanc storage
-          if (realDisplaySet?.SeriesInstanceUID) {
+          // 1. Delete from Orthanc storage. `storageOk` stays true when there is
+          //    no server copy to delete; set false while the delete is pending and
+          //    true again once the server copy is confirmed gone.
+          let storageOk = true;
+          if (realDisplaySet.SeriesInstanceUID) {
+            storageOk = false;
             try {
               // Step 1: Lookup Orthanc internal ID from DICOM SeriesInstanceUID
               const lookupResponse = await fetch('/tools/lookup', {
@@ -176,14 +194,16 @@ export const StudyBrowserNested: React.FC<Props> = ({
 
                   if (deleteResponse.ok) {
                     deleteResults.storage++;
-
+                    storageOk = true;
                   } else {
                     deleteResults.storageFailed++;
                     console.error(`Failed to delete from Orthanc: ${deleteResponse.status} ${deleteResponse.statusText}`);
                   }
                 } else {
-                  deleteResults.storageFailed++;
-                  console.warn(`No Orthanc series entry found for ${realDisplaySet.SeriesInstanceUID}`);
+                  // Not in Orthanc: already absent, so removing it from the viewer
+                  // keeps them in sync (distinct from a lookup/network error).
+                  storageOk = true;
+                  console.warn(`No Orthanc series entry found for ${realDisplaySet.SeriesInstanceUID}; treating as already deleted`);
                 }
               } else {
                 deleteResults.storageFailed++;
@@ -195,43 +215,38 @@ export const StudyBrowserNested: React.FC<Props> = ({
             }
           }
 
-          // 2. Delete display set from OHIF viewer (always do this)
-          displaySetService.deleteDisplaySet(displaySet.displaySetInstanceUID);
-          deleteResults.viewer++;
-
+          // 2. Remove from the viewer/cache only once the server copy is gone, so
+          //    a failed DELETE doesn't hide a series a reload would bring back.
+          if (storageOk) {
+            displaySetService.deleteDisplaySet(uid);
+            deleteResults.viewer++;
+            removedDisplaySetUIDs.push(uid);
+          }
         } catch (err) {
-          console.error(`Failed to delete display set ${displaySet.displaySetInstanceUID}:`, err);
+          console.error(`Failed to delete display set ${uid}:`, err);
         }
       }
 
-      // Clear AI results cache after deletion
-      if (aiResultsService && displaySetUIDs.length > 0) {
-
-        aiResultsService.removeDisplaySetsFromCache(studyInstanceUid, displaySetUIDs);
+      // Clear AI results cache only for the display sets actually removed.
+      if (aiResultsService && removedDisplaySetUIDs.length > 0) {
+        aiResultsService.removeDisplaySetsFromCache(studyInstanceUid, removedDisplaySetUIDs);
       }
 
       // Show appropriate notification based on results
       const totalDisplaySets = group.displaySets.length;
-      if (deleteResults.viewer === totalDisplaySets && deleteResults.storageFailed === 0) {
+      if (deleteResults.storageFailed === 0 && deleteResults.viewer === totalDisplaySets) {
         uiNotificationService.show({
           title: 'AI Result Deleted',
           message: `Successfully deleted AI result from viewer and storage: ${group.label}`,
           type: 'success',
           duration: 3000,
         });
-      } else if (deleteResults.viewer === totalDisplaySets && deleteResults.storageFailed > 0) {
-        uiNotificationService.show({
-          title: 'Partial Deletion',
-          message: `Removed from viewer, but ${deleteResults.storageFailed} series failed to delete from storage.`,
-          type: 'warning',
-          duration: 5000,
-        });
       } else {
         uiNotificationService.show({
-          title: 'Deletion Issues',
-          message: `Removed ${deleteResults.viewer}/${totalDisplaySets} from viewer. Storage deletions: ${deleteResults.storage} succeeded, ${deleteResults.storageFailed} failed.`,
+          title: 'Deletion Incomplete',
+          message: `Removed ${deleteResults.viewer}/${totalDisplaySets} from the viewer. ${deleteResults.storageFailed} series failed to delete from storage and were kept in the viewer to stay in sync with storage.`,
           type: 'warning',
-          duration: 5000,
+          duration: 6000,
         });
       }
     } catch (error) {

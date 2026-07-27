@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button, Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '@ohif/ui-next';
 import {
   AI_ENDPOINTS_STORAGE_KEY,
@@ -69,7 +69,18 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
 
-  // Load endpoints from localStorage or config on component mount
+  // Keep the latest currentEndpoint / onEndpointChange available to the
+  // mount-load effect without listing them as dependencies. They were in its dep
+  // array, and onEndpointChange is passed unmemoized from the parent, so the
+  // effect re-ran on nearly every render — re-reading localStorage and calling
+  // setEndpoints (which retriggers the save effect), constantly re-hydrating
+  // in-memory state from storage.
+  const currentEndpointRef = useRef(currentEndpoint);
+  currentEndpointRef.current = currentEndpoint;
+  const onEndpointChangeRef = useRef(onEndpointChange);
+  onEndpointChangeRef.current = onEndpointChange;
+
+  // Load endpoints from localStorage or config on component mount (once).
   useEffect(() => {
     let loadedEndpoints: AIEndpoint[] = [];
 
@@ -101,10 +112,12 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
     setIsLoading(false);
 
     // If no current endpoint is selected, select the first one
-    if (!currentEndpoint && loadedEndpoints.length > 0) {
-      onEndpointChange(loadedEndpoints[0]);
+    if (!currentEndpointRef.current && loadedEndpoints.length > 0) {
+      onEndpointChangeRef.current(loadedEndpoints[0]);
     }
-  }, [currentEndpoint, onEndpointChange]);
+    // Mount-only: read the latest currentEndpoint/onEndpointChange via refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Save endpoints to localStorage whenever they change
   useEffect(() => {

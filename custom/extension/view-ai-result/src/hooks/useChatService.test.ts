@@ -134,6 +134,57 @@ describe('useChatService', () => {
     expect(result.current.messages).toEqual([]);
   });
 
+  // --- consistent stream cleanup across teardown paths ---
+
+  it('DISCONNECTED finalizes an in-flight streaming message', () => {
+    const chatService = makeChatService();
+    const { result } = setup(chatService);
+    act(() => result.current.sendMessage('hi'));
+    act(() => chatService.emit(CHAT_EVENTS.TOKEN, { content: 'partial' }));
+    expect(result.current.messages[1].isStreaming).toBe(true);
+
+    // Socket drops mid-stream: the placeholder must not stay stuck streaming.
+    act(() => chatService.emit(CHAT_EVENTS.DISCONNECTED, {}));
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.messages[1].isStreaming).toBe(false);
+    expect(result.current.messages[1].content).toBe('partial');
+  });
+
+  it('clearHistory cancels backend generation and clears streaming state', () => {
+    const chatService = makeChatService();
+    const { result } = setup(chatService);
+    act(() => result.current.sendMessage('hi'));
+    expect(result.current.isStreaming).toBe(true);
+    act(() => result.current.clearHistory());
+    expect(chatService.cancelGeneration).toHaveBeenCalled();
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.messages).toEqual([]);
+  });
+
+  it('cancelGeneration finalizes the streaming message with a cancelled marker', () => {
+    const chatService = makeChatService();
+    const { result } = setup(chatService);
+    act(() => result.current.sendMessage('hi'));
+    act(() => chatService.emit(CHAT_EVENTS.TOKEN, { content: 'abc' }));
+    act(() => result.current.cancelGeneration());
+    expect(chatService.cancelGeneration).toHaveBeenCalled();
+    expect(result.current.isStreaming).toBe(false);
+    expect(result.current.messages[1].isStreaming).toBe(false);
+    expect(result.current.messages[1].content).toBe('abc [cancelled]');
+  });
+
+  it('a late TOKEN after teardown is dropped (streaming refs reset)', () => {
+    const chatService = makeChatService();
+    const { result } = setup(chatService);
+    act(() => result.current.sendMessage('hi'));
+    act(() => chatService.emit(CHAT_EVENTS.DISCONNECTED, {}));
+    // The stream ref was cleared by finishStream, so a straggler token must not
+    // reopen or mutate the finalized message.
+    act(() => chatService.emit(CHAT_EVENTS.TOKEN, { content: 'late' }));
+    expect(result.current.messages[1].content).toBe('');
+    expect(result.current.messages[1].isStreaming).toBe(false);
+  });
+
   it('sets an error when no chat service is available', () => {
     withSystem(makeServicesManager({ services: { chatService: undefined } }));
     const { result } = renderHook(() => useChatService());
