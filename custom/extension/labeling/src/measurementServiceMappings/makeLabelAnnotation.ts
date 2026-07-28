@@ -11,8 +11,8 @@ export interface LabelAnnotationInput {
 
 /**
  * Build an ODELIALabel raw-annotation object for
- * `MeasurementService.addRawMeasurement`. Shared by initLabels (source 'inited') and
- * importCSVReport (source 'imported'), which previously duplicated this literal.
+ * `MeasurementService.addRawMeasurement`. Shared by initLabels (source 'inited')
+ * and importCSVReport (source 'imported').
  */
 export function makeLabelAnnotation({
   labelData,

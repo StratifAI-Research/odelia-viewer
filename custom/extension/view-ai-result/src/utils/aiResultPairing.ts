@@ -4,21 +4,18 @@ import { dicomDateTimeToIsoUtc } from './dicomDateTime';
  * Pairing between an AI structured report (SR) and its heatmap secondary
  * capture (SC).
  *
- * Historically this matched on exact `InstanceCreationDate` **and**
- * `InstanceCreationTime` string equality. That was fragile:
- * any sub-second or rounding difference between the SR's and SC's creation time
- * left a valid heatmap unpaired, and it could pair the wrong SC when several
- * models ran on the same study. It also computed a `ReferencedSOPInstanceUID`
- * that was never used.
- *
  * This module pairs by, in order of confidence:
  *   1. Referenced SOP-instance identity — the SR references the SC's SOP
  *      instance (or vice-versa). This is authoritative when present.
  *   2. Creation-time proximity within a small window — absorbs fractional /
  *      rounded timestamp differences while still refusing far-apart series.
  *
- * A single {@link findMatch} helper serves both directions (SR→SC and SC→SR),
- * replacing the two mirror-image functions the service used to carry.
+ * Exact `InstanceCreationDate` + `InstanceCreationTime` string equality is
+ * deliberately NOT used: any sub-second or rounding difference leaves a valid
+ * heatmap unpaired, and it can pair the wrong SC when several models ran on
+ * the same study.
+ *
+ * A single {@link findMatch} helper serves both directions (SR→SC and SC→SR).
  */
 
 /** Bound the recursive walk over referenced sequences (defensive; DICOM
@@ -115,8 +112,8 @@ export function haveSopIdentityLink(a: any, b: any): boolean {
 /**
  * Epoch (ms) of a display set's DICOM instance creation date+time, or
  * `undefined` when either is missing/malformed. Requiring both date and time
- * preserves the original matcher's "date and time present" contract; the
- * conversion tolerates fractional seconds so rounding no longer breaks pairing.
+ * enforces a "date and time present" contract; the conversion tolerates
+ * fractional seconds so rounding does not break pairing.
  */
 export function creationEpochMs(displaySet: any): number | undefined {
   const date = displaySet?.instance?.InstanceCreationDate;

@@ -41,8 +41,7 @@ export type PersistedEndpoint = Pick<AIEndpoint, 'id' | 'name' | 'url'>;
  * Return a persistence-safe copy of the endpoints, rebuilt from a known-safe
  * allow-list of fields. This is deliberately an allow-list (not `{ ...rest }`)
  * so that any field added to AIEndpoint later cannot silently leak into
- * localStorage — the endpoint form previously also collected credentials that
- * routing never used, and this guarded them out of storage.
+ * localStorage.
  */
 export const toPersistableEndpoints = (endpoints: AIEndpoint[]): PersistedEndpoint[] =>
   endpoints.map(({ id, name, url }) => ({ id, name, url }));

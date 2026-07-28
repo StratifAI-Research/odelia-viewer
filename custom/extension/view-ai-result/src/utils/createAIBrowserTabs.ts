@@ -22,8 +22,8 @@ interface AIEntry {
 /**
  * Group key for an AI entry. SR (report) display sets are keyed by
  * model + run datetime so two *different* models produced at the same DICOM
- * second stay in separate groups (previously they merged and were deleted
- * together). An SC (heatmap) joins the group of the SR it pairs with — by
+ * second stay in separate groups. An SC (heatmap) joins the group of the SR it
+ * pairs with — by
  * referenced SOP UID / time proximity — so a report and its heatmap stay
  * together; an unpaired heatmap falls back to a datetime-only key. Returns
  * `null` when the entry has no usable date (handled as a missing-date group).

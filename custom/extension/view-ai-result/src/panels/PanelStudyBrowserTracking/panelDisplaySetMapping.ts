@@ -2,18 +2,18 @@ import { extractAIResultData } from '../../utils/extractAIResultData';
 import { getStaticDate } from '../../utils/dateCache';
 
 /**
- * Pure display-set → thumbnail-props mapping for the study browser panel
- * Extracted from `PanelStudyBrowserTracking` so the AI decoration,
- * grouping, and navigation lookups are independently testable and no longer
- * entangled with the panel's subscriptions, timers, and viewport state.
+ * Pure display-set → thumbnail-props mapping for the study browser panel.
+ * Kept separate from `PanelStudyBrowserTracking` so the AI decoration,
+ * grouping, and navigation lookups are independently testable, free of the
+ * panel's subscriptions, timers, and viewport state.
  *
  * Note on caching: the expensive *static* props (AI-decorated description,
  * static date, component type) are memoized per display set in
- * `thumbnailPropsCache`. Unlike the previous implementation, cached values are
- * never mutated in place — each call returns a fresh object combining the cached
- * static props with freshly-computed dynamic props (loading progress, image
- * src, tracked/selected state). Mutating cached objects defeated React's
- * referential change detection ("cached props are mutated in place").
+ * `thumbnailPropsCache`. Cached values are never mutated in place — each call
+ * returns a fresh object combining the cached static props with
+ * freshly-computed dynamic props (loading progress, image src,
+ * tracked/selected state). Mutating cached objects would defeat React's
+ * referential change detection.
  */
 
 export const thumbnailNoImageModalities = [

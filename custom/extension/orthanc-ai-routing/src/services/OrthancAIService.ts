@@ -536,9 +536,8 @@ class OrthancAIService {
     this.stopWorkitemPolling();
 
     // Bound the number of ticks so a workitem that never reaches a terminal
-    // state — or a persistently failing/404-ing endpoint — cannot poll forever
-    // (previously it stopped only on COMPLETED/CANCELED and kept retrying on any
-    // error). On timeout, stop and surface it to the caller.
+    // state — or a persistently failing/404-ing endpoint — cannot poll forever.
+    // On timeout, stop and surface it to the caller.
     const maxAttempts = Math.max(1, Math.ceil(maxDurationMs / interval));
     let attempts = 0;
 

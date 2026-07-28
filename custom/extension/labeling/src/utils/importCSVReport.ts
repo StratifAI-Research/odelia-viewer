@@ -139,7 +139,7 @@ export default function importCSVReport(
       dataSource
     );
     // Seed the lesion's labeling table from the imported label_data. `label` is
-    // '' to mark it imported; LabelingTable no longer wipes label_data for such
+    // '' to mark it imported; LabelingTable preserves label_data for such
     // measurements (see seedDefaultLabelData).
     const measurement = measurementService.getMeasurement(uid);
     measurement.label_data = annotation.data.label_data;
@@ -149,10 +149,9 @@ export default function importCSVReport(
 }
 
 // Collate label rows by StudyInstanceUID so a patient with multiple studies
-// yields one label per study. Previously this keyed solely on 'Patient ID', so
-// for a multi-study patient only the last row survived (and it set the single
-// label's referenceStudyUID). Falls back to 'Patient ID' for rows without a
-// StudyInstanceUID.
+// yields one label per study. Keying on 'Patient ID' alone would keep only the
+// last row for a multi-study patient. Falls back to 'Patient ID' for rows
+// without a StudyInstanceUID.
 function _collateLabels(parsedMeasurements) {
   const collatedLabels = {};
   parsedMeasurements.forEach(element => {

@@ -53,7 +53,7 @@ export default function PanelLesionTable({
     // jumpToImage({ id, isActive });
 
     // Defaulted so the Enter-key handler can call this with no args without
-    // crashing on `action.id` (previously threw); Enter then just dismisses.
+    // crashing on `action.id`; Enter then just dismisses.
     const onSubmitHandler = ({ action }: { action?: any } = {}) => {
       switch (action?.id) {
         case 'delete': {
