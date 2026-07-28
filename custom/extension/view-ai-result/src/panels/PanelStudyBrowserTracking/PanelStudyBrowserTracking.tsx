@@ -227,8 +227,6 @@ export default function PanelStudyBrowserTracking({
 
   const [actionIcons, setActionIcons] = useState(defaultActionIcons);
 
-  // AI Results Service is now accessed from servicesManager
-
   const updateActionIconValue = actionIcon => {
     actionIcon.value = !actionIcon.value;
     const newActionIcons = [...actionIcons];

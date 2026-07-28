@@ -188,7 +188,7 @@ export function createAIBrowserTabs(
     });
   });
 
-  // 3. Missing date tabs grouped by model
+  // 3. Missing-date tab — every dateless AI result shares one 'UNKNOWN' bucket
   Array.from(missingDateGroups.values()).forEach((group, index) => {
     tabs.push({
       name: `ai-missing-${index}`,

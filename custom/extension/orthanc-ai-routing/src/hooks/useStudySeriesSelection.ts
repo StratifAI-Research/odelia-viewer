@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { utils, DicomMetadataStore } from '@ohif/core';
 import { SeriesInfo } from '../components/SeriesSelector';
 
-// StudyInfo type (no longer using StudySelector component)
+// Study metadata maintained by the study/series selection hook.
 export interface StudyInfo {
   studyInstanceUid: string;
   date: string;
