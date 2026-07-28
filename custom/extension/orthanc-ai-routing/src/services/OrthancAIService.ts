@@ -256,8 +256,8 @@ class OrthancAIService {
 
       if (!response.ok) {
         // Do not cache a transient fetch failure: a network blip would otherwise
-        // permanently degrade the model to flat series selection until
-        // clearManifestCache() (never called from the UI) or a page reload.
+        // degrade the model to flat series selection until the cache is cleared
+        // (on endpoint change) or the page is reloaded.
         console.warn(`Manifest fetch failed (${response.status}), falling back`);
         return null;
       }
@@ -386,6 +386,8 @@ class OrthancAIService {
    * Routes selected series from a study to the AI server
    * @param dicomStudyUID The DICOM StudyInstanceUID
    * @param seriesUIDs Array of DICOM SeriesInstanceUIDs to route
+   * @param inputMapping Optional role→series mapping for multi-input models
+   * @param inputConfigurationId Optional manifest input-configuration ID
    */
   async routeSeriesToAI(
     dicomStudyUID: string,

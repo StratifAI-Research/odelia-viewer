@@ -37,9 +37,8 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
   // Read the URL-derived study UID on every render so it stays correct across
   // in-app navigation (route/query changes while this panel stays mounted).
   // It returns a stable string when the URL is unchanged, so it does not cause
-  // effect churn; the earlier per-render console.log (the real cost flagged in
-  // review) was removed in the debug-scaffolding pass. Do NOT memoize on the
-  // stable service — that would freeze it to the study active at mount.
+  // effect churn. Do NOT memoize on the stable service — that would freeze it
+  // to the study active at mount.
   const dicomStudyUID = orthancAIService.getDicomStudyInstanceUIDFromURL();
 
   const { StudyInstanceUIDs } = useImageViewer();
