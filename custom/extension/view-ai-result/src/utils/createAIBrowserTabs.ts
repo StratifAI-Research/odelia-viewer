@@ -38,8 +38,10 @@ export function createAIBrowserTabs(
 ) {
   // Group display sets
   const originalSeries = new Map();
-  const aiResultGroups = new Map(); // Key: "modelName|datetime", Value: series data
-  const missingDateGroups = new Map(); // Key: 'UNKNOWN', Value: series data
+  // Both keyed by report identity (SR SOP Instance UID); whether an entry has a
+  // usable date decides which map holds its group. Value: series data.
+  const aiResultGroups = new Map();
+  const missingDateGroups = new Map();
 
   // First pass: split original series from AI results, resolving each AI
   // thumbnail's real display set (instance metadata) once.
@@ -176,7 +178,8 @@ export function createAIBrowserTabs(
     });
   });
 
-  // 3. Missing-date tab — every dateless AI result shares one 'UNKNOWN' bucket
+  // 3. Missing-date tabs — one per report identity, so distinct dateless
+  //    reports stay in separate tabs rather than merging into one bucket
   Array.from(missingDateGroups.values()).forEach((group, index) => {
     tabs.push({
       name: `ai-missing-${index}`,

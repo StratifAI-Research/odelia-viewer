@@ -14,7 +14,7 @@ import {
  * Build a nested tab structure with a single "All Studies" tab containing all studies.
  * Each study contains:
  *   – `originals` array: non-AI series displayed flat
- *   – `aiGroups` array: AI results grouped by InstanceCreationDateTime, each collapsible
+ *   – `aiGroups` array: AI results grouped by report SR SOP Instance UID, each collapsible
  *
  * This structure allows all studies to be visible in one panel with collapsible sections.
  */
