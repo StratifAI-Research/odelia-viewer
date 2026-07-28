@@ -40,7 +40,7 @@ function modeFactory() {
      */
     id,
     // Drives the launch URL (/{routeName}/...); the WorkList builds mode links from
-    // this, so it stays self-consistent. Renamed off the OHIF-template placeholder.
+    // this, so it stays self-consistent.
     routeName: 'send-ai',
     /**
      * Mode name, which is displayed in the viewer's UI in the workList, for the

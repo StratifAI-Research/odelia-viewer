@@ -3,7 +3,7 @@ import { getStaticDate } from '../../utils/dateCache';
 
 /**
  * Pure display-set → thumbnail-props mapping for the study browser panel
- * (M-17). Extracted from `PanelStudyBrowserTracking` so the AI decoration,
+ * Extracted from `PanelStudyBrowserTracking` so the AI decoration,
  * grouping, and navigation lookups are independently testable and no longer
  * entangled with the panel's subscriptions, timers, and viewport state.
  *
@@ -13,7 +13,7 @@ import { getStaticDate } from '../../utils/dateCache';
  * never mutated in place — each call returns a fresh object combining the cached
  * static props with freshly-computed dynamic props (loading progress, image
  * src, tracked/selected state). Mutating cached objects defeated React's
- * referential change detection (M-17: "cached props are mutated in place").
+ * referential change detection ("cached props are mutated in place").
  */
 
 export const thumbnailNoImageModalities = [

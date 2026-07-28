@@ -173,7 +173,7 @@ describe('AIEndpointConfig — form validation & add', () => {
 
   it('offers no credential fields and persists only id/name/url', () => {
     // The username/password inputs were removed — routing never sent them, so
-    // collecting/persisting them was misleading (OAR-M2/H-12).
+    // collecting/persisting them was misleading.
     seed([epA]);
     render(
       <AIEndpointConfig

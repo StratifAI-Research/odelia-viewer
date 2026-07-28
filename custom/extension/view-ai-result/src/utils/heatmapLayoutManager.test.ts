@@ -101,7 +101,7 @@ describe('HeatmapLayoutManager.toggleHeatmapLayout', () => {
     expect(arg.findOrCreateViewport().displaySetInstanceUIDs).toEqual([]);
   });
 
-  it('captures the prior layout on open and restores it on close (H-14)', () => {
+  it('captures the prior layout on open and restores it on close', () => {
     const setLayout = jest.fn();
     const priorState = {
       activeViewportId: 'viewport-0',

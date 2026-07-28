@@ -30,7 +30,7 @@ function makeServices(labelMappingOverride?: any[]) {
 }
 
 describe('importCSVReport', () => {
-  it('does not clear existing measurements when the label mapping is unregistered (LAB-M7)', () => {
+  it('does not clear existing measurements when the label mapping is unregistered', () => {
     const { measurementService, extensionManager } = makeServices([]); // no ODELIALabel mapping
     const rows = [{ 'Patient ID': 'P1', StudyInstanceUID: 'S1', Ethnicity: 'A' }];
     expect(() => importCSVReport({ measurementService, extensionManager } as any, rows)).toThrow();
@@ -38,7 +38,7 @@ describe('importCSVReport', () => {
     expect(measurementService.addRawMeasurement).not.toHaveBeenCalled();
   });
 
-  it('throws without clearing on empty input (LAB-M7)', () => {
+  it('throws without clearing on empty input', () => {
     const { measurementService, extensionManager } = makeServices();
     expect(() => importCSVReport({ measurementService, extensionManager } as any, [])).toThrow();
     expect(measurementService.clearMeasurements).not.toHaveBeenCalled();
@@ -70,7 +70,7 @@ describe('importCSVReport', () => {
     expect(measurementService.addRawMeasurement).toHaveBeenCalledTimes(1); // the study label only
   });
 
-  it('collates one label per StudyInstanceUID for a multi-study patient (LAB-M8)', () => {
+  it('collates one label per StudyInstanceUID for a multi-study patient', () => {
     const { measurementService, extensionManager } = makeServices();
     const rows = [
       { 'Patient ID': 'P1', StudyInstanceUID: 'S1', Ethnicity: 'A' },

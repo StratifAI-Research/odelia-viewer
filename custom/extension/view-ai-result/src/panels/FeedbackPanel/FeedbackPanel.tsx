@@ -13,7 +13,7 @@ import { EditConfirmModal } from './EditConfirmModal';
  * Feedback Panel – lets a reader mark Agree / Unsure / Disagree per breast side
  * for the selected AI result, edit a prior verdict, and identify themselves.
  *
- * Concerns are split out of this component (H-11): the network client lives in
+ * Concerns are split out of this component: the network client lives in
  * `feedbackApi`, reader identity in `useFeedbackUser`, and the on-screen
  * result's identity in `useResultIdentity`. This component owns the form state
  * and orchestration. Every feedback-status response is applied only while the

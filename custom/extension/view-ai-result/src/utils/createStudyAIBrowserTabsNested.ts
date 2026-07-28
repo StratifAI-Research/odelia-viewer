@@ -79,7 +79,7 @@ export function createStudyAIBrowserTabsNested(
 
     // Key SR (report) entries by model + datetime so two different models at the
     // same instant stay in separate groups; a heatmap (SC) joins the group of
-    // the SR it pairs with by referenced UID / time proximity (H-03). Process
+    // the SR it pairs with by referenced UID / time proximity. Process
     // SRs first so a group's model identity comes from its report.
     const srEntries = aiEntries.filter(e => e.modality === 'SR');
     const orderedEntries = [...srEntries, ...aiEntries.filter(e => e.modality !== 'SR')];
@@ -147,7 +147,7 @@ export function createStudyAIBrowserTabsNested(
     if (aPrimary !== bPrimary) {
       return aPrimary - bPrimary;
     }
-    // if both same category, newest date first (VAR-N6: engine-independent key)
+    // if both same category, newest date first (engine-independent key)
     return dateSortKey(b.date) - dateSortKey(a.date);
   });
 

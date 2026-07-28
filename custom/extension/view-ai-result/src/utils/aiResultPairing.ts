@@ -5,7 +5,7 @@ import { dicomDateTimeToIsoUtc } from './dicomDateTime';
  * capture (SC).
  *
  * Historically this matched on exact `InstanceCreationDate` **and**
- * `InstanceCreationTime` string equality (see VAR-M1 / M-02). That was fragile:
+ * `InstanceCreationTime` string equality. That was fragile:
  * any sub-second or rounding difference between the SR's and SC's creation time
  * left a valid heatmap unpaired, and it could pair the wrong SC when several
  * models ran on the same study. It also computed a `ReferencedSOPInstanceUID`

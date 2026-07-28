@@ -131,7 +131,7 @@ export default function PanelStudyBrowserTracking({
   // Refs mirror mutable state so the AI-selection subscription below can read
   // the latest values without listing them as effect deps. Otherwise every
   // loading/thumbnail tick tore down and re-created the subscription and re-ran
-  // the initial-selection loop (VAR-M5).
+  // the initial-selection loop.
   const displaySetsLoadingStateRef = useRef(displaySetsLoadingState);
   const thumbnailImageSrcMapRef = useRef(thumbnailImageSrcMap);
 
@@ -147,7 +147,7 @@ export default function PanelStudyBrowserTracking({
 
   // One-shot: resolve the initially-selected AI result for the open studies.
   // Kept separate from the subscription (below) so it does not re-run on every
-  // loading/thumbnail tick (VAR-M5).
+  // loading/thumbnail tick.
   useEffect(() => {
     const initialUID = resolveInitialSelectedSRUID(
       StudyInstanceUIDs,
@@ -516,7 +516,7 @@ export default function PanelStudyBrowserTracking({
         // Delay a little to allow viewports to be hydrated first – improves perceived performance
         const delayMs = 250 + displaySetService.getActiveDisplaySets().length * 10;
         const timer = window.setTimeout(() => setHasLoadedViewports(true), delayMs);
-        // L-15: cancel the pending timer on unmount / dependency change so we
+        // Cancel the pending timer on unmount / dependency change so we
         // don't call setState after unmount.
         return () => window.clearTimeout(timer);
       }

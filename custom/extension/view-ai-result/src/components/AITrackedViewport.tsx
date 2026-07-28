@@ -9,7 +9,7 @@ import { HeatmapLayoutManager, renderCornerstoneViewport, getPrimaryDisplaySets 
 /**
  * Compose an optional external callback with our own (always-present) internal
  * one, returning a single function that invokes the external first, then the
- * internal. (M-05: an external onElementEnabled/Disabled must run alongside our
+ * internal. (an external onElementEnabled/Disabled must run alongside our
  * own rather than clobber it or be clobbered by prop-spread order.)
  */
 function composeCallbacks<T extends (...args: any[]) => void>(
@@ -77,7 +77,7 @@ const AITrackedViewportInner = ({
   // Memoize enhanced viewport options to prevent cascade rerenders
   const enhancedViewportOptions = useMemo(
     () => ({
-      // VAR-L15: default to a stack viewport. This is NOT a stability guarantee —
+      // Default to a stack viewport. This is NOT a stability guarantee —
       // when a heatmap is toggled on, heatmapLayoutManager forces 'volume', which
       // does remount the viewport. (`viewportOptions` below can also override it.)
       viewportType: 'stack',
@@ -233,7 +233,7 @@ const AITrackedViewportInner = ({
   return (
     <div className="relative flex h-full w-full flex-row overflow-hidden">
       {renderCornerstoneViewport({
-        // M-05: spread incoming props FIRST so our computed values win, and
+        // Spread incoming props FIRST so our computed values win, and
         // compose the element callbacks so an external onElementEnabled/Disabled
         // (if the host passes one) runs alongside our own instead of clobbering
         // — or being clobbered by — it.
@@ -259,7 +259,7 @@ const AITrackedViewportInner = ({
  * `OHIFCornerstoneViewport` `areEqual`
  * (extensions/cornerstone/src/Viewport/OHIFCornerstoneViewport.tsx).
  *
- * Why a custom comparator (M-04): the OHIF ViewportGrid re-renders on every
+ * Why a custom comparator: the OHIF ViewportGrid re-renders on every
  * interaction and passes freshly-built `displaySets`/`viewportOptions` objects and
  * a new inline `onElementEnabled` closure each time, so React.memo's DEFAULT shallow
  * compare never skips — it would re-run every AI hook/effect on every grid frame

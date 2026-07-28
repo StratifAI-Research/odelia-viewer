@@ -157,7 +157,7 @@ export const StudyBrowserNested: React.FC<Props> = ({
       const removedDisplaySetUIDs: string[] = [];
 
       // Delete from both Orthanc storage and OHIF viewer.
-      // VAR-L12: derive the Orthanc series base from app-config (same source as
+      // Derive the Orthanc series base from app-config (same source as
       // the feedback API) so a deployment path change doesn't silently break
       // deletion. `/tools/lookup` stays at root — that is where the proxy exposes
       // Orthanc's lookup endpoint (distinct from the /pacs-mounted series ops).
@@ -302,7 +302,7 @@ export const StudyBrowserNested: React.FC<Props> = ({
           const isExpanded = expandedStudyInstanceUIDs.includes(study.studyInstanceUid);
 
           return (
-            // VAR-L13: fall back to the index when a study has no UID, so a
+            // Fall back to the index when a study has no UID, so a
             // UID-less study can't collide with (or duplicate) another key.
             <div key={study.studyInstanceUid ?? `study-${studyIndex}`}>
               {/* Study Header */}

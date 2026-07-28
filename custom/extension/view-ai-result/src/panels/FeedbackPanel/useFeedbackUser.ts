@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 /**
- * Reader identity for the feedback panel (H-11: the identity half of the split).
+ * Reader identity for the feedback panel (the identity half of the split).
  *
  * Resolves a stable user id from, in order: the OHIF authentication service /
  * auth state, a locally-typed display name, and a persisted localStorage name.

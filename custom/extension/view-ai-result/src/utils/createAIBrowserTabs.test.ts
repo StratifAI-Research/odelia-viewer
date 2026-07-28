@@ -91,7 +91,7 @@ describe('createAIBrowserTabs', () => {
     },
   });
 
-  it('keeps two different models at the same datetime in separate groups (H-03)', () => {
+  it('keeps two different models at the same datetime in separate groups', () => {
     const tabs = createAIBrowserTabs(
       ['study-1'],
       [],
@@ -103,7 +103,7 @@ describe('createAIBrowserTabs', () => {
     expect(contents).toEqual(expect.arrayContaining([['sr-a'], ['sr-b']]));
   });
 
-  it('routes a heatmap to its report’s group by referenced UID, not a same-datetime sibling (H-03)', () => {
+  it('routes a heatmap to its report’s group by referenced UID, not a same-datetime sibling', () => {
     const srA = srWithModel('sr-a', 'ModelA', { SOPInstanceUID: 'sop-a' });
     const srB = srWithModel('sr-b', 'ModelB', { SOPInstanceUID: 'sop-b' });
     const scA = {

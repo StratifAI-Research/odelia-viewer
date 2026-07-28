@@ -3,7 +3,7 @@ import LabelingOptions from './LabelingOptions';
 import LabelingDate from './LabelingDate';
 import { seedDefaultLabelData } from '../utils/labelData';
 
-// L-11: the props the component actually accepts, as a TypeScript interface
+// The props the component actually accepts, as a TypeScript interface
 // (replaces the stale prop-types that described `labels`/`activeLabelId`/... and
 // omitted the real `measurement`/`config`/`onChange`).
 interface LabelingTableProps {

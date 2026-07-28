@@ -20,7 +20,7 @@ interface AIEntry {
 }
 
 /**
- * Group key for an AI entry (H-03). SR (report) display sets are keyed by
+ * Group key for an AI entry. SR (report) display sets are keyed by
  * model + run datetime so two *different* models produced at the same DICOM
  * second stay in separate groups (previously they merged and were deleted
  * together). An SC (heatmap) joins the group of the SR it pairs with — by

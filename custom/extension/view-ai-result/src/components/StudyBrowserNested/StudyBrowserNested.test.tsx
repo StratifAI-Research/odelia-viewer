@@ -308,7 +308,7 @@ describe('StudyBrowserNested', () => {
     expect(screen.getByText('No Study Date')).toBeTruthy();
   });
 
-  // VAR-L13 (ODV-80): a study that arrives without a UID (as produced by the
+  // ODV-80: a study that arrives without a UID (as produced by the
   // nested-tab grouping path the panels feed in) must not trigger React's
   // "each child needs a unique key" warning — the render now supplies an index
   // fallback key.

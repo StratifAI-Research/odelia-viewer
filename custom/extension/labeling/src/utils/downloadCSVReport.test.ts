@@ -31,7 +31,7 @@ describe('_escapeCsvValue', () => {
   });
 });
 
-describe('_getCommonRowItems (LAB-M9 metadata guards)', () => {
+describe('_getCommonRowItems (metadata guards)', () => {
   const seriesWith = (patientName: any, patientID = 'PID') => ({
     instances: [{ PatientID: patientID, PatientName: patientName }],
   });
@@ -86,7 +86,7 @@ describe('_createAndDownloadFile', () => {
     jest.restoreAllMocks();
   });
 
-  it('downloads via a Blob object URL (not a data: URI), preserving #, and cleans up (LAB-M1)', () => {
+  it('downloads via a Blob object URL (not a data: URI), preserving #, and cleans up', () => {
     const anchor: any = {
       setAttribute: jest.fn(),
       click: jest.fn(),

@@ -6,9 +6,9 @@ import { findMatchingHeatmap } from '../utils/aiResultPairing';
 /**
  * Pure extraction + pairing of AI results from DICOM display sets.
  *
- * This module holds the stateless logic that used to be embedded in
- * `AIResultsService` (M-02): given display sets it produces {@link AIResult}
- * objects, with no caching, event bus, selection state, or UI notifications.
+ * This module holds the stateless logic behind `AIResultsService`: given
+ * display sets it produces {@link AIResult} objects, with no caching, event
+ * bus, selection state, or UI notifications.
  * `AIResultsService` is the stateful shell that owns those concerns and calls
  * into here. Keeping the logic pure makes SR→heatmap pairing and result shaping
  * independently unit-testable.

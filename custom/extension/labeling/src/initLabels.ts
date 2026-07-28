@@ -41,7 +41,7 @@ export default function initLabels({ measurementService, extensionManager, Study
       if (label_options[element].options) {
         label_data[element] = label_options[element].options[0];
       } else {
-        // L-13: leave undated (option-less) labels empty rather than fabricating
+        // Leave undated (option-less) labels empty rather than fabricating
         // a 1970-01-01 epoch that reads as a real clinical date. The DatePicker
         // and export path already treat empty as "unset".
         label_data[element] = '';

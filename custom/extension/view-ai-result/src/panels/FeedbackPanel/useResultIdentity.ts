@@ -4,7 +4,7 @@ import { FeedbackResultKey } from './feedbackApi';
 
 /**
  * Derives the identity fields (model name/version + result timestamp) of the AI
- * result currently on screen (H-11: the identity half of the split). These
+ * result currently on screen (the identity half of the split). These
  * three fields plus the study and reader identify a feedback record.
  */
 export interface ResultIdentity {

@@ -460,7 +460,7 @@ describe('OrthancAIService — workitem polling', () => {
     service.stopWorkitemPolling();
   });
 
-  it('stops polling and reports a timeout after the max duration (OAR-M4)', async () => {
+  it('stops polling and reports a timeout after the max duration', async () => {
     // Never terminal: always IN_PROGRESS.
     fetchMock.mockResolvedValue(
       mockResponse({ text: JSON.stringify({ '00741000': { vr: 'CS', Value: ['IN_PROGRESS'] } }) })

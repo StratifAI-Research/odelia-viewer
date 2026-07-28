@@ -9,7 +9,7 @@ import { formatDicomDateTime } from './dicomDateTime';
  */
 
 // Cache for expensive display set lookups — key: displaySetInstanceUID, value: realDisplaySet.
-// VAR-M11: bounded so it cannot grow unbounded across a session; `clearAITabCache()`
+// Bounded so it cannot grow unbounded across a session; `clearAITabCache()`
 // resets it on study-lifecycle changes.
 const displaySetCache = new Map<string, any>();
 const MAX_DISPLAYSET_CACHE_ENTRIES = 512;

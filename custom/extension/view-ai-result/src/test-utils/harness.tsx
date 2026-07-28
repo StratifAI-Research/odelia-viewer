@@ -49,7 +49,7 @@ export const makeDisplaySet = (o: Partial<any> = {}) => ({
   images: [],
   ...o,
 });
-// VAR-N7: match the real `AIResult` shape (classifications array, hasHeatmap)
+// Match the real `AIResult` shape (classifications array, hasHeatmap)
 // so the fixture cannot drift from production types.
 export const makeAIResult = (o: Partial<AIResult> = {}): AIResult => ({
   studyInstanceUID: 's1',

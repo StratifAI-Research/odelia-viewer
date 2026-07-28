@@ -5,9 +5,8 @@
  * The connection lifecycle is modelled as an explicit state machine
  * ({@link ChatConnectionState}) rather than a set of independent booleans /
  * readyState checks. Every transition goes through {@link setState}, and the
- * reconnect decision and `isConnected()` derive from the current state. This
- * replaces the old `isIntentionalClose` flag and scattered `readyState`
- * inspection, and keeps the hard-won "settle exactly once" connect semantics.
+ * reconnect decision and `isConnected()` derive from the current state. A
+ * connect attempt settles exactly once.
  */
 import {
   ClientMessage,

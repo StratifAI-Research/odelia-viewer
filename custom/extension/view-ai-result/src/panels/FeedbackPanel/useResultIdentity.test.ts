@@ -27,7 +27,7 @@ describe('resultIdentityString', () => {
   it('includes the reader so a response for the previous reader is rejected', () => {
     const a = resultIdentityString('study-1', identity, 'reader-A');
     const b = resultIdentityString('study-1', identity, 'reader-B');
-    // Same result, different reader -> different identity (H-11 user-switch guard).
+    // Same result, different reader -> different identity (user-switch guard).
     expect(a).not.toBe(b);
     expect(a).toContain('reader-A');
   });

@@ -49,7 +49,7 @@ export function useChatService(): UseChatServiceReturn {
   const rawStreamingRef = useRef<string>('');
   const hasReceivedThinkingTokenRef = useRef<boolean>(false);
 
-  // VAR-L14: model-specific sentinels the chat middleware wraps around the
+  // Model-specific sentinels the chat middleware wraps around the
   // model's chain-of-thought so we can split "thinking" from the visible answer.
   // These match the tokens the current model emits; a model/middleware change
   // that alters them will silently break thinking extraction (the text will just

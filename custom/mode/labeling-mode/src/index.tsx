@@ -192,7 +192,7 @@ function modeFactory() {
           const initLabels = extensionManager.getModuleEntry(
             'labeling.utilityModule.initLabels'
           ).exports;
-          // M-19: labeling-mode is an explicitly single-study workflow — only the
+          // labeling-mode is an explicitly single-study workflow — only the
           // first requested study is initialized/labelled. Warn (rather than
           // silently label just one) if a multi-study route is opened, so the
           // incomplete-labelling limitation is visible.

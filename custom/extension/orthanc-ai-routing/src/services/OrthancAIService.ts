@@ -500,7 +500,7 @@ class OrthancAIService {
         throw new Error(`Failed to get workitem status: ${response.status}`);
       }
 
-      // Parse the JSON body directly (OAR-L9: parity with getModelManifest;
+      // Parse the JSON body directly (parity with getModelManifest;
       // no need to read text first).
       let workitemJson: WorkitemDicomJson;
       try {

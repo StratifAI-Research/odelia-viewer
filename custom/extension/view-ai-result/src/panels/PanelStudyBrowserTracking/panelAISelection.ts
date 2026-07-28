@@ -1,5 +1,5 @@
 /**
- * Small AI-selection adapter for the study browser panel (M-17).
+ * Small AI-selection adapter for the study browser panel.
  *
  * Isolates how the panel talks to `aiResultsService` for selection concerns:
  * recognizing AI-result thumbnails and resolving the initially-selected SR for

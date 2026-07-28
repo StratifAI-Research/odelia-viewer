@@ -8,7 +8,7 @@
 // isolated custom typecheck we declare every `@ohif/*` entry point as a
 // shorthand ambient module, which makes all of its imports `any`. This keeps
 // the checker focused on the custom code's own correctness.
-// Tightening these to real types is a follow-up (see CLEANUP_PLAN Phase 3).
+// Tightening these to real types is a follow-up.
 declare module '@ohif/core';
 declare module '@ohif/core/types';
 declare module '@ohif/ui';

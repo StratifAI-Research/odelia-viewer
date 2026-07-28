@@ -81,7 +81,7 @@ describe('createStudyAIBrowserTabsNested', () => {
     expect(label.split('\n')[0]).toBe('AI Model');
   });
 
-  it('keeps two different models at the same datetime in separate groups (H-03)', () => {
+  it('keeps two different models at the same datetime in separate groups', () => {
     const withModel = (uid: string, model: string) =>
       aiThumb({
         displaySetInstanceUID: uid,

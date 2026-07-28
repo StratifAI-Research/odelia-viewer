@@ -22,7 +22,7 @@ export default {
    * this extension is providing.
    */
   preRegistration: ({ servicesManager, commandsManager, configuration = {} }) => {
-    // L-07: register atomically and fail fast. A partially-registered extension
+    // Register atomically and fail fast. A partially-registered extension
     // (e.g. aiResultsService present but the heatmap synchronizer missing) only
     // surfaces much later as confusing "missing behaviour"; rethrow a descriptive
     // startup error instead of swallowing it.
@@ -95,7 +95,7 @@ export default {
         evaluate: () => {
           const { syncGroupService } = servicesManager.services;
           const synchronizer = syncGroupService.getSynchronizer('HEATMAP_IMAGE_SLICE_SYNC');
-          // L-06: use the public API instead of the private `_enabled` field.
+          // Use the public API instead of the private `_enabled` field.
           const isActive = synchronizer && !synchronizer.isDisabled();
 
           return {

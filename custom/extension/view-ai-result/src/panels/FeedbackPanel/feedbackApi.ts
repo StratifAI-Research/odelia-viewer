@@ -2,7 +2,7 @@
  * Feedback API client.
  *
  * The network + endpoint-derivation concerns that used to live inline in
- * `FeedbackPanel` (H-11). Keeping them here makes the panel's request/response
+ * `FeedbackPanel`. Keeping them here makes the panel's request/response
  * shape explicit and independently testable, and gives every caller one place
  * that builds the `/feedback` query and `/feedback/submit` body.
  */

@@ -1,5 +1,5 @@
 // Simple static date cache to prevent refreshing.
-// VAR-M11/N5: bounded so it cannot grow unbounded across a long session, and
+// Bounded so it cannot grow unbounded across a long session, and
 // clearable via `clearStaticDateCache()` on study-lifecycle changes.
 const staticDateCache = new Map<string, string>();
 const MAX_DATE_CACHE_ENTRIES = 512;
@@ -12,7 +12,7 @@ export function clearStaticDateCache(): void {
 /**
  * Engine-independent, descending-friendly numeric key for a date string.
  * Handles DICOM `YYYYMMDD` and ISO `YYYY-MM-DD[THH:MM:SS]` by keeping only
- * digits (VAR-N6: `Date.parse` on heterogeneous date strings is fragile).
+ * digits (`Date.parse` on heterogeneous date strings is fragile).
  */
 export function dateSortKey(value?: string): number {
   return Number(String(value ?? '').replace(/\D/g, '')) || 0;
@@ -62,7 +62,7 @@ export function getStaticDate(displaySet: any): string {
     try {
       // Simple date formatting without using formatDate function
       if (typeof dateValue === 'string' && dateValue.length === 8) {
-        // DICOM date format YYYYMMDD -> ISO YYYY-MM-DD (VAR-N5: consistent with
+        // DICOM date format YYYYMMDD -> ISO YYYY-MM-DD (consistent with
         // the rest of the app; the previous MM/DD/YYYY was the odd one out).
         const year = dateValue.substring(0, 4);
         const month = dateValue.substring(4, 6);

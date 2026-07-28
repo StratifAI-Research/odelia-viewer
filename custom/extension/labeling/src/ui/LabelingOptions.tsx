@@ -6,7 +6,7 @@ const LabelingOptions = ({ id, index, label, label_value, label_options, onClick
   const [isHovering, setIsHovering] = useState(false);
   const [selectedOption, setSelectedOption] = useState(label_value);
 
-  // LAB-L4/M-06: keep the control in sync when the incoming value changes
+  // Keep the control in sync when the incoming value changes
   // (e.g. a CSV import updates label_value while this control stays mounted).
   useEffect(() => {
     setSelectedOption(label_value);
