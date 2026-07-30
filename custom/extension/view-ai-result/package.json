@@ -1,6 +1,7 @@
 {
   "name": "view-ai-result",
   "version": "0.0.1",
+  "private": true,
   "description": "OHIF extension to display AI results for ODELIA project",
   "author": "Bulat Maksudov",
   "license": "MIT",

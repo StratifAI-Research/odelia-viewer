@@ -1,6 +1,7 @@
 {
   "name": "orthanc-ai-routing",
   "version": "0.0.1",
+  "private": true,
   "description": "Extension to send studies to AI endpoint via Orthanc routing plugin. Developed for ODELIA project",
   "author": "Bulat Maksudov",
   "license": "MIT",
