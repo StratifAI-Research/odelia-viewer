@@ -46,18 +46,34 @@ const base = {
 describe('InputMappingStep', () => {
   it('auto-detects on mount when no mapping exists yet', () => {
     const onAutoDetect = jest.fn();
-    render(<InputMappingStep {...base} mapping={{}} onAutoDetect={onAutoDetect} />);
+    render(
+      <InputMappingStep
+        {...base}
+        mapping={{}}
+        onAutoDetect={onAutoDetect}
+      />
+    );
     expect(onAutoDetect).toHaveBeenCalledWith(config, available);
   });
 
   it('does not auto-detect on mount when a mapping is already present', () => {
     const onAutoDetect = jest.fn();
-    render(<InputMappingStep {...base} onAutoDetect={onAutoDetect} />);
+    render(
+      <InputMappingStep
+        {...base}
+        onAutoDetect={onAutoDetect}
+      />
+    );
     expect(onAutoDetect).not.toHaveBeenCalled();
   });
 
   it('renders required markers and a Required hint for unmapped required inputs', () => {
-    render(<InputMappingStep {...base} mapping={{ t1: null, t2: null }} />);
+    render(
+      <InputMappingStep
+        {...base}
+        mapping={{ t1: null, t2: null }}
+      />
+    );
     expect(screen.getByText('Required')).toBeTruthy(); // t1 required + unmapped
   });
 
@@ -65,14 +81,22 @@ describe('InputMappingStep', () => {
     render(<InputMappingStep {...base} />);
     // t1 is MR-only → its dropdown lists the MR series but not the CT one.
     const t1Select = screen.getAllByRole('combobox')[0];
-    const t1Options = within(t1Select).getAllByRole('option').map(o => o.textContent || '');
+    const t1Options = within(t1Select)
+      .getAllByRole('option')
+      .map(o => o.textContent || '');
     expect(t1Options.some(o => /T1 axial/.test(o))).toBe(true);
     expect(t1Options.some(o => /CT scan/.test(o))).toBe(false);
   });
 
   it('calls onSetInputSeries when a series is picked', () => {
     const onSetInputSeries = jest.fn();
-    render(<InputMappingStep {...base} mapping={{ t1: null, t2: null }} onSetInputSeries={onSetInputSeries} />);
+    render(
+      <InputMappingStep
+        {...base}
+        mapping={{ t1: null, t2: null }}
+        onSetInputSeries={onSetInputSeries}
+      />
+    );
     const t1Select = screen.getAllByRole('combobox')[0];
     fireEvent.change(t1Select, { target: { value: 's1' } });
     expect(onSetInputSeries).toHaveBeenCalledWith('t1', 's1');
@@ -80,21 +104,44 @@ describe('InputMappingStep', () => {
 
   it('passes null to onSetInputSeries when the blank option is selected', () => {
     const onSetInputSeries = jest.fn();
-    render(<InputMappingStep {...base} onSetInputSeries={onSetInputSeries} />);
+    render(
+      <InputMappingStep
+        {...base}
+        onSetInputSeries={onSetInputSeries}
+      />
+    );
     const t1Select = screen.getAllByRole('combobox')[0];
     fireEvent.change(t1Select, { target: { value: '' } });
     expect(onSetInputSeries).toHaveBeenCalledWith('t1', null);
   });
 
   it('labels a series by number when its description is empty', () => {
-    const noDesc = series({ SeriesInstanceUID: 's3', SeriesDescription: '', SeriesNumber: 9, Modality: 'MR' });
-    render(<InputMappingStep {...base} availableSeries={[noDesc]} mapping={{}} onAutoDetect={jest.fn()} />);
+    const noDesc = series({
+      SeriesInstanceUID: 's3',
+      SeriesDescription: '',
+      SeriesNumber: 9,
+      Modality: 'MR',
+    });
+    render(
+      <InputMappingStep
+        {...base}
+        availableSeries={[noDesc]}
+        mapping={{}}
+        onAutoDetect={jest.fn()}
+      />
+    );
     expect(screen.getAllByText(/Series 9 \(MR/).length).toBeGreaterThan(0);
   });
 
   it('fires the Auto-detect button, and disables Next when invalid', () => {
     const onAutoDetect = jest.fn();
-    render(<InputMappingStep {...base} isValid={false} onAutoDetect={onAutoDetect} />);
+    render(
+      <InputMappingStep
+        {...base}
+        isValid={false}
+        onAutoDetect={onAutoDetect}
+      />
+    );
     fireEvent.click(screen.getByText('Auto-detect'));
     expect(onAutoDetect).toHaveBeenCalledWith(config, available);
     expect(screen.getByText(/Next/).closest('button')!.disabled).toBe(true);

@@ -21,14 +21,23 @@ describe('ConfirmStep', () => {
   });
 
   it('shows "Not configured" and disables Send when no endpoint', () => {
-    render(<ConfirmStep {...base} currentEndpoint={null} />);
+    render(
+      <ConfirmStep
+        {...base}
+        currentEndpoint={null}
+      />
+    );
     expect(screen.getByText(/Model: Not configured/)).toBeTruthy();
     expect(screen.getByText('Send to AI').closest('button')!.disabled).toBe(true);
   });
 
   it('renders an error banner and the input-mapping section when provided', () => {
     render(
-      <ConfirmStep {...base} error="something failed" inputMappingDescription="T1 -> s1" />
+      <ConfirmStep
+        {...base}
+        error="something failed"
+        inputMappingDescription="T1 -> s1"
+      />
     );
     expect(screen.getByText('something failed')).toBeTruthy();
     expect(screen.getByText('Input Mapping')).toBeTruthy();
@@ -38,7 +47,13 @@ describe('ConfirmStep', () => {
   it('fires onSend and onBack', () => {
     const onSend = jest.fn();
     const onBack = jest.fn();
-    render(<ConfirmStep {...base} onSend={onSend} onBack={onBack} />);
+    render(
+      <ConfirmStep
+        {...base}
+        onSend={onSend}
+        onBack={onBack}
+      />
+    );
     fireEvent.click(screen.getByText('Send to AI'));
     fireEvent.click(screen.getByText(/Back/));
     expect(onSend).toHaveBeenCalledTimes(1);

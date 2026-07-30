@@ -2,6 +2,8 @@ import React from 'react';
 import { render, act } from '@testing-library/react';
 import { installConsoleErrorFilter } from '../test-utils/harness';
 
+import AITrackedViewport from './AITrackedViewport';
+
 // AI-result selection / heatmap regression coverage. The component's hooks are
 // mocked so the test can drive the AI_RESULT_SELECTED callback directly and
 // observe which result the heatmap layout is built from.
@@ -14,7 +16,10 @@ const mockSubRef: { onSelected: ((r: any, uid: string) => void) | null } = { onS
 
 jest.mock('../hooks/useAIResult', () => ({ useAIResult: () => mockInitialResult }));
 jest.mock('../hooks/useAIOverlay', () => ({
-  useAIOverlay: () => ({ updateOverlay: mockUpdateOverlay, setupHeatmapActionCorner: mockSetupCorner }),
+  useAIOverlay: () => ({
+    updateOverlay: mockUpdateOverlay,
+    setupHeatmapActionCorner: mockSetupCorner,
+  }),
 }));
 jest.mock('../hooks/useViewportElement', () => ({
   useViewportElement: () => ({ onElementEnabled: () => {}, onElementDisabled: () => {} }),
@@ -28,12 +33,12 @@ jest.mock('../utils', () => {
   const actual = jest.requireActual('../utils');
   return {
     ...actual,
-    HeatmapLayoutManager: { toggleHeatmapLayout: (...args: any[]) => mockToggleHeatmapLayout(...args) },
+    HeatmapLayoutManager: {
+      toggleHeatmapLayout: (...args: any[]) => mockToggleHeatmapLayout(...args),
+    },
     renderCornerstoneViewport: () => null,
   };
 });
-
-import AITrackedViewport from './AITrackedViewport';
 
 installConsoleErrorFilter({ silenceLog: true });
 
@@ -81,7 +86,7 @@ describe('AITrackedViewport — AI result selection & heatmap', () => {
     expect(lastOpen[1].aiResult.heatmapDisplaySet.displaySetInstanceUID).toBe('sc-B');
   });
 
-  it('does not open a heatmap when the clicked UID is not the new result\'s SC', () => {
+  it("does not open a heatmap when the clicked UID is not the new result's SC", () => {
     mockInitialResult = resultWithHeatmap('A', 'sc-A');
     render(<AITrackedViewport {...baseProps()} />);
 
@@ -112,7 +117,9 @@ describe('AITrackedViewport — AI result selection & heatmap', () => {
     mockInitialResult = { id: 'B' };
     act(() => {
       rerender(
-        <AITrackedViewport {...baseProps({ displaySets: [{ displaySetInstanceUID: 'mr-B', Modality: 'MR' }] })} />
+        <AITrackedViewport
+          {...baseProps({ displaySets: [{ displaySetInstanceUID: 'mr-B', Modality: 'MR' }] })}
+        />
       );
     });
 

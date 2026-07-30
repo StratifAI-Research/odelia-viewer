@@ -29,21 +29,16 @@ interface AIRoutingPanelProps {
 }
 
 const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
-  const {
-    orthancAIService,
-    displaySetService,
-    uiNotificationService,
-    customizationService,
-  } = servicesManager.services;
+  const { orthancAIService, displaySetService, uiNotificationService, customizationService } =
+    servicesManager.services;
 
   const ProgressLoadingBar = customizationService.getCustomization('ui.progressLoadingBar');
 
   // Read the URL-derived study UID on every render so it stays correct across
   // in-app navigation (route/query changes while this panel stays mounted).
   // It returns a stable string when the URL is unchanged, so it does not cause
-  // effect churn; the earlier per-render console.log (the real cost flagged in
-  // review) was removed in the debug-scaffolding pass. Do NOT memoize on the
-  // stable service — that would freeze it to the study active at mount.
+  // effect churn. Do NOT memoize on the stable service — that would freeze it
+  // to the study active at mount.
   const dicomStudyUID = orthancAIService.getDicomStudyInstanceUIDFromURL();
 
   const { StudyInstanceUIDs } = useImageViewer();
@@ -73,7 +68,13 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
     const firstDisplaySetUID = displaySetInstanceUIDs[0];
     const displaySet = displaySetService?.getDisplaySetByUID(firstDisplaySetUID);
 
-    return displaySet?.StudyInstanceUID || displaySet?.studyInstanceUID || StudyInstanceUIDs?.[0] || dicomStudyUID || null;
+    return (
+      displaySet?.StudyInstanceUID ||
+      displaySet?.studyInstanceUID ||
+      StudyInstanceUIDs?.[0] ||
+      dicomStudyUID ||
+      null
+    );
   }, [activeViewportId, viewports, displaySetService, StudyInstanceUIDs, dicomStudyUID]);
 
   useEffect(() => {
@@ -161,7 +162,9 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
   const progressStep = manifest ? 5 : 4;
 
   const handleSendToAI = async () => {
-    if (!activeStudyUID) return;
+    if (!activeStudyUID) {
+      return;
+    }
 
     wizard.goToStep(progressStep);
 
@@ -189,29 +192,31 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
   };
 
   const getStudyDescription = () => {
-    if (!activeStudyUID) return 'No Study Selected';
-    const study = selection.availableStudies.find(
-      st => st.studyInstanceUid === activeStudyUID
-    );
+    if (!activeStudyUID) {
+      return 'No Study Selected';
+    }
+    const study = selection.availableStudies.find(st => st.studyInstanceUid === activeStudyUID);
     return study?.description || activeStudyUID.slice(0, 20) + '...';
   };
 
   const getSelectedConfig = () => {
-    if (!manifest || !inputMappingHook.selectedConfigId) return null;
-    return manifest.input_configurations.find(
-      c => c.id === inputMappingHook.selectedConfigId
-    ) ?? null;
+    if (!manifest || !inputMappingHook.selectedConfigId) {
+      return null;
+    }
+    return (
+      manifest.input_configurations.find(c => c.id === inputMappingHook.selectedConfigId) ?? null
+    );
   };
 
   const getInputMappingDescription = (): string | null => {
     const config = getSelectedConfig();
-    if (!config) return null;
+    if (!config) {
+      return null;
+    }
 
     const lines = config.inputs.map(input => {
       const uid = inputMappingHook.mapping[input.key];
-      const series = uid
-        ? selection.availableSeries.find(s => s.SeriesInstanceUID === uid)
-        : null;
+      const series = uid ? selection.availableSeries.find(s => s.SeriesInstanceUID === uid) : null;
       const label = series
         ? series.SeriesDescription || `Series ${series.SeriesNumber}`
         : 'Not assigned';
@@ -226,12 +231,14 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
   };
 
   const renderSettingsOverlay = () => {
-    if (!isSettingsOpen) return null;
+    if (!isSettingsOpen) {
+      return null;
+    }
 
     return (
-      <div className="absolute inset-0 bg-black/80 z-50 flex flex-col p-4">
-        <div className="bg-gray-900 rounded-lg w-full flex-1 overflow-y-auto border border-gray-700">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
+      <div className="absolute inset-0 z-50 flex flex-col bg-black/80 p-4">
+        <div className="w-full flex-1 overflow-y-auto rounded-lg border border-gray-700 bg-gray-900">
+          <div className="flex items-center justify-between border-b border-gray-700 px-4 py-3">
             <h3 className="text-sm font-semibold text-white">Endpoint Settings</h3>
             <button
               onClick={handleCloseSettings}
@@ -242,7 +249,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
           </div>
           <div className="p-4">
             <AIEndpointConfig
-              onEndpointChange={(endpoint) => {
+              onEndpointChange={endpoint => {
                 routing.handleEndpointChange(endpoint);
               }}
               currentEndpoint={routing.currentEndpoint}
@@ -372,19 +379,19 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
   };
 
   return (
-    <div className="flex flex-col h-full min-h-0 relative">
+    <div className="relative flex h-full min-h-0 flex-col">
       {renderSettingsOverlay()}
 
-      <div className="flex-shrink-0 px-3 py-2 border-b border-secondary-light">
+      <div className="border-secondary-light flex-shrink-0 border-b px-3 py-2">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-semibold text-white">AI Analysis</h3>
           <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground">
+            <span className="text-muted-foreground text-xs">
               Step {wizard.currentStep} of {totalSteps}
             </span>
             <button
               onClick={() => setIsSettingsOpen(true)}
-              className="p-1.5 hover:bg-gray-700 rounded text-primary-active hover:text-white"
+              className="text-primary-active rounded p-1.5 hover:bg-gray-700 hover:text-white"
               title="Endpoint Settings"
             >
               <svg
@@ -394,7 +401,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="w-4 h-4"
+                className="h-4 w-4"
               >
                 <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
               </svg>
@@ -402,15 +409,13 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
           </div>
         </div>
         {!activeStudyUID && (
-          <div className="mt-2 p-2 bg-red-900/20 border border-red-700 rounded text-xs text-red-400">
+          <div className="mt-2 rounded border border-red-700 bg-red-900/20 p-2 text-xs text-red-400">
             No study detected in viewport
           </div>
         )}
       </div>
 
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        {renderStep()}
-      </div>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">{renderStep()}</div>
     </div>
   );
 };

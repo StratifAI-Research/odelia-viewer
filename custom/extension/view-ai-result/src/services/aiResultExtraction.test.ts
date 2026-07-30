@@ -1,4 +1,8 @@
-import { extractAIResultsForStudy, buildErrorResult, hasUsableAIResultData } from './aiResultExtraction';
+import {
+  extractAIResultsForStudy,
+  buildErrorResult,
+  hasUsableAIResultData,
+} from './aiResultExtraction';
 
 const sideProbability = (side: 'Left' | 'Right', code: string, value: string) => ({
   ConceptNameCodeSequence: [{ CodeMeaning: `${side} Side Probability` }],
@@ -48,7 +52,10 @@ describe('extractAIResultsForStudy', () => {
   });
 
   it('builds a result per SR and pairs the heatmap', () => {
-    const results = extractAIResultsForStudy([srDisplaySet('sr-1'), scDisplaySet('sc-1')], 'study-1');
+    const results = extractAIResultsForStudy(
+      [srDisplaySet('sr-1'), scDisplaySet('sc-1')],
+      'study-1'
+    );
     expect(results).toHaveLength(1);
     expect(results[0].displaySetInstanceUID).toBe('sr-1');
     expect(results[0].hasHeatmap).toBe(true);
@@ -74,7 +81,9 @@ describe('hasUsableAIResultData / buildErrorResult', () => {
   it('treats null/empty data as unusable', () => {
     expect(hasUsableAIResultData(null as any)).toBe(false);
     expect(hasUsableAIResultData({ classifications: [], modelInfo: undefined } as any)).toBe(false);
-    expect(hasUsableAIResultData({ classifications: [], modelInfo: { name: 'M' } } as any)).toBe(true);
+    expect(hasUsableAIResultData({ classifications: [], modelInfo: { name: 'M' } } as any)).toBe(
+      true
+    );
   });
 
   it('buildErrorResult carries a resultTs from the display set', () => {

@@ -19,13 +19,17 @@ const makeConfig = (overrides: any = {}) => {
 
 describe('HeatmapLayoutManager.toggleHeatmapLayout', () => {
   it('does nothing when the AI result has no heatmap', () => {
-    const { config, setLayout } = makeConfig({ aiResult: { hasHeatmap: false, heatmapDisplaySet: {} } });
+    const { config, setLayout } = makeConfig({
+      aiResult: { hasHeatmap: false, heatmapDisplaySet: {} },
+    });
     HeatmapLayoutManager.toggleHeatmapLayout(true, config);
     expect(setLayout).not.toHaveBeenCalled();
   });
 
   it('does nothing when the heatmap display set is missing', () => {
-    const { config, setLayout } = makeConfig({ aiResult: { hasHeatmap: true, heatmapDisplaySet: undefined } });
+    const { config, setLayout } = makeConfig({
+      aiResult: { hasHeatmap: true, heatmapDisplaySet: undefined },
+    });
     HeatmapLayoutManager.toggleHeatmapLayout(true, config);
     expect(setLayout).not.toHaveBeenCalled();
   });
@@ -36,7 +40,12 @@ describe('HeatmapLayoutManager.toggleHeatmapLayout', () => {
 
     expect(setLayout).toHaveBeenCalledTimes(1);
     const arg = setLayout.mock.calls[0][0];
-    expect(arg).toMatchObject({ numRows: 1, numCols: 2, layoutType: 'grid', activeViewportId: 'viewport-0' });
+    expect(arg).toMatchObject({
+      numRows: 1,
+      numCols: 2,
+      layoutType: 'grid',
+      activeViewportId: 'viewport-0',
+    });
     expect(arg.layoutOptions).toEqual([
       { x: 0, y: 0, width: 0.5, height: 1 },
       { x: 0.5, y: 0, width: 0.5, height: 1 },
@@ -44,7 +53,10 @@ describe('HeatmapLayoutManager.toggleHeatmapLayout', () => {
 
     const primary = arg.findOrCreateViewport(0);
     expect(primary.displaySetInstanceUIDs).toEqual(['primary-ds']);
-    expect(primary.viewportOptions).toMatchObject({ viewportId: 'viewport-0', viewportType: 'volume' });
+    expect(primary.viewportOptions).toMatchObject({
+      viewportId: 'viewport-0',
+      viewportType: 'volume',
+    });
 
     const heatmap = arg.findOrCreateViewport(1);
     expect(heatmap.displaySetInstanceUIDs).toEqual(['heatmap-ds']);
@@ -76,7 +88,10 @@ describe('HeatmapLayoutManager.toggleHeatmapLayout', () => {
 
     const single = arg.findOrCreateViewport();
     expect(single.displaySetInstanceUIDs).toEqual(['primary-ds']);
-    expect(single.viewportOptions).toMatchObject({ viewportId: 'viewport-0', viewportType: 'volume' });
+    expect(single.viewportOptions).toMatchObject({
+      viewportId: 'viewport-0',
+      viewportType: 'volume',
+    });
   });
 
   it('filters out undefined display set UIDs in the single layout', () => {
@@ -86,7 +101,7 @@ describe('HeatmapLayoutManager.toggleHeatmapLayout', () => {
     expect(arg.findOrCreateViewport().displaySetInstanceUIDs).toEqual([]);
   });
 
-  it('captures the prior layout on open and restores it on close (H-14)', () => {
+  it('captures the prior layout on open and restores it on close', () => {
     const setLayout = jest.fn();
     const priorState = {
       activeViewportId: 'viewport-0',

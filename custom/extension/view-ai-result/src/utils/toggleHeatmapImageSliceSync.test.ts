@@ -7,7 +7,9 @@ const gridViewport = (viewportId: string) => ({
   viewportOptions: { viewportId },
 });
 
-const makeServices = (opts: { hasSync?: boolean; viewportIds?: string[]; missing?: string[] } = {}) => {
+const makeServices = (
+  opts: { hasSync?: boolean; viewportIds?: string[]; missing?: string[] } = {}
+) => {
   const viewportIds = opts.viewportIds ?? ['v1', 'v2'];
   const missing = new Set(opts.missing ?? []);
 
@@ -26,13 +28,22 @@ const makeServices = (opts: { hasSync?: boolean; viewportIds?: string[]; missing
 
   const servicesManager = {
     services: {
-      syncGroupService: { addViewportToSyncGroup, removeViewportFromSyncGroup, getSynchronizersForViewport },
+      syncGroupService: {
+        addViewportToSyncGroup,
+        removeViewportFromSyncGroup,
+        getSynchronizersForViewport,
+      },
       cornerstoneViewportService: { getCornerstoneViewport },
       viewportGridService: { getState: () => ({ viewports }) },
     },
   };
 
-  return { servicesManager, addViewportToSyncGroup, removeViewportFromSyncGroup, getCornerstoneViewport };
+  return {
+    servicesManager,
+    addViewportToSyncGroup,
+    removeViewportFromSyncGroup,
+    getCornerstoneViewport,
+  };
 };
 
 describe('toggleHeatmapImageSliceSync', () => {
@@ -73,7 +84,10 @@ describe('toggleHeatmapImageSliceSync', () => {
   });
 
   it('skips viewports the cornerstone service cannot resolve on the enable path', () => {
-    const { servicesManager, addViewportToSyncGroup } = makeServices({ hasSync: false, missing: ['v2'] });
+    const { servicesManager, addViewportToSyncGroup } = makeServices({
+      hasSync: false,
+      missing: ['v2'],
+    });
     toggleHeatmapImageSliceSync({ servicesManager });
     expect(addViewportToSyncGroup).toHaveBeenCalledTimes(1);
     expect(addViewportToSyncGroup).toHaveBeenCalledWith('v1', 'engine-v1', expect.anything());
@@ -86,8 +100,12 @@ describe('toggleHeatmapImageSliceSync', () => {
     const viewports = new Map<string, any>();
     ['v1', 'v2'].forEach(id => viewports.set(id, gridViewport(id)));
 
-    const addViewportToSyncGroup = jest.fn((id: string) => { synced.add(id); });
-    const removeViewportFromSyncGroup = jest.fn((id: string) => { synced.delete(id); });
+    const addViewportToSyncGroup = jest.fn((id: string) => {
+      synced.add(id);
+    });
+    const removeViewportFromSyncGroup = jest.fn((id: string) => {
+      synced.delete(id);
+    });
     const getSynchronizersForViewport = jest.fn((id: string) =>
       synced.has(id) ? [{ id: HEATMAP_SYNC_ID }] : [{ id: 'something-else' }]
     );
@@ -97,7 +115,11 @@ describe('toggleHeatmapImageSliceSync', () => {
 
     const servicesManager = {
       services: {
-        syncGroupService: { addViewportToSyncGroup, removeViewportFromSyncGroup, getSynchronizersForViewport },
+        syncGroupService: {
+          addViewportToSyncGroup,
+          removeViewportFromSyncGroup,
+          getSynchronizersForViewport,
+        },
         cornerstoneViewportService: { getCornerstoneViewport },
         viewportGridService: { getState: () => ({ viewports }) },
       },

@@ -34,9 +34,7 @@ describe('fetchFeedbackStatus', () => {
   afterEach(() => jest.restoreAllMocks());
 
   it('requests /feedback with the key params and the abort signal', async () => {
-    const fetchMock = jest
-      .fn()
-      .mockResolvedValue({ ok: true, json: async () => ({ users: [] }) });
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true, json: async () => ({ users: [] }) });
     (global as any).fetch = fetchMock;
     const controller = new AbortController();
 

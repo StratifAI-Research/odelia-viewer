@@ -65,8 +65,12 @@ export function dicomDateTimeToIsoUtc(
   time?: string,
   tzOffset?: string | null
 ): string | undefined {
-  if (!date) return undefined;
-  if (date.length !== 8) return undefined;
+  if (!date) {
+    return undefined;
+  }
+  if (date.length !== 8) {
+    return undefined;
+  }
 
   const year = parseInt(date.substring(0, 4), 10);
   const month = parseInt(date.substring(4, 6), 10) - 1; // zero-based
@@ -86,8 +90,12 @@ export function dicomDateTimeToIsoUtc(
 
   if (time && time.length >= 2) {
     hour = parseInt(time.substring(0, 2), 10) || 0;
-    if (time.length >= 4) minute = parseInt(time.substring(2, 4), 10) || 0;
-    if (time.length >= 6) second = parseInt(time.substring(4, 6), 10) || 0;
+    if (time.length >= 4) {
+      minute = parseInt(time.substring(2, 4), 10) || 0;
+    }
+    if (time.length >= 6) {
+      second = parseInt(time.substring(4, 6), 10) || 0;
+    }
     // fractional part after dot/comma
     if (time.length > 6 && (time[6] === '.' || time[6] === ',')) {
       const frac = time.substring(7);

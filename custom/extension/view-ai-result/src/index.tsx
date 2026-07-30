@@ -22,7 +22,7 @@ export default {
    * this extension is providing.
    */
   preRegistration: ({ servicesManager, commandsManager, configuration = {} }) => {
-    // L-07: register atomically and fail fast. A partially-registered extension
+    // Register atomically and fail fast. A partially-registered extension
     // (e.g. aiResultsService present but the heatmap synchronizer missing) only
     // surfaces much later as confusing "missing behaviour"; rethrow a descriptive
     // startup error instead of swallowing it.
@@ -34,7 +34,10 @@ export default {
 
       // Register custom heatmap synchronizer type
       const { syncGroupService } = servicesManager.services;
-      syncGroupService.addSynchronizerType('heatmapImageSlice', createHeatmapImageSliceSynchronizer);
+      syncGroupService.addSynchronizerType(
+        'heatmapImageSlice',
+        createHeatmapImageSliceSynchronizer
+      );
 
       // Register ChatService for AI Chat panel
       servicesManager.registerService({
@@ -92,7 +95,7 @@ export default {
         evaluate: () => {
           const { syncGroupService } = servicesManager.services;
           const synchronizer = syncGroupService.getSynchronizer('HEATMAP_IMAGE_SLICE_SYNC');
-          // L-06: use the public API instead of the private `_enabled` field.
+          // Use the public API instead of the private `_enabled` field.
           const isActive = synchronizer && !synchronizer.isDisabled();
 
           return {
@@ -110,7 +113,12 @@ export default {
    * a Header, left and right sidebars, and a viewport section in the middle
    * of the viewer.
    */
-  getLayoutTemplateModule: ({ servicesManager, commandsManager, extensionManager, hotkeysManager }) => {
+  getLayoutTemplateModule: ({
+    servicesManager,
+    commandsManager,
+    extensionManager,
+    hotkeysManager,
+  }) => {
     function OdeliaViewerLayout(props) {
       const DefaultLayout = useMemo(() => {
         const entry = extensionManager.getModuleEntry(

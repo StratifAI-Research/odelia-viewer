@@ -28,7 +28,7 @@ export function extractAIResultData(displaySet) {
   } = {
     classifications: [],
     modelInfo: null,
-    isClassification: false
+    isClassification: false,
   };
 
   // Find the root container or use the entire content sequence
@@ -39,7 +39,9 @@ export function extractAIResultData(displaySet) {
   itemsToProcess.forEach(item => {
     const conceptMeaning = item.ConceptNameCodeSequence?.[0]?.CodeMeaning;
 
-    if (!conceptMeaning) return;
+    if (!conceptMeaning) {
+      return;
+    }
 
     // Handle successful classification results (Side Probability)
     if (conceptMeaning.includes('Side Probability')) {
@@ -68,7 +70,7 @@ export function extractAIResultData(displaySet) {
         const classification: Classification = {
           side: side as 'Left' | 'Right',
           result: result,
-          confidence
+          confidence,
         };
 
         results.classifications.push(classification);
@@ -85,7 +87,7 @@ export function extractAIResultData(displaySet) {
         side: side as 'Left' | 'Right',
         result: null,
         confidence: null,
-        errorMessage: errorMessage
+        errorMessage: errorMessage,
       };
 
       results.classifications.push(classification);
@@ -96,7 +98,7 @@ export function extractAIResultData(displaySet) {
       results.modelInfo = {
         name: item.TextValue || 'AI Model',
         algorithmName: item.AlgorithmName || null,
-        algorithmVersion: item.AlgorithmVersion || null
+        algorithmVersion: item.AlgorithmVersion || null,
       };
     }
   });

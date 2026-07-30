@@ -101,10 +101,18 @@ describe('dicomDateTime utils', () => {
 
     it('applies the instance timezone offset', () => {
       const utc = resultTsFromDisplaySet({
-        instance: { InstanceCreationDate: '20240315', InstanceCreationTime: '120000', TimezoneOffsetFromUTC: '+0000' },
+        instance: {
+          InstanceCreationDate: '20240315',
+          InstanceCreationTime: '120000',
+          TimezoneOffsetFromUTC: '+0000',
+        },
       });
       const plus2 = resultTsFromDisplaySet({
-        instance: { InstanceCreationDate: '20240315', InstanceCreationTime: '140000', TimezoneOffsetFromUTC: '+0200' },
+        instance: {
+          InstanceCreationDate: '20240315',
+          InstanceCreationTime: '140000',
+          TimezoneOffsetFromUTC: '+0200',
+        },
       });
       expect(utc).toEqual(plus2);
     });

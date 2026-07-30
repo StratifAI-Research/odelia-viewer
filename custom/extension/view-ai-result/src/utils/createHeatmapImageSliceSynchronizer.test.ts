@@ -16,7 +16,8 @@ describe('createHeatmapImageSliceSynchronizer', () => {
 
   it('wires the STACK_NEW_IMAGE event and a callback', () => {
     createHeatmapImageSliceSynchronizer('heatmap-sync');
-    const [name, event, callback] = (SynchronizerManager.createSynchronizer as jest.Mock).mock.calls[0];
+    const [name, event, callback] = (SynchronizerManager.createSynchronizer as jest.Mock).mock
+      .calls[0];
     expect(name).toBe('heatmap-sync');
     expect(event).toBe(Enums.Events.STACK_NEW_IMAGE);
     expect(typeof callback).toBe('function');

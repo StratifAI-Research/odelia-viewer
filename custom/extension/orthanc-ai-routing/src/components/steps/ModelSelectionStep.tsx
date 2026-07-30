@@ -67,18 +67,16 @@ export const ModelSelectionStep: React.FC<ModelSelectionStepProps> = ({
   const canProceed = currentEndpoint && !isLoadingManifest && manifestChecked;
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 min-h-0 px-3 pt-4 pb-4 space-y-4 overflow-y-auto overflow-x-hidden">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-3 pt-4 pb-4">
         {(error || manifestError) && (
-          <div className="rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700 text-sm">
+          <div className="rounded border border-red-400 bg-red-100 px-4 py-3 text-sm text-red-700">
             {error || manifestError}
           </div>
         )}
 
         <div>
-          <h4 className="text-sm font-medium mb-3 text-muted-foreground">
-            Select AI Model
-          </h4>
+          <h4 className="text-muted-foreground mb-3 text-sm font-medium">Select AI Model</h4>
           <AIEndpointConfig
             onEndpointChange={handleEndpointChange}
             currentEndpoint={currentEndpoint}
@@ -87,28 +85,26 @@ export const ModelSelectionStep: React.FC<ModelSelectionStepProps> = ({
         </div>
 
         {isLoadingManifest && (
-          <div className="p-3 bg-secondary-dark rounded text-xs text-muted-foreground">
+          <div className="bg-secondary-dark text-muted-foreground rounded p-3 text-xs">
             <div className="flex items-center space-x-2">
-              <div className="animate-spin h-4 w-4 border-2 border-primary-light border-t-transparent rounded-full" />
+              <div className="border-primary-light h-4 w-4 animate-spin rounded-full border-2 border-t-transparent" />
               <span>Fetching model configuration...</span>
             </div>
           </div>
         )}
 
         {manifestChecked && manifest && (
-          <div className="text-sm bg-secondary-dark rounded p-3 space-y-2">
-            <div className="text-white font-medium">{manifest.model_name}</div>
-            <div className="text-xs text-muted-foreground space-y-1">
+          <div className="bg-secondary-dark space-y-2 rounded p-3 text-sm">
+            <div className="font-medium text-white">{manifest.model_name}</div>
+            <div className="text-muted-foreground space-y-1 text-xs">
               <div>Version: {manifest.version}</div>
-              <div>
-                Input modes: {manifest.input_configurations.map(c => c.name).join(', ')}
-              </div>
+              <div>Input modes: {manifest.input_configurations.map(c => c.name).join(', ')}</div>
             </div>
           </div>
         )}
 
         {manifestChecked && !manifest && (
-          <div className="text-sm bg-secondary-dark rounded p-3 space-y-1">
+          <div className="bg-secondary-dark space-y-1 rounded p-3 text-sm">
             <div className="text-muted-foreground text-xs">
               No input specification available for this model.
             </div>
@@ -116,7 +112,7 @@ export const ModelSelectionStep: React.FC<ModelSelectionStepProps> = ({
         )}
       </div>
 
-      <div className="flex-shrink-0 px-3 py-3 border-t border-secondary-light bg-black">
+      <div className="border-secondary-light flex-shrink-0 border-t bg-black px-3 py-3">
         <Button
           onClick={onNext}
           disabled={!canProceed}

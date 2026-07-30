@@ -1,12 +1,12 @@
 import Config from '../utils/config';
 import { getPanelConfig } from '../utils/panelConfig';
-const config: Config = require('../utils/config.json');
 import {
   ODELIA_LABELING_SOURCE_NAME,
   ODELIA_LABELING_SOURCE_VERSION,
 } from '../measurementServiceMappings/ODELIALabel';
 import { utils } from '@ohif/core';
 import { makeLabelAnnotation } from '../measurementServiceMappings/makeLabelAnnotation';
+const config: Config = require('../utils/config.json');
 
 const unusedColumns = [
   'AnnotationType',
@@ -109,9 +109,7 @@ export default function importCSVReport(
       CORNERSTONE_3D_TOOLS_SOURCE_NAME,
       CORNERSTONE_3D_TOOLS_SOURCE_VERSION
     ) || [];
-  const matchingLesionMapping = lesionMappings.find(
-    m => m.annotationType === lesionAnnotationType
-  );
+  const matchingLesionMapping = lesionMappings.find(m => m.annotationType === lesionAnnotationType);
   if (lesionAnnotations.length > 0 && (!lesionSource || !matchingLesionMapping)) {
     throw new Error(
       'importCSVReport: Cornerstone3DTools/CircleROI source/mapping is not registered'
@@ -141,7 +139,7 @@ export default function importCSVReport(
       dataSource
     );
     // Seed the lesion's labeling table from the imported label_data. `label` is
-    // '' to mark it imported; LabelingTable no longer wipes label_data for such
+    // '' to mark it imported; LabelingTable preserves label_data for such
     // measurements (see seedDefaultLabelData).
     const measurement = measurementService.getMeasurement(uid);
     measurement.label_data = annotation.data.label_data;
@@ -151,10 +149,9 @@ export default function importCSVReport(
 }
 
 // Collate label rows by StudyInstanceUID so a patient with multiple studies
-// yields one label per study. Previously this keyed solely on 'Patient ID', so
-// for a multi-study patient only the last row survived (and it set the single
-// label's referenceStudyUID). Falls back to 'Patient ID' for rows without a
-// StudyInstanceUID.
+// yields one label per study. Keying on 'Patient ID' alone would keep only the
+// last row for a multi-study patient. Falls back to 'Patient ID' for rows
+// without a StudyInstanceUID.
 function _collateLabels(parsedMeasurements) {
   const collatedLabels = {};
   parsedMeasurements.forEach(element => {
@@ -174,10 +171,7 @@ function _parseLesions(parsedMeasurements, lesionLabelKeys) {
     }
 
     const lesionData = Object.keys(element)
-      .filter(
-        key =>
-          !unusedColumns.includes(key) && key in lesionLabelKeys
-      )
+      .filter(key => !unusedColumns.includes(key) && key in lesionLabelKeys)
       .reduce((obj, key) => {
         obj[key] = element[key];
         return obj;
@@ -195,9 +189,7 @@ function _parseLesions(parsedMeasurements, lesionLabelKeys) {
         cachedStats: [],
         handles: {
           textBox: {},
-          points: element['points']
-            .split(';')
-            .map(pos => pos.split(' ').map(Number)),
+          points: element['points'].split(';').map(pos => pos.split(' ').map(Number)),
         },
       },
       referenceStudyUID: element['StudyInstanceUID'],

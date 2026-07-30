@@ -24,7 +24,7 @@ interface CapturedLayout {
 
 // Prior grid state captured when a heatmap is opened, so closing it restores the
 // user's layout (hanging protocol, multi-viewport, viewport options,
-// multi-display-set) instead of collapsing to a generic single viewport (H-14).
+// multi-display-set) instead of collapsing to a generic single viewport.
 // Keyed by the viewport grid service instance (a singleton in the app; a fresh
 // object per test) so snapshots never leak across services.
 const savedLayoutsByService = new WeakMap<object, Record<string, CapturedLayout>>();
@@ -58,7 +58,9 @@ export class HeatmapLayoutManager {
       } else if (position === 1) {
         // Heatmap viewport
         return {
-          displaySetInstanceUIDs: [aiResult.heatmapDisplaySet?.displaySetInstanceUID].filter(Boolean),
+          displaySetInstanceUIDs: [aiResult.heatmapDisplaySet?.displaySetInstanceUID].filter(
+            Boolean
+          ),
           viewportOptions: {
             ...viewportOptions,
             viewportId: heatmapViewportId,

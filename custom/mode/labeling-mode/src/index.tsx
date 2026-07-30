@@ -8,7 +8,6 @@ const configs = {
   //
 };
 
-
 const ohif = {
   layout: '@ohif/extension-default.layoutTemplateModule.viewerLayout',
   sopClassHandler: '@ohif/extension-default.sopClassHandlerModule.stack',
@@ -32,8 +31,8 @@ const cornerstone = {
 const extensionDependencies = {
   '@ohif/extension-default': '^3.0.0',
   '@ohif/extension-cornerstone': '^3.0.0',
-  "labeling": "^0.0.1",
-  "view-ai-result": "^0.0.1"
+  labeling: '^0.0.1',
+  'view-ai-result': '^0.0.1',
 };
 
 function modeFactory() {
@@ -64,7 +63,9 @@ function modeFactory() {
       // cornerstone tools module degrades gracefully instead of throwing during
       // mode entry.
       if (!utilityModule?.exports) {
-        console.warn('labeling-mode: Cornerstone tools utility module not found – tools not activated');
+        console.warn(
+          'labeling-mode: Cornerstone tools utility module not found – tools not activated'
+        );
         return;
       }
 
@@ -106,8 +107,8 @@ function modeFactory() {
       // Set up default AI overlay
       customizationService.setCustomizations({
         'viewportOverlay.topLeft': {
-          $set: [] // Clear default overlays to prevent conflict with AI action corners
-        }
+          $set: [], // Clear default overlays to prevent conflict with AI action corners
+        },
       });
 
       let unsubscribe;
@@ -184,17 +185,14 @@ function modeFactory() {
           { servicesManager, extensionManager, studyInstanceUIDs, dataSource, filters },
           hangingProtocolId
         ) => {
-          const {
-            displaySetService,
-            hangingProtocolService,
-            measurementService
-          } = servicesManager.services;
+          const { displaySetService, hangingProtocolService, measurementService } =
+            servicesManager.services;
 
           const unsubscriptions: any[] = [];
           const initLabels = extensionManager.getModuleEntry(
-            "labeling.utilityModule.initLabels"
+            'labeling.utilityModule.initLabels'
           ).exports;
-          // M-19: labeling-mode is an explicitly single-study workflow — only the
+          // labeling-mode is an explicitly single-study workflow — only the
           // first requested study is initialized/labelled. Warn (rather than
           // silently label just one) if a multi-study route is opened, so the
           // incomplete-labelling limitation is visible.
@@ -204,11 +202,13 @@ function modeFactory() {
                 `(${studyInstanceUIDs[0]}) is initialized for labelling.`
             );
           }
-          initLabels({ extensionManager, measurementService, StudyInstanceUID: studyInstanceUIDs[0] });
+          initLabels({
+            extensionManager,
+            measurementService,
+            StudyInstanceUID: studyInstanceUIDs[0],
+          });
 
-          const {
-            unsubscribe: instanceAddedUnsubscribe,
-          } = DicomMetadataStore.subscribe(
+          const { unsubscribe: instanceAddedUnsubscribe } = DicomMetadataStore.subscribe(
             DicomMetadataStore.EVENTS.INSTANCES_ADDED,
             function ({ StudyInstanceUID, SeriesInstanceUID, madeInClient = false }) {
               const seriesMetadata = DicomMetadataStore.getSeries(
@@ -243,10 +243,7 @@ function modeFactory() {
 
             // run the hanging protocol matching on the displaySets with the predefined
             // hanging protocol in the mode configuration
-            hangingProtocolService.run(
-              { studies, activeStudy, displaySets },
-              hangingProtocolId
-            );
+            hangingProtocolService.run({ studies, activeStudy, displaySets }, hangingProtocolId);
           });
 
           return unsubscriptions;

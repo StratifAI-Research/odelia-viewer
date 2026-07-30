@@ -1,5 +1,12 @@
 import { SynchronizerManager, Synchronizer } from '@cornerstonejs/tools';
-import { Enums, getRenderingEngine, metaData, utilities, VolumeViewport, Types } from '@cornerstonejs/core';
+import {
+  Enums,
+  getRenderingEngine,
+  metaData,
+  utilities,
+  VolumeViewport,
+  Types,
+} from '@cornerstonejs/core';
 import { vec3, mat4 } from 'gl-matrix';
 
 /**
@@ -130,10 +137,10 @@ export default function createHeatmapImageSliceSynchronizer(
       ...options,
       auxiliaryEvents: [
         {
-          name: Enums.Events.VOLUME_NEW_IMAGE,  // Use the constant, not string literal!
-          source: 'element'
-        }
-      ]
+          name: Enums.Events.VOLUME_NEW_IMAGE, // Use the constant, not string literal!
+          source: 'element',
+        },
+      ],
     }
   );
 

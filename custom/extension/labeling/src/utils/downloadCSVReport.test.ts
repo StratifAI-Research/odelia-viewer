@@ -1,17 +1,13 @@
 // @ohif/core is a webpack external, unresolvable in this package's jest env.
 // downloadCSVReport only touches DicomMetadataStore in its main path, which the
 // tests below do not exercise.
+import { _escapeCsvValue, _createAndDownloadFile, _getCommonRowItems } from './downloadCSVReport';
+
 jest.mock(
   '@ohif/core',
   () => ({ DicomMetadataStore: { getStudy: () => undefined, getSeries: () => undefined } }),
   { virtual: true }
 );
-
-import {
-  _escapeCsvValue,
-  _createAndDownloadFile,
-  _getCommonRowItems,
-} from './downloadCSVReport';
 
 describe('_escapeCsvValue', () => {
   it('wraps values containing comma / quote / newline per RFC 4180', () => {
@@ -35,13 +31,16 @@ describe('_escapeCsvValue', () => {
   });
 });
 
-describe('_getCommonRowItems (LAB-M9 metadata guards)', () => {
+describe('_getCommonRowItems (metadata guards)', () => {
   const seriesWith = (patientName: any, patientID = 'PID') => ({
     instances: [{ PatientID: patientID, PatientName: patientName }],
   });
 
   it('reads PatientName.Alphabetic from a PN object', () => {
-    const row = _getCommonRowItems({ referenceStudyUID: 'S1' }, seriesWith({ Alphabetic: 'Doe^Jane' }));
+    const row = _getCommonRowItems(
+      { referenceStudyUID: 'S1' },
+      seriesWith({ Alphabetic: 'Doe^Jane' })
+    );
     expect(row['Patient Name']).toBe('Doe^Jane');
   });
 
@@ -51,7 +50,10 @@ describe('_getCommonRowItems (LAB-M9 metadata guards)', () => {
   });
 
   it('exports empty (not "[object Object]") for a PN object without Alphabetic', () => {
-    const row = _getCommonRowItems({ referenceStudyUID: 'S1' }, seriesWith({ Ideographic: '山田' }));
+    const row = _getCommonRowItems(
+      { referenceStudyUID: 'S1' },
+      seriesWith({ Ideographic: '山田' })
+    );
     expect(row['Patient Name']).toBe('');
   });
 
@@ -84,7 +86,7 @@ describe('_createAndDownloadFile', () => {
     jest.restoreAllMocks();
   });
 
-  it('downloads via a Blob object URL (not a data: URI), preserving #, and cleans up (LAB-M1)', () => {
+  it('downloads via a Blob object URL (not a data: URI), preserving #, and cleans up', () => {
     const anchor: any = {
       setAttribute: jest.fn(),
       click: jest.fn(),

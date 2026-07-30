@@ -42,12 +42,10 @@ export const SeriesSelectionStep: React.FC<SeriesSelectionStepProps> = ({
     if (isLoading) {
       return (
         <div className="space-y-3">
-          <p className="text-xs text-muted-foreground">
-            Loading series from display sets...
-          </p>
-          <div className="p-2 bg-secondary-dark rounded text-xs text-muted-foreground">
+          <p className="text-muted-foreground text-xs">Loading series from display sets...</p>
+          <div className="bg-secondary-dark text-muted-foreground rounded p-2 text-xs">
             <div className="flex items-center space-x-2">
-              <div className="animate-spin h-4 w-4 border-2 border-primary-light border-t-transparent rounded-full"></div>
+              <div className="border-primary-light h-4 w-4 animate-spin rounded-full border-2 border-t-transparent"></div>
               <span>Waiting for DICOM data...</span>
             </div>
           </div>
@@ -68,9 +66,7 @@ export const SeriesSelectionStep: React.FC<SeriesSelectionStepProps> = ({
 
     return (
       <div className="space-y-3">
-        <p className="text-xs text-muted-foreground">
-          Select series to send for AI analysis
-        </p>
+        <p className="text-muted-foreground text-xs">Select series to send for AI analysis</p>
         <SeriesSelector
           series={series}
           selectedSeriesUIDs={selectedSeriesUIDs}
@@ -78,7 +74,7 @@ export const SeriesSelectionStep: React.FC<SeriesSelectionStepProps> = ({
           onSelectAll={onSelectAll}
           onClearSelection={onClearSelection}
         />
-        <div className="text-xs text-muted-foreground p-2 bg-secondary-dark rounded">
+        <div className="text-muted-foreground bg-secondary-dark rounded p-2 text-xs">
           ℹ️ Only original series shown. AI results excluded.
         </div>
       </div>
@@ -86,12 +82,12 @@ export const SeriesSelectionStep: React.FC<SeriesSelectionStepProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 min-h-0 px-3 pt-4 pb-4 space-y-3 overflow-y-auto overflow-x-hidden">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden px-3 pt-4 pb-4">
         {renderContent()}
       </div>
 
-      <div className="flex-shrink-0 px-3 py-3 border-t border-secondary-light bg-black space-y-2">
+      <div className="border-secondary-light flex-shrink-0 space-y-2 border-t bg-black px-3 py-3">
         <Button
           onClick={onNext}
           disabled={selectedSeriesUIDs.size === 0 || isLoading}

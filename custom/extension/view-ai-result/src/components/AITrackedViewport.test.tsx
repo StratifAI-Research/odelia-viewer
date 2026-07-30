@@ -98,9 +98,7 @@ describe('AITrackedViewport', () => {
       { displaySetInstanceUID: 'mr', Modality: 'MR' },
       { displaySetInstanceUID: 'sc', Modality: 'SC' },
     ];
-    render(
-      <AITrackedViewport {...baseProps({ viewportId: 'vp-heatmap', displaySets })} />
-    );
+    render(<AITrackedViewport {...baseProps({ viewportId: 'vp-heatmap', displaySets })} />);
     expect(screen.getByTestId('cs-show-overlays').textContent).toBe('false');
     // heatmap viewport receives the full display set list, unfiltered
     expect(screen.getByTestId('cs-ds-count').textContent).toBe('2');
@@ -109,9 +107,7 @@ describe('AITrackedViewport', () => {
   it('clears overlays but never adds a heatmap toggle on a heatmap viewport', () => {
     const services = makeServices();
     render(
-      <AITrackedViewport
-        {...baseProps({ viewportId: 'vp-heatmap', servicesManager: services })}
-      />
+      <AITrackedViewport {...baseProps({ viewportId: 'vp-heatmap', servicesManager: services })} />
     );
     const addComponent = services.services.viewportActionCornersService.addComponent;
     // heatmap viewport aggressively clears the AI overlay corner...
@@ -131,9 +127,7 @@ describe('AITrackedViewport', () => {
   it('skips event subscription for a heatmap viewport', () => {
     const services = makeServices();
     render(
-      <AITrackedViewport
-        {...baseProps({ viewportId: 'vp-heatmap', servicesManager: services })}
-      />
+      <AITrackedViewport {...baseProps({ viewportId: 'vp-heatmap', servicesManager: services })} />
     );
     expect(services.services.aiResultsService.subscribe).not.toHaveBeenCalled();
   });

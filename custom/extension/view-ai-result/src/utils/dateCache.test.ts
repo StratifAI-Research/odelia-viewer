@@ -40,11 +40,15 @@ describe('getStaticDate', () => {
 
   it('falls back to SeriesDate then StudyDate', () => {
     expect(
-      getStaticDate({ displaySetInstanceUID: 'dc-series', SeriesDate: '20221111', StudyDate: '20200101' })
+      getStaticDate({
+        displaySetInstanceUID: 'dc-series',
+        SeriesDate: '20221111',
+        StudyDate: '20200101',
+      })
     ).toBe('2022-11-11');
-    expect(
-      getStaticDate({ displaySetInstanceUID: 'dc-study', StudyDate: '20200101' })
-    ).toBe('2020-01-01');
+    expect(getStaticDate({ displaySetInstanceUID: 'dc-study', StudyDate: '20200101' })).toBe(
+      '2020-01-01'
+    );
   });
 
   it('falls back to dates nested in the instance object', () => {

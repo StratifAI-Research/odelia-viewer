@@ -5,7 +5,11 @@ import React from 'react';
 const Pass = ({ children, ...rest }: any) => <div {...rest}>{children}</div>;
 
 export const Button = ({ children, onClick, disabled, ...rest }: any) => (
-  <button onClick={onClick} disabled={disabled} {...rest}>
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    {...rest}
+  >
     {children}
   </button>
 );
@@ -18,7 +22,4 @@ export const DialogFooter = Pass;
 export const DialogTitle = Pass;
 export const DialogDescription = Pass;
 
-export const useViewportGrid = () => [
-  { activeViewportId: 'v1', viewports: new Map() },
-  {},
-];
+export const useViewportGrid = () => [{ activeViewportId: 'v1', viewports: new Map() }, {}];

@@ -85,9 +85,7 @@ export default function downloadCSVReport(measurementData) {
 
   const results = _mapReportsToRowArray(reportMap, columns);
 
-  const csvContent = results
-    .map(row => row.map(_escapeCsvValue).join(','))
-    .join('\n');
+  const csvContent = results.map(row => row.map(_escapeCsvValue).join(',')).join('\n');
 
   _createAndDownloadFile(csvContent);
 }

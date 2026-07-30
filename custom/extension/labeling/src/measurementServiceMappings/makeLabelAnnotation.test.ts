@@ -1,8 +1,8 @@
 // @ohif/core is not resolvable in this package's jest env (it is a webpack external),
 // so mock it virtually — makeLabelAnnotation only needs utils.guid().
-jest.mock('@ohif/core', () => ({ utils: { guid: () => 'test-guid-123' } }), { virtual: true });
-
 import { makeLabelAnnotation } from './makeLabelAnnotation';
+
+jest.mock('@ohif/core', () => ({ utils: { guid: () => 'test-guid-123' } }), { virtual: true });
 
 describe('makeLabelAnnotation', () => {
   it('builds an ODELIALabel raw annotation with the given fields', () => {

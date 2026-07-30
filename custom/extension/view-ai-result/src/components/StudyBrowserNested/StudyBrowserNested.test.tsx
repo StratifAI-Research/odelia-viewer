@@ -14,7 +14,9 @@ function makeDialogService() {
     // Mirror ManagedDialog: the content's `hide` routes to the service-provided
     // onClose (the option's onClose, which overrides the provider default).
     const contentHide = () => options.onClose?.(options.id);
-    state.contentRender = render(<div data-testid="dialog-root">{options.content({ hide: contentHide })}</div>);
+    state.contentRender = render(
+      <div data-testid="dialog-root">{options.content({ hide: contentHide })}</div>
+    );
   });
   return { service: { show, hide }, state };
 }
@@ -306,7 +308,7 @@ describe('StudyBrowserNested', () => {
     expect(screen.getByText('No Study Date')).toBeTruthy();
   });
 
-  // VAR-L13 (ODV-80): a study that arrives without a UID (as produced by the
+  // ODV-80: a study that arrives without a UID (as produced by the
   // nested-tab grouping path the panels feed in) must not trigger React's
   // "each child needs a unique key" warning — the render now supplies an index
   // fallback key.
@@ -327,9 +329,7 @@ describe('StudyBrowserNested', () => {
       console.error = original;
     }
 
-    const keyWarning = errors.some(
-      e => typeof e === 'string' && e.includes('unique "key"')
-    );
+    const keyWarning = errors.some(e => typeof e === 'string' && e.includes('unique "key"'));
     expect(keyWarning).toBe(false);
   });
 });

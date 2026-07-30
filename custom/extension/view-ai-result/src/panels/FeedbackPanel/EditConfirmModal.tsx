@@ -12,8 +12,8 @@ export const EditConfirmModal: React.FC<{ hide: () => void; onConfirm: () => voi
 }) => {
   return (
     <div className="text-foreground">
-      <div className="text-base font-medium mb-2">Edit feedback?</div>
-      <div className="text-sm mb-4">
+      <div className="mb-2 text-base font-medium">Edit feedback?</div>
+      <div className="mb-4 text-sm">
         You can change your previously submitted feedback for this AI result.
       </div>
       <div className="flex justify-end space-x-2">

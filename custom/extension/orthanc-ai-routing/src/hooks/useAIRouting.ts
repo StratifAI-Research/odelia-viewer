@@ -12,15 +12,15 @@ interface UseAIRoutingProps {
 export function useAIRouting({
   orthancAIService,
   uiNotificationService,
-  onComplete
+  onComplete,
 }: UseAIRoutingProps) {
   const [status, setStatus] = useState<'idle' | 'routing' | 'checking'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
   // Initialize from the service once, on mount (lazy initializer — avoids a
   // setState-during-render side effect).
-  const [currentEndpoint, setCurrentEndpoint] = useState<AIEndpoint | null>(
-    () => orthancAIService.getCurrentEndpoint()
+  const [currentEndpoint, setCurrentEndpoint] = useState<AIEndpoint | null>(() =>
+    orthancAIService.getCurrentEndpoint()
   );
   const [workitemUid, setWorkitemUid] = useState<string | null>(null);
   const [progressDescription, setProgressDescription] = useState<string | null>(null);
@@ -38,7 +38,6 @@ export function useAIRouting({
   };
 
   const handleWorkitemStatusUpdate = (workitemStatus: WorkitemStatus) => {
-
     // Map workitem states to local status
     switch (workitemStatus.state) {
       case 'SCHEDULED':
@@ -185,7 +184,8 @@ export function useAIRouting({
         return false;
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to send study for AI analysis';
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to send study for AI analysis';
       setError(errorMessage);
       setStatus('idle');
       setProgress(0);

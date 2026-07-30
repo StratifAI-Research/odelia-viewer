@@ -2,6 +2,8 @@ import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { AI_ENDPOINT } from '../test-utils/harness';
 
+import AIRoutingPanel from './AIRoutingPanel';
+
 // @ohif/core (imported transitively by the real useStudySeriesSelection) is mapped to
 // a stub via moduleNameMapper (jest.config.js).
 
@@ -19,35 +21,56 @@ jest.mock('@ohif/ui-next', () => ({
 // wizard by invoking captured callbacks and assert the panel wires correct data.
 const mockProps: any = {};
 jest.mock('./steps/ModelSelectionStep', () => ({
-  ModelSelectionStep: (p: any) => { mockProps.model = p; return <div data-testid="step-model" />; },
+  ModelSelectionStep: (p: any) => {
+    mockProps.model = p;
+    return <div data-testid="step-model" />;
+  },
 }));
 jest.mock('./steps/SeriesSelectionStep', () => ({
-  SeriesSelectionStep: (p: any) => { mockProps.series = p; return <div data-testid="step-series" />; },
+  SeriesSelectionStep: (p: any) => {
+    mockProps.series = p;
+    return <div data-testid="step-series" />;
+  },
 }));
 jest.mock('./steps/InputModeSelectionStep', () => ({
-  InputModeSelectionStep: (p: any) => { mockProps.mode = p; return <div data-testid="step-mode" />; },
+  InputModeSelectionStep: (p: any) => {
+    mockProps.mode = p;
+    return <div data-testid="step-mode" />;
+  },
 }));
 jest.mock('./steps/InputMappingStep', () => ({
-  InputMappingStep: (p: any) => { mockProps.mapping = p; return <div data-testid="step-mapping" />; },
+  InputMappingStep: (p: any) => {
+    mockProps.mapping = p;
+    return <div data-testid="step-mapping" />;
+  },
 }));
 jest.mock('./steps/ConfirmStep', () => ({
-  ConfirmStep: (p: any) => { mockProps.confirm = p; return <div data-testid="step-confirm" />; },
+  ConfirmStep: (p: any) => {
+    mockProps.confirm = p;
+    return <div data-testid="step-confirm" />;
+  },
 }));
 jest.mock('./steps/ProgressStep', () => ({
-  ProgressStep: (p: any) => { mockProps.progress = p; return <div data-testid="step-progress" />; },
+  ProgressStep: (p: any) => {
+    mockProps.progress = p;
+    return <div data-testid="step-progress" />;
+  },
 }));
 jest.mock('./AIEndpointConfig', () => ({
   __esModule: true,
-  default: (p: any) => { mockProps.endpointConfig = p; return <div data-testid="endpoint-config" />; },
+  default: (p: any) => {
+    mockProps.endpointConfig = p;
+    return <div data-testid="endpoint-config" />;
+  },
 }));
-
-import AIRoutingPanel from './AIRoutingPanel';
 
 const MANIFEST = {
   model_id: 'm',
   model_name: 'M',
   version: '1',
-  input_configurations: [{ id: 'c1', name: 'cfg', inputs: [{ key: 't1', label: 'T1', required: true }] }],
+  input_configurations: [
+    { id: 'c1', name: 'cfg', inputs: [{ key: 't1', label: 'T1', required: true }] },
+  ],
 };
 
 function ds(over: Record<string, any> = {}) {
@@ -68,7 +91,9 @@ function makeServices(opts: { displaySets?: any[]; orthancAIService?: any } = {}
     getDicomStudyInstanceUIDFromURL: jest.fn(() => null),
     getCurrentEndpoint: jest.fn(() => AI_ENDPOINT),
     setCurrentEndpoint: jest.fn(),
-    routeSeriesToAI: jest.fn().mockResolvedValue({ status: 'success', workitem_uid: 'w1', message: 'ok' }),
+    routeSeriesToAI: jest
+      .fn()
+      .mockResolvedValue({ status: 'success', workitem_uid: 'w1', message: 'ok' }),
     startWorkitemPolling: jest.fn(),
     stopWorkitemPolling: jest.fn(),
     getModelManifest: jest.fn().mockResolvedValue(null),
@@ -85,7 +110,9 @@ function makeServices(opts: { displaySets?: any[]; orthancAIService?: any } = {}
         getDisplaySetByUID: jest.fn(),
       },
       uiNotificationService: { show: jest.fn() },
-      customizationService: { getCustomization: jest.fn(() => ({ progress }: any) => <div>{progress}</div>) },
+      customizationService: {
+        getCustomization: jest.fn(() => ({ progress }: any) => <div>{progress}</div>),
+      },
     },
   };
 }
@@ -104,7 +131,9 @@ beforeEach(() => {
   jest.spyOn(console, 'log').mockImplementation(() => {});
   jest.spyOn(console, 'warn').mockImplementation(() => {});
   jest.spyOn(console, 'error').mockImplementation(() => {});
-  for (const k of Object.keys(mockProps)) delete mockProps[k];
+  for (const k of Object.keys(mockProps)) {
+    delete mockProps[k];
+  }
   mockViewport.studyUIDs = ['1.2.3'];
   mockViewport.grid = [{ activeViewportId: 'v1', viewports: new Map() }, {}];
 });
@@ -156,8 +185,12 @@ describe('AIRoutingPanel — study derivation', () => {
       { activeViewportId: 'v1', viewports: new Map([['v1', { displaySetInstanceUIDs: ['dsX'] }]]) },
       {},
     ];
-    const sm = makeServices({ displaySets: [ds({ StudyInstanceUID: '9.9.9', SeriesInstanceUID: 's9' })] });
-    sm.services.displaySetService.getDisplaySetByUID = jest.fn(() => ({ StudyInstanceUID: '9.9.9' }));
+    const sm = makeServices({
+      displaySets: [ds({ StudyInstanceUID: '9.9.9', SeriesInstanceUID: 's9' })],
+    });
+    sm.services.displaySetService.getDisplaySetByUID = jest.fn(() => ({
+      StudyInstanceUID: '9.9.9',
+    }));
     render(<AIRoutingPanel servicesManager={sm as any} />);
     await act(async () => {
       await jest.advanceTimersByTimeAsync(300);

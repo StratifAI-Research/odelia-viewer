@@ -7,7 +7,7 @@ describe('seedDefaultLabelData', () => {
     ScanDate: { type: 'date' }, // no options
   };
 
-  it('does not overwrite existing/imported label_data (LAB-H1 data loss)', () => {
+  it('does not overwrite existing/imported label_data (data loss)', () => {
     const measurement = {
       label_data: { Ethnicity: 'B', Grade: '2', Histopathology: 'malignant' },
     };

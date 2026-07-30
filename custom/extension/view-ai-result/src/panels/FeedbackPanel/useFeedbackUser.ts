@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 /**
- * Reader identity for the feedback panel (H-11: the identity half of the split).
+ * Reader identity for the feedback panel (the identity half of the split).
  *
  * Resolves a stable user id from, in order: the OHIF authentication service /
  * auth state, a locally-typed display name, and a persisted localStorage name.
@@ -26,7 +26,9 @@ export function extractUserIdFromAuth(svcUser: any): string | null {
       svcUser?.id,
     ];
     for (const candidate of candidates) {
-      if (candidate && String(candidate).trim().length > 0) return String(candidate).trim();
+      if (candidate && String(candidate).trim().length > 0) {
+        return String(candidate).trim();
+      }
     }
   } catch (_) {
     // ignore
@@ -48,14 +50,20 @@ export function useFeedbackUser(authState: any, userAuthenticationService: any):
     try {
       const svcUser = authState?.user ?? userAuthenticationService?.getUser?.();
       const authId = extractUserIdFromAuth(svcUser);
-      if (authId) return authId;
+      if (authId) {
+        return authId;
+      }
     } catch (_) {
       // ignore
     }
-    if (userDisplayName && userDisplayName.trim().length > 0) return userDisplayName.trim();
+    if (userDisplayName && userDisplayName.trim().length > 0) {
+      return userDisplayName.trim();
+    }
     try {
       const stored = window.localStorage.getItem(LOCAL_USER_KEY);
-      if (stored && stored.trim().length > 0) return stored.trim();
+      if (stored && stored.trim().length > 0) {
+        return stored.trim();
+      }
     } catch (_) {
       // ignore storage errors
     }
@@ -74,7 +82,11 @@ export function useFeedbackUser(authState: any, userAuthenticationService: any):
       if (stored && stored.trim().length > 0) {
         setUserDisplayName(stored.trim());
         // also reflect into auth service for consistency
-        userAuthenticationService?.setUser?.({ id: stored.trim(), name: stored.trim(), source: 'local' });
+        userAuthenticationService?.setUser?.({
+          id: stored.trim(),
+          name: stored.trim(),
+          source: 'local',
+        });
       }
     } catch (_) {
       // ignore
@@ -89,7 +101,9 @@ export function useFeedbackUser(authState: any, userAuthenticationService: any):
   const saveLocalUser = useCallback(
     (name: string) => {
       const trimmed = name.trim();
-      if (trimmed.length === 0) return;
+      if (trimmed.length === 0) {
+        return;
+      }
       try {
         window.localStorage.setItem(LOCAL_USER_KEY, trimmed);
       } catch (_) {

@@ -22,7 +22,7 @@ const CSVImporter = ({ onClick }: CSVImporterProps) => {
           header: true,
           skipEmptyLines: true,
           complete: ({ data }) => onClick(data),
-          // LAB-L5: with worker:true parse errors are async, so the surrounding
+          // With worker:true parse errors are async, so the surrounding
           // try/catch never sees them — handle them here instead of silently
           // dropping the import.
           error: err => {
@@ -32,7 +32,7 @@ const CSVImporter = ({ onClick }: CSVImporterProps) => {
       } catch (error) {
         console.error(error);
       } finally {
-        // LAB-L5: reset the input so selecting the same file again re-fires
+        // Reset the input so selecting the same file again re-fires
         // onChange (the browser suppresses change events for an unchanged value).
         input.value = '';
       }
@@ -41,9 +41,12 @@ const CSVImporter = ({ onClick }: CSVImporterProps) => {
 
   return (
     <React.Fragment>
-      <ButtonGroup color="black" size="inherit">
+      <ButtonGroup
+        color="black"
+        size="inherit"
+      >
         <Button
-          className="px-2 py-2 text-base mx-2"
+          className="mx-2 px-2 py-2 text-base"
           onClick={() => ref?.current?.click()}
         >
           Import CSV

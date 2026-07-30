@@ -17,11 +17,7 @@ export default {
    * (e.g. cornerstone, cornerstoneTools, ...) or registering any services that
    * this extension is providing.
    */
-  preRegistration: ({
-    servicesManager,
-    commandsManager,
-    configuration = {},
-  }) => {
+  preRegistration: ({ servicesManager, commandsManager, configuration = {} }) => {
     const { measurementService } = servicesManager.services;
     const ODELIAMeasurementSource = initMeasurementService(measurementService);
 
@@ -32,11 +28,7 @@ export default {
    * PanelModule provides the labeling panels (patient / study / lesion tables)
    * that the labeling mode renders in the right sidebar.
    */
-  getPanelModule: ({
-    servicesManager,
-    commandsManager,
-    extensionManager,
-  }): any[] => {
+  getPanelModule: ({ servicesManager, commandsManager, extensionManager }): any[] => {
     const wrappedPanelLabeling = name => {
       return () => {
         return (

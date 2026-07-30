@@ -9,7 +9,7 @@ import { HeatmapLayoutManager, renderCornerstoneViewport, getPrimaryDisplaySets 
 /**
  * Compose an optional external callback with our own (always-present) internal
  * one, returning a single function that invokes the external first, then the
- * internal. (M-05: an external onElementEnabled/Disabled must run alongside our
+ * internal. (an external onElementEnabled/Disabled must run alongside our
  * own rather than clobber it or be clobbered by prop-spread order.)
  */
 function composeCallbacks<T extends (...args: any[]) => void>(
@@ -34,11 +34,11 @@ const AITrackedViewportInner = ({
   viewportOptions = {},
   ...props
 }: AISideBySideViewportProps) => {
-    const { viewportGridService } = servicesManager.services;
+  const { viewportGridService } = servicesManager.services;
 
   // Detect if this is a heatmap viewport
-  const isHeatmapViewport = viewportId.includes('-heatmap') ||
-    displaySets.some(ds => ds.Modality === 'SC');
+  const isHeatmapViewport =
+    viewportId.includes('-heatmap') || displaySets.some(ds => ds.Modality === 'SC');
 
   const [showHeatmap, setShowHeatmap] = useState(false);
   // Selected AI result, tagged with the primary content it belongs to.
@@ -53,9 +53,7 @@ const AITrackedViewportInner = ({
 
   // Identity of the viewport's primary imaging content (excludes SR/SC), so a
   // selection is tied to the study, not to a specific AI result within it.
-  const primaryDisplaySetKey = primaryDisplaySets
-    .map(ds => ds.displaySetInstanceUID)
-    .join('|');
+  const primaryDisplaySetKey = primaryDisplaySets.map(ds => ds.displaySetInstanceUID).join('|');
 
   // Ignore a selection once the primary content changes, so it can't carry into
   // another study.
@@ -69,7 +67,7 @@ const AITrackedViewportInner = ({
     viewportId,
     aiResult: currentAIResult,
     isHeatmapViewport,
-    servicesManager
+    servicesManager,
   };
   const { updateOverlay, setupHeatmapActionCorner } = useAIOverlay(overlayConfig);
 
@@ -77,21 +75,28 @@ const AITrackedViewportInner = ({
   const viewportDisplaySets = isHeatmapViewport ? displaySets : primaryDisplaySets;
 
   // Memoize enhanced viewport options to prevent cascade rerenders
-  const enhancedViewportOptions = useMemo(() => ({
-    // VAR-L15: default to a stack viewport. This is NOT a stability guarantee —
-    // when a heatmap is toggled on, heatmapLayoutManager forces 'volume', which
-    // does remount the viewport. (`viewportOptions` below can also override it.)
-    viewportType: 'stack',
-    showOverlays: !isHeatmapViewport,
-    ...viewportOptions,
-  }), [viewportOptions, isHeatmapViewport]);
+  const enhancedViewportOptions = useMemo(
+    () => ({
+      // Default to a stack viewport. This is NOT a stability guarantee —
+      // when a heatmap is toggled on, heatmapLayoutManager forces 'volume', which
+      // does remount the viewport. (`viewportOptions` below can also override it.)
+      viewportType: 'stack',
+      showOverlays: !isHeatmapViewport,
+      ...viewportOptions,
+    }),
+    [viewportOptions, isHeatmapViewport]
+  );
 
   // Apply the heatmap layout for an explicitly passed result, so callers can act
   // on a selection before it is committed to state.
   const applyHeatmapLayout = useCallback(
     (show: boolean, aiResult) => {
-      if (isHeatmapViewport) return; // Never drive layout from a heatmap viewport
-      if (show && !aiResult?.hasHeatmap) return; // Nothing to open
+      if (isHeatmapViewport) {
+        return;
+      } // Never drive layout from a heatmap viewport
+      if (show && !aiResult?.hasHeatmap) {
+        return;
+      } // Nothing to open
 
       HeatmapLayoutManager.toggleHeatmapLayout(show, {
         viewportId,
@@ -102,16 +107,24 @@ const AITrackedViewportInner = ({
         servicesManager,
       });
     },
-    [isHeatmapViewport, viewportId, primaryDisplaySets, enhancedViewportOptions, viewportGridService, servicesManager]
+    [
+      isHeatmapViewport,
+      viewportId,
+      primaryDisplaySets,
+      enhancedViewportOptions,
+      viewportGridService,
+      servicesManager,
+    ]
   );
 
   // Handle heatmap toggle (only for primary viewports)
   const handleHeatmapToggle = useCallback(() => {
-    if (isHeatmapViewport) return; // Don't handle toggle on heatmap viewport
+    if (isHeatmapViewport) {
+      return;
+    } // Don't handle toggle on heatmap viewport
 
     // Don't allow toggle if no heatmap is available
     if (!currentAIResult?.hasHeatmap) {
-
       return;
     }
 
@@ -119,50 +132,72 @@ const AITrackedViewportInner = ({
     setShowHeatmap(newShowHeatmap);
 
     // Update the action corner toggle button state
-    setupHeatmapActionCorner(currentAIResult, handleHeatmapToggle, newShowHeatmap, currentAIResult.hasHeatmap);
+    setupHeatmapActionCorner(
+      currentAIResult,
+      handleHeatmapToggle,
+      newShowHeatmap,
+      currentAIResult.hasHeatmap
+    );
 
     applyHeatmapLayout(newShowHeatmap, currentAIResult);
-  }, [showHeatmap, currentAIResult, isHeatmapViewport, setupHeatmapActionCorner, applyHeatmapLayout]);
+  }, [
+    showHeatmap,
+    currentAIResult,
+    isHeatmapViewport,
+    setupHeatmapActionCorner,
+    applyHeatmapLayout,
+  ]);
 
   // Handle AI result selection from events
-  const handleAIResultSelected = useCallback((newSelectedAIResult, clickedDisplaySetUID: string) => {
+  const handleAIResultSelected = useCallback(
+    (newSelectedAIResult, clickedDisplaySetUID: string) => {
+      setSelectedAIResult(newSelectedAIResult);
+      setSelectionKey(primaryDisplaySetKey);
 
-    setSelectedAIResult(newSelectedAIResult);
-    setSelectionKey(primaryDisplaySetKey);
-
-    // Update overlay (only for primary viewports)
-    if (!isHeatmapViewport) {
-      updateOverlay(newSelectedAIResult);
-    }
-
-    // Close the heatmap belonging to the outgoing result (currentAIResult).
-    if (showHeatmap && !isHeatmapViewport && currentAIResult) {
-      setShowHeatmap(false);
-      applyHeatmapLayout(false, currentAIResult);
-    }
-
-    if (!isHeatmapViewport && newSelectedAIResult) {
-      // Auto-open the heatmap when the click landed on this result's own SC
-      // thumbnail. Use newSelectedAIResult explicitly, not handleHeatmapToggle
-      // (its currentAIResult is not yet committed).
-      const shouldAutoOpen =
-        newSelectedAIResult.hasHeatmap &&
-        newSelectedAIResult.heatmapDisplaySet?.displaySetInstanceUID === clickedDisplaySetUID &&
-        !showHeatmap;
-
-      setupHeatmapActionCorner(
-        newSelectedAIResult,
-        handleHeatmapToggle,
-        shouldAutoOpen,
-        newSelectedAIResult.hasHeatmap
-      );
-
-      if (shouldAutoOpen) {
-        setShowHeatmap(true);
-        applyHeatmapLayout(true, newSelectedAIResult);
+      // Update overlay (only for primary viewports)
+      if (!isHeatmapViewport) {
+        updateOverlay(newSelectedAIResult);
       }
-    }
-  }, [isHeatmapViewport, updateOverlay, setupHeatmapActionCorner, handleHeatmapToggle, showHeatmap, currentAIResult, applyHeatmapLayout, primaryDisplaySetKey]);
+
+      // Close the heatmap belonging to the outgoing result (currentAIResult).
+      if (showHeatmap && !isHeatmapViewport && currentAIResult) {
+        setShowHeatmap(false);
+        applyHeatmapLayout(false, currentAIResult);
+      }
+
+      if (!isHeatmapViewport && newSelectedAIResult) {
+        // Auto-open the heatmap when the click landed on this result's own SC
+        // thumbnail. Use newSelectedAIResult explicitly, not handleHeatmapToggle
+        // (its currentAIResult is not yet committed).
+        const shouldAutoOpen =
+          newSelectedAIResult.hasHeatmap &&
+          newSelectedAIResult.heatmapDisplaySet?.displaySetInstanceUID === clickedDisplaySetUID &&
+          !showHeatmap;
+
+        setupHeatmapActionCorner(
+          newSelectedAIResult,
+          handleHeatmapToggle,
+          shouldAutoOpen,
+          newSelectedAIResult.hasHeatmap
+        );
+
+        if (shouldAutoOpen) {
+          setShowHeatmap(true);
+          applyHeatmapLayout(true, newSelectedAIResult);
+        }
+      }
+    },
+    [
+      isHeatmapViewport,
+      updateOverlay,
+      setupHeatmapActionCorner,
+      handleHeatmapToggle,
+      showHeatmap,
+      currentAIResult,
+      applyHeatmapLayout,
+      primaryDisplaySetKey,
+    ]
+  );
 
   // Subscribe to AI result selection events
   useAIResultSubscription({
@@ -180,14 +215,25 @@ const AITrackedViewportInner = ({
   // Ensure heatmap toggle action corner is in sync
   useEffect(() => {
     if (!isHeatmapViewport && currentAIResult) {
-      setupHeatmapActionCorner(currentAIResult, handleHeatmapToggle, showHeatmap, currentAIResult.hasHeatmap);
+      setupHeatmapActionCorner(
+        currentAIResult,
+        handleHeatmapToggle,
+        showHeatmap,
+        currentAIResult.hasHeatmap
+      );
     }
-  }, [currentAIResult, showHeatmap, isHeatmapViewport, setupHeatmapActionCorner, handleHeatmapToggle]);
+  }, [
+    currentAIResult,
+    showHeatmap,
+    isHeatmapViewport,
+    setupHeatmapActionCorner,
+    handleHeatmapToggle,
+  ]);
 
   return (
     <div className="relative flex h-full w-full flex-row overflow-hidden">
       {renderCornerstoneViewport({
-        // M-05: spread incoming props FIRST so our computed values win, and
+        // Spread incoming props FIRST so our computed values win, and
         // compose the element callbacks so an external onElementEnabled/Disabled
         // (if the host passes one) runs alongside our own instead of clobbering
         // — or being clobbered by — it.
@@ -213,7 +259,7 @@ const AITrackedViewportInner = ({
  * `OHIFCornerstoneViewport` `areEqual`
  * (extensions/cornerstone/src/Viewport/OHIFCornerstoneViewport.tsx).
  *
- * Why a custom comparator (M-04): the OHIF ViewportGrid re-renders on every
+ * Why a custom comparator: the OHIF ViewportGrid re-renders on every
  * interaction and passes freshly-built `displaySets`/`viewportOptions` objects and
  * a new inline `onElementEnabled` closure each time, so React.memo's DEFAULT shallow
  * compare never skips — it would re-run every AI hook/effect on every grid frame

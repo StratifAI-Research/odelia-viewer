@@ -13,7 +13,7 @@ import {
  *
  * The pure work — extracting results from DICOM display sets and pairing an SR
  * with its heatmap SC — lives in `./aiResultExtraction` and
- * `../utils/aiResultPairing` (M-02 / VAR-M1). This class owns only the stateful
+ * `../utils/aiResultPairing`. This class owns only the stateful
  * concerns: the per-study result cache, the selection map, the event bus, and
  * UI notifications.
  */
@@ -298,7 +298,11 @@ export class AIResultsService {
     this.selectedAIResults.set(studyInstanceUID, targetDisplaySetUID);
 
     // Get the AI result for the event
-    const aiResult = this.getAIResultByDisplaySet(studyInstanceUID, targetDisplaySetUID, servicesManager);
+    const aiResult = this.getAIResultByDisplaySet(
+      studyInstanceUID,
+      targetDisplaySetUID,
+      servicesManager
+    );
 
     // Publish AI_RESULT_SELECTED event, including the original clicked UID (could be SC)
     this.publish(this.EVENTS.AI_RESULT_SELECTED, {
@@ -312,7 +316,7 @@ export class AIResultsService {
     if (aiResult && this.uiNotificationService) {
       const modelName = aiResult.modelInfo?.name || 'AI Model';
 
-      // VAR-L2: reuse the shared DICOM date/time formatter instead of
+      // Reuse the shared DICOM date/time formatter instead of
       // re-implementing the YYYYMMDD/HHMMSS slicing here.
       let dateTimeInfo = '';
       if (targetDisplaySet?.instance) {
@@ -345,7 +349,7 @@ export class AIResultsService {
       return this.getAIResultByDisplaySet(studyInstanceUID, selectedDisplaySetUID, servicesManager);
     }
 
-    // VAR-L1: no explicit selection yet — return the primary (first) result
+    // No explicit selection yet — return the primary (first) result
     // WITHOUT persisting a selection from this read path. This getter is called
     // from render, and a getter must not mutate service state. The default
     // selection is established by `notifyStudyChange` when a study loads.
@@ -381,7 +385,11 @@ export class AIResultsService {
     if (hasAIResults && !this.selectedAIResults.has(studyInstanceUID)) {
       const firstResult = aiResults[0];
       if (firstResult.displaySetInstanceUID) {
-        this.setSelectedAIResult(studyInstanceUID, firstResult.displaySetInstanceUID, servicesManager);
+        this.setSelectedAIResult(
+          studyInstanceUID,
+          firstResult.displaySetInstanceUID,
+          servicesManager
+        );
       }
     }
   }

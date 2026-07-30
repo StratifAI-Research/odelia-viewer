@@ -20,7 +20,9 @@ function makeDSS(initial: any[]) {
     }),
     _unsubs: unsubs,
     _emit: (evt: string) => (listeners[evt] || []).forEach(cb => cb()),
-    _set: (next: any[]) => { current = next; },
+    _set: (next: any[]) => {
+      current = next;
+    },
   };
 }
 
@@ -70,7 +72,12 @@ describe('useStudySeriesSelection — studies', () => {
 
   it('prefers the study description from DicomMetadataStore series metadata', async () => {
     (DicomMetadataStore.getStudy as jest.Mock).mockReturnValue({
-      series: [{ Modality: 'MR', instances: [{ StudyDescription: 'From-metadata', StudyDate: '20240601' }] }],
+      series: [
+        {
+          Modality: 'MR',
+          instances: [{ StudyDescription: 'From-metadata', StudyDate: '20240601' }],
+        },
+      ],
     });
     const dss = makeDSS([ds({ StudyDate: '', StudyDescription: 'fallback-desc' })]);
     const { result } = renderHook(() =>
@@ -113,7 +120,10 @@ describe('useStudySeriesSelection — studies', () => {
     });
     // NB: source sorts by Date.parse(formattedDate); the identity formatDate yields
     // non-ISO strings (NaN), so order is effectively insertion order — both present.
-    expect(result.current.availableStudies.map((s: any) => s.studyInstanceUid).sort()).toEqual(['st1', 'st2']);
+    expect(result.current.availableStudies.map((s: any) => s.studyInstanceUid).sort()).toEqual([
+      'st1',
+      'st2',
+    ]);
   });
 
   it('handles an empty display-set list without error', async () => {
@@ -142,7 +152,10 @@ describe('useStudySeriesSelection — series', () => {
     await act(async () => {
       await jest.advanceTimersByTimeAsync(300);
     });
-    expect(result.current.availableSeries.map((s: any) => s.SeriesInstanceUID)).toEqual(['s2', 's1']);
+    expect(result.current.availableSeries.map((s: any) => s.SeriesInstanceUID)).toEqual([
+      's2',
+      's1',
+    ]);
     expect(result.current.selectedSeriesUIDs.size).toBe(2);
     expect(result.current.isLoadingSeries).toBe(false);
   });
@@ -150,7 +163,12 @@ describe('useStudySeriesSelection — series', () => {
   it('yields no series when the active study has only SR/SC display sets', async () => {
     const dss = makeDSS([
       ds({ StudyInstanceUID: 'st1', Modality: 'SR', SeriesInstanceUID: 's1' }),
-      ds({ StudyInstanceUID: 'st1', Modality: 'SC', SeriesInstanceUID: 's2', displaySetInstanceUID: 'd2' }),
+      ds({
+        StudyInstanceUID: 'st1',
+        Modality: 'SC',
+        SeriesInstanceUID: 's2',
+        displaySetInstanceUID: 'd2',
+      }),
     ]);
     const { result } = renderHook(() =>
       useStudySeriesSelection({ displaySetService: dss as any, activeStudyUID: 'st1' })

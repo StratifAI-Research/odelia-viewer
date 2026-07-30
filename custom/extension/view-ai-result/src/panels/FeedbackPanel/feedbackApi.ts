@@ -1,8 +1,8 @@
 /**
  * Feedback API client.
  *
- * The network + endpoint-derivation concerns that used to live inline in
- * `FeedbackPanel` (H-11). Keeping them here makes the panel's request/response
+ * The network + endpoint-derivation concerns for `FeedbackPanel`. Keeping them
+ * out of the panel makes its request/response
  * shape explicit and independently testable, and gives every caller one place
  * that builds the `/feedback` query and `/feedback/submit` body.
  */
@@ -21,10 +21,14 @@ export function deriveFeedbackApiBase(): string {
         return qidoRoot.slice(0, idx);
       }
       // if qidoRoot equals '/dicom-web', Orthanc is at root
-      if (qidoRoot === '/dicom-web') return '';
+      if (qidoRoot === '/dicom-web') {
+        return '';
+      }
       // otherwise use dirname as base
       const parts = qidoRoot.split('/').filter(Boolean);
-      if (parts.length > 0) return `/${parts[0]}`;
+      if (parts.length > 0) {
+        return `/${parts[0]}`;
+      }
     }
   } catch (_) {
     // ignore

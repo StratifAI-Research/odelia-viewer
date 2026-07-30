@@ -5,10 +5,7 @@ import { AIResult } from '../types';
 
 export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn => {
   const { viewportId, aiResult, isHeatmapViewport, servicesManager } = config;
-  const {
-    viewportActionCornersService,
-    customizationService
-  } = servicesManager.services;
+  const { viewportActionCornersService, customizationService } = servicesManager.services;
 
   // Keep track of current overlay state
   const currentOverlayRef = useRef<string | null>(null);
@@ -19,79 +16,96 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
       'viewportOverlay.topLeft': { $set: [] },
       'viewportOverlay.topRight': { $set: [] },
       'viewportOverlay.bottomLeft': { $set: [] },
-      'viewportOverlay.bottomRight': { $set: [] }
+      'viewportOverlay.bottomRight': { $set: [] },
     });
-
   }, [customizationService, viewportId]);
 
-    const updateOverlay = useCallback((newAiResult: AIResult) => {
-    // Only update overlays on primary viewports, not heatmap viewports
-    if (isHeatmapViewport) {
+  const updateOverlay = useCallback(
+    (newAiResult: AIResult) => {
+      // Only update overlays on primary viewports, not heatmap viewports
+      if (isHeatmapViewport) {
+        return;
+      }
 
-      return;
-    }
+      // Clear the default OHIF overlays first — they render underneath and clutter the AI overlay
+      clearDefaultOHIFOverlays();
 
-    // Clear the default OHIF overlays first — they render underneath and clutter the AI overlay
-    clearDefaultOHIFOverlays();
+      // Create a SINGLE container that fights ViewportActionCorners' horizontal flexbox!
+      // Use flex-col to override the horizontal layout
 
-            // Create a SINGLE container that fights ViewportActionCorners' horizontal flexbox!
-    // Use flex-col to override the horizontal layout
+      const leftBreast = newAiResult.classifications?.find(c => c.side === 'Left');
+      const rightBreast = newAiResult.classifications?.find(c => c.side === 'Right');
 
-    const leftBreast = newAiResult.classifications?.find(c => c.side === 'Left');
-    const rightBreast = newAiResult.classifications?.find(c => c.side === 'Right');
+      // Build the text content strings first
+      const leftBreastText = leftBreast
+        ? leftBreast.errorMessage
+          ? leftBreast.errorMessage
+          : `${leftBreast.result || 'Unknown'} (${leftBreast.confidence != null ? leftBreast.confidence.toFixed(1) : '--'}%)`
+        : '--';
 
-    // Build the text content strings first
-    const leftBreastText = leftBreast ? (
-      leftBreast.errorMessage ? leftBreast.errorMessage :
-      `${leftBreast.result || 'Unknown'} (${leftBreast.confidence != null ? leftBreast.confidence.toFixed(1) : '--'}%)`
-    ) : '--';
+      const rightBreastText = rightBreast
+        ? rightBreast.errorMessage
+          ? rightBreast.errorMessage
+          : `${rightBreast.result || 'Unknown'} (${rightBreast.confidence != null ? rightBreast.confidence.toFixed(1) : '--'}%)`
+        : '--';
 
-    const rightBreastText = rightBreast ? (
-      rightBreast.errorMessage ? rightBreast.errorMessage :
-      `${rightBreast.result || 'Unknown'} (${rightBreast.confidence != null ? rightBreast.confidence.toFixed(1) : '--'}%)`
-    ) : '--';
+      // Create container with flex-col that overrides ViewportActionCorners horizontal layout
+      const aiOverlayContainer = React.createElement(
+        'div',
+        {
+          className: 'flex flex-col gap-0.5 text-[10px] leading-tight max-w-[120px]',
+          style: { textShadow: '0.8px 0.8px 0.5px rgba(0, 0, 0, 0.75)' },
+        },
+        [
+          // Header line - beautiful blue styling
+          React.createElement(
+            'div',
+            {
+              key: 'header',
+              className: 'font-semibold text-blue-300',
+            },
+            `🤖 ${newAiResult.modelInfo?.name || 'AI Model'}`
+          ),
 
-        // Create container with flex-col that overrides ViewportActionCorners horizontal layout
-    const aiOverlayContainer = React.createElement('div', {
-      className: 'flex flex-col gap-0.5 text-[10px] leading-tight max-w-[120px]',
-      style: { textShadow: '0.8px 0.8px 0.5px rgba(0, 0, 0, 0.75)' }
-    }, [
-      // Header line - beautiful blue styling
-      React.createElement('div', {
-        key: 'header',
-        className: 'font-semibold text-blue-300'
-      }, `🤖 ${newAiResult.modelInfo?.name || 'AI Model'}`),
+          // Left breast line - same beautiful styling as header
+          React.createElement(
+            'div',
+            {
+              key: 'left',
+              className: 'font-semibold text-blue-300',
+            },
+            `Left Breast: ${leftBreastText}`
+          ),
 
-      // Left breast line - same beautiful styling as header
-      React.createElement('div', {
-        key: 'left',
-        className: 'font-semibold text-blue-300'
-      }, `Left Breast: ${leftBreastText}`),
+          // Right breast line - same beautiful styling as header
+          React.createElement(
+            'div',
+            {
+              key: 'right',
+              className: 'font-semibold text-blue-300',
+            },
+            `Right Breast: ${rightBreastText}`
+          ),
+        ]
+      );
 
-      // Right breast line - same beautiful styling as header
-      React.createElement('div', {
-        key: 'right',
-        className: 'font-semibold text-blue-300'
-      }, `Right Breast: ${rightBreastText}`)
-    ]);
+      // Add as SINGLE action corner component with internal vertical layout
+      viewportActionCornersService.addComponent({
+        viewportId,
+        id: 'aiOverlay',
+        component: aiOverlayContainer,
+        location: viewportActionCornersService.LOCATIONS.topLeft,
+        indexPriority: -200, // Higher priority than default
+      });
 
-    // Add as SINGLE action corner component with internal vertical layout
-    viewportActionCornersService.addComponent({
-      viewportId,
-      id: 'aiOverlay',
-      component: aiOverlayContainer,
-      location: viewportActionCornersService.LOCATIONS.topLeft,
-      indexPriority: -200, // Higher priority than default
-    });
-
-    currentOverlayRef.current = 'aiOverlay';
-
-  }, [viewportId, isHeatmapViewport, viewportActionCornersService]);
+      currentOverlayRef.current = 'aiOverlay';
+    },
+    [viewportId, isHeatmapViewport, viewportActionCornersService]
+  );
 
   const clearOverlay = useCallback(() => {
     // Only clear overlays on primary viewports
     if (isHeatmapViewport) {
-
       return;
     }
 
@@ -104,53 +118,64 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
     });
 
     currentOverlayRef.current = null;
-
   }, [viewportId, isHeatmapViewport, viewportActionCornersService]);
 
-  const setupHeatmapActionCorner = useCallback((result: AIResult, onToggle: () => void, isActive: boolean, hasHeatmap: boolean = true) => {
-    // Only setup action corners on primary viewports
-    if (isHeatmapViewport) {
+  const setupHeatmapActionCorner = useCallback(
+    (result: AIResult, onToggle: () => void, isActive: boolean, hasHeatmap: boolean = true) => {
+      // Only setup action corners on primary viewports
+      if (isHeatmapViewport) {
+        return;
+      }
 
-      return;
-    }
+      // Determine if button should be disabled
+      const isDisabled = !hasHeatmap;
 
-    // Determine if button should be disabled
-    const isDisabled = !hasHeatmap;
+      // Create a row with the heat-map icon button and a small label
+      const toggleComponent = React.createElement(
+        'div',
+        {
+          className: `flex items-center gap-1 ${isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`,
+          onClick: isDisabled ? undefined : onToggle,
+          title: isDisabled
+            ? 'No heatmap available for this AI result'
+            : isActive
+              ? 'Hide heatmap'
+              : 'Show heatmap',
+          style: { fontSize: '12px' },
+        },
+        [
+          React.createElement(HeatmapToggle, {
+            key: 'btn',
+            onToggle: isDisabled ? () => {} : onToggle,
+            isActive: isActive && !isDisabled,
+            className: 'shadow-none w-6 h-6',
+            disabled: isDisabled,
+          }),
+          React.createElement(
+            'span',
+            {
+              key: 'lbl',
+              className: `select-none ${isDisabled ? 'text-gray-500' : 'text-white'}`,
+            },
+            isDisabled ? '🔥 No Heatmap' : isActive ? '🔥 Heatmap ON' : '🔥 Heatmap Available'
+          ),
+        ]
+      );
 
-    // Create a row with the heat-map icon button and a small label
-    const toggleComponent = React.createElement('div', {
-      className: `flex items-center gap-1 ${isDisabled ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`,
-      onClick: isDisabled ? undefined : onToggle,
-      title: isDisabled ? 'No heatmap available for this AI result' : (isActive ? 'Hide heatmap' : 'Show heatmap'),
-      style: { fontSize: '12px' }
-    }, [
-      React.createElement(HeatmapToggle, {
-        key: 'btn',
-        onToggle: isDisabled ? () => {} : onToggle,
-        isActive: isActive && !isDisabled,
-        className: 'shadow-none w-6 h-6',
-        disabled: isDisabled,
-      }),
-      React.createElement('span', {
-        key: 'lbl',
-        className: `select-none ${isDisabled ? 'text-gray-500' : 'text-white'}`
-      }, isDisabled ? '🔥 No Heatmap' : (isActive ? '🔥 Heatmap ON' : '🔥 Heatmap Available'))
-    ]);
-
-    viewportActionCornersService.addComponent({
-      viewportId,
-      id: 'heatmapToggle',
-      component: toggleComponent,
-      location: viewportActionCornersService.LOCATIONS.topRight,
-      indexPriority: -100, // High priority
-    });
-
-  }, [viewportId, isHeatmapViewport, viewportActionCornersService]);
+      viewportActionCornersService.addComponent({
+        viewportId,
+        id: 'heatmapToggle',
+        component: toggleComponent,
+        location: viewportActionCornersService.LOCATIONS.topRight,
+        indexPriority: -100, // High priority
+      });
+    },
+    [viewportId, isHeatmapViewport, viewportActionCornersService]
+  );
 
   const clearActionCorners = useCallback(() => {
     // Only clear on primary viewports
     if (isHeatmapViewport) {
-
       return;
     }
 
@@ -161,7 +186,6 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
       component: null,
       location: viewportActionCornersService.LOCATIONS.topRight,
     });
-
   }, [viewportId, isHeatmapViewport, viewportActionCornersService]);
 
   // Update overlay when aiResult changes (only for primary viewports) - SINGLE EFFECT
@@ -184,7 +208,14 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
       // Clear overlay if no AI result
       clearOverlay();
     }
-  }, [aiResult, isHeatmapViewport, updateOverlay, clearOverlay, viewportId, viewportActionCornersService]);
+  }, [
+    aiResult,
+    isHeatmapViewport,
+    updateOverlay,
+    clearOverlay,
+    viewportId,
+    viewportActionCornersService,
+  ]);
 
   // Cleanup on unmount (only for primary viewports)
   useEffect(() => {
@@ -200,6 +231,6 @@ export const useAIOverlay = (config: AIOverlayHookConfig): AIOverlayHookReturn =
     updateOverlay,
     clearOverlay,
     setupHeatmapActionCorner,
-    clearActionCorners
+    clearActionCorners,
   };
 };

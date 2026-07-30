@@ -15,7 +15,10 @@ const renderYearsOptions = () => {
   for (let i = 0; i < 100; i++) {
     const year = currentYear - i;
     options.push(
-      <option key={year} value={year}>
+      <option
+        key={year}
+        value={year}
+      >
         {year}
       </option>
     );
@@ -24,21 +27,21 @@ const renderYearsOptions = () => {
   return options;
 };
 
-const DatePicker = (props) => {
+const DatePicker = props => {
   const { id, onChange, date, text } = props;
   const [focused, setFocused] = useState(null);
   const renderYearsOptionsCallback = useCallback(renderYearsOptions, []);
 
   const renderMonthElement = ({ month, onMonthSelect, onYearSelect }) => {
-    const handleMonthChange = (event) => {
+    const handleMonthChange = event => {
       onMonthSelect(month, event.target.value);
     };
 
-    const handleYearChange = (event) => {
+    const handleYearChange = event => {
       onYearSelect(month, event.target.value);
     };
 
-    const handleOnBlur = () => { };
+    const handleOnBlur = () => {};
 
     return (
       <div className="flex justify-center">
@@ -50,7 +53,10 @@ const DatePicker = (props) => {
             onBlur={handleOnBlur}
           >
             {moment.months().map((label, value) => (
-              <option key={value} value={value}>
+              <option
+                key={value}
+                value={value}
+              >
                 {label}
               </option>
             ))}
@@ -77,23 +83,23 @@ const DatePicker = (props) => {
     <SingleDatePicker
       /** REQUIRED */
       date={parsedDate}
-      onDateChange={(date) => {
+      onDateChange={date => {
         // react-dates passes null when the field is cleared; guard against
-        // calling .format() on null (which previously crashed the panel).
+        // calling .format() on null.
         onChange({
           date: date ? date.format('YYYYMMDD') : '',
-        })
+        });
       }}
       focused={focused}
       onFocusChange={({ focused }) => setFocused(focused)}
       /** OPTIONAL */
       renderMonthElement={renderMonthElement}
-      placeholder={text ? text : "Pick Date"}
+      placeholder={text ? text : 'Pick Date'}
       phrases={{
         closeDatePicker: 'Close',
         clearDates: 'Clear dates',
       }}
-      isOutsideRange={(day) => !isInclusivelyBeforeDay(day, moment())}
+      isOutsideRange={day => !isInclusivelyBeforeDay(day, moment())}
       hideKeyboardShortcutsPanel={true}
       numberOfMonths={1}
       anchorDirection="left"

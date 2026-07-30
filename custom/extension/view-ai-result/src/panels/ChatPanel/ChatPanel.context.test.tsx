@@ -1,6 +1,12 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { installConsoleErrorFilter, makeServicesManager, withSystem } from '../../test-utils/harness';
+import {
+  installConsoleErrorFilter,
+  makeServicesManager,
+  withSystem,
+} from '../../test-utils/harness';
+
+import ChatPanel from './ChatPanel';
 
 // Isolated ChatPanel harness for the display-set-context refresh and the
 // debug-API-base override. useChatService is stubbed; useActiveStudyUID is
@@ -21,8 +27,6 @@ const mockHookState: any = {
 };
 jest.mock('../../hooks/useChatService', () => ({ useChatService: () => mockHookState }));
 jest.mock('../../hooks/useActiveStudyUID', () => ({ useActiveStudyUID: () => () => 'study-1' }));
-
-import ChatPanel from './ChatPanel';
 
 installConsoleErrorFilter();
 beforeAll(() => {

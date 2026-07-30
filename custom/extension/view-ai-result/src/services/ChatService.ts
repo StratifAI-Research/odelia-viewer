@@ -5,9 +5,8 @@
  * The connection lifecycle is modelled as an explicit state machine
  * ({@link ChatConnectionState}) rather than a set of independent booleans /
  * readyState checks. Every transition goes through {@link setState}, and the
- * reconnect decision and `isConnected()` derive from the current state. This
- * replaces the old `isIntentionalClose` flag and scattered `readyState`
- * inspection, and keeps the hard-won "settle exactly once" connect semantics.
+ * reconnect decision and `isConnected()` derive from the current state. A
+ * connect attempt settles exactly once.
  */
 import {
   ClientMessage,
@@ -176,22 +175,22 @@ export class ChatService {
         this.reconnectAttempts = 0;
       };
 
-      ws.onmessage = (event) => {
+      ws.onmessage = event => {
         try {
           const message: ServerMessage = JSON.parse(event.data);
-          this.handleServerMessage(message, (sessionId) => settle(() => resolve(sessionId)));
+          this.handleServerMessage(message, sessionId => settle(() => resolve(sessionId)));
         } catch (e) {
           console.error('[ChatService] Error parsing message:', e);
         }
       };
 
-      ws.onerror = (error) => {
+      ws.onerror = error => {
         console.error('[ChatService] WebSocket error:', error);
         this.publish(CHAT_EVENTS.ERROR, { error: 'Connection error' });
         settle(() => reject(new Error('Connection error')));
       };
 
-      ws.onclose = (event) => {
+      ws.onclose = event => {
         this.sessionId = null;
         this.publish(CHAT_EVENTS.DISCONNECTED, { code: event.code, reason: event.reason });
         // If the socket closed before a session was established, fail the pending
@@ -233,7 +232,10 @@ export class ChatService {
   /**
    * Handle incoming server messages
    */
-  private handleServerMessage(message: ServerMessage, resolveConnect?: (sessionId: string) => void): void {
+  private handleServerMessage(
+    message: ServerMessage,
+    resolveConnect?: (sessionId: string) => void
+  ): void {
     switch (message.type) {
       case ServerMessageType.CONNECTED:
         this.sessionId = message.session_id || null;
@@ -294,7 +296,7 @@ export class ChatService {
     this.reconnectTimeout = setTimeout(() => {
       this.reconnectTimeout = null;
       this.reconnectAttempts++;
-      this.connect().catch((e) => {
+      this.connect().catch(e => {
         console.error('[ChatService] Reconnect failed:', e);
       });
     }, delay);
@@ -395,7 +397,7 @@ export class ChatService {
   private publish(eventName: ChatEventType, data: any): void {
     const listeners = this.eventListeners.get(eventName);
     if (listeners) {
-      listeners.forEach((callback) => {
+      listeners.forEach(callback => {
         try {
           callback(data);
         } catch (e) {

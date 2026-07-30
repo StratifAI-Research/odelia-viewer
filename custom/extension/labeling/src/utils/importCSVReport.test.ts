@@ -1,11 +1,11 @@
 // @ohif/core is a webpack external, unresolvable in this package's jest env;
 // importCSVReport (via makeLabelAnnotation) only needs utils.guid().
+import importCSVReport from './importCSVReport';
+import { ODELIA_LABELING_SOURCE_NAME } from '../measurementServiceMappings/ODELIALabel';
+
 jest.mock('@ohif/core', () => ({ utils: { guid: () => 'test-guid' } }), {
   virtual: true,
 });
-
-import importCSVReport from './importCSVReport';
-import { ODELIA_LABELING_SOURCE_NAME } from '../measurementServiceMappings/ODELIALabel';
 
 function makeServices(labelMappingOverride?: any[]) {
   const measurementService = {
@@ -30,21 +30,17 @@ function makeServices(labelMappingOverride?: any[]) {
 }
 
 describe('importCSVReport', () => {
-  it('does not clear existing measurements when the label mapping is unregistered (LAB-M7)', () => {
+  it('does not clear existing measurements when the label mapping is unregistered', () => {
     const { measurementService, extensionManager } = makeServices([]); // no ODELIALabel mapping
     const rows = [{ 'Patient ID': 'P1', StudyInstanceUID: 'S1', Ethnicity: 'A' }];
-    expect(() =>
-      importCSVReport({ measurementService, extensionManager } as any, rows)
-    ).toThrow();
+    expect(() => importCSVReport({ measurementService, extensionManager } as any, rows)).toThrow();
     expect(measurementService.clearMeasurements).not.toHaveBeenCalled();
     expect(measurementService.addRawMeasurement).not.toHaveBeenCalled();
   });
 
-  it('throws without clearing on empty input (LAB-M7)', () => {
+  it('throws without clearing on empty input', () => {
     const { measurementService, extensionManager } = makeServices();
-    expect(() =>
-      importCSVReport({ measurementService, extensionManager } as any, [])
-    ).toThrow();
+    expect(() => importCSVReport({ measurementService, extensionManager } as any, [])).toThrow();
     expect(measurementService.clearMeasurements).not.toHaveBeenCalled();
   });
 
@@ -74,7 +70,7 @@ describe('importCSVReport', () => {
     expect(measurementService.addRawMeasurement).toHaveBeenCalledTimes(1); // the study label only
   });
 
-  it('collates one label per StudyInstanceUID for a multi-study patient (LAB-M8)', () => {
+  it('collates one label per StudyInstanceUID for a multi-study patient', () => {
     const { measurementService, extensionManager } = makeServices();
     const rows = [
       { 'Patient ID': 'P1', StudyInstanceUID: 'S1', Ethnicity: 'A' },

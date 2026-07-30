@@ -14,6 +14,8 @@ const { windowLevelPresets } = defaults;
  * @param {*} id
  * @param {*} icon
  * @param {*} label
+ * @param {*} commands
+ * @param {*} tooltip
  */
 function _createButton(type, id, icon, label, commands, tooltip) {
   return {
@@ -58,8 +60,7 @@ const toolbarButtons = [
   {
     id: 'MeasurementTools',
     type: 'ohif.radioGroup',
-    props:
-    {
+    props: {
       type: 'tool',
       icon: 'tool-circle',
       label: 'Circle',

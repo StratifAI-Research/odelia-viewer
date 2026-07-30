@@ -4,7 +4,7 @@ import { FeedbackResultKey } from './feedbackApi';
 
 /**
  * Derives the identity fields (model name/version + result timestamp) of the AI
- * result currently on screen (H-11: the identity half of the split). These
+ * result currently on screen (the identity half of the split). These
  * three fields plus the study and reader identify a feedback record.
  */
 export interface ResultIdentity {
@@ -39,7 +39,9 @@ export function useResultIdentity(
   const resultTs = useMemo<string | undefined>(() => {
     const r = currentResult || {};
     const direct = r.resultTs || r.result_ts || r.resultTimestamp || r.createdAt || r.timestamp;
-    if (typeof direct === 'string' && direct.length > 0) return direct;
+    if (typeof direct === 'string' && direct.length > 0) {
+      return direct;
+    }
     // Derive from the selected SR display set creation date/time.
     try {
       const sr = selectedUID ? displaySetService?.getDisplaySetByUID(selectedUID) : null;

@@ -125,9 +125,12 @@ describe('getPanelModule', () => {
       commandsManager: managers.commandsManager,
       extensionManager: managers.extensionManager,
     };
-    (global as any).fetch = jest
-      .fn()
-      .mockResolvedValue({ ok: true, status: 200, json: async () => ({ users: [] }), text: async () => '' });
+    (global as any).fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ users: [] }),
+      text: async () => '',
+    });
     const feedback = getPanelModule(managers).find(p => p.name === 'aiFeedback')!;
     const Component = feedback.component;
     let utils: any;
