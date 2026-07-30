@@ -5,16 +5,17 @@
  * 3. Prevents automatic multi-viewport creation
  */
 const hpSinglePrimary = {
-  id: '@ohif/extension-view-ai-result.hpSinglePrimary',
+  id: 'view-ai-result.hpSinglePrimary',
   name: 'Single Primary Viewport',
-  description: 'Single viewport showing only primary imaging data, excluding AI results and heatmaps',
+  description:
+    'Single viewport showing only primary imaging data, excluding AI results and heatmaps',
   protocolMatchingRules: [
     {
       id: 'HasPrimaryImaging',
       weight: 100,
       attribute: 'numberOfDisplaySetsWithImages',
       constraint: {
-        greaterThan: 0,
+        greaterThan: { value: 0 },
       },
     },
   ],

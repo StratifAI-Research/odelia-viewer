@@ -28,7 +28,7 @@ export function extractAIResultData(displaySet) {
   } = {
     classifications: [],
     modelInfo: null,
-    isClassification: false
+    isClassification: false,
   };
 
   // Find the root container or use the entire content sequence
@@ -39,13 +39,22 @@ export function extractAIResultData(displaySet) {
   itemsToProcess.forEach(item => {
     const conceptMeaning = item.ConceptNameCodeSequence?.[0]?.CodeMeaning;
 
-    if (!conceptMeaning) return;
+    if (!conceptMeaning) {
+      return;
+    }
 
     // Handle successful classification results (Side Probability)
     if (conceptMeaning.includes('Side Probability')) {
       const side = conceptMeaning.includes('Left') ? 'Left' : 'Right';
       const codeMeaning = item.ConceptCodeSequence?.[0]?.CodeMeaning;
-      const confidence = item.MeasuredValueSequence?.[0]?.NumericValue;
+      const rawConfidence = item.MeasuredValueSequence?.[0]?.NumericValue;
+      // Preserve a real 0 (0.0% probability): only null/undefined/'' map to null,
+      // and a non-numeric value normalizes to null rather than NaN.
+      let confidence: number | null = null;
+      if (rawConfidence != null && rawConfidence !== '') {
+        const parsed = parseFloat(rawConfidence);
+        confidence = Number.isNaN(parsed) ? null : parsed;
+      }
 
       if (codeMeaning) {
         // Map SNOMED CT code meanings to result values
@@ -61,7 +70,7 @@ export function extractAIResultData(displaySet) {
         const classification: Classification = {
           side: side as 'Left' | 'Right',
           result: result,
-          confidence: confidence ? parseFloat(confidence) : null
+          confidence,
         };
 
         results.classifications.push(classification);
@@ -78,7 +87,7 @@ export function extractAIResultData(displaySet) {
         side: side as 'Left' | 'Right',
         result: null,
         confidence: null,
-        errorMessage: errorMessage
+        errorMessage: errorMessage,
       };
 
       results.classifications.push(classification);
@@ -89,7 +98,7 @@ export function extractAIResultData(displaySet) {
       results.modelInfo = {
         name: item.TextValue || 'AI Model',
         algorithmName: item.AlgorithmName || null,
-        algorithmVersion: item.AlgorithmVersion || null
+        algorithmVersion: item.AlgorithmVersion || null,
       };
     }
   });

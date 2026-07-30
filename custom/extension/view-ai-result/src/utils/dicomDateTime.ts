@@ -65,12 +65,23 @@ export function dicomDateTimeToIsoUtc(
   time?: string,
   tzOffset?: string | null
 ): string | undefined {
-  if (!date) return undefined;
-  if (date.length !== 8) return undefined;
+  if (!date) {
+    return undefined;
+  }
+  if (date.length !== 8) {
+    return undefined;
+  }
 
   const year = parseInt(date.substring(0, 4), 10);
   const month = parseInt(date.substring(4, 6), 10) - 1; // zero-based
   const day = parseInt(date.substring(6, 8), 10);
+
+  // Reject a malformed-but-8-char date (e.g. "2024ABCD"): parseInt yields NaN
+  // and `new Date(NaN).toISOString()` would throw a RangeError on unguarded
+  // callers (resultTsFromDisplaySet does not wrap this).
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) {
+    return undefined;
+  }
 
   let hour = 0;
   let minute = 0;
@@ -79,8 +90,12 @@ export function dicomDateTimeToIsoUtc(
 
   if (time && time.length >= 2) {
     hour = parseInt(time.substring(0, 2), 10) || 0;
-    if (time.length >= 4) minute = parseInt(time.substring(2, 4), 10) || 0;
-    if (time.length >= 6) second = parseInt(time.substring(4, 6), 10) || 0;
+    if (time.length >= 4) {
+      minute = parseInt(time.substring(2, 4), 10) || 0;
+    }
+    if (time.length >= 6) {
+      second = parseInt(time.substring(4, 6), 10) || 0;
+    }
     // fractional part after dot/comma
     if (time.length > 6 && (time[6] === '.' || time[6] === ',')) {
       const frac = time.substring(7);
@@ -109,7 +124,6 @@ export function dicomDateTimeToIsoUtc(
  * Derive an ISO-8601 UTC timestamp for an AI result from a display set, using the
  * standard DICOM date/time fallback chain (InstanceCreation → Series → Content → Study)
  * plus the instance timezone offset. Returns undefined when no usable date is present.
- * Consolidates the fallback chain previously inlined in AIResultsService/FeedbackPanel.
  */
 export function resultTsFromDisplaySet(displaySet?: any): string | undefined {
   if (!displaySet) {

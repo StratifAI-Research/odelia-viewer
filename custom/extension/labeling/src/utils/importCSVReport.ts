@@ -1,12 +1,12 @@
 import Config from '../utils/config';
 import { getPanelConfig } from '../utils/panelConfig';
-const config: Config = require('../utils/config.json');
 import {
   ODELIA_LABELING_SOURCE_NAME,
   ODELIA_LABELING_SOURCE_VERSION,
 } from '../measurementServiceMappings/ODELIALabel';
 import { utils } from '@ohif/core';
 import { makeLabelAnnotation } from '../measurementServiceMappings/makeLabelAnnotation';
+const config: Config = require('../utils/config.json');
 
 const unusedColumns = [
   'AnnotationType',
@@ -27,59 +27,100 @@ export default function importCSVReport(
   { measurementService, extensionManager },
   csvData: { [key: string]: string }[]
 ) {
-  measurementService.clearMeasurements();
+  // Validate inputs and resolve every source/mapping BEFORE mutating the
+  // measurement service. A malformed CSV or an unregistered source/mapping must
+  // not leave the reader with cleared measurements and a half-done import, so no
+  // clearMeasurements()/addRawMeasurement() runs until parsing has fully
+  // succeeded below.
+  if (!Array.isArray(csvData) || csvData.length === 0) {
+    throw new Error('importCSVReport: no rows to import');
+  }
 
-  const dataSource = extensionManager.getActiveDataSource()[0];
+  const dataSource = extensionManager.getActiveDataSource()?.[0];
+  if (!dataSource) {
+    throw new Error('importCSVReport: no active data source');
+  }
 
+  const annotationType = 'ODELIALabel';
   const labelSource = measurementService.getSource(
     ODELIA_LABELING_SOURCE_NAME,
     ODELIA_LABELING_SOURCE_VERSION
   );
-
-  const mappings = measurementService.getSourceMappings(
-    ODELIA_LABELING_SOURCE_NAME,
-    ODELIA_LABELING_SOURCE_VERSION
-  );
-
-  const annotationType = 'ODELIALabel';
-
-  const matchingMapping = mappings.find(
-    m => m.annotationType === annotationType
-  );
+  const mappings =
+    measurementService.getSourceMappings(
+      ODELIA_LABELING_SOURCE_NAME,
+      ODELIA_LABELING_SOURCE_VERSION
+    ) || [];
+  const matchingMapping = mappings.find(m => m.annotationType === annotationType);
+  if (!labelSource || !matchingMapping) {
+    throw new Error('importCSVReport: ODELIALabel source/mapping is not registered');
+  }
 
   const lesionConfig = getPanelConfig(config, 'lesion table');
+  // Merge every label_options entry into one { key -> def } map. Each entry is a
+  // single-key map and lesion labels are not guaranteed to all live in
+  // label_options[0], so merging (as initLabels/LabelingTable already do) avoids
+  // silently dropping lesion columns declared in later entries.
+  const lesionLabelKeys = Object.assign({}, ...lesionConfig.label_options);
 
   // CSVImporter parses with Papa `header: true`, so csvData is already one
   // object per row keyed by the header names — exactly the shape
-  // _collateLabels and _parseLesions expect. (This previously zipped
-  // csvData[0] as a header array against csvData.slice(1) as value arrays,
-  // which yielded empty rows and then crashed on undefined `points` once
-  // header:true was introduced upstream.)
-  const parsedMeasurements: { [key: string]: string }[] = csvData;
-
-  let labels: any = _collateLabels(parsedMeasurements);
-
-  Object.keys(labels).forEach(patientID => {
-    const label_data = Object.keys(labels[patientID])
+  // _collateLabels and _parseLesions expect.
+  // Build the full plan (label + lesion annotations) first; a parse error here
+  // throws before anything is cleared, preserving existing measurements.
+  const collatedLabels: any = _collateLabels(csvData);
+  const labelAnnotations = Object.keys(collatedLabels).map(studyKey => {
+    const row = collatedLabels[studyKey];
+    const label_data = Object.keys(row)
       // Keep only label-panel columns: drop identifiers, lesion geometry, and
       // lesion-label columns (the last mirrors _parseLesions' filter below).
-      // Previously `!(key in lesionConfig)` tested the config object's own keys
-      // (name/label_options), so lesion columns leaked into the label.
       .filter(
         key =>
           !unusedColumns.includes(key) &&
           !lesionToolColumns.includes(key) &&
-          !(key in lesionConfig.label_options[0])
+          !(key in lesionLabelKeys)
       )
       .reduce((obj, key) => {
-        obj[key] = labels[patientID][key];
+        obj[key] = row[key];
         return obj;
       }, {});
-    const annotation = makeLabelAnnotation({
+    return makeLabelAnnotation({
       labelData: label_data,
-      referenceStudyUID: labels[patientID].StudyInstanceUID,
+      referenceStudyUID: row.StudyInstanceUID,
       source: 'imported',
     });
+  });
+
+  const lesionAnnotations: any[] = _parseLesions(csvData, lesionLabelKeys);
+
+  // Resolve the lesion (CircleROI) source/mapping, but only require it when
+  // there are lesion rows to add. A label-only CSV produces no lesion
+  // annotations and must not require the Cornerstone3DTools mapping — a
+  // deployment using labeling without it still imports study/patient labels.
+  const CORNERSTONE_3D_TOOLS_SOURCE_NAME = 'Cornerstone3DTools';
+  const CORNERSTONE_3D_TOOLS_SOURCE_VERSION = '0.1';
+  const lesionAnnotationType = 'CircleROI';
+  const lesionSource = measurementService.getSource(
+    CORNERSTONE_3D_TOOLS_SOURCE_NAME,
+    CORNERSTONE_3D_TOOLS_SOURCE_VERSION
+  );
+  const lesionMappings =
+    measurementService.getSourceMappings(
+      CORNERSTONE_3D_TOOLS_SOURCE_NAME,
+      CORNERSTONE_3D_TOOLS_SOURCE_VERSION
+    ) || [];
+  const matchingLesionMapping = lesionMappings.find(m => m.annotationType === lesionAnnotationType);
+  if (lesionAnnotations.length > 0 && (!lesionSource || !matchingLesionMapping)) {
+    throw new Error(
+      'importCSVReport: Cornerstone3DTools/CircleROI source/mapping is not registered'
+    );
+  }
+
+  // Apply atomically: only now that parsing/validation succeeded do we clear
+  // existing measurements and add the imported ones.
+  measurementService.clearMeasurements();
+
+  labelAnnotations.forEach(annotation => {
     measurementService.addRawMeasurement(
       labelSource,
       annotationType,
@@ -89,26 +130,7 @@ export default function importCSVReport(
     );
   });
 
-  const CORNERSTONE_3D_TOOLS_SOURCE_NAME = 'Cornerstone3DTools';
-  const CORNERSTONE_3D_TOOLS_SOURCE_VERSION = '0.1';
-
-  const lesionSource = measurementService.getSource(
-    CORNERSTONE_3D_TOOLS_SOURCE_NAME,
-    CORNERSTONE_3D_TOOLS_SOURCE_VERSION
-  );
-
-  const lesionMappings = measurementService.getSourceMappings(
-    CORNERSTONE_3D_TOOLS_SOURCE_NAME,
-    CORNERSTONE_3D_TOOLS_SOURCE_VERSION
-  );
-  const lesionAnnotationType = 'CircleROI';
-
-  const matchingLesionMapping = lesionMappings.find(
-    m => m.annotationType === lesionAnnotationType
-  );
-
-  const lesions: any = _parseLesions(parsedMeasurements, lesionConfig);
-  lesions.forEach(annotation => {
+  lesionAnnotations.forEach(annotation => {
     const uid = measurementService.addRawMeasurement(
       lesionSource,
       lesionAnnotationType,
@@ -116,26 +138,30 @@ export default function importCSVReport(
       matchingLesionMapping.toMeasurementSchema,
       dataSource
     );
-    // Initialize lesions labeling table
-
+    // Seed the lesion's labeling table from the imported label_data. `label` is
+    // '' to mark it imported; LabelingTable preserves label_data for such
+    // measurements (see seedDefaultLabelData).
     const measurement = measurementService.getMeasurement(uid);
-    measurement.label_data = {};
-
     measurement.label_data = annotation.data.label_data;
     measurement.label = '';
     measurementService.update(uid, measurement);
   });
 }
 
+// Collate label rows by StudyInstanceUID so a patient with multiple studies
+// yields one label per study. Keying on 'Patient ID' alone would keep only the
+// last row for a multi-study patient. Falls back to 'Patient ID' for rows
+// without a StudyInstanceUID.
 function _collateLabels(parsedMeasurements) {
   const collatedLabels = {};
-  parsedMeasurements.map(
-    element => (collatedLabels[element['Patient ID']] = element)
-  );
+  parsedMeasurements.forEach(element => {
+    const key = element['StudyInstanceUID'] || element['Patient ID'];
+    collatedLabels[key] = element;
+  });
   return collatedLabels;
 }
 
-function _parseLesions(parsedMeasurements, lesionColumns) {
+function _parseLesions(parsedMeasurements, lesionLabelKeys) {
   const parsedLesions: any[] = [];
   parsedMeasurements.forEach(element => {
     // Only rows carrying lesion geometry become lesion annotations; label-only
@@ -145,10 +171,7 @@ function _parseLesions(parsedMeasurements, lesionColumns) {
     }
 
     const lesionData = Object.keys(element)
-      .filter(
-        key =>
-          !unusedColumns.includes(key) && key in lesionColumns.label_options[0]
-      )
+      .filter(key => !unusedColumns.includes(key) && key in lesionLabelKeys)
       .reduce((obj, key) => {
         obj[key] = element[key];
         return obj;
@@ -166,9 +189,7 @@ function _parseLesions(parsedMeasurements, lesionColumns) {
         cachedStats: [],
         handles: {
           textBox: {},
-          points: element['points']
-            .split(';')
-            .map(pos => pos.split(' ').map(Number)),
+          points: element['points'].split(';').map(pos => pos.split(' ').map(Number)),
         },
       },
       referenceStudyUID: element['StudyInstanceUID'],

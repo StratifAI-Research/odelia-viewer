@@ -22,21 +22,19 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({
   error,
 }) => {
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 min-h-0 px-3 pt-4 pb-4 space-y-4 overflow-y-auto overflow-x-hidden">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-3 pt-4 pb-4">
         {error && (
-          <div className="rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700 text-sm">
+          <div className="rounded border border-red-400 bg-red-100 px-4 py-3 text-sm text-red-700">
             {error}
           </div>
         )}
 
-        <h4 className="text-sm font-medium text-muted-foreground">
-          Confirm &amp; Run
-        </h4>
+        <h4 className="text-muted-foreground text-sm font-medium">Confirm &amp; Run</h4>
 
-        <div className="text-sm bg-secondary-dark rounded p-3 space-y-2">
-          <div className="text-white font-medium">Summary</div>
-          <div className="text-xs text-muted-foreground space-y-1">
+        <div className="bg-secondary-dark space-y-2 rounded p-3 text-sm">
+          <div className="font-medium text-white">Summary</div>
+          <div className="text-muted-foreground space-y-1 text-xs">
             <div>&bull; Model: {currentEndpoint?.name || 'Not configured'}</div>
             <div>&bull; Study: {studyDescription}</div>
             <div>&bull; Series: {selectedSeriesCount} selected</div>
@@ -44,16 +42,16 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({
         </div>
 
         {inputMappingDescription && (
-          <div className="text-sm bg-secondary-dark rounded p-3 space-y-2">
-            <div className="text-white font-medium">Input Mapping</div>
-            <div className="text-xs text-muted-foreground whitespace-pre-line">
+          <div className="bg-secondary-dark space-y-2 rounded p-3 text-sm">
+            <div className="font-medium text-white">Input Mapping</div>
+            <div className="text-muted-foreground whitespace-pre-line text-xs">
               {inputMappingDescription}
             </div>
           </div>
         )}
       </div>
 
-      <div className="flex-shrink-0 px-3 py-3 border-t border-secondary-light bg-black space-y-2">
+      <div className="border-secondary-light flex-shrink-0 space-y-2 border-t bg-black px-3 py-3">
         <Button
           onClick={onSend}
           disabled={!currentEndpoint}

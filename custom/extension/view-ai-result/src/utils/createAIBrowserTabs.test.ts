@@ -75,6 +75,65 @@ describe('createAIBrowserTabs', () => {
     expect(tabs[0].studies[0].numInstances).toBe(2);
   });
 
+  // A report (SR) carrying a real model name via its ContentSequence.
+  const srWithModel = (uid: string, model: string, over: any = {}) => ({
+    StudyInstanceUID: 'study-1',
+    Modality: 'SR',
+    displaySetInstanceUID: uid,
+    numInstances: 1,
+    instance: {
+      InstanceCreationDate: '20240101',
+      InstanceCreationTime: '120000',
+      ContentSequence: [
+        { ConceptNameCodeSequence: [{ CodeMeaning: 'AI Model' }], TextValue: model },
+      ],
+      ...over,
+    },
+  });
+
+  it('keeps two different models at the same datetime in separate groups', () => {
+    const tabs = createAIBrowserTabs(
+      ['study-1'],
+      [],
+      [srWithModel('sr-a', 'ModelA'), srWithModel('sr-b', 'ModelB')]
+    );
+    const aiGroups = tabs.filter(t => t.name.startsWith('ai-')).map(t => t.studies[0]);
+    expect(aiGroups).toHaveLength(2);
+    const contents = aiGroups.map(g => g.displaySets.map((d: any) => d.displaySetInstanceUID));
+    expect(contents).toEqual(expect.arrayContaining([['sr-a'], ['sr-b']]));
+  });
+
+  it('routes a heatmap to its report’s group by referenced UID, not a same-datetime sibling', () => {
+    const srA = srWithModel('sr-a', 'ModelA', { SOPInstanceUID: 'sop-a' });
+    const srB = srWithModel('sr-b', 'ModelB', { SOPInstanceUID: 'sop-b' });
+    const scA = {
+      StudyInstanceUID: 'study-1',
+      Modality: 'SC',
+      displaySetInstanceUID: 'sc-a',
+      numInstances: 1,
+      instance: {
+        InstanceCreationDate: '20240101',
+        InstanceCreationTime: '120000',
+        ReferencedImageSequence: [{ ReferencedSOPInstanceUID: 'sop-a' }],
+      },
+    };
+    const tabs = createAIBrowserTabs(['study-1'], [], [srA, srB, scA]);
+    const aiGroups = tabs.filter(t => t.name.startsWith('ai-')).map(t => t.studies[0]);
+    expect(aiGroups).toHaveLength(2);
+    const groupWithA = aiGroups.find(g =>
+      g.displaySets.some((d: any) => d.displaySetInstanceUID === 'sr-a')
+    );
+    const groupWithB = aiGroups.find(g =>
+      g.displaySets.some((d: any) => d.displaySetInstanceUID === 'sr-b')
+    );
+    // The heatmap joins ModelA's report, not ModelB's same-second report.
+    expect(groupWithA.displaySets.map((d: any) => d.displaySetInstanceUID).sort()).toEqual([
+      'sc-a',
+      'sr-a',
+    ]);
+    expect(groupWithB.displaySets.map((d: any) => d.displaySetInstanceUID)).toEqual(['sr-b']);
+  });
+
   it('orders AI groups by creation date/time ascending', () => {
     const early = aiThumb({
       displaySetInstanceUID: 'ai-early',

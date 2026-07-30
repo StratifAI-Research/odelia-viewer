@@ -1,24 +1,21 @@
+import {
+  ODELIALabel,
+  ODELIA_LABELING_SOURCE_NAME,
+  ODELIA_LABELING_SOURCE_VERSION,
+} from './measurementServiceMappings/ODELIALabel';
 
-import { ODELIALabel, ODELIA_LABELING_SOURCE_NAME, ODELIA_LABELING_SOURCE_VERSION } from './measurementServiceMappings/ODELIALabel';
-
-const initMeasurementService = (
-  measurementService,
-) => {
+const initMeasurementService = measurementService => {
   /* Initialization */
-  const ODELIALabelMapping =
-  {
+  const ODELIALabelMapping = {
     toAnnotation: ODELIALabel.toAnnotation,
-    toMeasurement: formEvent =>
-      ODELIALabel.toMeasurement(
-        formEvent
-      ),
+    toMeasurement: formEvent => ODELIALabel.toMeasurement(formEvent),
     matchingCriteria: [
       {
-        valueType: "ODELIALabel",
+        valueType: 'ODELIALabel',
         points: 0,
       },
     ],
-  }
+  };
 
   const ODELIAMeasurementSource = measurementService.createSource(
     ODELIA_LABELING_SOURCE_NAME,
@@ -34,12 +31,9 @@ const initMeasurementService = (
     ODELIALabelMapping.toMeasurement
   );
 
-  measurementService.addMeasurementSchemaKeys(["label_data"])
+  measurementService.addMeasurementSchemaKeys(['label_data']);
 
   return ODELIAMeasurementSource;
 };
 
-
-export {
-  initMeasurementService,
-};
+export { initMeasurementService };

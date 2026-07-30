@@ -44,6 +44,11 @@ describe('dicomDateTime utils', () => {
       expect(dicomDateTimeToIsoUtc('2024')).toBeUndefined();
     });
 
+    it('returns undefined (does not throw) for a non-numeric 8-char date', () => {
+      expect(() => dicomDateTimeToIsoUtc('2024ABCD')).not.toThrow();
+      expect(dicomDateTimeToIsoUtc('2024ABCD')).toBeUndefined();
+    });
+
     it('converts date-only to ISO UTC', () => {
       const result = dicomDateTimeToIsoUtc('20240315');
       expect(result).toBeDefined();
@@ -96,10 +101,18 @@ describe('dicomDateTime utils', () => {
 
     it('applies the instance timezone offset', () => {
       const utc = resultTsFromDisplaySet({
-        instance: { InstanceCreationDate: '20240315', InstanceCreationTime: '120000', TimezoneOffsetFromUTC: '+0000' },
+        instance: {
+          InstanceCreationDate: '20240315',
+          InstanceCreationTime: '120000',
+          TimezoneOffsetFromUTC: '+0000',
+        },
       });
       const plus2 = resultTsFromDisplaySet({
-        instance: { InstanceCreationDate: '20240315', InstanceCreationTime: '140000', TimezoneOffsetFromUTC: '+0200' },
+        instance: {
+          InstanceCreationDate: '20240315',
+          InstanceCreationTime: '140000',
+          TimezoneOffsetFromUTC: '+0200',
+        },
       });
       expect(utc).toEqual(plus2);
     });

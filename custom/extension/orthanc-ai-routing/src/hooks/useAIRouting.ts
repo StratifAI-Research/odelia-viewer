@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import OrthancAIService from '../services/OrthancAIService';
-import type { InputMapping } from '../services/OrthancAIService';
+import type { InputMapping, WorkitemStatus } from '../services/OrthancAIService';
 import { AIEndpoint } from '../components/AIEndpointConfig';
 
 interface UseAIRoutingProps {
@@ -12,15 +12,15 @@ interface UseAIRoutingProps {
 export function useAIRouting({
   orthancAIService,
   uiNotificationService,
-  onComplete
+  onComplete,
 }: UseAIRoutingProps) {
-  const [status, setStatus] = useState<'idle' | 'routing' | 'checking' | 'refreshing'>('idle');
+  const [status, setStatus] = useState<'idle' | 'routing' | 'checking'>('idle');
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);
   // Initialize from the service once, on mount (lazy initializer — avoids a
   // setState-during-render side effect).
-  const [currentEndpoint, setCurrentEndpoint] = useState<AIEndpoint | null>(
-    () => orthancAIService.getCurrentEndpoint()
+  const [currentEndpoint, setCurrentEndpoint] = useState<AIEndpoint | null>(() =>
+    orthancAIService.getCurrentEndpoint()
   );
   const [workitemUid, setWorkitemUid] = useState<string | null>(null);
   const [progressDescription, setProgressDescription] = useState<string | null>(null);
@@ -37,8 +37,7 @@ export function useAIRouting({
     });
   };
 
-  const handleWorkitemStatusUpdate = (workitemStatus: any) => {
-
+  const handleWorkitemStatusUpdate = (workitemStatus: WorkitemStatus) => {
     // Map workitem states to local status
     switch (workitemStatus.state) {
       case 'SCHEDULED':
@@ -78,7 +77,7 @@ export function useAIRouting({
         }
         break;
 
-      case 'CANCELED':
+      case 'CANCELED': {
         setStatus('idle');
         const errorMsg = workitemStatus.cancellationReason || 'Workitem was canceled';
         setError(errorMsg);
@@ -91,6 +90,7 @@ export function useAIRouting({
           duration: 5000,
         });
         break;
+      }
 
       default:
         console.warn('Unknown workitem state:', workitemStatus.state);
@@ -184,7 +184,8 @@ export function useAIRouting({
         return false;
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to send study for AI analysis';
+      const errorMessage =
+        err instanceof Error ? err.message : 'Failed to send study for AI analysis';
       setError(errorMessage);
       setStatus('idle');
       setProgress(0);

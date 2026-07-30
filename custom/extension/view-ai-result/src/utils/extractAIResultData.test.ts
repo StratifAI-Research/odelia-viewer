@@ -51,9 +51,7 @@ describe('extractAIResultData', () => {
     const out = extractAIResultData(ds);
     expect(out).not.toBeNull();
     expect(out!.isClassification).toBe(true);
-    expect(out!.classifications).toEqual([
-      { side: 'Left', result: 'Malignant', confidence: 87.5 },
-    ]);
+    expect(out!.classifications).toEqual([{ side: 'Left', result: 'Malignant', confidence: 87.5 }]);
   });
 
   it('maps Benign and "Clinical finding absent" code meanings', () => {
@@ -68,6 +66,18 @@ describe('extractAIResultData', () => {
 
   it('leaves confidence null when no NumericValue is provided', () => {
     const ds = srDisplaySet([sideProbability('Left', 'Malignant')]);
+    const out = extractAIResultData(ds)!;
+    expect(out.classifications[0].confidence).toBeNull();
+  });
+
+  it('preserves a real 0 confidence (a 0.0% probability must not become null)', () => {
+    const ds = srDisplaySet([sideProbability('Left', 'Benign', '0')]);
+    const out = extractAIResultData(ds)!;
+    expect(out.classifications[0].confidence).toBe(0);
+  });
+
+  it('normalizes a non-numeric NumericValue to null (not NaN)', () => {
+    const ds = srDisplaySet([sideProbability('Right', 'Malignant', 'abc')]);
     const out = extractAIResultData(ds)!;
     expect(out.classifications[0].confidence).toBeNull();
   });
@@ -103,7 +113,11 @@ describe('extractAIResultData', () => {
   it('extracts model info from an AI Model item', () => {
     const ds = srDisplaySet([modelItem('My Model', 'algoX', '2.1')]);
     const out = extractAIResultData(ds)!;
-    expect(out.modelInfo).toEqual({ name: 'My Model', algorithmName: 'algoX', algorithmVersion: '2.1' });
+    expect(out.modelInfo).toEqual({
+      name: 'My Model',
+      algorithmName: 'algoX',
+      algorithmVersion: '2.1',
+    });
   });
 
   it('descends into a CONTAINER root before processing items', () => {
@@ -111,7 +125,11 @@ describe('extractAIResultData', () => {
       { ValueType: 'CONTAINER', ContentSequence: [sideProbability('Left', 'Malignant', '90')] },
     ]);
     const out = extractAIResultData(ds)!;
-    expect(out.classifications[0]).toMatchObject({ side: 'Left', result: 'Malignant', confidence: 90 });
+    expect(out.classifications[0]).toMatchObject({
+      side: 'Left',
+      result: 'Malignant',
+      confidence: 90,
+    });
   });
 
   it('does not throw on malformed input', () => {

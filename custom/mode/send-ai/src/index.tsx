@@ -32,7 +32,7 @@ const extensionDependencies = {
   'view-ai-result': '^0.0.1',
 };
 
-function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
+function modeFactory() {
   return {
     /**
      * Mode ID, which should be unique among modes used by the viewer. This ID
@@ -40,7 +40,7 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
      */
     id,
     // Drives the launch URL (/{routeName}/...); the WorkList builds mode links from
-    // this, so it stays self-consistent. Renamed off the OHIF-template placeholder.
+    // this, so it stays self-consistent.
     routeName: 'send-ai',
     /**
      * Mode name, which is displayed in the viewer's UI in the workList, for the
@@ -99,18 +99,29 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
         enabled: [],
       };
 
-      // Create tool group if missing and add tools
+      // Create tool group if missing and add tools. The group may already exist
+      // (benign on re-entry); log the actual error so a genuine tool/config
+      // failure isn't hidden behind an "already exists" assumption (MODE-L8).
       try {
         toolGroupService.createToolGroupAndAddTools('default', tools);
       } catch (err) {
-        console.warn('Tool group already exists – skipping creation');
+        console.warn(
+          'send-ai: createToolGroupAndAddTools failed (tool group may already exist):',
+          err
+        );
       }
 
       // Register toolbar buttons (safe to call multiple times – service de-dupes)
       toolbarService?.addButtons?.(toolbarButtons);
 
       // Ensure buttons appear in primary section
-      toolbarService?.createButtonSection?.('primary', ['Zoom', 'WindowLevel', 'Pan', 'Reset', 'ImageSliceSync']);
+      toolbarService?.createButtonSection?.('primary', [
+        'Zoom',
+        'WindowLevel',
+        'Pan',
+        'Reset',
+        'ImageSliceSync',
+      ]);
     },
     onModeExit: ({ servicesManager }: ModeFactoryParams) => {
       const {
@@ -135,7 +146,7 @@ function modeFactory({ modeConfiguration }: { modeConfiguration: any }) {
     },
     /**
      * A boolean return value that indicates whether the mode is valid for the
-     * modalities of the selected studies. For instance a PET/CT mode should be
+     * modalities of the selected studies. This mode accepts any study.
      */
     isValidMode: ({ modalities }) => {
       return { valid: true };

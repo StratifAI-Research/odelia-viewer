@@ -14,6 +14,8 @@ const { windowLevelPresets } = defaults;
  * @param {*} id
  * @param {*} icon
  * @param {*} label
+ * @param {*} commands
+ * @param {*} tooltip
  */
 function _createButton(type, id, icon, label, commands, tooltip) {
   return {
@@ -27,7 +29,6 @@ function _createButton(type, id, icon, label, commands, tooltip) {
 }
 
 const _createActionButton = _createButton.bind(null, 'action');
-const _createToggleButton = _createButton.bind(null, 'toggle');
 const _createToolButton = _createButton.bind(null, 'tool');
 
 /**
@@ -59,8 +60,7 @@ const toolbarButtons = [
   {
     id: 'MeasurementTools',
     type: 'ohif.radioGroup',
-    props:
-    {
+    props: {
       type: 'tool',
       icon: 'tool-circle',
       label: 'Circle',
@@ -146,22 +146,6 @@ const toolbarButtons = [
           commandOptions: {
             toolName: 'Pan',
           },
-          context: 'CORNERSTONE',
-        },
-      ],
-    },
-  },
-  {
-    id: 'Capture',
-    type: 'ohif.action',
-    props: {
-      icon: 'tool-capture',
-      label: 'Capture',
-      type: 'action',
-      commands: [
-        {
-          commandName: 'showDownloadViewportModal',
-          commandOptions: {},
           context: 'CORNERSTONE',
         },
       ],
@@ -268,23 +252,6 @@ const toolbarButtons = [
           'Calibration Line'
         ),
       ],
-    },
-  },
-  {
-    id: 'HeatmapToggle',
-    type: 'ohif.toggle',
-    props: {
-      icon: 'tool-heatmap',
-      label: 'Heatmap',
-      type: 'toggle',
-      commands: [
-        {
-          commandName: 'toggleHeatmapView',
-          commandOptions: {},
-          context: 'VIEWER',
-        },
-      ],
-      tooltip: 'Toggle Heatmap View',
     },
   },
 ];

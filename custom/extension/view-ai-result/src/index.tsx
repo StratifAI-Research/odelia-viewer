@@ -6,6 +6,8 @@ import getPanelModule from './getPanelModule';
 import getHangingProtocolModule from './getHangingProtocolModule';
 import { AIResultsService } from './services/AIResultsService';
 import { ChatService } from './services/ChatService';
+import createHeatmapImageSliceSynchronizer from './utils/createHeatmapImageSliceSynchronizer';
+import { toggleHeatmapImageSliceSync } from './utils/toggleHeatmapImageSliceSync';
 
 export default {
   /**
@@ -20,46 +22,34 @@ export default {
    * this extension is providing.
    */
   preRegistration: ({ servicesManager, commandsManager, configuration = {} }) => {
+    // Register atomically and fail fast. A partially-registered extension
+    // (e.g. aiResultsService present but the heatmap synchronizer missing) only
+    // surfaces much later as confusing "missing behaviour"; rethrow a descriptive
+    // startup error instead of swallowing it.
     try {
-      // Create service definition (matching orthanc-ai-routing pattern)
-      const aiResultsServiceDefinition = {
+      servicesManager.registerService({
         name: 'aiResultsService',
-        create: ({ configuration = {} }) => {
-          return new AIResultsService(servicesManager.services?.uiNotificationService);
-        },
-      };
-
-      // Register the AIResultsService
-      servicesManager.registerService(aiResultsServiceDefinition);
+        create: () => new AIResultsService(servicesManager.services?.uiNotificationService),
+      });
 
       // Register custom heatmap synchronizer type
       const { syncGroupService } = servicesManager.services;
-      const { default: createHeatmapImageSliceSynchronizer } = require('./utils/createHeatmapImageSliceSynchronizer');
-
-      syncGroupService.addSynchronizerType('heatmapImageSlice', createHeatmapImageSliceSynchronizer);
+      syncGroupService.addSynchronizerType(
+        'heatmapImageSlice',
+        createHeatmapImageSliceSynchronizer
+      );
 
       // Register ChatService for AI Chat panel
-      const chatServiceDefinition = {
+      servicesManager.registerService({
         name: 'chatService',
-        create: ({ configuration = {} }) => {
-          return new ChatService();
-        },
-      };
-      servicesManager.registerService(chatServiceDefinition);
+        create: () => new ChatService(),
+      });
     } catch (error) {
-      console.error('Error during registration:', error);
+      console.error('view-ai-result: extension registration failed:', error);
+      throw new Error(
+        `view-ai-result extension failed to register: ${(error as Error)?.message ?? error}`
+      );
     }
-  },
-
-  /**
-   * ServicesModule should provide a list of services that will be available in OHIF
-   * for Modes to consume and use to manage data. Each service is defined by
-   * an object of { name, type, create } where the name is the name of the service,
-   * type is the type of service, and create is a function that creates the service.
-   */
-  getServicesModule: ({ servicesManager, commandsManager, extensionManager }) => {
-    // Remove duplicate registration - service is already registered in preRegistration
-    return [];
   },
 
   /**
@@ -105,7 +95,8 @@ export default {
         evaluate: () => {
           const { syncGroupService } = servicesManager.services;
           const synchronizer = syncGroupService.getSynchronizer('HEATMAP_IMAGE_SLICE_SYNC');
-          const isActive = synchronizer && synchronizer._enabled;
+          // Use the public API instead of the private `_enabled` field.
+          const isActive = synchronizer && !synchronizer.isDisabled();
 
           return {
             className: isActive ? 'text-primary-active' : '',
@@ -122,7 +113,12 @@ export default {
    * a Header, left and right sidebars, and a viewport section in the middle
    * of the viewer.
    */
-  getLayoutTemplateModule: ({ servicesManager, commandsManager, extensionManager, hotkeysManager }) => {
+  getLayoutTemplateModule: ({
+    servicesManager,
+    commandsManager,
+    extensionManager,
+    hotkeysManager,
+  }) => {
     function OdeliaViewerLayout(props) {
       const DefaultLayout = useMemo(() => {
         const entry = extensionManager.getModuleEntry(
@@ -133,6 +129,15 @@ export default {
 
       return (
         <>
+          {/*
+            Hide the UPSTREAM OHIF InvestigationalUseDialog (its confirm-and-hide
+            button carries data-cy="confirm-and-hide-button", see
+            platform/ui/.../InvestigationalUseDialog.tsx) so it does not stack on
+            top of the custom DisclaimerBanner. app-config.js does not configure
+            `investigationalUseDialog`, so DefaultLayout would otherwise show
+            OHIF's default banner. This selector targets an element rendered by
+            OHIF, not by this package — do not remove it as "dead".
+          */}
           <style>{`.fixed:has([data-cy="confirm-and-hide-button"]) { display: none !important; }`}</style>
           <DefaultLayout {...props} />
           <DisclaimerBanner />
@@ -164,8 +169,6 @@ export default {
    * options, and defaultContext is the default context for the command to run against.
    */
   getCommandsModule: ({ servicesManager, commandsManager, extensionManager }) => {
-    const { toggleHeatmapImageSliceSync } = require('./utils/toggleHeatmapImageSliceSync');
-
     const actions = {
       resetCrosshairs: () => {
         // Intentionally empty – crosshairs tool not used in this extension

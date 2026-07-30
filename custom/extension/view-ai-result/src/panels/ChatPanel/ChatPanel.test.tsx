@@ -1,6 +1,14 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { installConsoleErrorFilter, makeServicesManager, withSystem } from '../../test-utils/harness';
+import {
+  installConsoleErrorFilter,
+  makeServicesManager,
+  withSystem,
+} from '../../test-utils/harness';
+
+// useImageViewer / useViewportGrid are stubbed by the module mocks; the panel
+// only reads StudyInstanceUIDs + the active viewport map from them.
+import ChatPanel from './ChatPanel';
 
 // The panel consumes the streaming chat hook; inject its surface directly so we
 // drive each render branch and assert the panel forwards the right payloads.
@@ -31,10 +39,6 @@ function setHook(over: Partial<typeof hookState> = {}) {
 jest.mock('../../hooks/useChatService', () => ({
   useChatService: () => hookState,
 }));
-
-// useImageViewer / useViewportGrid are stubbed by the module mocks; the panel
-// only reads StudyInstanceUIDs + the active viewport map from them.
-import ChatPanel from './ChatPanel';
 
 let msgSeq = 0;
 const msg = (over: any = {}) => ({
@@ -187,10 +191,11 @@ describe('ChatPanel', () => {
     await act(async () => {
       fireEvent.click(screen.getByTitle('Settings'));
     });
-    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/debug/config'));
+    // Uses the same-origin nginx route (jsdom's hostname is `localhost`).
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/chat-api/debug/config'));
     expect(screen.getByText('Chat Settings')).toBeTruthy();
-    expect((screen.getByDisplayValue('You are helpful') as HTMLTextAreaElement)).toBeTruthy();
-    expect((screen.getByDisplayValue('medgemma') as HTMLInputElement)).toBeTruthy();
+    expect(screen.getByDisplayValue('You are helpful') as HTMLTextAreaElement).toBeTruthy();
+    expect(screen.getByDisplayValue('medgemma') as HTMLInputElement).toBeTruthy();
   });
 
   it('expands the context selector and reports no series available by default', () => {

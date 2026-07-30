@@ -87,7 +87,12 @@ describe('SeriesSelector', () => {
     render(
       <SeriesSelector
         series={[
-          series({ SeriesInstanceUID: 's1', SeriesDescription: 'T1', Modality: 'CT', numImageFrames: 42 }),
+          series({
+            SeriesInstanceUID: 's1',
+            SeriesDescription: 'T1',
+            Modality: 'CT',
+            numImageFrames: 42,
+          }),
           series({ SeriesInstanceUID: 's2', SeriesDescription: 'T2' }),
         ]}
         selectedSeriesUIDs={new Set(['s1'])}

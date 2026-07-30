@@ -16,28 +16,22 @@ export default function downloadCSVReport(measurementData) {
     measurement => measurement.type === 'value_type::circle'
   );
   labelMeasurements.forEach(measurement => {
-    const {
-      referenceStudyUID,
-      referenceSeriesUID,
-      getReport,
-      uid,
-      type,
-    } = measurement;
+    const { referenceStudyUID, getReport, uid } = measurement;
 
-    //if (type !== "ODELIALabel") {
-    //  console.warn('Skipping lesions for now');
-    //  return;
-    //}
     if (!getReport) {
       console.warn('Measurement does not have a getReport function');
       return;
     }
 
+    // Guard against missing study/series/instance metadata (e.g. a label
+    // imported for a study not present in the DicomMetadataStore): the row is
+    // still emitted (with empty patient fields) rather than throwing on
+    // `studyMetadata.series[0]`.
     const studyMetadata = DicomMetadataStore.getStudy(referenceStudyUID);
-    const seriesMetadata = DicomMetadataStore.getSeries(
-      referenceStudyUID,
-      studyMetadata.series[0].SeriesInstanceUID
-    );
+    const firstSeries = studyMetadata?.series?.[0];
+    const seriesMetadata = firstSeries
+      ? DicomMetadataStore.getSeries(referenceStudyUID, firstSeries.SeriesInstanceUID)
+      : undefined;
 
     const commonRowItems = _getCommonRowItems(measurement, seriesMetadata);
     const report = getReport(measurement);
@@ -91,9 +85,7 @@ export default function downloadCSVReport(measurementData) {
 
   const results = _mapReportsToRowArray(reportMap, columns);
 
-  let csvContent =
-    'data:text/csv;charset=utf-8,' +
-    results.map(row => row.map(_escapeCsvValue).join(',')).join('\n');
+  const csvContent = results.map(row => row.map(_escapeCsvValue).join(',')).join('\n');
 
   _createAndDownloadFile(csvContent);
 }
@@ -105,7 +97,7 @@ export default function downloadCSVReport(measurementData) {
 //    interpret the cell as a formula, so it is prefixed with a single quote.
 // `Array.prototype.map` preserves holes in the sparse row arrays, so empty
 // columns still render as empty fields and column alignment is kept.
-function _escapeCsvValue(value) {
+export function _escapeCsvValue(value) {
   if (value === undefined || value === null) {
     return '';
   }
@@ -154,23 +146,39 @@ function _mapReportsToRowArray(reportMap, columns) {
   return results;
 }
 
-function _getCommonRowItems(measurement, seriesMetadata) {
-  const firstInstance = seriesMetadata.instances[0];
+export function _getCommonRowItems(measurement, seriesMetadata) {
+  const firstInstance = seriesMetadata?.instances?.[0];
+  // PatientName may be a DICOM PN object ({ Alphabetic }) or a plain string.
+  // Only fall back to PatientName itself when it is a string — a PN object with
+  // no Alphabetic component (e.g. only Ideographic/Phonetic) must not be
+  // stringified to "[object Object]" (it exported as an empty cell before).
+  const patientName =
+    firstInstance?.PatientName?.Alphabetic ??
+    (typeof firstInstance?.PatientName === 'string' ? firstInstance.PatientName : '');
 
   return {
-    'Patient ID': firstInstance.PatientID, // Patient ID
-    'Patient Name': firstInstance.PatientName.Alphabetic, // PatientName
+    'Patient ID': firstInstance?.PatientID ?? '', // Patient ID
+    'Patient Name': patientName, // PatientName
     StudyInstanceUID: measurement.referenceStudyUID, // StudyInstanceUID
     Label: measurement.label || '', // Label
   };
 }
 
-function _createAndDownloadFile(csvContent) {
-  const encodedUri = encodeURI(csvContent);
+export function _createAndDownloadFile(csvContent) {
+  // Build a Blob + object URL rather than a `data:` URI. encodeURI() does not
+  // escape '#', so any '#' in a patient name/ID or free-text label truncated the
+  // file at the URL fragment; large exports also hit per-browser data: length
+  // limits. A leading UTF-8 BOM keeps Excel from mis-decoding non-ASCII text.
+  const blob = new Blob(['\uFEFF' + csvContent], {
+    type: 'text/csv;charset=utf-8;',
+  });
+  const url = URL.createObjectURL(blob);
 
   const link = document.createElement('a');
-  link.setAttribute('href', encodedUri);
+  link.setAttribute('href', url);
   link.setAttribute('download', 'MeasurementReport.csv');
   document.body.appendChild(link);
   link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
 }

@@ -98,10 +98,7 @@ describe('AIResultsService', () => {
     });
 
     it('leaves hasHeatmap false when SC date/time does not match', () => {
-      const sm = managerWith([
-        srDisplaySet('sr-1'),
-        scDisplaySet('sc-1', { time: '120000' }),
-      ]);
+      const sm = managerWith([srDisplaySet('sr-1'), scDisplaySet('sc-1', { time: '120000' })]);
       const svc = new AIResultsService(sm.services.uiNotificationService);
       const results = svc.getAllAIResults('study-1', sm);
       expect(results[0].hasHeatmap).toBe(false);
@@ -127,14 +124,50 @@ describe('AIResultsService', () => {
       const second = svc.getAllAIResults('study-1', sm);
       expect(second).toHaveLength(1);
       // No further reads of the underlying display sets on cache hit.
-      expect(sm.services.displaySetService.getActiveDisplaySets.mock.calls.length).toBe(callsAfterFirst);
+      expect(sm.services.displaySetService.getActiveDisplaySets.mock.calls.length).toBe(
+        callsAfterFirst
+      );
+    });
+
+    it('re-evaluates hasHeatmap when the matching SC arrives after the SR was cached', () => {
+      const displaySets: any[] = [srDisplaySet('sr-1')];
+      const handlers: Array<() => void> = [];
+      const displaySetService = {
+        EVENTS: { DISPLAY_SETS_ADDED: 'DISPLAY_SETS_ADDED' },
+        getActiveDisplaySets: jest.fn(() => displaySets),
+        getDisplaySetByUID: jest.fn(
+          (uid: string) => displaySets.find(d => d.displaySetInstanceUID === uid) ?? null
+        ),
+        subscribe: jest.fn((evt: string, cb: () => void) => {
+          if (evt === 'DISPLAY_SETS_ADDED') {
+            handlers.push(cb);
+          }
+          return { unsubscribe: () => {} };
+        }),
+      };
+      const sm = makeServicesManager({
+        services: { displaySetService, uiNotificationService: { show: jest.fn() } },
+      });
+      const svc = new AIResultsService(sm.services.uiNotificationService);
+
+      // First read: only the SR is loaded -> no heatmap, result cached.
+      expect(svc.getAllAIResults('study-1', sm)[0].hasHeatmap).toBe(false);
+
+      // The matching SC (heatmap) streams in a beat later.
+      displaySets.push(scDisplaySet('sc-1'));
+      handlers.forEach(cb => cb()); // displaySetService emits DISPLAY_SETS_ADDED
+
+      // Cache was invalidated -> hasHeatmap is re-evaluated as true.
+      expect(svc.getAllAIResults('study-1', sm)[0].hasHeatmap).toBe(true);
     });
 
     it('produces an error result when extraction throws, without throwing', () => {
       const bad = srDisplaySet('sr-bad');
       // Force extractAIResultData to throw via a getter that explodes.
       Object.defineProperty(bad.instance, 'ContentSequence', {
-        get() { throw new Error('boom'); },
+        get() {
+          throw new Error('boom');
+        },
       });
       const sm = managerWith([bad]);
       const svc = new AIResultsService(sm.services.uiNotificationService);
@@ -237,19 +270,6 @@ describe('AIResultsService', () => {
       const svc = new AIResultsService(sm.services.uiNotificationService);
       expect(svc.getSelectedAIResult('study-1', sm)?.displaySetInstanceUID).toBe('sr-1');
     });
-
-    it('addSelectionChangeListener fires on selection; removed listener does not', () => {
-      const sm = managerWith([srDisplaySet('sr-1'), srDisplaySet('sr-2', { time: '110000' })]);
-      const svc = new AIResultsService(sm.services.uiNotificationService);
-      const cb = jest.fn();
-      svc.addSelectionChangeListener('study-1', cb);
-      svc.setSelectedAIResult('study-1', 'sr-1', sm);
-      expect(cb).toHaveBeenCalledTimes(1);
-
-      svc.removeSelectionChangeListener('study-1', cb);
-      svc.setSelectedAIResult('study-1', 'sr-2', sm);
-      expect(cb).toHaveBeenCalledTimes(1);
-    });
   });
 
   describe('subscribe / unsubscribe', () => {
@@ -271,7 +291,9 @@ describe('AIResultsService', () => {
       const sm = managerWith([]);
       const svc = new AIResultsService(sm.services.uiNotificationService);
       const good = jest.fn();
-      svc.subscribe(AIResultsService.EVENTS.AI_RESULT_CLEARED, () => { throw new Error('x'); });
+      svc.subscribe(AIResultsService.EVENTS.AI_RESULT_CLEARED, () => {
+        throw new Error('x');
+      });
       svc.subscribe(AIResultsService.EVENTS.AI_RESULT_CLEARED, good);
       svc.clearStudyCache('study-1');
       expect(good).toHaveBeenCalledTimes(1);
@@ -286,7 +308,9 @@ describe('AIResultsService', () => {
       const before = sm.services.displaySetService.getActiveDisplaySets.mock.calls.length;
       svc.clearStudyCache('study-1');
       svc.getAllAIResults('study-1', sm);
-      expect(sm.services.displaySetService.getActiveDisplaySets.mock.calls.length).toBeGreaterThan(before);
+      expect(sm.services.displaySetService.getActiveDisplaySets.mock.calls.length).toBeGreaterThan(
+        before
+      );
     });
 
     it('removeDisplaySetsFromCache drops the removed result and emits cleared', () => {
@@ -308,17 +332,6 @@ describe('AIResultsService', () => {
       const svc = new AIResultsService(sm.services.uiNotificationService);
       expect(() => svc.removeDisplaySetsFromCache('study-1', ['x'])).not.toThrow();
     });
-
-    it('clearCache wipes all cached studies and listeners', () => {
-      const sm = managerWith([srDisplaySet('sr-1')]);
-      const svc = new AIResultsService(sm.services.uiNotificationService);
-      const cb = jest.fn();
-      svc.addSelectionChangeListener('study-1', cb);
-      svc.getAllAIResults('study-1', sm);
-      svc.clearCache();
-      svc.setSelectedAIResult('study-1', 'sr-1', sm);
-      expect(cb).not.toHaveBeenCalled();
-    });
   });
 
   describe('notifyStudyChange', () => {
@@ -328,7 +341,6 @@ describe('AIResultsService', () => {
       const changed = jest.fn();
       svc.subscribe(AIResultsService.EVENTS.STUDY_CHANGED, changed);
       svc.notifyStudyChange('study-1', sm);
-      expect(svc.getCurrentStudyUID()).toBe('study-1');
       expect(changed).toHaveBeenCalledWith(
         expect.objectContaining({ currentStudyUID: 'study-1', hasAIResults: true })
       );

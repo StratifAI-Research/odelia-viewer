@@ -4,7 +4,8 @@ const HEATMAP_SYNC_ID = 'HEATMAP_IMAGE_SLICE_SYNC';
  * Toggle image slice synchronization with proper configuration for volume viewports
  */
 export function toggleHeatmapImageSliceSync({ servicesManager }) {
-  const { syncGroupService, cornerstoneViewportService, viewportGridService } = servicesManager.services;
+  const { syncGroupService, cornerstoneViewportService, viewportGridService } =
+    servicesManager.services;
 
   const { viewports } = viewportGridService.getState();
   const viewportArray = Array.from(viewports.values()).filter(
@@ -55,15 +56,11 @@ export function toggleHeatmapImageSliceSync({ servicesManager }) {
       return;
     }
 
-    syncGroupService.addViewportToSyncGroup(
-      viewportId,
-      viewport.getRenderingEngine().id,
-      {
-        type: 'heatmapImageSlice',
-        id: HEATMAP_SYNC_ID,
-        source: true,
-        target: true,
-      }
-    );
+    syncGroupService.addViewportToSyncGroup(viewportId, viewport.getRenderingEngine().id, {
+      type: 'heatmapImageSlice',
+      id: HEATMAP_SYNC_ID,
+      source: true,
+      target: true,
+    });
   });
 }

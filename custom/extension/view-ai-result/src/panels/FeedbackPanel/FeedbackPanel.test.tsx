@@ -1,6 +1,12 @@
 import React from 'react';
 import { render, screen, fireEvent, act, waitFor, within } from '@testing-library/react';
-import { installConsoleErrorFilter, makeServicesManager, withSystem } from '../../test-utils/harness';
+import {
+  installConsoleErrorFilter,
+  makeServicesManager,
+  withSystem,
+} from '../../test-utils/harness';
+
+import FeedbackPanel from './FeedbackPanel';
 
 // Mutable hook returns so each test drives identity / viewport branches.
 let mockImageViewerReturn: any = { StudyInstanceUIDs: ['study-1'] };
@@ -23,8 +29,6 @@ jest.mock('@ohif/ui-next', () => {
   const actual = jest.requireActual('@ohif/ui-next');
   return { ...actual, useViewportGrid: () => mockViewportGridReturn };
 });
-
-import FeedbackPanel from './FeedbackPanel';
 
 // AI result metadata + current result fixtures.
 const META = [
@@ -56,7 +60,11 @@ function services(over: any = {}) {
   return makeServicesManager({
     services: {
       aiResultsService: makeAiResultsService(over.aiResultsService),
-      userAuthenticationService: { getUser: jest.fn(() => null), setUser: jest.fn(), ...over.userAuthenticationService },
+      userAuthenticationService: {
+        getUser: jest.fn(() => null),
+        setUser: jest.fn(),
+        ...over.userAuthenticationService,
+      },
       uiNotificationService: { show: jest.fn() },
       uiModalService: { show: jest.fn() },
       displaySetService: { getDisplaySetByUID: jest.fn(() => null) },
@@ -72,8 +80,16 @@ beforeEach(() => {
   window.localStorage.clear();
   mockImageViewerReturn = { StudyInstanceUIDs: ['study-1'] };
   mockAuthReturn = [{ user: null }];
-  mockViewportGridReturn = [{ activeViewportId: null, viewports: new Map() }, { setActiveViewportId: jest.fn() }];
-  (global as any).fetch = jest.fn().mockResolvedValue({ ok: true, status: 200, json: async () => ({ users: [] }), text: async () => '' });
+  mockViewportGridReturn = [
+    { activeViewportId: null, viewports: new Map() },
+    { setActiveViewportId: jest.fn() },
+  ];
+  (global as any).fetch = jest.fn().mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => ({ users: [] }),
+    text: async () => '',
+  });
 });
 
 async function renderPanel(svc = services()) {
@@ -162,7 +178,12 @@ describe('FeedbackPanel', () => {
     const fetchMock = jest
       .fn()
       // checkSubmissionStatus + per-result markers polling
-      .mockResolvedValue({ ok: true, status: 200, json: async () => ({ users: [] }), text: async () => '' });
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ users: [] }),
+        text: async () => '',
+      });
     (global as any).fetch = fetchMock;
     await renderPanel(svc);
 
@@ -174,7 +195,12 @@ describe('FeedbackPanel', () => {
 
     // Next submit POST returns 201; the follow-up status refetch reports the
     // user as already submitted so the panel stays locked.
-    fetchMock.mockResolvedValueOnce({ status: 201, ok: true, json: async () => ({}), text: async () => '' });
+    fetchMock.mockResolvedValueOnce({
+      status: 201,
+      ok: true,
+      json: async () => ({}),
+      text: async () => '',
+    });
     fetchMock.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -211,31 +237,49 @@ describe('FeedbackPanel', () => {
   it('surfaces a 409 conflict as an "Already submitted" message', async () => {
     mockAuthReturn = [{ user: { profile: { sub: 'rad-7' } } }];
     const svc = services();
-    const fetchMock = jest
-      .fn()
-      .mockResolvedValue({ ok: true, status: 200, json: async () => ({ users: [] }), text: async () => '' });
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ users: [] }),
+      text: async () => '',
+    });
     (global as any).fetch = fetchMock;
     await renderPanel(svc);
     fireEvent.click(screen.getAllByDisplayValue('Agree')[0]);
     fireEvent.click(screen.getAllByDisplayValue('Agree')[1]);
-    fetchMock.mockResolvedValueOnce({ status: 409, ok: false, json: async () => ({}), text: async () => '' });
+    fetchMock.mockResolvedValueOnce({
+      status: 409,
+      ok: false,
+      json: async () => ({}),
+      text: async () => '',
+    });
     await act(async () => {
       fireEvent.click(screen.getByText('Submit Feedback'));
     });
-    await waitFor(() => expect(screen.getByText('Already submitted for this result.')).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByText('Already submitted for this result.')).toBeTruthy()
+    );
   });
 
   it('shows an error message when the submit POST fails with a server error body', async () => {
     mockAuthReturn = [{ user: { profile: { sub: 'rad-7' } } }];
     const svc = services();
-    const fetchMock = jest
-      .fn()
-      .mockResolvedValue({ ok: true, status: 200, json: async () => ({ users: [] }), text: async () => '' });
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ users: [] }),
+      text: async () => '',
+    });
     (global as any).fetch = fetchMock;
     await renderPanel(svc);
     fireEvent.click(screen.getAllByDisplayValue('Agree')[0]);
     fireEvent.click(screen.getAllByDisplayValue('Agree')[1]);
-    fetchMock.mockResolvedValueOnce({ status: 500, ok: false, json: async () => ({}), text: async () => 'boom' });
+    fetchMock.mockResolvedValueOnce({
+      status: 500,
+      ok: false,
+      json: async () => ({}),
+      text: async () => 'boom',
+    });
     await act(async () => {
       fireEvent.click(screen.getByText('Submit Feedback'));
     });
@@ -285,13 +329,92 @@ describe('FeedbackPanel', () => {
     expect(screen.getByText('Edit Feedback')).toBeTruthy();
   });
 
+  // --- feedback status must not race result selection ---
+
+  it('resets the verdicts synchronously when the selected AI result changes', async () => {
+    mockAuthReturn = [{ user: { profile: { sub: 'u1' } } }];
+    const svc = services();
+    await renderPanel(svc);
+
+    // Choose a verdict on both sides for the current result.
+    fireEvent.click(screen.getAllByDisplayValue('Agree')[0]);
+    fireEvent.click(screen.getAllByDisplayValue('Agree')[1]);
+    expect((screen.getByText('Submit Feedback') as HTMLButtonElement).disabled).toBe(false);
+
+    // Switch to a different AI result.
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'sr-2' } });
+    });
+
+    // The previous result's verdicts must not linger on the new one.
+    const agrees = screen.getAllByDisplayValue('Agree') as HTMLInputElement[];
+    expect(agrees.every(r => !r.checked)).toBe(true);
+    expect((screen.getByText('Submit Feedback') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('clears a stale submit message when the AI result changes', async () => {
+    mockAuthReturn = [{ user: { profile: { sub: 'rad-7' } } }];
+    const svc = services();
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ users: [] }),
+      text: async () => '',
+    });
+    (global as any).fetch = fetchMock;
+    await renderPanel(svc);
+
+    fireEvent.click(screen.getAllByDisplayValue('Agree')[0]);
+    fireEvent.click(screen.getAllByDisplayValue('Agree')[1]);
+    fetchMock.mockResolvedValueOnce({
+      status: 500,
+      ok: false,
+      json: async () => ({}),
+      text: async () => 'boom',
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByText('Submit Feedback'));
+    });
+    await waitFor(() => expect(screen.getByText('boom')).toBeTruthy());
+
+    // Switching results must not leave the previous result's error message behind.
+    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    await act(async () => {
+      fireEvent.change(select, { target: { value: 'sr-2' } });
+    });
+    expect(screen.queryByText('boom')).toBeNull();
+  });
+
+  it('passes an AbortSignal to the feedback-status request', async () => {
+    mockAuthReturn = [{ user: { profile: { sub: 'rad-7' } } }];
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ users: [] }),
+      text: async () => '',
+    });
+    (global as any).fetch = fetchMock;
+    await renderPanel();
+
+    // The status request is now abortable so a stale response for a previously
+    // selected result can be cancelled instead of landing on the current one.
+    const statusCallHasSignal = fetchMock.mock.calls.some(
+      c => String(c[0]).includes('/feedback?') && c[1] && c[1].signal
+    );
+    expect(statusCallHasSignal).toBe(true);
+  });
+
   it('unsubscribes from AI selection events on unmount', async () => {
     mockAuthReturn = [{ user: { profile: { sub: 'u1' } } }];
     const unsubscribe = jest.fn();
     const svc = services();
     svc.services.aiResultsService.subscribe = jest.fn(() => ({ unsubscribe }));
     const { unmount } = await renderPanel(svc);
-    expect(svc.services.aiResultsService.subscribe).toHaveBeenCalledWith('sel', expect.any(Function));
+    expect(svc.services.aiResultsService.subscribe).toHaveBeenCalledWith(
+      'sel',
+      expect.any(Function)
+    );
     unmount();
     expect(unsubscribe).toHaveBeenCalled();
   });

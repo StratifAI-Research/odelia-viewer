@@ -17,12 +17,12 @@ const HeatmapToggle: React.FC<HeatmapToggleProps> = ({
     <button
       onClick={disabled ? undefined : onToggle}
       disabled={disabled}
-      className={`flex items-center justify-center w-8 h-8 rounded transition-colors ${
+      className={`flex h-8 w-8 items-center justify-center rounded transition-colors ${
         disabled
-          ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
+          ? 'cursor-not-allowed bg-gray-700 text-gray-500'
           : isActive
-          ? 'bg-primary-main text-white'
-          : 'bg-secondary-dark text-primary-light hover:bg-secondary-main'
+            ? 'bg-primary-main text-white'
+            : 'bg-secondary-dark text-primary-light hover:bg-secondary-main'
       } ${className}`}
       title={disabled ? 'No heatmap available' : `${isActive ? 'Hide' : 'Show'} Heatmap`}
     >

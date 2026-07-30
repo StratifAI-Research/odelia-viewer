@@ -2,7 +2,7 @@ const ODELIA_LABELING_SOURCE_NAME = 'OdeliaLabeleing';
 const ODELIA_LABELING_SOURCE_VERSION = '0.1';
 
 const ODELIALabel = {
-  toAnnotation: measurement => { },
+  toAnnotation: measurement => {},
 
   /**
    * Maps form annotation event data to measurement service format.
@@ -10,9 +10,7 @@ const ODELIALabel = {
    * @param {Object} formEvent form data
    * @return {Measurement} Measurement instance
    */
-  toMeasurement: (
-    formEvent
-  ) => {
+  toMeasurement: formEvent => {
     const { annotation } = formEvent;
     const { metadata, data, annotationUID, referenceStudyUID } = annotation;
     if (!metadata || !data) {
@@ -20,13 +18,12 @@ const ODELIALabel = {
       return null;
     }
 
-    if (annotation.type !== "ODELIALabel") {
+    if (annotation.type !== 'ODELIALabel') {
       throw new Error('Wrong annotation type passed');
     }
 
     const displayText = getDisplayText(annotation.data);
-    const getReport = () =>
-      _getReport(annotation.data, referenceStudyUID);
+    const getReport = () => _getReport(annotation.data, referenceStudyUID);
 
     return {
       uid: annotationUID,
@@ -55,9 +52,8 @@ function _getReport(data, StudyInstanceUID) {
   values.push('ODELIA:Label');
   Object.keys(data.label_data).forEach(key => {
     columns.push(key);
-    values.push(data.label_data[key])
-  }
-  )
+    values.push(data.label_data[key]);
+  });
   return {
     columns,
     values,
@@ -65,8 +61,7 @@ function _getReport(data, StudyInstanceUID) {
 }
 
 function getDisplayText(data) {
-
-  return " ";
+  return ' ';
 }
 
 export { ODELIALabel, ODELIA_LABELING_SOURCE_NAME, ODELIA_LABELING_SOURCE_VERSION };

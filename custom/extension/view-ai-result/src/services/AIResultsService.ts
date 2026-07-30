@@ -1,17 +1,29 @@
-import { AIResult, Classification } from '../types';
+import { AIResult } from '../types';
 import { extractAIResultData } from '../utils/extractAIResultData';
-import { resultTsFromDisplaySet } from '../utils/dicomDateTime';
+import { findMatchingSRForHeatmap } from '../utils/aiResultPairing';
+import { formatDicomDateTime } from '../utils/dicomDateTime';
+import {
+  buildAIResult,
+  extractAIResultsForStudy,
+  hasUsableAIResultData,
+} from './aiResultExtraction';
 
 /**
- * Service for extracting AI results from DICOM files
+ * Stateful repository + event bus for AI results.
+ *
+ * The pure work — extracting results from DICOM display sets and pairing an SR
+ * with its heatmap SC — lives in `./aiResultExtraction` and
+ * `../utils/aiResultPairing`. This class owns only the stateful
+ * concerns: the per-study result cache, the selection map, the event bus, and
+ * UI notifications.
  */
 export class AIResultsService {
   private cache: Map<string, AIResult[]> = new Map();
   private selectedAIResults: Map<string, string> = new Map(); // studyUID -> displaySetUID
   private uiNotificationService: any;
-  private selectionChangeListeners: Map<string, Array<() => void>> = new Map(); // studyUID -> callbacks
   private eventListeners: Map<string, Array<(data: any) => void>> = new Map(); // event -> callbacks
   private currentStudyUID: string | null = null; // Track current active study
+  private displaySetService: any = null; // set lazily; used to invalidate the cache when display sets load
 
   // Event constants
   static EVENTS = {
@@ -29,26 +41,54 @@ export class AIResultsService {
   }
 
   /**
+   * Subscribe (once) to displaySetService so the per-study result cache is
+   * invalidated when display sets load. SR and SC series stream in
+   * asynchronously; if a study's results were cached from the SR before its
+   * matching SC (heatmap) display set arrived, `hasHeatmap` was frozen as
+   * `false` and the heatmap toggle stayed permanently unavailable. Dropping the
+   * cache on DISPLAY_SETS_ADDED lets the next read recompute against the now
+   * complete set. Lazy because the service only receives servicesManager per call.
+   */
+  private ensureDisplaySetInvalidation(servicesManager: any): void {
+    if (this.displaySetService) {
+      return;
+    }
+    const displaySetService = servicesManager?.services?.displaySetService;
+    const addedEvent = displaySetService?.EVENTS?.DISPLAY_SETS_ADDED;
+    if (!displaySetService?.subscribe || !addedEvent) {
+      return;
+    }
+    this.displaySetService = displaySetService;
+    displaySetService.subscribe(addedEvent, () => {
+      this.cache.clear();
+    });
+  }
+
+  private getStudyDisplaySets(studyInstanceUID: string, servicesManager: any): any[] {
+    const { displaySetService } = servicesManager.services;
+    const allDisplaySets = displaySetService.getActiveDisplaySets();
+    return allDisplaySets.filter((ds: any) => ds.StudyInstanceUID === studyInstanceUID);
+  }
+
+  /**
    * Get all AI results for a study, with caching
    */
   getAllAIResults(studyInstanceUID: string, servicesManager: any): AIResult[] {
+    this.ensureDisplaySetInvalidation(servicesManager);
+
     // Check cache first
     if (this.cache.has(studyInstanceUID)) {
-      const cachedResults = this.cache.get(studyInstanceUID)!;
-
-      return cachedResults;
+      return this.cache.get(studyInstanceUID)!;
     }
 
     const results = this.extractAIResultsFromStudy(studyInstanceUID, servicesManager);
-
     this.cache.set(studyInstanceUID, results);
 
     // If no results found, publish cleared event
     if (results.length === 0) {
-
       this.publish(AIResultsService.EVENTS.AI_RESULT_CLEARED, {
         studyInstanceUID,
-        reason: 'no_results'
+        reason: 'no_results',
       });
     }
 
@@ -56,93 +96,14 @@ export class AIResultsService {
   }
 
   /**
-   * Extract AI results from all SR display sets in a study
+   * Extract AI results from all SR display sets in a study (delegates the pure
+   * work to `extractAIResultsForStudy`; keeps only the UI-notification side
+   * effect that belongs to the stateful service).
    */
   private extractAIResultsFromStudy(studyInstanceUID: string, servicesManager: any): AIResult[] {
-    const { displaySetService } = servicesManager.services;
-
     try {
-      // Get all display sets for the study
-      const allDisplaySets = displaySetService.getActiveDisplaySets();
-      const studyDisplaySets = allDisplaySets.filter(ds => ds.StudyInstanceUID === studyInstanceUID);
-
-      // Find all SR display sets (AI results)
-      const srDisplaySets = studyDisplaySets.filter(ds => ds.Modality === 'SR');
-
-      if (srDisplaySets.length === 0) {
-        return [];
-      }
-
-      // Find all SC display sets (potential heatmaps)
-      const scDisplaySets = studyDisplaySets.filter(ds => ds.Modality === 'SC');
-
-      const aiResults: AIResult[] = [];
-
-      // Process each SR display set
-      srDisplaySets.forEach(srDisplaySet => {
-        try {
-          const aiResultData = extractAIResultData(srDisplaySet);
-
-          if (aiResultData && (aiResultData.classifications.length > 0 || aiResultData.modelInfo)) {
-            // Find matching heatmap
-            const heatmapDisplaySet = this.findMatchingHeatmap(
-              srDisplaySet,
-              scDisplaySets,
-              aiResultData.modelInfo?.name
-            );
-
-            const resultTs = resultTsFromDisplaySet(srDisplaySet);
-
-            const aiResult: AIResult = {
-              studyInstanceUID,
-              displaySetInstanceUID: srDisplaySet.displaySetInstanceUID,
-              hasHeatmap: !!heatmapDisplaySet,
-              classifications: aiResultData.classifications,
-              resultTs,
-              heatmapDisplaySet: heatmapDisplaySet,
-              modelInfo: aiResultData.modelInfo ? {
-                name: aiResultData.modelInfo.name,
-                algorithmName: aiResultData.modelInfo.algorithmName || undefined,
-                algorithmVersion: aiResultData.modelInfo.algorithmVersion || undefined
-              } : undefined
-            };
-
-            aiResults.push(aiResult);
-          }
-        } catch (error) {
-          console.warn('Error parsing AI results from SR:', error);
-
-          // Create error result
-          const resultTs = resultTsFromDisplaySet(srDisplaySet);
-          const errorResult: AIResult = {
-            studyInstanceUID,
-            displaySetInstanceUID: srDisplaySet.displaySetInstanceUID,
-            hasHeatmap: false,
-            classifications: [
-              {
-                side: 'Left',
-                result: null,
-                confidence: null,
-                errorMessage: 'AI results could not be parsed'
-              },
-              {
-                side: 'Right',
-                result: null,
-                confidence: null,
-                errorMessage: 'AI results could not be parsed'
-              }
-            ],
-            resultTs,
-            modelInfo: {
-              name: 'AI Model (Error)',
-              algorithmName: 'Unknown',
-              algorithmVersion: 'Unknown'
-            }
-          };
-
-          aiResults.push(errorResult);
-        }
-      });
+      const studyDisplaySets = this.getStudyDisplaySets(studyInstanceUID, servicesManager);
+      const aiResults = extractAIResultsForStudy(studyDisplaySets, studyInstanceUID);
 
       if (aiResults.length > 1) {
         this.uiNotificationService?.show({
@@ -154,7 +115,6 @@ export class AIResultsService {
       }
 
       return aiResults;
-
     } catch (error) {
       console.error('Error extracting AI results:', error);
       return [];
@@ -162,133 +122,9 @@ export class AIResultsService {
   }
 
   /**
-   * Find matching heatmap (SC) for an AI result (SR)
-   */
-  private findMatchingHeatmap(
-    srDisplaySet: any,
-    scDisplaySets: any[],
-    modelName?: string
-  ): any | null {
-    if (!scDisplaySets.length) {
-      return null;
-    }
-
-    const srDate = srDisplaySet.instance?.InstanceCreationDate;
-    const srTime = srDisplaySet.instance?.InstanceCreationTime;
-    const referencedSOPInstanceUID = srDisplaySet.instance?.ReferencedImageSequence?.[0]?.ReferencedSOPInstanceUID;
-
-    // Try to find exact match by date/time
-    const matchingHeatmap = scDisplaySets.find(sc => {
-      const scDate = sc.instance?.InstanceCreationDate;
-      const scTime = sc.instance?.InstanceCreationTime;
-
-      // Check date/time match
-      const dateTimeMatch = srDate && srTime && scDate && scTime &&
-                           srDate === scDate && srTime === scTime;
-
-      // TODO: Add more sophisticated matching based on ReferencedSOPInstanceUID
-      // and model name when we have examples of how these are stored in SC files
-
-      return dateTimeMatch;
-    });
-
-    if (!matchingHeatmap) {
-
-      return null;
-    }
-
-    return matchingHeatmap;
-  }
-
-  /**
-   * Find matching SR (structured report) for a heatmap (SC)
-   * This is the reverse of findMatchingHeatmap
-   */
-  private findMatchingSRForHeatmap(
-    scDisplaySet: any,
-    srDisplaySets: any[]
-  ): any | null {
-    if (!srDisplaySets.length) {
-      return null;
-    }
-
-    const scDate = scDisplaySet.instance?.InstanceCreationDate;
-    const scTime = scDisplaySet.instance?.InstanceCreationTime;
-
-    // Try to find exact match by date/time
-    const matchingSR = srDisplaySets.find(sr => {
-      const srDate = sr.instance?.InstanceCreationDate;
-      const srTime = sr.instance?.InstanceCreationTime;
-
-      // Check date/time match
-      const dateTimeMatch = scDate && scTime && srDate && srTime &&
-                           scDate === srDate && scTime === srTime;
-
-      return dateTimeMatch;
-    });
-
-    if (!matchingSR) {
-
-      return null;
-    }
-
-    return matchingSR;
-  }
-
-  /**
-   * Clear cache
-   */
-  /**
-   * Add listener for selection changes
-   */
-  addSelectionChangeListener(studyInstanceUID: string, callback: () => void): void {
-    if (!this.selectionChangeListeners.has(studyInstanceUID)) {
-      this.selectionChangeListeners.set(studyInstanceUID, []);
-    }
-    this.selectionChangeListeners.get(studyInstanceUID)!.push(callback);
-  }
-
-  /**
-   * Remove listener for selection changes
-   */
-  removeSelectionChangeListener(studyInstanceUID: string, callback: () => void): void {
-    const listeners = this.selectionChangeListeners.get(studyInstanceUID);
-    if (listeners) {
-      const index = listeners.indexOf(callback);
-      if (index > -1) {
-        listeners.splice(index, 1);
-      }
-    }
-  }
-
-  /**
-   * Notify all listeners of selection change
-   */
-  private notifySelectionChange(studyInstanceUID: string): void {
-    const listeners = this.selectionChangeListeners.get(studyInstanceUID);
-
-    if (listeners) {
-      listeners.forEach((callback, index) => {
-        try {
-
-          callback();
-        } catch (error) {
-          console.warn('Error in selection change listener:', error);
-        }
-      });
-    }
-  }
-
-  clearCache(): void {
-    this.cache.clear();
-    this.selectionChangeListeners.clear();
-  }
-
-  /**
    * Clear cache for a specific study
    */
   clearStudyCache(studyInstanceUID: string): void {
-
     this.cache.delete(studyInstanceUID);
 
     // Also clear selection if it exists
@@ -299,7 +135,7 @@ export class AIResultsService {
     // Publish cleared event
     this.publish(AIResultsService.EVENTS.AI_RESULT_CLEARED, {
       studyInstanceUID,
-      reason: 'cache_cleared'
+      reason: 'cache_cleared',
     });
   }
 
@@ -308,41 +144,37 @@ export class AIResultsService {
    * Call this after deleting AI results to invalidate cache
    */
   removeDisplaySetsFromCache(studyInstanceUID: string, displaySetUIDs: string[]): void {
-
     // Get cached results
     const cachedResults = this.cache.get(studyInstanceUID);
     if (!cachedResults) {
-
       return;
     }
 
     // Filter out deleted display sets
-    const updatedResults = cachedResults.filter(result =>
-      !result.displaySetInstanceUID || !displaySetUIDs.includes(result.displaySetInstanceUID)
+    const updatedResults = cachedResults.filter(
+      result =>
+        !result.displaySetInstanceUID || !displaySetUIDs.includes(result.displaySetInstanceUID)
     );
 
     // Update cache
     if (updatedResults.length > 0) {
       this.cache.set(studyInstanceUID, updatedResults);
-
     } else {
       // No results left, clear the study cache
       this.cache.delete(studyInstanceUID);
       this.selectedAIResults.delete(studyInstanceUID);
-
     }
 
     // Clear selection if the selected result was deleted
     const selectedUID = this.selectedAIResults.get(studyInstanceUID);
     if (selectedUID && displaySetUIDs.includes(selectedUID)) {
       this.selectedAIResults.delete(studyInstanceUID);
-
     }
 
     // Publish cache cleared event
     this.publish(AIResultsService.EVENTS.AI_RESULT_CLEARED, {
       studyInstanceUID,
-      displaySetUIDs
+      displaySetUIDs,
     });
   }
 
@@ -357,7 +189,11 @@ export class AIResultsService {
   /**
    * Get specific AI result by display set UID
    */
-  getAIResultByDisplaySet(studyInstanceUID: string, displaySetInstanceUID: string, servicesManager: any): AIResult | null {
+  getAIResultByDisplaySet(
+    studyInstanceUID: string,
+    displaySetInstanceUID: string,
+    servicesManager: any
+  ): AIResult | null {
     const { displaySetService } = servicesManager.services;
 
     try {
@@ -365,47 +201,22 @@ export class AIResultsService {
       const displaySet = displaySetService.getDisplaySetByUID(displaySetInstanceUID);
 
       if (!displaySet || displaySet.Modality !== 'SR') {
-
         return null;
       }
 
-      // Get all AI results for the study
-      const allResults = this.getAllAIResults(studyInstanceUID, servicesManager);
+      // Warm the cache / register display-set invalidation for this study.
+      this.getAllAIResults(studyInstanceUID, servicesManager);
 
-      // Find the result that matches this display set
-      // We'll match by extracting data from the specific display set
       const aiResultData = extractAIResultData(displaySet);
-
-      if (!aiResultData || (!aiResultData.classifications.length && !aiResultData.modelInfo)) {
+      if (!hasUsableAIResultData(aiResultData)) {
         return null;
       }
 
-      // Find matching heatmap
-      const allDisplaySets = displaySetService.getActiveDisplaySets();
-      const studyDisplaySets = allDisplaySets.filter(ds => ds.StudyInstanceUID === studyInstanceUID);
-      const scDisplaySets = studyDisplaySets.filter(ds => ds.Modality === 'SC');
-
-      const heatmapDisplaySet = this.findMatchingHeatmap(
-        displaySet,
-        scDisplaySets,
-        aiResultData.modelInfo?.name
+      const scDisplaySets = this.getStudyDisplaySets(studyInstanceUID, servicesManager).filter(
+        (ds: any) => ds.Modality === 'SC'
       );
 
-      const resultTs = resultTsFromDisplaySet(displaySet);
-
-      return {
-        studyInstanceUID,
-        displaySetInstanceUID: displaySetInstanceUID,
-        hasHeatmap: !!heatmapDisplaySet,
-        classifications: aiResultData.classifications,
-        resultTs,
-        heatmapDisplaySet: heatmapDisplaySet,
-        modelInfo: aiResultData.modelInfo ? {
-          name: aiResultData.modelInfo.name,
-          algorithmName: aiResultData.modelInfo.algorithmName || undefined,
-          algorithmVersion: aiResultData.modelInfo.algorithmVersion || undefined
-        } : undefined
-      };
+      return buildAIResult(displaySet, aiResultData!, scDisplaySets, studyInstanceUID);
     } catch (error) {
       console.warn('Error getting AI result by display set:', error);
       return null;
@@ -415,28 +226,29 @@ export class AIResultsService {
   /**
    * Get AI result metadata for thumbnails
    */
-  getAIResultMetadata(studyInstanceUID: string, servicesManager: any): Array<{
+  getAIResultMetadata(
+    studyInstanceUID: string,
+    servicesManager: any
+  ): Array<{
     displaySetInstanceUID: string;
     modelName: string;
     seriesDescription: string;
     isSelected: boolean;
   }> {
-    const { displaySetService } = servicesManager.services;
-
     try {
-      const allDisplaySets = displaySetService.getActiveDisplaySets();
-      const studyDisplaySets = allDisplaySets.filter(ds => ds.StudyInstanceUID === studyInstanceUID);
-      const srDisplaySets = studyDisplaySets.filter(ds => ds.Modality === 'SR');
+      const srDisplaySets = this.getStudyDisplaySets(studyInstanceUID, servicesManager).filter(
+        (ds: any) => ds.Modality === 'SR'
+      );
 
       const selectedDisplaySetUID = this.selectedAIResults.get(studyInstanceUID);
 
-      return srDisplaySets.map(displaySet => {
+      return srDisplaySets.map((displaySet: any) => {
         const aiResultData = extractAIResultData(displaySet);
         return {
           displaySetInstanceUID: displaySet.displaySetInstanceUID,
           modelName: aiResultData?.modelInfo?.name || 'AI Model',
           seriesDescription: displaySet.SeriesDescription || 'AI Result',
-          isSelected: displaySet.displaySetInstanceUID === selectedDisplaySetUID
+          isSelected: displaySet.displaySetInstanceUID === selectedDisplaySetUID,
         };
       });
     } catch (error) {
@@ -448,12 +260,15 @@ export class AIResultsService {
   /**
    * Set selected AI result with notification
    */
-  setSelectedAIResult(studyInstanceUID: string, displaySetInstanceUID: string, servicesManager: any): void {
+  setSelectedAIResult(
+    studyInstanceUID: string,
+    displaySetInstanceUID: string,
+    servicesManager: any
+  ): void {
     const previousSelection = this.selectedAIResults.get(studyInstanceUID);
 
     // Don't do anything if it's already selected
     if (previousSelection === displaySetInstanceUID) {
-
       return;
     }
 
@@ -463,16 +278,14 @@ export class AIResultsService {
 
     // If this is an SC (heatmap), find its matching SR for selection tracking
     if (targetDisplaySet && targetDisplaySet.Modality === 'SC') {
-      // Find all SR display sets in this study
-      const allDisplaySets = displaySetService.getActiveDisplaySets();
-      const studyDisplaySets = allDisplaySets.filter(ds => ds.StudyInstanceUID === studyInstanceUID);
-      const srDisplaySets = studyDisplaySets.filter(ds => ds.Modality === 'SR');
+      const srDisplaySets = this.getStudyDisplaySets(studyInstanceUID, servicesManager).filter(
+        (ds: any) => ds.Modality === 'SR'
+      );
 
-      // Find the SR that matches this SC (by timestamp or other criteria)
-      const matchingSR = this.findMatchingSRForHeatmap(targetDisplaySet, srDisplaySets);
+      // Find the SR that matches this SC (by referenced UID / timestamp proximity)
+      const matchingSR = findMatchingSRForHeatmap(targetDisplaySet, srDisplaySets);
 
       if (matchingSR) {
-
         targetDisplaySetUID = matchingSR.displaySetInstanceUID;
         targetDisplaySet = matchingSR;
       } else {
@@ -485,48 +298,35 @@ export class AIResultsService {
     this.selectedAIResults.set(studyInstanceUID, targetDisplaySetUID);
 
     // Get the AI result for the event
-    const aiResult = this.getAIResultByDisplaySet(studyInstanceUID, targetDisplaySetUID, servicesManager);
+    const aiResult = this.getAIResultByDisplaySet(
+      studyInstanceUID,
+      targetDisplaySetUID,
+      servicesManager
+    );
 
     // Publish AI_RESULT_SELECTED event, including the original clicked UID (could be SC)
     this.publish(this.EVENTS.AI_RESULT_SELECTED, {
       studyInstanceUID,
-      displaySetInstanceUID: targetDisplaySetUID,           // SR UID actually selected
-      clickedDisplaySetInstanceUID: displaySetInstanceUID,  // Original thumbnail clicked (SC or SR)
-      aiResult
+      displaySetInstanceUID: targetDisplaySetUID, // SR UID actually selected
+      clickedDisplaySetInstanceUID: displaySetInstanceUID, // Original thumbnail clicked (SC or SR)
+      aiResult,
     });
-
-    // Notify listeners of selection change (legacy)
-    this.notifySelectionChange(studyInstanceUID);
 
     // Show notification
     if (aiResult && this.uiNotificationService) {
       const modelName = aiResult.modelInfo?.name || 'AI Model';
 
+      // Reuse the shared DICOM date/time formatter instead of
+      // re-implementing the YYYYMMDD/HHMMSS slicing here.
       let dateTimeInfo = '';
       if (targetDisplaySet?.instance) {
         const creationDate = targetDisplaySet.instance.InstanceCreationDate;
         const creationTime = targetDisplaySet.instance.InstanceCreationTime;
-
-        if (creationDate && creationTime) {
-          // Format DICOM date (YYYYMMDD) and time (HHMMSS.FFFFFF)
-          const year = creationDate.substring(0, 4);
-          const month = creationDate.substring(4, 6);
-          const day = creationDate.substring(6, 8);
-
-          const hour = creationTime.substring(0, 2);
-          const minute = creationTime.substring(2, 4);
-          const second = creationTime.substring(4, 6);
-
-          const formattedDate = `${year}-${month}-${day}`;
-          const formattedTime = `${hour}:${minute}:${second}`;
-          dateTimeInfo = ` (Created: ${formattedDate} ${formattedTime})`;
-        } else if (creationDate) {
-          // Fallback to just date if time is not available
-          const year = creationDate.substring(0, 4);
-          const month = creationDate.substring(4, 6);
-          const day = creationDate.substring(6, 8);
-          const formattedDate = `${year}-${month}-${day}`;
-          dateTimeInfo = ` (Created: ${formattedDate})`;
+        const formatted = formatDicomDateTime(creationDate, creationTime);
+        if (formatted) {
+          // Drop the "00:00:00" clock when no time component was present.
+          const label = creationTime ? formatted : formatted.replace(/ 00:00:00$/, '');
+          dateTimeInfo = ` (Created: ${label})`;
         }
       }
 
@@ -546,25 +346,14 @@ export class AIResultsService {
     const selectedDisplaySetUID = this.selectedAIResults.get(studyInstanceUID);
 
     if (selectedDisplaySetUID) {
-
-      const result = this.getAIResultByDisplaySet(studyInstanceUID, selectedDisplaySetUID, servicesManager);
-
-      return result;
+      return this.getAIResultByDisplaySet(studyInstanceUID, selectedDisplaySetUID, servicesManager);
     }
 
-    // If no selection, return the primary (first) result and set it as selected
-
-    const primaryResult = this.getAIResults(studyInstanceUID, servicesManager);
-    if (primaryResult) {
-      // Find the display set UID for the primary result
-      const metadata = this.getAIResultMetadata(studyInstanceUID, servicesManager);
-      if (metadata.length > 0) {
-
-        this.selectedAIResults.set(studyInstanceUID, metadata[0].displaySetInstanceUID);
-      }
-    }
-
-    return primaryResult;
+    // No explicit selection yet — return the primary (first) result
+    // WITHOUT persisting a selection from this read path. This getter is called
+    // from render, and a getter must not mutate service state. The default
+    // selection is established by `notifyStudyChange` when a study loads.
+    return this.getAIResults(studyInstanceUID, servicesManager);
   }
 
   /**
@@ -596,17 +385,13 @@ export class AIResultsService {
     if (hasAIResults && !this.selectedAIResults.has(studyInstanceUID)) {
       const firstResult = aiResults[0];
       if (firstResult.displaySetInstanceUID) {
-
-        this.setSelectedAIResult(studyInstanceUID, firstResult.displaySetInstanceUID, servicesManager);
+        this.setSelectedAIResult(
+          studyInstanceUID,
+          firstResult.displaySetInstanceUID,
+          servicesManager
+        );
       }
     }
-  }
-
-  /**
-   * Get current active study UID
-   */
-  getCurrentStudyUID(): string | null {
-    return this.currentStudyUID;
   }
 
   /**
@@ -627,7 +412,7 @@ export class AIResultsService {
             listeners.splice(index, 1);
           }
         }
-      }
+      },
     };
   }
 

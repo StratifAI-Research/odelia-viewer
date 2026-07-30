@@ -2,15 +2,12 @@ import React from 'react';
 import { id } from './id';
 import OrthancAIService from './services/OrthancAIService';
 import AIRoutingPanel from './components/AIRoutingPanel';
-import { DEFAULT_AI_ENDPOINT_NAME, DEFAULT_AI_ENDPOINT_URL } from './constants';
 
 // Add TypeScript declaration for the window.config
 declare global {
   interface Window {
     config: {
       orthancUrl?: string;
-      aiServerName?: string;
-      aiServerUrl?: string;
       [key: string]: any;
     };
   }
@@ -24,15 +21,6 @@ if (!window.config) {
 // Set Orthanc URL configuration defaults
 if (!window.config.orthancUrl) {
   window.config.orthancUrl = window.location.origin;
-}
-
-// Set AI Server configuration defaults
-if (!window.config.aiServerName) {
-  window.config.aiServerName = DEFAULT_AI_ENDPOINT_NAME;
-}
-
-if (!window.config.aiServerUrl) {
-  window.config.aiServerUrl = DEFAULT_AI_ENDPOINT_URL;
 }
 
 export default {
@@ -49,16 +37,14 @@ export default {
    */
   preRegistration: ({ servicesManager, commandsManager, configuration = {} }: any) => {
     // Create a service factory function
-    const createOrthancAIService = (servicesManager: any) => {
+    const createOrthancAIService = () => {
       return {
         name: 'orthancAIService',
         create: ({ configuration = {} }: any) => {
           // Use the window.config defaults
           const serviceConfig = {
             orthancUrl: window.config.orthancUrl,
-            aiServerName: window.config.aiServerName,
-            aiServerUrl: window.config.aiServerUrl,
-            ...configuration
+            ...configuration,
           };
           return new OrthancAIService({ configuration: serviceConfig });
         },
@@ -66,7 +52,7 @@ export default {
     };
 
     // Register the OrthancAIService using the factory pattern
-    servicesManager.registerService(createOrthancAIService(servicesManager));
+    servicesManager.registerService(createOrthancAIService());
   },
 
   /**
@@ -74,11 +60,7 @@ export default {
    */
   getPanelModule: ({ servicesManager, commandsManager, extensionManager }: any) => {
     const wrappedAIRoutingPanel = () => {
-      return (
-        <AIRoutingPanel
-          servicesManager={servicesManager}
-        />
-      );
+      return <AIRoutingPanel servicesManager={servicesManager} />;
     };
 
     return [

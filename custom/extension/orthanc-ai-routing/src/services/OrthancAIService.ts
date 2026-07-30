@@ -1,9 +1,5 @@
 import { AIEndpoint, toPersistableEndpoints } from '../components/AIEndpointConfig';
-import {
-  AI_ENDPOINTS_STORAGE_KEY,
-  DEFAULT_AI_ENDPOINT_NAME,
-  DEFAULT_AI_ENDPOINT_URL,
-} from '../constants';
+import { AI_ENDPOINTS_STORAGE_KEY } from '../constants';
 
 interface OrthancStudy {
   ID: string;
@@ -21,8 +17,6 @@ interface RoutingRequest {
   study_id: string;
   target: string;
   target_url?: string;
-  username?: string;
-  password?: string;
   series_uids?: string[];
 }
 
@@ -36,8 +30,6 @@ interface RoutingResponse {
 
 interface OrthancAIServiceConfig {
   orthancUrl?: string;
-  aiServerName?: string;
-  aiServerUrl?: string;
 }
 
 // Model Input Manifest interfaces
@@ -69,7 +61,7 @@ export interface InputMapping {
 }
 
 // UPS Workitem interfaces
-interface WorkitemStatus {
+export interface WorkitemStatus {
   state: 'SCHEDULED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELED' | 'UNKNOWN';
   progress?: number;
   progressDescription?: string;
@@ -96,16 +88,14 @@ interface OrthancLookupResponseItem {
 
 class OrthancAIService {
   private orthancUrl: string;
-  private aiServerName: string;
-  private aiServerUrl: string;
   private currentEndpoint: AIEndpoint | null = null;
   private workitemPollingInterval: number | null = null;
   private manifestCache: Map<string, ModelManifest | null> = new Map();
 
   constructor({ configuration = {} }: { configuration?: OrthancAIServiceConfig }) {
-    this.orthancUrl = configuration.orthancUrl || 'http://localhost:45821';
-    this.aiServerName = configuration.aiServerName || DEFAULT_AI_ENDPOINT_NAME;
-    this.aiServerUrl = configuration.aiServerUrl || DEFAULT_AI_ENDPOINT_URL;
+    // Same-origin fallback; the extension's preRegistration always provides
+    // window.config.orthancUrl (defaulting to window.location.origin).
+    this.orthancUrl = configuration.orthancUrl || window.location.origin;
 
     // Try to load the current endpoint from localStorage
     this.loadCurrentEndpoint();
@@ -155,17 +145,13 @@ class OrthancAIService {
    */
   setCurrentEndpoint(endpoint: AIEndpoint): void {
     this.currentEndpoint = endpoint;
-    this.aiServerName = endpoint.name;
-    this.aiServerUrl = endpoint.url;
 
     // Update the endpoint in localStorage
     try {
       const savedEndpoints = localStorage.getItem(AI_ENDPOINTS_STORAGE_KEY);
       if (savedEndpoints) {
         const endpoints: AIEndpoint[] = JSON.parse(savedEndpoints);
-        const updatedEndpoints = endpoints.map(e =>
-          e.id === endpoint.id ? endpoint : e
-        );
+        const updatedEndpoints = endpoints.map(e => (e.id === endpoint.id ? endpoint : e));
         localStorage.setItem(
           AI_ENDPOINTS_STORAGE_KEY,
           JSON.stringify(toPersistableEndpoints(updatedEndpoints))
@@ -205,8 +191,11 @@ class OrthancAIService {
    * @returns The Orthanc study ID
    */
   async getOrthancStudyId(studyInstanceUID: string): Promise<string> {
+    // Bound the lookup with a timeout (mirrors postRouting) so a hung Orthanc
+    // does not block routing indefinitely.
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
     try {
-
       // Call Orthanc's lookup API with the StudyInstanceUID as plain text in the body
       const response = await fetch(`${this.orthancUrl}/tools/lookup`, {
         method: 'POST',
@@ -214,6 +203,7 @@ class OrthancAIService {
           'Content-Type': 'text/plain',
         },
         body: studyInstanceUID, // Send the UID directly as plain text
+        signal: controller.signal,
       });
 
       if (!response.ok) {
@@ -245,6 +235,8 @@ class OrthancAIService {
     } catch (error) {
       console.error('Error getting Orthanc study ID:', error);
       throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
@@ -263,8 +255,10 @@ class OrthancAIService {
       const response = await fetch(url);
 
       if (!response.ok) {
+        // Do not cache a transient fetch failure: a network blip would otherwise
+        // degrade the model to flat series selection until the cache is cleared
+        // (on endpoint change) or the page is reloaded.
         console.warn(`Manifest fetch failed (${response.status}), falling back`);
-        this.manifestCache.set(endpointUrl, null);
         return null;
       }
 
@@ -284,8 +278,8 @@ class OrthancAIService {
       this.manifestCache.set(endpointUrl, manifest);
       return manifest;
     } catch (error) {
+      // Transient error — do not cache, so a later call can retry.
       console.warn('Error fetching model manifest:', error);
-      this.manifestCache.set(endpointUrl, null);
       return null;
     }
   }
@@ -333,7 +327,6 @@ class OrthancAIService {
       input_configuration_id?: string;
     }
   ): Promise<RoutingResponse> {
-
     // Set up timeout using AbortController
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
@@ -367,7 +360,6 @@ class OrthancAIService {
 
   async routeStudyToAI(dicomStudyUID: string): Promise<RoutingResponse> {
     try {
-
       // Check if we have a valid AI endpoint
       if (!this.currentEndpoint) {
         throw new Error('No AI endpoint configured. Please add an AI endpoint first.');
@@ -394,6 +386,8 @@ class OrthancAIService {
    * Routes selected series from a study to the AI server
    * @param dicomStudyUID The DICOM StudyInstanceUID
    * @param seriesUIDs Array of DICOM SeriesInstanceUIDs to route
+   * @param inputMapping Optional role→series mapping for multi-input models
+   * @param inputConfigurationId Optional manifest input-configuration ID
    */
   async routeSeriesToAI(
     dicomStudyUID: string,
@@ -443,7 +437,7 @@ class OrthancAIService {
    */
   private parseWorkitemStatus(workitemJson: WorkitemDicomJson): WorkitemStatus {
     const status: WorkitemStatus = {
-      state: 'UNKNOWN'
+      state: 'UNKNOWN',
     };
 
     try {
@@ -461,7 +455,10 @@ class OrthancAIService {
         // Extract Procedure Step Progress (00741004)
         const progressTag = progressItem['00741004'];
         if (progressTag?.Value?.[0]) {
-          status.progress = parseFloat(progressTag.Value[0]);
+          const parsedProgress = parseFloat(progressTag.Value[0]);
+          if (Number.isFinite(parsedProgress)) {
+            status.progress = parsedProgress;
+          }
         }
 
         // Extract Procedure Step Progress Description (00741006)
@@ -491,11 +488,10 @@ class OrthancAIService {
    */
   async getWorkitemStatus(workitemUid: string): Promise<WorkitemStatus> {
     try {
-
       const response = await fetch(`${this.orthancUrl}/ups-rs/workitems/${workitemUid}`, {
         method: 'GET',
         headers: {
-          'Accept': 'application/dicom+json, application/json',
+          Accept: 'application/dicom+json, application/json',
         },
       });
 
@@ -506,16 +502,13 @@ class OrthancAIService {
         throw new Error(`Failed to get workitem status: ${response.status}`);
       }
 
-      // Get the response as text first to debug
-      const responseText = await response.text();
-
-      // Parse the JSON
+      // Parse the JSON body directly (parity with getModelManifest;
+      // no need to read text first).
       let workitemJson: WorkitemDicomJson;
       try {
-        workitemJson = JSON.parse(responseText);
+        workitemJson = await response.json();
       } catch (parseError) {
         console.error('Failed to parse workitem JSON:', parseError);
-        console.error('Response text was:', responseText);
         throw new Error(`Failed to parse workitem JSON: ${parseError}`);
       }
 
@@ -530,30 +523,47 @@ class OrthancAIService {
    * Start polling for workitem status updates
    * @param workitemUid The workitem UID to poll
    * @param callback Function to call with status updates
-   * @param interval Polling interval in milliseconds (default: 2000ms)
+   * @param interval Polling interval in milliseconds (default: 500ms)
+   * @param maxDurationMs Maximum total polling duration before timing out
    */
-  async startWorkitemPolling(
+  startWorkitemPolling(
     workitemUid: string,
     callback: (status: WorkitemStatus) => void,
-    interval: number = 500
-  ): Promise<void> {
+    interval: number = 500,
+    maxDurationMs: number = 10 * 60 * 1000
+  ): void {
     // Stop any existing polling
     this.stopWorkitemPolling();
 
+    // Bound the number of ticks so a workitem that never reaches a terminal
+    // state — or a persistently failing/404-ing endpoint — cannot poll forever.
+    // On timeout, stop and surface it to the caller.
+    const maxAttempts = Math.max(1, Math.ceil(maxDurationMs / interval));
+    let attempts = 0;
+
     // Start polling
     this.workitemPollingInterval = window.setInterval(async () => {
+      attempts++;
       try {
         const status = await this.getWorkitemStatus(workitemUid);
         callback(status);
 
         // Stop polling if workitem reached a terminal state
         if (status.state === 'COMPLETED' || status.state === 'CANCELED') {
-
           this.stopWorkitemPolling();
+          return;
         }
       } catch (error) {
         console.error('Error during workitem polling:', error);
-        // Don't stop polling on error, continue trying
+        // Don't stop polling on a single error — a transient failure may recover.
+      }
+
+      if (attempts >= maxAttempts) {
+        this.stopWorkitemPolling();
+        callback({
+          state: 'CANCELED',
+          cancellationReason: `Polling timed out after ${maxAttempts} attempts`,
+        });
       }
     }, interval);
   }
@@ -565,7 +575,6 @@ class OrthancAIService {
     if (this.workitemPollingInterval !== null) {
       window.clearInterval(this.workitemPollingInterval);
       this.workitemPollingInterval = null;
-
     }
   }
 }

@@ -3,8 +3,9 @@ export const utils = {
   formatDate: (d?: string) => d || '',
 };
 
-export const useSystem = () => (globalThis as any).__OHIF_SYSTEM__ ?? {
-  servicesManager: { services: {} },
-  commandsManager: { runCommand: jest.fn() },
-  extensionManager: { getModuleEntry: jest.fn() },
-};
+export const useSystem = () =>
+  (globalThis as any).__OHIF_SYSTEM__ ?? {
+    servicesManager: { services: {} },
+    commandsManager: { runCommand: jest.fn() },
+    extensionManager: { getModuleEntry: jest.fn() },
+  };

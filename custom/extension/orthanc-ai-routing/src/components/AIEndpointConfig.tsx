@@ -1,5 +1,13 @@
-import React, { useState, useEffect } from 'react';
-import { Button, Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription } from '@ohif/ui-next';
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  Button,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+  DialogDescription,
+} from '@ohif/ui-next';
 import {
   AI_ENDPOINTS_STORAGE_KEY,
   DEFAULT_AI_ENDPOINT_NAME,
@@ -11,8 +19,6 @@ export interface AIEndpoint {
   id: string;
   name: string;
   url: string;
-  username?: string;
-  password?: string;
 }
 
 interface AIEndpointConfigProps {
@@ -28,27 +34,17 @@ const DEFAULT_ENDPOINT: AIEndpoint = {
   url: DEFAULT_AI_ENDPOINT_URL,
 };
 
-/** Persistence-safe endpoint shape: everything except the secret `password`. */
-export type PersistedEndpoint = Omit<AIEndpoint, 'password'>;
+/** Persistence shape for endpoints: an explicit allow-list of fields to store. */
+export type PersistedEndpoint = Pick<AIEndpoint, 'id' | 'name' | 'url'>;
 
 /**
- * Return a persistence-safe copy of the endpoints, keeping only the non-secret fields.
- * The password must never be written to localStorage in plaintext; it is not
- * transmitted by routing requests anyway, so persisting it is pure liability.
- *
- * This is an explicit allow-list (rebuild from known-safe fields) rather than a
- * `{ password, ...rest }` deny-list: it guarantees any secret-bearing field added to
- * AIEndpoint later cannot silently leak into storage. The `PersistedEndpoint` return
- * type carries no `password` field, so the value written to storage is statically
- * password-free (both at runtime and in the type that reaches the sink).
- *
- * NOTE: do not put "secret"/"password"/"credential" in this function's name — CodeQL's
- * sensitive-data heuristic classifies a call's return value as sensitive purely from the
- * callee name, so a name like `stripEndpointSecrets` produces false-positive clear-text
- * storage alerts even though the returned value provably contains no secret.
+ * Return a persistence-safe copy of the endpoints, rebuilt from a known-safe
+ * allow-list of fields. This is deliberately an allow-list (not `{ ...rest }`)
+ * so that any field added to AIEndpoint later cannot silently leak into
+ * localStorage.
  */
 export const toPersistableEndpoints = (endpoints: AIEndpoint[]): PersistedEndpoint[] =>
-  endpoints.map(({ id, name, url, username }) => ({ id, name, url, username }));
+  endpoints.map(({ id, name, url }) => ({ id, name, url }));
 
 const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   onEndpointChange,
@@ -62,14 +58,23 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
     id: '',
     name: '',
     url: '',
-    username: '',
-    password: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
 
-  // Load endpoints from localStorage or config on component mount
+  // Keep the latest currentEndpoint / onEndpointChange available to the
+  // mount-load effect without listing them as dependencies. They were in its dep
+  // array, and onEndpointChange is passed unmemoized from the parent, so the
+  // effect re-ran on nearly every render — re-reading localStorage and calling
+  // setEndpoints (which retriggers the save effect), constantly re-hydrating
+  // in-memory state from storage.
+  const currentEndpointRef = useRef(currentEndpoint);
+  currentEndpointRef.current = currentEndpoint;
+  const onEndpointChangeRef = useRef(onEndpointChange);
+  onEndpointChangeRef.current = onEndpointChange;
+
+  // Load endpoints from localStorage or config on component mount (once).
   useEffect(() => {
     let loadedEndpoints: AIEndpoint[] = [];
 
@@ -94,22 +99,30 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
         loadedEndpoints = [DEFAULT_ENDPOINT];
       }
       // Save to localStorage for future
-      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(toPersistableEndpoints(loadedEndpoints)));
+      localStorage.setItem(
+        AI_ENDPOINTS_STORAGE_KEY,
+        JSON.stringify(toPersistableEndpoints(loadedEndpoints))
+      );
     }
 
     setEndpoints(loadedEndpoints);
     setIsLoading(false);
 
     // If no current endpoint is selected, select the first one
-    if (!currentEndpoint && loadedEndpoints.length > 0) {
-      onEndpointChange(loadedEndpoints[0]);
+    if (!currentEndpointRef.current && loadedEndpoints.length > 0) {
+      onEndpointChangeRef.current(loadedEndpoints[0]);
     }
-  }, [currentEndpoint, onEndpointChange]);
+    // Mount-only: read the latest currentEndpoint/onEndpointChange via refs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Save endpoints to localStorage whenever they change
   useEffect(() => {
     if (endpoints.length > 0) {
-      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(toPersistableEndpoints(endpoints)));
+      localStorage.setItem(
+        AI_ENDPOINTS_STORAGE_KEY,
+        JSON.stringify(toPersistableEndpoints(endpoints))
+      );
     }
   }, [endpoints]);
 
@@ -123,8 +136,6 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
         id: '',
         name: '',
         url: '',
-        username: '',
-        password: '',
       });
     }
     setIsFormVisible(true);
@@ -181,8 +192,10 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
 
     // If this is the first endpoint or we're editing the current endpoint,
     // set it as the current endpoint
-    if (updatedEndpoints.length === 1 ||
-        (currentEndpoint && currentEndpoint.id === newEndpoint.id)) {
+    if (
+      updatedEndpoints.length === 1 ||
+      (currentEndpoint && currentEndpoint.id === newEndpoint.id)
+    ) {
       onEndpointChange(newEndpoint);
     }
   };
@@ -195,14 +208,20 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
       const defaultEndpoint = { ...DEFAULT_ENDPOINT };
       setEndpoints([defaultEndpoint]);
       onEndpointChange(defaultEndpoint);
-      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(toPersistableEndpoints([defaultEndpoint])));
+      localStorage.setItem(
+        AI_ENDPOINTS_STORAGE_KEY,
+        JSON.stringify(toPersistableEndpoints([defaultEndpoint]))
+      );
     } else {
       setEndpoints(updatedEndpoints);
       // If we're deleting the current endpoint, select another one
       if (currentEndpoint && currentEndpoint.id === endpointId) {
         onEndpointChange(updatedEndpoints[0]);
       }
-      localStorage.setItem(AI_ENDPOINTS_STORAGE_KEY, JSON.stringify(toPersistableEndpoints(updatedEndpoints)));
+      localStorage.setItem(
+        AI_ENDPOINTS_STORAGE_KEY,
+        JSON.stringify(toPersistableEndpoints(updatedEndpoints))
+      );
     }
 
     handleCloseForm();
@@ -225,19 +244,27 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
     <div className="mb-4">
       {!isFormVisible ? (
         <>
-          <div className="flex flex-col mb-2">
-            <div className="flex items-center mb-2">
+          <div className="mb-2 flex flex-col">
+            <div className="mb-2 flex items-center">
               <select
-                className="flex-grow p-2 border rounded"
+                className="flex-grow rounded border p-2"
                 value={currentEndpoint?.id || ''}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => handleEndpointSelect(e.target.value)}
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+                  handleEndpointSelect(e.target.value)
+                }
                 disabled={isLoading || endpoints.length === 0}
               >
-                <option value="" disabled>
+                <option
+                  value=""
+                  disabled
+                >
                   {isLoading ? 'Loading...' : 'Select AI endpoint'}
                 </option>
-                {endpoints.map((endpoint) => (
-                  <option key={endpoint.id} value={endpoint.id}>
+                {endpoints.map(endpoint => (
+                  <option
+                    key={endpoint.id}
+                    value={endpoint.id}
+                  >
                     {endpoint.name}
                   </option>
                 ))}
@@ -261,10 +288,9 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
                   </Button>
                 </div>
                 {currentEndpoint && (
-                  <div className="text-xs text-muted-foreground mt-2">
+                  <div className="text-muted-foreground mt-2 text-xs">
                     <div>Name: {currentEndpoint.name}</div>
                     <div>URL: {currentEndpoint.url}</div>
-                    {currentEndpoint.username && <div>Username: {currentEndpoint.username}</div>}
                   </div>
                 )}
               </>
@@ -272,63 +298,37 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
           </div>
         </>
       ) : (
-        <div className="border rounded p-4 bg-gray-50">
-          <h4 className="text-sm font-medium mb-3">
+        <div className="rounded border bg-gray-50 p-4">
+          <h4 className="mb-3 text-sm font-medium">
             {editingEndpoint ? 'Edit AI Endpoint' : 'Add AI Endpoint'}
           </h4>
 
           <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Name *
-            </label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Name *</label>
             <input
               type="text"
               value={formData.name}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, name: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setFormData({ ...formData, name: e.target.value })
+              }
               placeholder="AI Server Name"
-              className={`w-full p-2 border rounded ${errors.name ? 'border-red-500' : ''}`}
+              className={`w-full rounded border p-2 ${errors.name ? 'border-red-500' : ''}`}
             />
-            {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
+            {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
           </div>
 
           <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              URL *
-            </label>
+            <label className="mb-1 block text-sm font-medium text-gray-700">URL *</label>
             <input
               type="text"
               value={formData.url}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, url: e.target.value })}
+              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+                setFormData({ ...formData, url: e.target.value })
+              }
               placeholder="http://ai-server:8042"
-              className={`w-full p-2 border rounded ${errors.url ? 'border-red-500' : ''}`}
+              className={`w-full rounded border p-2 ${errors.url ? 'border-red-500' : ''}`}
             />
-            {errors.url && <p className="text-red-500 text-xs mt-1">{errors.url}</p>}
-          </div>
-
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Username (optional)
-            </label>
-            <input
-              type="text"
-              value={formData.username || ''}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, username: e.target.value })}
-              placeholder="Username"
-              className="w-full p-2 border rounded"
-            />
-          </div>
-
-          <div className="mb-3">
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Password (optional)
-            </label>
-            <input
-              type="password"
-              value={formData.password || ''}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFormData({ ...formData, password: e.target.value })}
-              placeholder="Password"
-              className="w-full p-2 border rounded"
-            />
+            {errors.url && <p className="mt-1 text-xs text-red-500">{errors.url}</p>}
           </div>
 
           <div className="flex justify-end space-x-2">
@@ -348,11 +348,7 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
             >
               Cancel
             </Button>
-            <Button
-              onClick={handleSubmit}
-            >
-              {editingEndpoint ? 'Update' : 'Add'}
-            </Button>
+            <Button onClick={handleSubmit}>{editingEndpoint ? 'Update' : 'Add'}</Button>
           </div>
 
           <Dialog
@@ -363,7 +359,8 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
               <DialogHeader>
                 <DialogTitle>Confirm Delete</DialogTitle>
                 <DialogDescription>
-                  Are you sure you want to delete the endpoint "{editingEndpoint?.name}"? This action cannot be undone.
+                  Are you sure you want to delete the endpoint "{editingEndpoint?.name}"? This
+                  action cannot be undone.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>

@@ -1,29 +1,30 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 
 export type WizardStep = 1 | 2 | 3 | 4 | 5;
 
 export function useWizardState(initialStep: WizardStep = 1) {
   const [currentStep, setCurrentStep] = useState<WizardStep>(initialStep);
 
-  const goToNextStep = () => {
-    if (currentStep < 5) {
-      setCurrentStep((currentStep + 1) as WizardStep);
-    }
-  };
+  // Return referentially-stable callbacks (functional-updater form,
+  // empty deps) so consumers' effects don't churn on every render.
+  // goToNextStep/goToPrevStep are part of the wizard's public API (sequential
+  // navigation); the current UI drives steps via goToStep/reset, but these stay
+  // exported as the supported step-navigation interface.
+  const goToNextStep = useCallback(() => {
+    setCurrentStep(s => (s < 5 ? ((s + 1) as WizardStep) : s));
+  }, []);
 
-  const goToPrevStep = () => {
-    if (currentStep > 1) {
-      setCurrentStep((currentStep - 1) as WizardStep);
-    }
-  };
+  const goToPrevStep = useCallback(() => {
+    setCurrentStep(s => (s > 1 ? ((s - 1) as WizardStep) : s));
+  }, []);
 
-  const goToStep = (step: WizardStep) => {
+  const goToStep = useCallback((step: WizardStep) => {
     setCurrentStep(step);
-  };
+  }, []);
 
-  const reset = () => {
+  const reset = useCallback(() => {
     setCurrentStep(1);
-  };
+  }, []);
 
   return {
     currentStep,
@@ -33,5 +34,3 @@ export function useWizardState(initialStep: WizardStep = 1) {
     reset,
   };
 }
-
-

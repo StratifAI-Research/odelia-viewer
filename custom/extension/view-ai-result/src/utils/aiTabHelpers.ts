@@ -9,7 +9,10 @@ import { formatDicomDateTime } from './dicomDateTime';
  */
 
 // Cache for expensive display set lookups — key: displaySetInstanceUID, value: realDisplaySet.
+// Bounded so it cannot grow unbounded across a session; `clearAITabCache()`
+// resets it on study-lifecycle changes.
 const displaySetCache = new Map<string, any>();
+const MAX_DISPLAYSET_CACHE_ENTRIES = 512;
 
 /** True when the display set is an AI artifact: SR (structured report) or SC (heatmap). */
 export function isAIResult(displaySet: any): boolean {
@@ -39,9 +42,16 @@ export function getRealDisplaySet(thumbnailDisplaySet: any, servicesManager: any
 
   let result;
   try {
-    result = dss.getDisplaySetByUID(thumbnailDisplaySet.displaySetInstanceUID) || thumbnailDisplaySet;
+    result =
+      dss.getDisplaySetByUID(thumbnailDisplaySet.displaySetInstanceUID) || thumbnailDisplaySet;
   } catch (error) {
     result = thumbnailDisplaySet;
+  }
+  if (displaySetCache.size >= MAX_DISPLAYSET_CACHE_ENTRIES) {
+    const oldest = displaySetCache.keys().next().value;
+    if (oldest !== undefined) {
+      displaySetCache.delete(oldest);
+    }
   }
   displaySetCache.set(cacheKey, result);
   return result;

@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { utils, DicomMetadataStore } from '@ohif/core';
 import { SeriesInfo } from '../components/SeriesSelector';
 
-// StudyInfo type (no longer using StudySelector component)
+// Study metadata maintained by the study/series selection hook.
 export interface StudyInfo {
   studyInstanceUid: string;
   date: string;
@@ -20,7 +20,7 @@ interface UseStudySeriesSelectionProps {
 
 export function useStudySeriesSelection({
   displaySetService,
-  activeStudyUID
+  activeStudyUID,
 }: UseStudySeriesSelectionProps) {
   const [availableStudies, setAvailableStudies] = useState<StudyInfo[]>([]);
   const [availableSeries, setAvailableSeries] = useState<SeriesInfo[]>([]);
@@ -42,7 +42,6 @@ export function useStudySeriesSelection({
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-
     };
   }, []);
 
@@ -56,7 +55,6 @@ export function useStudySeriesSelection({
         const displaySets = displaySetService.getActiveDisplaySets();
 
         if (!displaySets || displaySets.length === 0) {
-
           setAvailableStudies([]);
           setIsLoadingStudies(false);
           return;
@@ -66,7 +64,9 @@ export function useStudySeriesSelection({
         const studyMap = new Map<string, any>();
         displaySets.forEach((ds: any) => {
           const studyUID = ds.StudyInstanceUID;
-          if (!studyUID) return; // Skip if no study UID
+          if (!studyUID) {
+            return;
+          } // Skip if no study UID
 
           // Skip AI results (SR/SC) - we only care about original imaging series
           if (ds.Modality === 'SR' || ds.Modality === 'SC') {
@@ -119,6 +119,9 @@ export function useStudySeriesSelection({
             studyMap.set(studyUID, {
               studyInstanceUid: studyUID,
               date: formattedDate,
+              // Raw DICOM YYYYMMDD kept for a reliable sort (Date.parse on
+              // the already-formatted `date` string yields NaN).
+              rawDate: studyDate,
               description: displayName,
               numInstances: 0,
               numSeries: 0,
@@ -132,10 +135,9 @@ export function useStudySeriesSelection({
 
         const studies = Array.from(studyMap.values());
 
-        // Sort studies by date desc
-        studies.sort((a, b) => {
-          return (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0);
-        });
+        // Sort studies by date desc, on the raw YYYYMMDD digits.
+        const dateKey = (s: string) => Number(String(s ?? '').replace(/\D/g, '')) || 0;
+        studies.sort((a, b) => dateKey(b.rawDate) - dateKey(a.rawDate));
 
         setAvailableStudies(studies);
         setIsLoadingStudies(false);
@@ -180,7 +182,6 @@ export function useStudySeriesSelection({
 
     const attemptLoadSeries = () => {
       if (!mounted) {
-
         return;
       }
 
@@ -194,7 +195,9 @@ export function useStudySeriesSelection({
         if (retryCount < MAX_RETRIES) {
           // Retry after short delay
           const timeout = setTimeout(() => {
-            if (mounted) attemptLoadSeries();
+            if (mounted) {
+              attemptLoadSeries();
+            }
           }, 100);
           timeouts.push(timeout);
         } else {
@@ -222,7 +225,9 @@ export function useStudySeriesSelection({
 
     // Initial attempt with small delay to let display sets populate
     const initialTimeout = setTimeout(() => {
-      if (mounted) attemptLoadSeries();
+      if (mounted) {
+        attemptLoadSeries();
+      }
     }, 150); // Slightly longer initial delay
     timeouts.push(initialTimeout);
 
@@ -231,7 +236,6 @@ export function useStudySeriesSelection({
       displaySetService.EVENTS.DISPLAY_SETS_CHANGED,
       () => {
         if (mounted && retryCount > 0) {
-
           attemptLoadSeries();
         }
       }
@@ -239,7 +243,6 @@ export function useStudySeriesSelection({
 
     // Cleanup function
     return () => {
-
       mounted = false;
 
       // Clear all pending timeouts
@@ -254,7 +257,6 @@ export function useStudySeriesSelection({
 
   // Load series for selected study (called after display sets are confirmed available)
   const loadSeriesForStudy = (studyUID: string) => {
-
     try {
       setIsLoadingSeries(true);
       setSeriesError(null);
@@ -269,10 +271,11 @@ export function useStudySeriesSelection({
         return;
       }
 
-      const seriesForStudy = displaySets.filter((ds: any) =>
-        ds.StudyInstanceUID === studyUID &&
-        ds.Modality !== 'SR' && // Exclude structured reports
-        ds.Modality !== 'SC'    // Exclude secondary captures (AI heatmaps)
+      const seriesForStudy = displaySets.filter(
+        (ds: any) =>
+          ds.StudyInstanceUID === studyUID &&
+          ds.Modality !== 'SR' && // Exclude structured reports
+          ds.Modality !== 'SC' // Exclude secondary captures (AI heatmaps)
       );
 
       if (seriesForStudy.length === 0) {
@@ -335,17 +338,16 @@ export function useStudySeriesSelection({
 
   const retrySeries = () => {
     if (!isMountedRef.current) {
-
       return;
     }
 
     if (activeStudyUID) {
-
       setIsLoadingSeries(true);
       setSeriesError(null);
       setAvailableSeries([]);
       setSelectedSeriesUIDs(new Set());
-      // This will trigger the effect to reload
+      // Reload the series for the active study directly (this is a
+      // direct call, not an effect trigger).
       loadSeriesForStudy(activeStudyUID);
     }
   };

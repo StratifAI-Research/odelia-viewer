@@ -8,7 +8,6 @@ const configs = {
   //
 };
 
-
 const ohif = {
   layout: '@ohif/extension-default.layoutTemplateModule.viewerLayout',
   sopClassHandler: '@ohif/extension-default.sopClassHandlerModule.stack',
@@ -32,11 +31,11 @@ const cornerstone = {
 const extensionDependencies = {
   '@ohif/extension-default': '^3.0.0',
   '@ohif/extension-cornerstone': '^3.0.0',
-  "labeling": "^0.0.1",
-  "view-ai-result": "^0.0.1"
+  labeling: '^0.0.1',
+  'view-ai-result': '^0.0.1',
 };
 
-function modeFactory({ modeConfiguration }) {
+function modeFactory() {
   return {
     /**
      * Mode ID, which should be unique among modes used by the viewer. This ID
@@ -59,6 +58,17 @@ function modeFactory({ modeConfiguration }) {
       const utilityModule = extensionManager.getModuleEntry(
         '@ohif/extension-cornerstone.utilityModule.tools'
       );
+
+      // MODE-L8: guard the module lookup (parity with send-ai) so a missing
+      // cornerstone tools module degrades gracefully instead of throwing during
+      // mode entry.
+      if (!utilityModule?.exports) {
+        console.warn(
+          'labeling-mode: Cornerstone tools utility module not found – tools not activated'
+        );
+        return;
+      }
+
       const { toolNames, Enums } = utilityModule.exports;
 
       const tools = {
@@ -97,8 +107,8 @@ function modeFactory({ modeConfiguration }) {
       // Set up default AI overlay
       customizationService.setCustomizations({
         'viewportOverlay.topLeft': {
-          $set: [] // Clear default overlays to prevent conflict with AI action corners
-        }
+          $set: [], // Clear default overlays to prevent conflict with AI action corners
+        },
       });
 
       let unsubscribe;
@@ -143,18 +153,17 @@ function modeFactory({ modeConfiguration }) {
       ]);
     },
     onModeExit: ({ servicesManager }) => {
-      const { toolGroupService, measurementService, toolbarService } =
-        servicesManager.services;
+      const { toolGroupService } = servicesManager.services;
 
       toolGroupService.destroy();
-    },    /** */
+    },
     validationTags: {
       study: [],
       series: [],
     },
     /**
      * A boolean return value that indicates whether the mode is valid for the
-     * modalities of the selected studies. For instance a PET/CT mode should be
+     * modalities of the selected studies. This mode accepts any study.
      */
     isValidMode: ({ modalities }) => true,
     /**
@@ -176,37 +185,30 @@ function modeFactory({ modeConfiguration }) {
           { servicesManager, extensionManager, studyInstanceUIDs, dataSource, filters },
           hangingProtocolId
         ) => {
-          const {
-            displaySetService,
-            hangingProtocolService,
-            measurementService
-          } = servicesManager.services;
+          const { displaySetService, hangingProtocolService, measurementService } =
+            servicesManager.services;
 
           const unsubscriptions: any[] = [];
           const initLabels = extensionManager.getModuleEntry(
-            "labeling.utilityModule.initLabels"
+            'labeling.utilityModule.initLabels'
           ).exports;
-          //initLabels({ extensionManager, measurementService, StudyInstanceUID: 123 });
-          initLabels({ extensionManager, measurementService, StudyInstanceUID: studyInstanceUIDs[0] });
+          // labeling-mode is an explicitly single-study workflow — only the
+          // first requested study is initialized/labelled. Warn (rather than
+          // silently label just one) if a multi-study route is opened, so the
+          // incomplete-labelling limitation is visible.
+          if (studyInstanceUIDs.length > 1) {
+            console.warn(
+              `labeling-mode: opened with ${studyInstanceUIDs.length} studies; only the first ` +
+                `(${studyInstanceUIDs[0]}) is initialized for labelling.`
+            );
+          }
+          initLabels({
+            extensionManager,
+            measurementService,
+            StudyInstanceUID: studyInstanceUIDs[0],
+          });
 
-          const onDisplaySetsAdded = ({ displaySetsAdded, options }) => {
-            const displaySet = displaySetsAdded[0];
-            const { StudyInstanceUID } = displaySet;
-            //TODO: Fetch measurements from DICOM
-
-            //measurementService.addMeasurement(/**...**/);
-          };
-
-          // subscription to the DISPLAY_SETS_ADDED
-          const { unsubscribe: displaySetsAddedUnsubscribe } = displaySetService.subscribe(
-            displaySetService.EVENTS.DISPLAY_SETS_ADDED,
-            onDisplaySetsAdded
-          );
-          unsubscriptions.push(displaySetsAddedUnsubscribe);
-
-          const {
-            unsubscribe: instanceAddedUnsubscribe,
-          } = DicomMetadataStore.subscribe(
+          const { unsubscribe: instanceAddedUnsubscribe } = DicomMetadataStore.subscribe(
             DicomMetadataStore.EVENTS.INSTANCES_ADDED,
             function ({ StudyInstanceUID, SeriesInstanceUID, madeInClient = false }) {
               const seriesMetadata = DicomMetadataStore.getSeries(
@@ -241,10 +243,7 @@ function modeFactory({ modeConfiguration }) {
 
             // run the hanging protocol matching on the displaySets with the predefined
             // hanging protocol in the mode configuration
-            hangingProtocolService.run(
-              { studies, activeStudy, displaySets },
-              hangingProtocolId
-            );
+            hangingProtocolService.run({ studies, activeStudy, displaySets }, hangingProtocolId);
           });
 
           return unsubscriptions;
@@ -269,11 +268,11 @@ function modeFactory({ modeConfiguration }) {
     /** List of extensions that are used by the mode */
     extensions: extensionDependencies,
     /** HangingProtocol used by the mode */
-    hangingProtocol: '@ohif/extension-view-ai-result.hpSinglePrimary',
+    hangingProtocol: 'view-ai-result.hpSinglePrimary',
     /** SopClassHandlers used by the mode */
     sopClassHandlers: [ohif.sopClassHandler],
     /** hotkeys for mode */
-    hotkeys: [''],
+    hotkeys: [],
   };
 }
 

@@ -39,23 +39,23 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 min-h-0 px-3 pt-4 pb-4 space-y-4 overflow-y-auto overflow-x-hidden">
-        <div className="text-sm bg-secondary-dark rounded p-3 space-y-1">
-          <div className="text-white font-medium">{selectedConfig.name}</div>
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-3 pt-4 pb-4">
+        <div className="bg-secondary-dark space-y-1 rounded p-3 text-sm">
+          <div className="font-medium text-white">{selectedConfig.name}</div>
           {selectedConfig.description && (
-            <div className="text-xs text-muted-foreground">{selectedConfig.description}</div>
+            <div className="text-muted-foreground text-xs">{selectedConfig.description}</div>
           )}
         </div>
 
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <label className="text-xs font-medium text-muted-foreground">
+          <div className="mb-2 flex items-center justify-between">
+            <label className="text-muted-foreground text-xs font-medium">
               Map Series to Inputs
             </label>
             <button
               onClick={() => onAutoDetect(selectedConfig, availableSeries)}
-              className="text-xs text-primary-light hover:underline"
+              className="text-primary-light text-xs hover:underline"
             >
               Auto-detect
             </button>
@@ -70,26 +70,27 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
 
               return (
                 <div key={input.key}>
-                  <label className="text-xs text-white block mb-1">
+                  <label className="mb-1 block text-xs text-white">
                     {input.label}
-                    {input.required && <span className="text-red-400 ml-1">*</span>}
+                    {input.required && <span className="ml-1 text-red-400">*</span>}
                   </label>
                   <select
                     value={currentValue}
-                    onChange={e =>
-                      onSetInputSeries(input.key, e.target.value || null)
-                    }
-                    className="w-full px-2 py-1.5 text-xs rounded bg-secondary-dark border border-secondary-light text-white focus:border-primary-light focus:outline-none"
+                    onChange={e => onSetInputSeries(input.key, e.target.value || null)}
+                    className="bg-secondary-dark border-secondary-light focus:border-primary-light w-full rounded border px-2 py-1.5 text-xs text-white focus:outline-none"
                   >
                     <option value="">-- Select series --</option>
                     {filteredSeries.map(s => (
-                      <option key={s.SeriesInstanceUID} value={s.SeriesInstanceUID}>
+                      <option
+                        key={s.SeriesInstanceUID}
+                        value={s.SeriesInstanceUID}
+                      >
                         {formatSeriesOption(s)}
                       </option>
                     ))}
                   </select>
                   {input.required && !mapping[input.key] && (
-                    <div className="text-xs text-yellow-400 mt-0.5">Required</div>
+                    <div className="mt-0.5 text-xs text-yellow-400">Required</div>
                   )}
                 </div>
               );
@@ -98,11 +99,19 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
         </div>
       </div>
 
-      <div className="flex-shrink-0 px-3 py-3 border-t border-secondary-light bg-black space-y-2">
-        <Button onClick={onNext} disabled={!isValid} className="w-full">
+      <div className="border-secondary-light flex-shrink-0 space-y-2 border-t bg-black px-3 py-3">
+        <Button
+          onClick={onNext}
+          disabled={!isValid}
+          className="w-full"
+        >
           Next: Confirm &amp; Run &rarr;
         </Button>
-        <Button onClick={onBack} variant="outlined" className="w-full">
+        <Button
+          onClick={onBack}
+          variant="outlined"
+          className="w-full"
+        >
           &larr; Back
         </Button>
       </div>

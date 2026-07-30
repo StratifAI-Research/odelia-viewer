@@ -83,13 +83,17 @@ describe('OrthancAIService — getOrthancStudyId', () => {
   });
 
   it('throws when no Study-type result is present', async () => {
-    fetchMock.mockResolvedValueOnce(mockResponse({ json: [{ ID: 'x', Type: 'Series', Path: '' }] }));
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({ json: [{ ID: 'x', Type: 'Series', Path: '' }] })
+    );
     await expect(service.getOrthancStudyId('1.2.3')).rejects.toThrow('No Orthanc Study ID');
   });
 
   it('throws with the response body text on non-ok', async () => {
     fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 500, text: 'boom' }));
-    await expect(service.getOrthancStudyId('1.2.3')).rejects.toThrow('Failed to lookup study: boom');
+    await expect(service.getOrthancStudyId('1.2.3')).rejects.toThrow(
+      'Failed to lookup study: boom'
+    );
   });
 
   it('throws when the lookup response is an empty array', async () => {
@@ -125,11 +129,15 @@ describe('OrthancAIService — getModelManifest (+ cache)', () => {
     expect(await service.getModelManifest(EP)).toEqual(data);
   });
 
-  it('returns null and caches null on non-ok', async () => {
+  it('returns null on non-ok WITHOUT caching, so a later call retries (OAR-M-manifest)', async () => {
     fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 404 }));
     expect(await service.getModelManifest(EP)).toBeNull();
-    expect(await service.getModelManifest(EP)).toBeNull();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // A transient failure must not be cached: the next call re-fetches and can
+    // recover the real manifest (previously null was frozen until reload).
+    const manifest = { model_id: 'm', model_name: 'M', version: '1', input_configurations: [] };
+    fetchMock.mockResolvedValueOnce(mockResponse({ json: { manifest } }));
+    expect(await service.getModelManifest(EP)).toEqual(manifest);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('returns null when fetch throws', async () => {
@@ -166,8 +174,12 @@ describe('OrthancAIService — routeStudyToAI', () => {
 
   it('looks up the study id then POSTs to /send-to-ai', async () => {
     fetchMock
-      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'orthanc-99', Type: 'Study', Path: '' }] }))
-      .mockResolvedValueOnce(mockResponse({ json: { status: 'success', workitem_uid: 'w1', message: 'ok' } }));
+      .mockResolvedValueOnce(
+        mockResponse({ json: [{ ID: 'orthanc-99', Type: 'Study', Path: '' }] })
+      )
+      .mockResolvedValueOnce(
+        mockResponse({ json: { status: 'success', workitem_uid: 'w1', message: 'ok' } })
+      );
 
     const res = await service.routeStudyToAI('1.2.3');
     expect(res).toEqual({ status: 'success', workitem_uid: 'w1', message: 'ok' });
@@ -192,20 +204,28 @@ describe('OrthancAIService — routeStudyToAI', () => {
   it('surfaces {message} from a non-ok send response', async () => {
     fetchMock
       .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
-      .mockResolvedValueOnce(mockResponse({ ok: false, status: 400, json: { message: 'bad input' } }));
+      .mockResolvedValueOnce(
+        mockResponse({ ok: false, status: 400, json: { message: 'bad input' } })
+      );
     await expect(service.routeStudyToAI('1.2.3')).rejects.toThrow('bad input');
   });
 
   it('maps an AbortError to a timeout message', async () => {
-    fetchMock.mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }));
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] })
+    );
     fetchMock.mockRejectedValueOnce(Object.assign(new Error('aborted'), { name: 'AbortError' }));
-    await expect(service.routeStudyToAI('1.2.3')).rejects.toThrow('Request timed out after 30 seconds');
+    await expect(service.routeStudyToAI('1.2.3')).rejects.toThrow(
+      'Request timed out after 30 seconds'
+    );
   });
 
   it('surfaces {error} from a non-ok send response', async () => {
     fetchMock
       .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
-      .mockResolvedValueOnce(mockResponse({ ok: false, status: 422, json: { error: 'validation failed' } }));
+      .mockResolvedValueOnce(
+        mockResponse({ ok: false, status: 422, json: { error: 'validation failed' } })
+      );
     await expect(service.routeStudyToAI('1.2.3')).rejects.toThrow('validation failed');
   });
 
@@ -215,7 +235,9 @@ describe('OrthancAIService — routeStudyToAI', () => {
   it('falls back to the status-based message when the error body is not JSON', async () => {
     fetchMock
       .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
-      .mockResolvedValueOnce(mockResponse({ ok: false, status: 502, text: '<html>Bad Gateway</html>' }));
+      .mockResolvedValueOnce(
+        mockResponse({ ok: false, status: 502, text: '<html>Bad Gateway</html>' })
+      );
     await expect(service.routeStudyToAI('1.2.3')).rejects.toThrow('HTTP error! status: 502');
   });
 });
@@ -266,20 +288,28 @@ describe('OrthancAIService — routeSeriesToAI', () => {
   it('throws when no endpoint is configured', async () => {
     localStorage.setItem('aiEndpoints', JSON.stringify([]));
     const bare = new OrthancAIService({ configuration: {} });
-    await expect(bare.routeSeriesToAI('1.2.3', ['s1'])).rejects.toThrow('No AI endpoint configured');
+    await expect(bare.routeSeriesToAI('1.2.3', ['s1'])).rejects.toThrow(
+      'No AI endpoint configured'
+    );
   });
 
   it('surfaces {message} from a non-ok send response', async () => {
     fetchMock
       .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
-      .mockResolvedValueOnce(mockResponse({ ok: false, status: 400, json: { message: 'bad series' } }));
+      .mockResolvedValueOnce(
+        mockResponse({ ok: false, status: 400, json: { message: 'bad series' } })
+      );
     await expect(service.routeSeriesToAI('1.2.3', ['s1'])).rejects.toThrow('bad series');
   });
 
   it('maps an AbortError to a timeout message', async () => {
-    fetchMock.mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }));
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] })
+    );
     fetchMock.mockRejectedValueOnce(Object.assign(new Error('aborted'), { name: 'AbortError' }));
-    await expect(service.routeSeriesToAI('1.2.3', ['s1'])).rejects.toThrow('Request timed out after 30 seconds');
+    await expect(service.routeSeriesToAI('1.2.3', ['s1'])).rejects.toThrow(
+      'Request timed out after 30 seconds'
+    );
   });
 });
 
@@ -317,7 +347,11 @@ describe('OrthancAIService — getWorkitemStatus / parseWorkitemStatus', () => {
     };
     fetchMock.mockResolvedValueOnce(mockResponse({ text: JSON.stringify(body) }));
     const status = await service.getWorkitemStatus('w1');
-    expect(status).toMatchObject({ state: 'IN_PROGRESS', progress: 42, progressDescription: 'halfway' });
+    expect(status).toMatchObject({
+      state: 'IN_PROGRESS',
+      progress: 42,
+      progressDescription: 'halfway',
+    });
   });
 
   it('extracts the cancellation reason', async () => {
@@ -334,7 +368,9 @@ describe('OrthancAIService — getWorkitemStatus / parseWorkitemStatus', () => {
 
   it('throws on non-ok', async () => {
     fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 404, text: 'missing' }));
-    await expect(service.getWorkitemStatus('w1')).rejects.toThrow('Failed to get workitem status: 404');
+    await expect(service.getWorkitemStatus('w1')).rejects.toThrow(
+      'Failed to get workitem status: 404'
+    );
   });
 
   it('throws on an unparseable body', async () => {
@@ -422,6 +458,28 @@ describe('OrthancAIService — workitem polling', () => {
     await jest.advanceTimersByTimeAsync(500); // recovers
     expect(cb).toHaveBeenCalledTimes(1);
     service.stopWorkitemPolling();
+  });
+
+  it('stops polling and reports a timeout after the max duration', async () => {
+    // Never terminal: always IN_PROGRESS.
+    fetchMock.mockResolvedValue(
+      mockResponse({ text: JSON.stringify({ '00741000': { vr: 'CS', Value: ['IN_PROGRESS'] } }) })
+    );
+    const cb = jest.fn();
+    // interval 500ms, cap 1000ms => maxAttempts = 2.
+    await service.startWorkitemPolling('w1', cb, 500, 1000);
+
+    await jest.advanceTimersByTimeAsync(500); // attempt 1: IN_PROGRESS
+    await jest.advanceTimersByTimeAsync(500); // attempt 2: IN_PROGRESS, then hits the cap
+
+    const lastCall = cb.mock.calls[cb.mock.calls.length - 1][0];
+    expect(lastCall).toMatchObject({ state: 'CANCELED' });
+    expect(lastCall.cancellationReason).toMatch(/timed out/i);
+
+    // No further ticks run after the timeout stops the interval.
+    const callsAfterTimeout = cb.mock.calls.length;
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(cb.mock.calls.length).toBe(callsAfterTimeout);
   });
 
   it('a second startWorkitemPolling call cancels the first interval', async () => {

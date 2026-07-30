@@ -2,7 +2,7 @@ import React from 'react';
 import { Button } from '@ohif/ui';
 
 interface ProgressStepProps {
-  status: 'idle' | 'routing' | 'checking' | 'refreshing';
+  status: 'idle' | 'routing' | 'checking';
   progress: number;
   error?: string | null;
   progressDescription?: string | null;
@@ -22,16 +22,25 @@ export const ProgressStep: React.FC<ProgressStepProps> = ({
   const canReset = status === 'idle' || error;
 
   const getStatusTitle = () => {
-    if (error) return '❌ Error';
-    if (status === 'routing') return 'Sending to AI...';
-    if (status === 'checking') return 'Awaiting AI Results...';
-    if (status === 'refreshing') return 'Loading Results...';
-    if (isComplete) return '✅ Complete!';
+    if (error) {
+      return '❌ Error';
+    }
+    if (status === 'routing') {
+      return 'Sending to AI...';
+    }
+    if (status === 'checking') {
+      return 'Awaiting AI Results...';
+    }
+    if (isComplete) {
+      return '✅ Complete!';
+    }
     return '';
   };
 
   const getStatusMessage = () => {
-    if (error) return null;
+    if (error) {
+      return null;
+    }
 
     // Use progressDescription if available (from workitem)
     if (progressDescription) {
@@ -39,16 +48,21 @@ export const ProgressStep: React.FC<ProgressStepProps> = ({
     }
 
     // Fallback to default messages
-    if (status === 'routing') return 'Uploading series to AI server...';
-    if (status === 'checking') return 'AI analysis in progress. Results will appear automatically.';
-    if (status === 'refreshing') return 'Fetching AI results...';
-    if (isComplete) return 'AI analysis complete. Check the study browser for results.';
+    if (status === 'routing') {
+      return 'Uploading series to AI server...';
+    }
+    if (status === 'checking') {
+      return 'AI analysis in progress. Results will appear automatically.';
+    }
+    if (isComplete) {
+      return 'AI analysis complete. Check the study browser for results.';
+    }
     return null;
   };
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
-      <div className="flex-1 min-h-0 p-4 space-y-4 overflow-y-auto flex items-center justify-center">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex min-h-0 flex-1 items-center justify-center space-y-4 overflow-y-auto p-4">
         <div className="w-full max-w-md space-y-4">
           {error && (
             <div className="rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700">
@@ -59,20 +73,16 @@ export const ProgressStep: React.FC<ProgressStepProps> = ({
           {!error && (
             <>
               <div className="text-center">
-                <div className="text-lg font-medium text-white mb-2">
-                  {getStatusTitle()}
-                </div>
+                <div className="mb-2 text-lg font-medium text-white">{getStatusTitle()}</div>
               </div>
 
-              <div className="p-4 border border-secondary-light rounded bg-secondary-dark">
+              <div className="border-secondary-light bg-secondary-dark rounded border p-4">
                 <ProgressLoadingBar progress={progress} />
-                <div className="text-xs text-right text-muted-foreground mt-2">
-                  {progress}%
-                </div>
+                <div className="text-muted-foreground mt-2 text-right text-xs">{progress}%</div>
               </div>
 
               {getStatusMessage() && (
-                <div className="text-sm text-muted-foreground text-center">
+                <div className="text-muted-foreground text-center text-sm">
                   {getStatusMessage()}
                 </div>
               )}
@@ -81,7 +91,7 @@ export const ProgressStep: React.FC<ProgressStepProps> = ({
         </div>
       </div>
 
-      <div className="flex-shrink-0 p-4 border-t border-secondary-light">
+      <div className="border-secondary-light flex-shrink-0 border-t p-4">
         {canReset && (
           <Button
             onClick={onReset}

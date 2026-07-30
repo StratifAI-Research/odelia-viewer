@@ -46,8 +46,10 @@ export function applyAIThumbnailStyles() {
         // Also apply to parent containers that might be constraining
         let parent = element.parentElement;
         while (parent && parent.classList) {
-          if (parent.classList.toString().includes('text-ellipsis') ||
-              parent.classList.toString().includes('whitespace-nowrap')) {
+          if (
+            parent.classList.toString().includes('text-ellipsis') ||
+            parent.classList.toString().includes('whitespace-nowrap')
+          ) {
             parent.style.whiteSpace = 'pre-line';
             parent.style.textOverflow = 'clip';
             parent.style.overflow = 'hidden';
@@ -62,9 +64,13 @@ export function applyAIThumbnailStyles() {
 let observerDebounceTimer: ReturnType<typeof setTimeout> | undefined;
 
 /**
- * Set up a mutation observer to handle dynamically added thumbnails
+ * Set up a mutation observer to handle dynamically added thumbnails.
+ * Returns a disposer that disconnects the observer and clears the pending
+ * debounce timer — callers (a React effect) must invoke it on unmount, otherwise
+ * the observer keeps running a full-subtree querySelectorAll sweep for the life
+ * of the page.
  */
-export function setupAIThumbnailObserver() {
+export function setupAIThumbnailObserver(): () => void {
   const win = window as any;
 
   // Clear any existing observer
@@ -72,7 +78,7 @@ export function setupAIThumbnailObserver() {
     win.aiThumbnailObserver.disconnect();
   }
 
-  const observer = new MutationObserver((mutations) => {
+  const observer = new MutationObserver(mutations => {
     // Debounce to prevent excessive calls
     if (observerDebounceTimer) {
       clearTimeout(observerDebounceTimer);
@@ -80,18 +86,22 @@ export function setupAIThumbnailObserver() {
     observerDebounceTimer = setTimeout(() => {
       let shouldApplyStyles = false;
 
-      mutations.forEach((mutation) => {
+      mutations.forEach(mutation => {
         if (mutation.addedNodes.length > 0) {
           // Only trigger if we actually added thumbnail-related nodes
           for (const node of mutation.addedNodes) {
-            if (node.nodeType === 1) { // Element node
+            if (node.nodeType === 1) {
+              // Element node
               const element = node as Element;
               // Safe className check - ensure it's a string before calling includes
               const className: unknown = (element as any).className;
-              const classNameStr = typeof className === 'string' ? className : (className as any)?.toString?.() || '';
+              const classNameStr =
+                typeof className === 'string' ? className : (className as any)?.toString?.() || '';
 
-              if (classNameStr.includes('thumbnail') ||
-                  (element.querySelector && element.querySelector('[class*="thumbnail"]'))) {
+              if (
+                classNameStr.includes('thumbnail') ||
+                (element.querySelector && element.querySelector('[class*="thumbnail"]'))
+              ) {
                 shouldApplyStyles = true;
                 break;
               }
@@ -101,21 +111,33 @@ export function setupAIThumbnailObserver() {
       });
 
       if (shouldApplyStyles) {
-
         applyAIThumbnailStyles();
       }
     }, 200); // Debounce for 200ms
   });
 
   // Only observe specific containers, not the entire document
-  const studyBrowserContainer = document.querySelector('[class*="study-browser"], [class*="StudyBrowser"]');
+  const studyBrowserContainer = document.querySelector(
+    '[class*="study-browser"], [class*="StudyBrowser"]'
+  );
   const targetElement = studyBrowserContainer || document.body;
 
   observer.observe(targetElement, {
     childList: true,
-    subtree: true
+    subtree: true,
   });
 
   // Store observer globally so we can clean it up
   win.aiThumbnailObserver = observer;
+
+  return () => {
+    observer.disconnect();
+    if (observerDebounceTimer) {
+      clearTimeout(observerDebounceTimer);
+      observerDebounceTimer = undefined;
+    }
+    if (win.aiThumbnailObserver === observer) {
+      win.aiThumbnailObserver = undefined;
+    }
+  };
 }

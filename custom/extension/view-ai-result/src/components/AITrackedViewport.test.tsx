@@ -1,7 +1,8 @@
 import React from 'react';
 import { installConsoleErrorFilter } from '../test-utils/harness';
 import { render, screen } from '@testing-library/react';
-import AITrackedViewport from './AITrackedViewport';
+import AITrackedViewport, { areEqual } from './AITrackedViewport';
+import { AISideBySideViewportProps } from '../types';
 
 // Stub cornerstone viewport component: surfaces received props into the DOM.
 let lastViewportProps: any = null;
@@ -97,9 +98,7 @@ describe('AITrackedViewport', () => {
       { displaySetInstanceUID: 'mr', Modality: 'MR' },
       { displaySetInstanceUID: 'sc', Modality: 'SC' },
     ];
-    render(
-      <AITrackedViewport {...baseProps({ viewportId: 'vp-heatmap', displaySets })} />
-    );
+    render(<AITrackedViewport {...baseProps({ viewportId: 'vp-heatmap', displaySets })} />);
     expect(screen.getByTestId('cs-show-overlays').textContent).toBe('false');
     // heatmap viewport receives the full display set list, unfiltered
     expect(screen.getByTestId('cs-ds-count').textContent).toBe('2');
@@ -108,9 +107,7 @@ describe('AITrackedViewport', () => {
   it('clears overlays but never adds a heatmap toggle on a heatmap viewport', () => {
     const services = makeServices();
     render(
-      <AITrackedViewport
-        {...baseProps({ viewportId: 'vp-heatmap', servicesManager: services })}
-      />
+      <AITrackedViewport {...baseProps({ viewportId: 'vp-heatmap', servicesManager: services })} />
     );
     const addComponent = services.services.viewportActionCornersService.addComponent;
     // heatmap viewport aggressively clears the AI overlay corner...
@@ -130,10 +127,120 @@ describe('AITrackedViewport', () => {
   it('skips event subscription for a heatmap viewport', () => {
     const services = makeServices();
     render(
-      <AITrackedViewport
-        {...baseProps({ viewportId: 'vp-heatmap', servicesManager: services })}
-      />
+      <AITrackedViewport {...baseProps({ viewportId: 'vp-heatmap', servicesManager: services })} />
     );
     expect(services.services.aiResultsService.subscribe).not.toHaveBeenCalled();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `areEqual` is the React.memo prop comparator. It returns TRUE when props are
+// effectively equal (skip re-render) and FALSE when a meaningful change must
+// trigger a re-render. It exists because OHIF's ViewportGrid passes fresh
+// object/closure references on every grid render, so the default shallow compare
+// would re-render (and re-run every AI hook/effect) on every frame — the
+// "20 renders/sec" viewer-rendering-loop gotcha.
+// ---------------------------------------------------------------------------
+describe('AITrackedViewport areEqual', () => {
+  const ds = (over: any = {}) => ({
+    displaySetInstanceUID: 'ds-1',
+    Modality: 'MR',
+    StudyInstanceUID: 'study-1',
+    images: [{ imageId: 'img-1' }, { imageId: 'img-2' }],
+    ...over,
+  });
+
+  const BASE_OPTS = { viewportType: 'stack', orientation: 'axial', toolGroupId: 'default' };
+
+  const props = (over: Partial<AISideBySideViewportProps> = {}): AISideBySideViewportProps => ({
+    viewportId: 'viewport-1',
+    servicesManager: {} as any,
+    extensionManager: {} as any,
+    commandsManager: {} as any,
+    displaySets: [ds()],
+    viewportOptions: { ...BASE_OPTS },
+    ...over,
+  });
+
+  it('skips re-render when props are content-equal but freshly-constructed (the perf guarantee)', () => {
+    // Simulates the grid handing us brand-new object/array identities each render.
+    const prev = props();
+    const next = props();
+    expect(prev.displaySets).not.toBe(next.displaySets); // different references...
+    expect(areEqual(prev, next)).toBe(true); // ...but we still skip.
+  });
+
+  it('re-renders when the top-level needsRerendering escape hatch is set', () => {
+    expect(areEqual(props(), props({ needsRerendering: true }))).toBe(false);
+  });
+
+  it('IGNORES nested viewportOptions.needsRerendering (handled at the base viewport layer)', () => {
+    // Regression guard for the "persistent loop" risk: the base viewport clears
+    // this flag on the copied options object it receives, not on the grid's
+    // original, so honoring it here would re-render on every grid frame.
+    const prev = props();
+    const next = props({ viewportOptions: { ...prev.viewportOptions, needsRerendering: true } });
+    expect(areEqual(prev, next)).toBe(true);
+  });
+
+  it('re-renders when viewportId changes', () => {
+    expect(areEqual(props(), props({ viewportId: 'viewport-2' }))).toBe(false);
+  });
+
+  // Each option test changes exactly ONE field (spreading BASE_OPTS) so it isolates
+  // its own branch rather than tripping an earlier check on a now-undefined field.
+  it('re-renders when orientation changes', () => {
+    const next = props({ viewportOptions: { ...BASE_OPTS, orientation: 'sagittal' } });
+    expect(areEqual(props(), next)).toBe(false);
+  });
+
+  it('re-renders when toolGroupId changes', () => {
+    const next = props({ viewportOptions: { ...BASE_OPTS, toolGroupId: 'other' } });
+    expect(areEqual(props(), next)).toBe(false);
+  });
+
+  it('re-renders when viewportType changes (heatmap stack <-> volume toggle)', () => {
+    const next = props({ viewportOptions: { ...BASE_OPTS, viewportType: 'volume' } });
+    expect(areEqual(props(), next)).toBe(false);
+  });
+
+  it('does NOT re-render when the incoming viewportType is undefined (matches OHIF guard)', () => {
+    const prev = props({ viewportOptions: { viewportType: 'stack' } });
+    const next = props({ viewportOptions: {} });
+    expect(areEqual(prev, next)).toBe(true);
+  });
+
+  it('re-renders when displaySet count changes', () => {
+    const next = props({ displaySets: [ds(), ds({ displaySetInstanceUID: 'ds-2' })] });
+    expect(areEqual(props(), next)).toBe(false);
+  });
+
+  it('re-renders when a displaySetInstanceUID changes', () => {
+    expect(areEqual(props(), props({ displaySets: [ds({ displaySetInstanceUID: 'ds-9' })] }))).toBe(false);
+  });
+
+  it('re-renders when Modality changes for the same UID (heatmap detection input)', () => {
+    expect(areEqual(props(), props({ displaySets: [ds({ Modality: 'SC' })] }))).toBe(false);
+  });
+
+  it('re-renders when StudyInstanceUID changes for the same UID (AI-result selection input)', () => {
+    expect(areEqual(props(), props({ displaySets: [ds({ StudyInstanceUID: 'study-2' })] }))).toBe(false);
+  });
+
+  it('re-renders when the image list length changes', () => {
+    expect(areEqual(props(), props({ displaySets: [ds({ images: [{ imageId: 'img-1' }] })] }))).toBe(false);
+  });
+
+  it('re-renders when an imageId changes at the same list length (the OHIF gotcha)', () => {
+    const next = props({
+      displaySets: [ds({ images: [{ imageId: 'img-1' }, { imageId: 'img-CHANGED' }] })],
+    });
+    expect(areEqual(props(), next)).toBe(false);
+  });
+
+  it('tolerates missing displaySets / viewportOptions without throwing', () => {
+    const bare = props({ displaySets: undefined as any, viewportOptions: undefined });
+    const bare2 = props({ displaySets: undefined as any, viewportOptions: undefined });
+    expect(areEqual(bare, bare2)).toBe(true);
   });
 });

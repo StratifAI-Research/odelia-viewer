@@ -14,26 +14,39 @@ const CSVImporter = ({ onClick }: CSVImporterProps) => {
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
+      const input = e.target;
       try {
-        const file = e.target.files[0];
+        const file = input.files![0];
         Papa.parse<CSVRow>(file, {
           worker: true,
-          complete: ({ data }) => onClick(data),
           header: true,
           skipEmptyLines: true,
+          complete: ({ data }) => onClick(data),
+          // With worker:true parse errors are async, so the surrounding
+          // try/catch never sees them — handle them here instead of silently
+          // dropping the import.
+          error: err => {
+            console.error('CSV import failed to parse:', err);
+          },
         });
-        // 6. call the onChange event
       } catch (error) {
         console.error(error);
+      } finally {
+        // Reset the input so selecting the same file again re-fires
+        // onChange (the browser suppresses change events for an unchanged value).
+        input.value = '';
       }
     }
   };
 
   return (
     <React.Fragment>
-      <ButtonGroup color="black" size="inherit">
+      <ButtonGroup
+        color="black"
+        size="inherit"
+      >
         <Button
-          className="px-2 py-2 text-base mx-2"
+          className="mx-2 px-2 py-2 text-base"
           onClick={() => ref?.current?.click()}
         >
           Import CSV

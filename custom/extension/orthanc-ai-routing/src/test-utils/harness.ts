@@ -31,10 +31,15 @@ export function mockResponse(opts: {
     status,
     json: async () => {
       consume(); // a real Response reads (and locks) the stream before parsing
-      if (json === undefined) {
-        throw new SyntaxError('mockResponse: body is not valid JSON');
+      if (json !== undefined) {
+        return json;
       }
-      return json;
+      // Parity with a real Response: json() parses the body text (throwing a
+      // SyntaxError on invalid JSON) so tests can supply a body via `text`.
+      if (text !== undefined) {
+        return JSON.parse(text);
+      }
+      throw new SyntaxError('mockResponse: body is not valid JSON');
     },
     text: async () => {
       consume();

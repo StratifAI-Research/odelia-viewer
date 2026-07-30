@@ -18,8 +18,8 @@ export default function PanelLabeling({
 }) {
   const { measurementService, uiDialogService } = servicesManager.services;
 
-  let totalConfig: Config = require('../utils/config.json');
-  let config = getPanelConfig(totalConfig, name);
+  const totalConfig: Config = require('../utils/config.json');
+  const config = getPanelConfig(totalConfig, name);
   const { t } = useTranslation('PanelLabeling');
   const [displayMeasurements] = useMeasurementSubscription(
     measurementService,
@@ -28,9 +28,7 @@ export default function PanelLabeling({
 
   function _getMappedMeasurements(measurementService) {
     const measurements = measurementService.getMeasurements();
-    const filteredMeasurements = measurements.filter(
-      element => element.toolName === 'ODELIALabel'
-    );
+    const filteredMeasurements = measurements.filter(element => element.toolName === 'ODELIALabel');
     return filteredMeasurements;
   }
 
@@ -49,21 +47,18 @@ export default function PanelLabeling({
 
   return (
     <div className="flex flex-col">
-      <div className="overflow-x-hidden overflow-y-auto invisible-scrollbar">
+      <div className="invisible-scrollbar overflow-y-auto overflow-x-hidden">
         {/* show labeling table */}
         <div className="mt-4">
           {!!displayMeasurements.length &&
-            displayMeasurements.map(measurement => {
+            displayMeasurements.map((measurement, index) => {
               return (
                 <LabelingTable
+                  key={measurement.uid ?? `measurement-${index}`}
                   title={t('Labels')}
                   measurement={measurement}
                   config={config}
-                  onClick={id => {}}
-                  onToggleVisibility={id => {}}
-                  onToggleVisibilityAll={ids => {
-                    ids.map(id => {});
-                  }}
+                  onClick={() => {}}
                   onChange={onMeasurementItemEditHandler}
                 />
               );
@@ -72,13 +67,13 @@ export default function PanelLabeling({
         <div className="flex justify-center p-4">
           <CSVImporter
             onClick={csvData => {
-              importCSVReport(
-                { measurementService, extensionManager },
-                csvData
-              );
+              importCSVReport({ measurementService, extensionManager }, csvData);
             }}
           />
-          <ActionButtons onClick={exportReport} name="Export CSV" />
+          <ActionButtons
+            onClick={exportReport}
+            name="Export CSV"
+          />
         </div>
       </div>
     </div>

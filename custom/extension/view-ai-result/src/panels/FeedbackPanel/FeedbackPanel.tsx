@@ -1,14 +1,25 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import { useSystem, utils } from '@ohif/core';
+import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useSystem } from '@ohif/core';
 import { useImageViewer, useUserAuthentication } from '@ohif/ui';
 import { useViewportGrid } from '@ohif/ui-next';
-import { FooterAction } from '@ohif/ui-next';
 import { useActiveStudyUID } from '../../hooks/useActiveStudyUID';
 import { resultTsFromDisplaySet } from '../../utils/dicomDateTime';
+import { fetchFeedbackStatus, findUserVerdict, submitFeedback } from './feedbackApi';
+import { useFeedbackUser } from './useFeedbackUser';
+import { useResultIdentity, toResultKey, resultIdentityString } from './useResultIdentity';
+import { EditConfirmModal } from './EditConfirmModal';
 
 /**
- * Mock Feedback Panel – allows radiologists to mark Agree / Unsure / Disagree per breast side.
- * This is a first-cut prototype for stakeholder review.
+ * Feedback Panel – lets a reader mark Agree / Unsure / Disagree per breast side
+ * for the selected AI result, edit a prior verdict, and identify themselves.
+ *
+ * Concerns are split out of this component: the network client lives in
+ * `feedbackApi`, reader identity in `useFeedbackUser`, and the on-screen
+ * result's identity in `useResultIdentity`. This component owns the form state
+ * and orchestration. Every feedback-status response is applied only while the
+ * result+reader identity it was issued for still matches, so a response that
+ * resolves after the reader switches result or identity is discarded rather
+ * than landing on the wrong record.
  */
 const OPTIONS: Array<'Agree' | 'Unsure' | 'Disagree'> = ['Agree', 'Unsure', 'Disagree'];
 const VERDICT_TO_INT: Record<'Agree' | 'Unsure' | 'Disagree', number> = {
@@ -22,43 +33,12 @@ const INT_TO_VERDICT: Record<number, 'Agree' | 'Unsure' | 'Disagree'> = {
   [-1]: 'Disagree',
 } as any;
 
-// Local storage key for simple, quick user identification
-const LOCAL_USER_KEY = 'ohif.aiFeedback.displayName';
-
-// Derive Orthanc base path from app-config data source (qidoRoot like '/pacs/dicom-web').
-function deriveFeedbackApiBase(): string {
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const cfg: any = (window as any)?.config;
-    const dataSources = cfg?.dataSources || [];
-    const dw = dataSources.find((ds: any) => ds?.configuration?.qidoRoot);
-    const qidoRoot: string | undefined = dw?.configuration?.qidoRoot;
-    if (qidoRoot && typeof qidoRoot === 'string') {
-      const idx = qidoRoot.indexOf('/dicom-web');
-      if (idx > 0) {
-        return qidoRoot.slice(0, idx);
-      }
-      // if qidoRoot equals '/dicom-web', Orthanc is at root
-      if (qidoRoot === '/dicom-web') return '';
-      // otherwise use dirname as base
-      const parts = qidoRoot.split('/').filter(Boolean);
-      if (parts.length > 0) return `/${parts[0]}`;
-    }
-  } catch (_) {
-    // ignore
-  }
-  // Fallback to same-origin root
-  return '';
-}
-
-const FEEDBACK_API_BASE = deriveFeedbackApiBase();
-
 const FeedbackPanel: React.FC = () => {
   // Access OHIF services
   const { servicesManager } = useSystem();
   const { StudyInstanceUIDs } = useImageViewer();
   const [authState] = useUserAuthentication();
-  const [{ activeViewportId, viewports }, viewportGridService] = useViewportGrid();
+  const [{ activeViewportId, viewports }] = useViewportGrid();
   const aiResultsService: any = servicesManager.services?.aiResultsService;
   const userAuthenticationService: any = servicesManager.services?.userAuthenticationService;
   const displaySetService: any = servicesManager.services?.displaySetService;
@@ -77,31 +57,10 @@ const FeedbackPanel: React.FC = () => {
   const [submitMessage, setSubmitMessage] = useState<string>('');
   const [hasFeedbackByUID, setHasFeedbackByUID] = useState<Record<string, boolean>>({});
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
-  const [userDisplayName, setUserDisplayName] = useState<string | null>(null);
   const [nameInput, setNameInput] = useState<string>('');
 
-  // Extract a stable user identifier from authentication service response
-  const extractUserIdFromAuth = useCallback((svcUser: any): string | null => {
-    try {
-      const profile = svcUser?.profile || {};
-      const candidates = [
-        profile?.preferred_username,
-        profile?.email,
-        profile?.sub,
-        svcUser?.preferred_username,
-        svcUser?.email,
-        svcUser?.sub,
-        svcUser?.name,
-        svcUser?.id,
-      ];
-      for (const candidate of candidates) {
-        if (candidate && String(candidate).trim().length > 0) return String(candidate).trim();
-      }
-    } catch (_) {
-      // ignore
-    }
-    return null;
-  }, []);
+  // --- Reader identity (split into useFeedbackUser) ---
+  const { userId, saveLocalUser } = useFeedbackUser(authState, userAuthenticationService);
 
   // Helper to extract study UID from the active viewport
   const getStudyUIDFromActiveViewport = useActiveStudyUID({
@@ -113,7 +72,9 @@ const FeedbackPanel: React.FC = () => {
 
   // Helper to refresh dropdown list & selection info
   const refreshMeta = useCallback(() => {
-    if (!aiResultsService || !activeStudyUID) return;
+    if (!aiResultsService || !activeStudyUID) {
+      return;
+    }
     const meta = aiResultsService.getAIResultMetadata?.(activeStudyUID, servicesManager) || [];
     setAiMeta(meta);
     const selected = meta.find((m: any) => m.isSelected);
@@ -131,57 +92,14 @@ const FeedbackPanel: React.FC = () => {
 
   // Helper to refresh the currently displayed AI result
   const refreshCurrent = useCallback(() => {
-    if (!aiResultsService || !activeStudyUID) return;
+    if (!aiResultsService || !activeStudyUID) {
+      return;
+    }
     const res = aiResultsService.getSelectedAIResult?.(activeStudyUID, servicesManager);
     if (res) {
       setCurrentResult(res);
     }
   }, [aiResultsService, activeStudyUID, servicesManager]);
-
-  // --- User identity handling ---
-  const deriveUserId = useCallback((): string | null => {
-    try {
-      const svcUser = authState?.user ?? userAuthenticationService?.getUser?.();
-      const authId = extractUserIdFromAuth(svcUser);
-      if (authId) return authId;
-    } catch (_) {
-      // ignore
-    }
-    if (userDisplayName && userDisplayName.trim().length > 0) return userDisplayName.trim();
-    try {
-      const stored = window.localStorage.getItem(LOCAL_USER_KEY);
-      if (stored && stored.trim().length > 0) return stored.trim();
-    } catch (_) {
-      // ignore storage errors
-    }
-    return null;
-  }, [authState, extractUserIdFromAuth, userAuthenticationService, userDisplayName]);
-
-  const userId: string | null = deriveUserId();
-
-  const ensureUserInitialized = useCallback(() => {
-    try {
-      const svcUser = userAuthenticationService?.getUser?.();
-      const authId = extractUserIdFromAuth(svcUser);
-      if (authId) {
-        setUserDisplayName(String(authId));
-        return;
-      }
-      const stored = window.localStorage.getItem(LOCAL_USER_KEY);
-      if (stored && stored.trim().length > 0) {
-        setUserDisplayName(stored.trim());
-        // also reflect into auth service for consistency
-        userAuthenticationService?.setUser?.({ id: stored.trim(), name: stored.trim(), source: 'local' });
-      }
-    } catch (_) {
-      // ignore
-    }
-  }, [extractUserIdFromAuth, userAuthenticationService]);
-
-  useEffect(() => {
-    ensureUserInitialized();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Initialize activeStudyUID on mount
   useEffect(() => {
@@ -197,52 +115,38 @@ const FeedbackPanel: React.FC = () => {
   useEffect(() => {
     const studyUID = getStudyUIDFromActiveViewport();
     if (studyUID && studyUID !== activeStudyUID) {
-
       setActiveStudyUID(studyUID);
       // Reset feedback state when study changes
       setFeedback({ Left: null, Right: null });
       setLocked(false);
       setIsEditMode(false);
       setSubmitMessage('');
-      // Note: checkSubmissionStatus will automatically refetch from backend via its useEffect
+      // Note: checkSubmissionStatus will automatically refetch from backend via its useLayoutEffect
     }
   }, [activeViewportId, viewports, getStudyUIDFromActiveViewport, activeStudyUID]);
 
-  // Helpers to read identity fields from currentResult
-  const modelName: string | undefined = useMemo(() => {
-    // Prefer SR-parsed model info name
-    return (
-      currentResult?.modelInfo?.name ||
-      currentResult?.modelName ||
-      currentResult?.model?.name ||
-      undefined
-    );
-  }, [currentResult]);
+  // --- Identity of the on-screen AI result (split into useResultIdentity) ---
+  const { modelName, modelVersion, resultTs } = useResultIdentity(
+    currentResult,
+    selectedUID,
+    displaySetService
+  );
 
-  const modelVersion: string | undefined = useMemo(() => {
-    // Map to algorithmVersion from SR if available
-    return (
-      currentResult?.modelInfo?.algorithmVersion ||
-      currentResult?.modelVersion ||
-      currentResult?.model?.version ||
-      undefined
-    );
-  }, [currentResult]);
+  const resultKey = useMemo(
+    () => toResultKey(activeStudyUID, { modelName, modelVersion, resultTs }),
+    [activeStudyUID, modelName, modelVersion, resultTs]
+  );
+  const canQueryBackend = resultKey !== null;
 
-  const resultTs: string | undefined = useMemo(() => {
-    // Prefer AIResultsService-provided timestamp
-    const r = currentResult || {};
-    const direct = r.resultTs || r.result_ts || r.resultTimestamp || r.createdAt || r.timestamp;
-    if (typeof direct === 'string' && direct.length > 0) return direct;
-    // Derive from the selected SR display set creation date/time
-    try {
-      const dss = servicesManager?.services?.displaySetService;
-      const sr = selectedUID ? dss?.getDisplaySetByUID(selectedUID) : null;
-      return resultTsFromDisplaySet(sr);
-    } catch (_) {
-      return undefined;
-    }
-  }, [currentResult, selectedUID, servicesManager]);
+  // A response is applied only if the identity it queried (result + reader)
+  // still matches this. Including userId rejects responses that resolve after
+  // the reader changes, not only after the result changes.
+  const statusIdentity = resultIdentityString(
+    activeStudyUID,
+    { modelName, modelVersion, resultTs },
+    userId
+  );
+  const statusIdentityRef = useRef<string>(statusIdentity);
 
   // Initial load
   useEffect(() => {
@@ -252,7 +156,9 @@ const FeedbackPanel: React.FC = () => {
 
   // Subscribe to global selection changes so panel stays in sync
   useEffect(() => {
-    if (!aiResultsService) return;
+    if (!aiResultsService) {
+      return;
+    }
     const { unsubscribe } = aiResultsService.subscribe(
       aiResultsService.EVENTS.AI_RESULT_SELECTED,
       () => {
@@ -263,49 +169,55 @@ const FeedbackPanel: React.FC = () => {
     return () => unsubscribe();
   }, [aiResultsService, refreshMeta, refreshCurrent]);
 
-  // Check if this user has already submitted for the selected AI result
-  const canQueryBackend = Boolean(
-    activeStudyUID && modelName && modelVersion && resultTs
+  // Check if this user has already submitted for the selected AI result.
+  const checkSubmissionStatus = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!resultKey || !userId) {
+        setLocked(false);
+        return;
+      }
+      // Identity this request is for; compared against the live one before writing.
+      const requestIdentity = statusIdentity;
+      try {
+        const data = await fetchFeedbackStatus(resultKey, signal);
+        if (data === null) {
+          return;
+        }
+        // Ignore the response if the selected result / reader changed while it was in flight.
+        if (signal?.aborted || requestIdentity !== statusIdentityRef.current) {
+          return;
+        }
+        // Lock if current user already submitted; also prefill selections.
+        const u = findUserVerdict(data, userId);
+        if (u) {
+          setLocked(true);
+          const left = INT_TO_VERDICT[Number(u.verdict_L) as 1 | 0 | -1];
+          const right = INT_TO_VERDICT[Number(u.verdict_R) as 1 | 0 | -1];
+          setFeedback({ Left: left, Right: right });
+        } else {
+          setLocked(false);
+        }
+      } catch (e) {
+        // Aborted requests and network errors are non-fatal; keep the UI functional.
+      }
+    },
+    [resultKey, statusIdentity, userId]
   );
 
-  const checkSubmissionStatus = useCallback(async () => {
-    if (!canQueryBackend) {
-      setLocked(false);
-      return;
-    }
-    if (!userId) {
-      setLocked(false);
-      return;
-    }
-    try {
-      const params = new URLSearchParams({
-        study_uid: String(activeStudyUID),
-        model_name: String(modelName),
-        model_version: String(modelVersion),
-        result_ts: String(resultTs),
-        includeUsers: 'true',
-      });
-      const res = await fetch(`${FEEDBACK_API_BASE}/feedback?${params.toString()}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      // Lock if current user already submitted; also prefill selections
-      const u = Array.isArray(data.users) ? data.users.find((x: any) => x.user_id === userId) : null;
-      if (u) {
-        setLocked(true);
-        const left = INT_TO_VERDICT[Number(u.verdict_L) as 1 | 0 | -1];
-        const right = INT_TO_VERDICT[Number(u.verdict_R) as 1 | 0 | -1];
-        setFeedback({ Left: left, Right: right });
-      } else {
-        setLocked(false);
-      }
-    } catch (e) {
-      // swallow; keep UI functional
-    }
-  }, [activeStudyUID, modelName, modelVersion, resultTs, canQueryBackend, userId]);
+  useLayoutEffect(() => {
+    // Reset the form before paint when the identified result changes: point the
+    // identity ref at the current result (so late responses for the old one are
+    // rejected) and abort the in-flight fetch on cleanup.
+    statusIdentityRef.current = statusIdentity;
+    setFeedback({ Left: null, Right: null });
+    setLocked(false);
+    setIsEditMode(false);
+    setSubmitMessage('');
 
-  useEffect(() => {
-    checkSubmissionStatus();
-  }, [selectedUID, modelName, modelVersion, resultTs, activeStudyUID, checkSubmissionStatus]);
+    const controller = new AbortController();
+    checkSubmissionStatus(controller.signal);
+    return () => controller.abort();
+  }, [selectedUID, statusIdentity, checkSubmissionStatus]);
 
   // Compute markers for dropdown: whether current user has submitted feedback per AI result
   useEffect(() => {
@@ -326,35 +238,35 @@ const FeedbackPanel: React.FC = () => {
             const r = res || {};
             const name = r?.modelInfo?.name || null;
             const version = r?.modelInfo?.algorithmVersion || null;
-            const ts = r?.resultTs || (() => {
-              // Fallback: derive from display set
-              try {
-                const dss = servicesManager?.services?.displaySetService;
-                const ds = dss?.getDisplaySetByUID(m.displaySetInstanceUID);
-                return resultTsFromDisplaySet(ds);
-              } catch (_) {
-                return undefined;
-              }
-            })();
-            if (!name || !version || !ts) return [m.displaySetInstanceUID, false] as const;
-            const params = new URLSearchParams({
-              study_uid: String(activeStudyUID),
-              model_name: String(name),
-              model_version: String(version),
-              result_ts: String(ts),
-              includeUsers: 'true',
+            const ts =
+              r?.resultTs ||
+              (() => {
+                // Fallback: derive from display set
+                try {
+                  const ds = displaySetService?.getDisplaySetByUID(m.displaySetInstanceUID);
+                  return resultTsFromDisplaySet(ds);
+                } catch (_) {
+                  return undefined;
+                }
+              })();
+            if (!name || !version || !ts) {
+              return [m.displaySetInstanceUID, false] as const;
+            }
+            const data = await fetchFeedbackStatus({
+              studyUID: String(activeStudyUID),
+              modelName: String(name),
+              modelVersion: String(version),
+              resultTs: String(ts),
             });
-            const resp = await fetch(`${FEEDBACK_API_BASE}/feedback?${params.toString()}`);
-            if (!resp.ok) return [m.displaySetInstanceUID, false] as const;
-            const data = await resp.json();
-            const u = Array.isArray(data.users) ? data.users.find((x: any) => x.user_id === userId) : null;
-            return [m.displaySetInstanceUID, Boolean(u)] as const;
+            return [m.displaySetInstanceUID, Boolean(findUserVerdict(data, userId))] as const;
           } catch (_) {
             return [m.displaySetInstanceUID, false] as const;
           }
         })
       );
-      if (aborted) return;
+      if (aborted) {
+        return;
+      }
       const map: Record<string, boolean> = {};
       for (const [uid, has] of entries) {
         map[uid] = has;
@@ -364,17 +276,7 @@ const FeedbackPanel: React.FC = () => {
     return () => {
       aborted = true;
     };
-  }, [aiMeta, activeStudyUID, aiResultsService, servicesManager, userId]);
-
-  // Compute user markers only when a user is present
-  useEffect(() => {
-    if (!userId) {
-      setHasFeedbackByUID(prev => {
-        const empty: Record<string, boolean> = {};
-        return empty;
-      });
-    }
-  }, [userId]);
+  }, [aiMeta, activeStudyUID, aiResultsService, servicesManager, displaySetService, userId]);
 
   // --- Interaction handlers ---
   const handleDropdownChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -386,12 +288,20 @@ const FeedbackPanel: React.FC = () => {
   };
 
   const handlePrevNext = (direction: -1 | 1) => {
-    if (!aiMeta.length) return;
+    if (!aiMeta.length) {
+      return;
+    }
     const index = aiMeta.findIndex(m => m.displaySetInstanceUID === selectedUID);
-    if (index === -1) return;
+    if (index === -1) {
+      return;
+    }
     let nextIndex = index + direction;
-    if (nextIndex < 0) nextIndex = aiMeta.length - 1;
-    if (nextIndex >= aiMeta.length) nextIndex = 0;
+    if (nextIndex < 0) {
+      nextIndex = aiMeta.length - 1;
+    }
+    if (nextIndex >= aiMeta.length) {
+      nextIndex = 0;
+    }
     const nextUID = aiMeta[nextIndex].displaySetInstanceUID;
     aiResultsService.setSelectedAIResult(activeStudyUID, nextUID, servicesManager);
   };
@@ -404,25 +314,29 @@ const FeedbackPanel: React.FC = () => {
 
   const handleSubmit = async () => {
     setSubmitMessage('');
-    if (!bothSidesChosen || !canQueryBackend || !userId) return;
+    if (!bothSidesChosen || !resultKey || !userId) {
+      return;
+    }
+    // Identity being submitted; its outcome is applied only while it stays current.
+    const submitIdentity = statusIdentity;
     setIsSubmitting(true);
     try {
       const { uiNotificationService } = servicesManager.services || {};
       const payload = {
-        study_uid: activeStudyUID,
-        model_name: modelName,
-        model_version: modelVersion,
-        result_ts: resultTs,
+        study_uid: resultKey.studyUID,
+        model_name: resultKey.modelName,
+        model_version: resultKey.modelVersion,
+        result_ts: resultKey.resultTs,
         user_id: userId,
         verdict_L: VERDICT_TO_INT[feedback.Left as 'Agree' | 'Unsure' | 'Disagree'],
         verdict_R: VERDICT_TO_INT[feedback.Right as 'Agree' | 'Unsure' | 'Disagree'],
         edited: isEditMode ? true : undefined,
       };
-      const res = await fetch(`${FEEDBACK_API_BASE}/feedback/submit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      const res = await submitFeedback(payload);
+      // Drop the outcome if the selected result changed while the POST was in flight.
+      if (submitIdentity !== statusIdentityRef.current) {
+        return;
+      }
       if (res.status === 201) {
         setLocked(true);
         setIsEditMode(false);
@@ -439,35 +353,19 @@ const FeedbackPanel: React.FC = () => {
         await checkSubmissionStatus();
       } else {
         const text = await res.text();
+        // Re-check after the second await (reading the body).
+        if (submitIdentity !== statusIdentityRef.current) {
+          return;
+        }
         setSubmitMessage(text || 'Error while saving');
       }
     } catch (e: any) {
-      setSubmitMessage(String(e?.message || e) || 'Network error');
+      if (submitIdentity === statusIdentityRef.current) {
+        setSubmitMessage(String(e?.message || e) || 'Network error');
+      }
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  // Edit confirmation modal content
-  const EditConfirmModal: React.FC<{ hide: () => void; onConfirm: () => void }> = ({ hide, onConfirm }) => {
-    return (
-      <div className="text-foreground">
-        <div className="text-base font-medium mb-2">Edit feedback?</div>
-        <div className="text-sm mb-4">You can change your previously submitted feedback for this AI result.</div>
-        <div className="flex justify-end space-x-2">
-          <FooterAction.Secondary onClick={hide}>Cancel</FooterAction.Secondary>
-          <FooterAction.Primary
-            onClick={() => {
-              onConfirm();
-              hide();
-            }}
-            className="bg-primary-main"
-          >
-            Enable Editing
-          </FooterAction.Primary>
-        </div>
-      </div>
-    );
   };
 
   const handleStartEdit = useCallback(() => {
@@ -491,35 +389,29 @@ const FeedbackPanel: React.FC = () => {
 
   // Utility to format confidence nicely
   const formatConfidence = (v: number | null | undefined) => {
-    if (v === null || v === undefined) return '';
+    if (v === null || v === undefined) {
+      return '';
+    }
     return `${v.toFixed(1)}%`;
   };
 
   // --- Render helpers ---
   const renderNoUserPrompt = () => {
     return (
-      <div className="flex flex-col h-full p-3 overflow-y-auto text-white bg-black">
+      <div className="flex h-full flex-col overflow-y-auto bg-black p-3 text-white">
         <div className="mb-3 text-sm">Please enter your name to provide feedback.</div>
-        <div className="flex items-center space-x-2 mb-3">
+        <div className="mb-3 flex items-center space-x-2">
           <input
-            className="flex-1 bg-gray-800 border border-gray-700 rounded px-2 py-2 text-sm"
+            className="flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-2 text-sm"
             placeholder="Your name"
             value={nameInput}
             onChange={e => setNameInput(e.target.value)}
           />
           <button
-            className={`px-3 py-2 rounded ${nameInput.trim().length > 0 ? 'bg-primary-main hover:bg-primary-light' : 'bg-gray-700 cursor-not-allowed'}`}
+            className={`rounded px-3 py-2 ${nameInput.trim().length > 0 ? 'bg-primary-main hover:bg-primary-light' : 'cursor-not-allowed bg-gray-700'}`}
             disabled={nameInput.trim().length === 0}
             onClick={() => {
-              const trimmed = nameInput.trim();
-              if (trimmed.length === 0) return;
-              try {
-                window.localStorage.setItem(LOCAL_USER_KEY, trimmed);
-              } catch (_) {
-                // ignore storage errors
-              }
-              userAuthenticationService?.setUser?.({ id: trimmed, name: trimmed, source: 'local' });
-              setUserDisplayName(trimmed);
+              saveLocalUser(nameInput);
               setNameInput('');
             }}
             title={nameInput.trim().length === 0 ? 'Enter a valid name' : 'Save name'}
@@ -531,13 +423,18 @@ const FeedbackPanel: React.FC = () => {
     );
   };
   const renderSideSection = (side: 'Left' | 'Right') => {
-    if (!currentResult) return null;
+    if (!currentResult) {
+      return null;
+    }
     const classification = currentResult.classifications?.find((c: any) => c.side === side);
     const aiLabel = classification?.result || 'Unknown';
     return (
-      <div key={side} className="border rounded p-2 mb-3">
-        <div className="font-semibold mb-1">{side} Breast</div>
-        <div className="text-xs mb-2 text-gray-400">
+      <div
+        key={side}
+        className="mb-3 rounded border p-2"
+      >
+        <div className="mb-1 font-semibold">{side} Breast</div>
+        <div className="mb-2 text-xs text-gray-400">
           AI Prediction: {aiLabel} {formatConfidence(classification?.confidence)}
         </div>
         <div className="flex space-x-4">
@@ -570,11 +467,11 @@ const FeedbackPanel: React.FC = () => {
                     cursor: locked ? 'not-allowed' : 'pointer',
                   }}
                 />
-                <span className={`text-sm font-medium ${
-                  locked && isChecked ? 'text-blue-400' :
-                  locked ? 'text-gray-500' :
-                  'text-white'
-                }`}>
+                <span
+                  className={`text-sm font-medium ${
+                    locked && isChecked ? 'text-blue-400' : locked ? 'text-gray-500' : 'text-white'
+                  }`}
+                >
                   {opt}
                 </span>
               </label>
@@ -586,146 +483,155 @@ const FeedbackPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-full p-3 overflow-y-auto text-white bg-black">
+    <div className="flex h-full flex-col overflow-y-auto bg-black p-3 text-white">
       {!userId ? (
         renderNoUserPrompt()
       ) : (
         <>
-      {/* Dropdown for AI result selection */}
-      <div className="mb-2">
-        <select
-          value={selectedUID}
-          onChange={handleDropdownChange}
-          className="w-full bg-gray-800 border border-gray-700 rounded px-1 py-1 text-sm"
-        >
-          {aiMeta.map(m => {
-            const uid = m.displaySetInstanceUID;
-            const mark = hasFeedbackByUID[uid] ? ' ✓' : '';
-            return (
-              <option key={uid} value={uid}>
-                {(m.modelName || 'AI Result') + mark}
-              </option>
-            );
-          })}
-        </select>
-      </div>
-
-      {/* Navigation buttons */}
-      <div className="flex justify-between items-center mb-3 space-x-2">
-        <button
-          className="flex-1 px-2 py-1 bg-gray-700 rounded hover:bg-gray-600"
-          title="Previous AI Result"
-          onClick={() => handlePrevNext(-1)}
-        >
-          ◀ Prev
-        </button>
-        <button
-          className="flex-1 px-2 py-1 bg-gray-700 rounded hover:bg-gray-600"
-          title="Next AI Result"
-          onClick={() => handlePrevNext(1)}
-        >
-          Next ▶
-        </button>
-      </div>
-
-      {/* Active Study Indicator */}
-      {activeStudyUID && (
-        <div className="mb-3 p-2 bg-gray-800 rounded text-xs">
-          <div className="text-gray-400">Active Study:</div>
-          <div className="font-mono text-gray-300 break-all">{activeStudyUID}</div>
-        </div>
-      )}
-
-      {/* AI model info */}
-      {currentResult ? (
-        <div className="mb-4 text-sm">
-          <div>
-            <span className="font-medium">Model:</span> {currentResult.modelInfo?.name || 'N/A'}
+          {/* Dropdown for AI result selection */}
+          <div className="mb-2">
+            <select
+              value={selectedUID}
+              onChange={handleDropdownChange}
+              className="w-full rounded border border-gray-700 bg-gray-800 px-1 py-1 text-sm"
+            >
+              {aiMeta.map(m => {
+                const uid = m.displaySetInstanceUID;
+                const mark = hasFeedbackByUID[uid] ? ' ✓' : '';
+                return (
+                  <option
+                    key={uid}
+                    value={uid}
+                  >
+                    {(m.modelName || 'AI Result') + mark}
+                  </option>
+                );
+              })}
+            </select>
           </div>
-          <div>
-            <span className="font-medium">Version:</span> {modelVersion || 'N/A'}
-          </div>
-          <div>
-            <span className="font-medium">Result time:</span> {resultTs || 'Unknown'}
-          </div>
-        </div>
-      ) : (
-        <div className="text-sm text-gray-400">No AI result selected.</div>
-      )}
 
-      {/* Feedback per side */}
-      {['Left', 'Right'].map(side => renderSideSection(side as 'Left' | 'Right'))}
-
-      {/* Submit button and status */}
-      <div className="mt-auto space-y-2">
-        <button
-          className={`w-full py-2 rounded ${
-            locked
-              ? 'bg-gray-700 cursor-not-allowed'
-              : bothSidesChosen && canQueryBackend && !isSubmitting
-              ? 'bg-primary-main hover:bg-primary-light'
-              : 'bg-gray-700 cursor-not-allowed'
-          }`}
-          disabled={locked || !bothSidesChosen || !canQueryBackend || isSubmitting}
-          onClick={handleSubmit}
-          title={
-            !bothSidesChosen
-              ? 'Select a verdict for both sides'
-              : !canQueryBackend
-              ? 'Missing model/version/timestamp to identify this AI result'
-              : locked
-              ? 'Already submitted'
-              : ''
-          }
-        >
-          {locked ? 'Submitted' : isSubmitting ? 'Saving…' : 'Submit Feedback'}
-        </button>
-        {locked ? (
-          <div>
+          {/* Navigation buttons */}
+          <div className="mb-3 flex items-center justify-between space-x-2">
             <button
-              className={`w-full py-2 rounded ${
-                isSubmitting
-                  ? 'bg-gray-700 cursor-not-allowed'
-                  : 'bg-primary-main hover:bg-primary-light'
+              className="flex-1 rounded bg-gray-700 px-2 py-1 hover:bg-gray-600"
+              title="Previous AI Result"
+              onClick={() => handlePrevNext(-1)}
+            >
+              ◀ Prev
+            </button>
+            <button
+              className="flex-1 rounded bg-gray-700 px-2 py-1 hover:bg-gray-600"
+              title="Next AI Result"
+              onClick={() => handlePrevNext(1)}
+            >
+              Next ▶
+            </button>
+          </div>
+
+          {/* Active Study Indicator */}
+          {activeStudyUID && (
+            <div className="mb-3 rounded bg-gray-800 p-2 text-xs">
+              <div className="text-gray-400">Active Study:</div>
+              <div className="break-all font-mono text-gray-300">{activeStudyUID}</div>
+            </div>
+          )}
+
+          {/* AI model info */}
+          {currentResult ? (
+            <div className="mb-4 text-sm">
+              <div>
+                <span className="font-medium">Model:</span> {currentResult.modelInfo?.name || 'N/A'}
+              </div>
+              <div>
+                <span className="font-medium">Version:</span> {modelVersion || 'N/A'}
+              </div>
+              <div>
+                <span className="font-medium">Result time:</span> {resultTs || 'Unknown'}
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-gray-400">No AI result selected.</div>
+          )}
+
+          {/* Feedback per side */}
+          {['Left', 'Right'].map(side => renderSideSection(side as 'Left' | 'Right'))}
+
+          {/* Submit button and status */}
+          <div className="mt-auto space-y-2">
+            <button
+              className={`w-full rounded py-2 ${
+                locked
+                  ? 'cursor-not-allowed bg-gray-700'
+                  : bothSidesChosen && canQueryBackend && !isSubmitting
+                    ? 'bg-primary-main hover:bg-primary-light'
+                    : 'cursor-not-allowed bg-gray-700'
               }`}
-              disabled={isSubmitting}
-              onClick={handleStartEdit}
-              title={isSubmitting ? 'Please wait…' : 'Enable editing for this feedback'}
+              disabled={locked || !bothSidesChosen || !canQueryBackend || isSubmitting}
+              onClick={handleSubmit}
+              title={
+                !bothSidesChosen
+                  ? 'Select a verdict for both sides'
+                  : !canQueryBackend
+                    ? 'Missing model/version/timestamp to identify this AI result'
+                    : locked
+                      ? 'Already submitted'
+                      : ''
+              }
             >
-              Edit Feedback
+              {locked ? 'Submitted' : isSubmitting ? 'Saving…' : 'Submit Feedback'}
             </button>
-          </div>
-        ) : (
-          submitMessage && <div className="text-xs text-gray-300">{submitMessage}</div>
-        )}
+            {locked ? (
+              <div>
+                <button
+                  className={`w-full rounded py-2 ${
+                    isSubmitting
+                      ? 'cursor-not-allowed bg-gray-700'
+                      : 'bg-primary-main hover:bg-primary-light'
+                  }`}
+                  disabled={isSubmitting}
+                  onClick={handleStartEdit}
+                  title={isSubmitting ? 'Please wait…' : 'Enable editing for this feedback'}
+                >
+                  Edit Feedback
+                </button>
+              </div>
+            ) : (
+              submitMessage && <div className="text-xs text-gray-300">{submitMessage}</div>
+            )}
 
-        {/* Footer: Signed in user and Change user */}
-        <div className="pt-2 border-t border-gray-800">
-          <div className="flex items-center justify-between text-xs text-gray-300">
-            <div>Signed in as <span className="font-medium">{userId}</span></div>
-            <button
-              className="px-2 py-1 rounded bg-gray-700 hover:bg-gray-600"
-              onClick={() => {
-                try {
-                  const cfg = (window as any)?.config || {};
-                  const routerBasename = cfg?.routerBasename || '/';
-                  const configured = cfg?.oidc?.[0]?.post_logout_redirect_uri || '/';
-                  const absolute = new URL(configured, window.location.origin).href;
-                  const logoutPath = `${routerBasename}${routerBasename.endsWith('/') ? '' : '/'}logout`;
-                  window.location.assign(`${logoutPath}?redirect_uri=${encodeURIComponent(absolute)}`);
-                } catch (_) {
-                  // Fallback with routerBasename
-                  const routerBasename = ((window as any)?.config?.routerBasename || '/').replace(/\/$/, '');
-                  window.location.assign(`${routerBasename}/logout`);
-                }
-              }}
-              title="Change user"
-            >
-              Change user
-            </button>
+            {/* Footer: Signed in user and Change user */}
+            <div className="border-t border-gray-800 pt-2">
+              <div className="flex items-center justify-between text-xs text-gray-300">
+                <div>
+                  Signed in as <span className="font-medium">{userId}</span>
+                </div>
+                <button
+                  className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600"
+                  onClick={() => {
+                    try {
+                      const cfg = (window as any)?.config || {};
+                      const routerBasename = cfg?.routerBasename || '/';
+                      const configured = cfg?.oidc?.[0]?.post_logout_redirect_uri || '/';
+                      const absolute = new URL(configured, window.location.origin).href;
+                      const logoutPath = `${routerBasename}${routerBasename.endsWith('/') ? '' : '/'}logout`;
+                      window.location.assign(
+                        `${logoutPath}?redirect_uri=${encodeURIComponent(absolute)}`
+                      );
+                    } catch (_) {
+                      // Fallback with routerBasename
+                      const routerBasename = (
+                        (window as any)?.config?.routerBasename || '/'
+                      ).replace(/\/$/, '');
+                      window.location.assign(`${routerBasename}/logout`);
+                    }
+                  }}
+                  title="Change user"
+                >
+                  Change user
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
         </>
       )}
     </div>

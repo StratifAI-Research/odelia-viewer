@@ -36,7 +36,9 @@ describe('useStudyChangeDetector', () => {
 
   it('does not re-notify on a same-study rerender', () => {
     const { notifyStudyChange, config } = makeConfig();
-    const { rerender } = renderHook((c: any) => useStudyChangeDetector(c), { initialProps: config });
+    const { rerender } = renderHook((c: any) => useStudyChangeDetector(c), {
+      initialProps: config,
+    });
     const callsAfterMount = notifyStudyChange.mock.calls.length;
     rerender(config);
     rerender(config);
@@ -45,7 +47,9 @@ describe('useStudyChangeDetector', () => {
 
   it('notifies again only when the active study id changes', () => {
     const { notifyStudyChange, config } = makeConfig();
-    const { rerender } = renderHook((c: any) => useStudyChangeDetector(c), { initialProps: config });
+    const { rerender } = renderHook((c: any) => useStudyChangeDetector(c), {
+      initialProps: config,
+    });
     notifyStudyChange.mockClear();
     // Point active viewport at a display set that resolves to a different study.
     const nextViewports = new Map([['v1', { displaySetInstanceUIDs: ['dsOther'] }]]);

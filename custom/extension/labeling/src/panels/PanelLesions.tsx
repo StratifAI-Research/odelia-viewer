@@ -3,10 +3,10 @@ import PropTypes from 'prop-types';
 import { ServicesManager } from '@ohif/core';
 import { MeasurementTable, Dialog, Input, useViewportGrid } from '@ohif/ui';
 import ActionButtons from './ActionButtons';
-import CSVImporter from './CSVImporter'
+import CSVImporter from './CSVImporter';
 
 import LabelingTable from '../ui/LabelingTable';
-import Config from "../utils/config";
+import Config from '../utils/config';
 import { getPanelConfig } from '../utils/panelConfig';
 import { useMeasurementSubscription } from '../hooks/useMeasurementSubscription';
 
@@ -21,19 +21,16 @@ export default function PanelLesionTable({
 }) {
   const [viewportGrid, viewportGridService] = useViewportGrid();
   const { activeViewportIndex, viewports } = viewportGrid;
-  const {
-    measurementService,
-    uiDialogService,
-    uiNotificationService,
-    displaySetService,
-  } = (servicesManager as any).services;
+  const { measurementService, uiDialogService, uiNotificationService, displaySetService } = (
+    servicesManager as any
+  ).services;
   const [displayMeasurements, setDisplayMeasurements] = useMeasurementSubscription(
     measurementService,
     _getMappedMeasurements
   );
 
-  let totalConfig: Config = require('../utils/config.json');
-  let config = getPanelConfig(totalConfig, name)
+  const totalConfig: Config = require('../utils/config.json');
+  const config = getPanelConfig(totalConfig, name);
 
   async function exportReport() {
     const measurements = measurementService.getMeasurements();
@@ -56,11 +53,11 @@ export default function PanelLesionTable({
     // jumpToImage({ id, isActive });
 
     // Defaulted so the Enter-key handler can call this with no args without
-    // crashing on `action.id` (previously threw); Enter then just dismisses.
+    // crashing on `action.id`; Enter then just dismisses.
     const onSubmitHandler = ({ action }: { action?: any } = {}) => {
       switch (action?.id) {
         case 'delete': {
-          measurementService.remove(uid)
+          measurementService.remove(uid);
         }
       }
       uiDialogService.dismiss({ id: 'enter-annotation' });
@@ -78,10 +75,10 @@ export default function PanelLesionTable({
         body: ({ value, setValue }) => {
           const onMeasurementItemEditHandler = (uid, label, label_value) => {
             const measurement = measurementService.getMeasurement(uid);
-            measurement.label_data[label] = label_value
+            measurement.label_data[label] = label_value;
 
-            measurement.label = "Lesion annotated"
-            measurementService.update(uid, measurement)
+            measurement.label = 'Lesion annotated';
+            measurementService.update(uid, measurement);
           };
 
           const onKeyPressHandler = event => {
@@ -90,9 +87,9 @@ export default function PanelLesionTable({
             }
           };
           return (
-            <div className="p-4 bg-primary-dark">
+            <div className="bg-primary-dark p-4">
               <LabelingTable
-                title='Lesion annotation'
+                title="Lesion annotation"
                 measurement={measurement}
                 config={config}
                 onChange={onMeasurementItemEditHandler}
@@ -124,7 +121,7 @@ export default function PanelLesionTable({
   return (
     <>
       <div
-        className="overflow-x-hidden overflow-y-auto ohif-scrollbar"
+        className="ohif-scrollbar overflow-y-auto overflow-x-hidden"
         data-cy={'measurements-panel'}
       >
         <MeasurementTable
@@ -137,8 +134,8 @@ export default function PanelLesionTable({
       </div>
       <div className="flex justify-center p-4">
         <CSVImporter
-          onClick={(csvData) => {
-            importCSVReport({ measurementService, extensionManager }, csvData)
+          onClick={csvData => {
+            importCSVReport({ measurementService, extensionManager }, csvData);
           }}
         />
         <ActionButtons
@@ -146,7 +143,6 @@ export default function PanelLesionTable({
           name="Export CSV"
         />
       </div>
-
     </>
   );
 }
@@ -157,7 +153,7 @@ PanelLesionTable.propTypes = {
 
 function _getMappedMeasurements(measurementService) {
   const measurements = measurementService.getMeasurements();
-  const filteredMeasurements = measurements.filter((element) => element.toolName !== "ODELIALabel")
+  const filteredMeasurements = measurements.filter(element => element.toolName !== 'ODELIALabel');
 
   const mappedMeasurements = filteredMeasurements.map((m, index) =>
     _mapMeasurementToDisplay(m, index, measurementService.VALUE_TYPES)
@@ -185,18 +181,11 @@ function _mapMeasurementToDisplay(measurement, index, types) {
 
   const firstSite = findingSites?.[0];
   const label = baseLabel || finding?.text || firstSite?.text || 'Lesion not annotated';
-  let displayText = baseDisplayText || [];
-  if (findingSites) {
-    const siteText: any[] = [];
-    findingSites.forEach(site => {
-      if (site?.text !== label) siteText.push(site.text);
-    });
-    displayText = [...siteText, ...displayText];
-  }
-  if (finding && finding?.text !== label) {
-    displayText = [finding.text, ...displayText];
-  }
-  displayText = []
+  // displayText is intentionally empty: the site/finding text was computed here
+  // and then unconditionally discarded (`displayText = []`), so the computation
+  // was dead code. Preserve the shipped behavior (empty displayText) without the
+  // dead branch. baseDisplayText/finding/findingSites are still returned below.
+  const displayText: any[] = [];
   return {
     uid,
     label,
