@@ -101,7 +101,7 @@ function modeFactory() {
 
       // Create tool group if missing and add tools. The group may already exist
       // (benign on re-entry); log the actual error so a genuine tool/config
-      // failure isn't hidden behind an "already exists" assumption (MODE-L8).
+      // failure isn't hidden behind an "already exists" assumption.
       try {
         toolGroupService.createToolGroupAndAddTools('default', tools);
       } catch (err) {
@@ -145,8 +145,10 @@ function modeFactory() {
       series: [],
     },
     /**
-     * A boolean return value that indicates whether the mode is valid for the
-     * modalities of the selected studies. This mode accepts any study.
+     * Whether the mode is valid for the modalities of the selected studies.
+     * Must return `{ valid, description? }` — WorkList destructures `.valid`,
+     * so a bare boolean reads as `undefined` and disables the mode. This mode
+     * accepts any study.
      */
     isValidMode: ({ modalities }) => {
       return { valid: true };
