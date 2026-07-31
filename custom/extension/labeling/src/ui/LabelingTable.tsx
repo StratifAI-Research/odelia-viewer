@@ -18,8 +18,8 @@ const LabelingTable = ({ title, measurement, config, onChange }: LabelingTablePr
 
   return (
     <div>
-      <div className="bg-secondary-main flex justify-between px-2 py-1">
-        <span className="text-base font-bold uppercase tracking-widest text-white">{title}</span>
+      <div className="bg-popover flex justify-between px-2 py-1">
+        <span className="text-base font-bold uppercase tracking-widest text-foreground">{title}</span>
       </div>
       <div className="ohif-scrollbar max-h-64 overflow-y-auto overflow-x-hidden">
         {!!measurement.label_data &&

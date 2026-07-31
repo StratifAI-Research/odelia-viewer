@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { format, isValid, parse } from 'date-fns';
 import { Calendar as CalendarIcon } from 'lucide-react';
-import { Calendar, Popover, PopoverContent, PopoverTrigger, cn } from '@ohif/ui-next';
+import { Calendar, Input, Popover, PopoverContent, PopoverTrigger } from '@ohif/ui-next';
 
 const DICOM_DATE = 'yyyyMMdd';
 const INPUT_DATE = 'yyyy-MM-dd';
@@ -84,16 +84,13 @@ export default function DatePicker({
           {!inputValue && (
             <CalendarIcon className="text-primary pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2" />
           )}
-          <input
+          <Input
             id={id || undefined}
             type="text"
             placeholder={placeholder}
             autoComplete="off"
             value={inputValue}
             onChange={onInputChange}
-            className={cn(
-              'border-input focus:border-ring hover:text-foreground placeholder:text-muted-foreground bg-background hover:bg-background h-7 w-full justify-start rounded border py-1 pl-1.5 pr-0.5 text-left text-base font-normal'
-            )}
             data-cy="input-labeling-date"
           />
         </div>

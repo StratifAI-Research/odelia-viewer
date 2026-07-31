@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@ohif/ui-next';
 
 export type LabelingOptionsProps = {
   label: string;
@@ -21,38 +22,39 @@ const LabelingOptions = ({
     setSelectedOption(label_value);
   }, [label_value]);
 
-  const onChangeValueHandler = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    const newValue = event.target.value;
+  const onChangeValueHandler = (newValue: string) => {
     setSelectedOption(newValue);
-    event.stopPropagation();
     onChange(label, newValue);
   };
 
   return (
     <div
-      className="group relative flex cursor-pointer items-stretch border border-transparent bg-black outline-none transition duration-300"
+      className="bg-background group relative flex cursor-pointer items-stretch border border-transparent outline-none transition duration-300"
       data-cy="measurement-item"
     >
       <div className="relative flex w-full flex-col p-1">
         <div className="mb-1 ml-2 flex items-center">
-          <div className="text-primary-light flex flex-1 items-center text-base">{label}</div>
+          <div className="text-highlight flex flex-1 items-center text-base">{label}</div>
         </div>
-        <div className="ml-3 flex items-center">
-          <div className="text-primary-light flex flex-1 items-center text-base">
-            <select
-              onChange={onChangeValueHandler}
-              value={selectedOption}
-            >
+        <div className="ml-3 mr-2 flex items-center">
+          <Select
+            value={selectedOption}
+            onValueChange={onChangeValueHandler}
+          >
+            <SelectTrigger aria-label={label}>
+              <SelectValue placeholder="Select…" />
+            </SelectTrigger>
+            <SelectContent>
               {label_options.map(option => (
-                <option
+                <SelectItem
                   key={option}
                   value={option}
                 >
                   {option}
-                </option>
+                </SelectItem>
               ))}
-            </select>
-          </div>
+            </SelectContent>
+          </Select>
         </div>
       </div>
     </div>

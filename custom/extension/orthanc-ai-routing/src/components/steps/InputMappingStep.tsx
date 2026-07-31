@@ -1,5 +1,13 @@
 import React, { useEffect } from 'react';
-import { Button } from '@ohif/ui-next';
+import {
+  Button,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@ohif/ui-next';
 import type { InputConfiguration } from '../../services/OrthancAIService';
 import type { SeriesInfo } from '../SeriesSelector';
 
@@ -41,8 +49,8 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-3 pt-4 pb-4">
-        <div className="bg-secondary-dark space-y-1 rounded p-3 text-sm">
-          <div className="font-medium text-white">{selectedConfig.name}</div>
+        <div className="bg-muted space-y-1 rounded p-3 text-sm">
+          <div className="text-foreground font-medium">{selectedConfig.name}</div>
           {selectedConfig.description && (
             <div className="text-muted-foreground text-xs">{selectedConfig.description}</div>
           )}
@@ -53,12 +61,13 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
             <label className="text-muted-foreground text-xs font-medium">
               Map Series to Inputs
             </label>
-            <button
+            <Button
+              variant="link"
+              size="sm"
               onClick={() => onAutoDetect(selectedConfig, availableSeries)}
-              className="text-primary-light text-xs hover:underline"
             >
               Auto-detect
-            </button>
+            </Button>
           </div>
 
           <div className="space-y-3">
@@ -70,25 +79,28 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
 
               return (
                 <div key={input.key}>
-                  <label className="mb-1 block text-xs text-white">
+                  <Label className="mb-1 block text-xs">
                     {input.label}
                     {input.required && <span className="ml-1 text-red-400">*</span>}
-                  </label>
-                  <select
+                  </Label>
+                  <Select
                     value={currentValue}
-                    onChange={e => onSetInputSeries(input.key, e.target.value || null)}
-                    className="bg-secondary-dark border-secondary-light focus:border-primary-light w-full rounded border px-2 py-1.5 text-xs text-white focus:outline-none"
+                    onValueChange={value => onSetInputSeries(input.key, value || null)}
                   >
-                    <option value="">-- Select series --</option>
-                    {filteredSeries.map(s => (
-                      <option
-                        key={s.SeriesInstanceUID}
-                        value={s.SeriesInstanceUID}
-                      >
-                        {formatSeriesOption(s)}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger aria-label={input.label}>
+                      <SelectValue placeholder="Select series…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredSeries.map(s => (
+                        <SelectItem
+                          key={s.SeriesInstanceUID}
+                          value={s.SeriesInstanceUID}
+                        >
+                          {formatSeriesOption(s)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   {input.required && !mapping[input.key] && (
                     <div className="mt-0.5 text-xs text-yellow-400">Required</div>
                   )}
@@ -99,7 +111,7 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
         </div>
       </div>
 
-      <div className="border-secondary-light flex-shrink-0 space-y-2 border-t bg-black px-3 py-3">
+      <div className="border-input bg-background flex-shrink-0 space-y-2 border-t px-3 py-3">
         <Button
           onClick={onNext}
           disabled={!isValid}

@@ -203,8 +203,6 @@ const AITrackedViewportInner = ({
         onElementEnabled: composeCallbacks((props as any).onElementEnabled, onElementEnabled),
         onElementDisabled: composeCallbacks((props as any).onElementDisabled, onElementDisabled),
       })}
-
-      {/* Heatmap toggle is now injected via ViewportActionCornersService for better alignment */}
     </div>
   );
 };

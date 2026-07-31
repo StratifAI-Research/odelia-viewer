@@ -73,10 +73,10 @@ export const ProgressStep: React.FC<ProgressStepProps> = ({
           {!error && (
             <>
               <div className="text-center">
-                <div className="mb-2 text-lg font-medium text-white">{getStatusTitle()}</div>
+                <div className="mb-2 text-lg font-medium text-foreground">{getStatusTitle()}</div>
               </div>
 
-              <div className="border-secondary-light bg-secondary-dark rounded border p-4">
+              <div className="border-input bg-muted rounded border p-4">
                 <ProgressLoadingBar progress={progress} />
                 <div className="text-muted-foreground mt-2 text-right text-xs">{progress}%</div>
               </div>
@@ -91,7 +91,7 @@ export const ProgressStep: React.FC<ProgressStepProps> = ({
         </div>
       </div>
 
-      <div className="border-secondary-light flex-shrink-0 border-t p-4">
+      <div className="border-input flex-shrink-0 border-t p-4">
         {canReset && (
           <Button
             onClick={onReset}

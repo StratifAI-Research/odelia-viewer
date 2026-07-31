@@ -23,7 +23,6 @@ export const EditConfirmModal: React.FC<{ hide: () => void; onConfirm: () => voi
             onConfirm();
             hide();
           }}
-          className="bg-primary-main"
         >
           Enable Editing
         </FooterAction.Primary>

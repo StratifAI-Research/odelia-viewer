@@ -85,17 +85,17 @@ export const ModelSelectionStep: React.FC<ModelSelectionStepProps> = ({
         </div>
 
         {isLoadingManifest && (
-          <div className="bg-secondary-dark text-muted-foreground rounded p-3 text-xs">
+          <div className="bg-muted text-muted-foreground rounded p-3 text-xs">
             <div className="flex items-center space-x-2">
-              <div className="border-primary-light h-4 w-4 animate-spin rounded-full border-2 border-t-transparent" />
+              <div className="border-primary h-4 w-4 animate-spin rounded-full border-2 border-t-transparent" />
               <span>Fetching model configuration...</span>
             </div>
           </div>
         )}
 
         {manifestChecked && manifest && (
-          <div className="bg-secondary-dark space-y-2 rounded p-3 text-sm">
-            <div className="font-medium text-white">{manifest.model_name}</div>
+          <div className="bg-muted space-y-2 rounded p-3 text-sm">
+            <div className="font-medium text-foreground">{manifest.model_name}</div>
             <div className="text-muted-foreground space-y-1 text-xs">
               <div>Version: {manifest.version}</div>
               <div>Input modes: {manifest.input_configurations.map(c => c.name).join(', ')}</div>
@@ -104,7 +104,7 @@ export const ModelSelectionStep: React.FC<ModelSelectionStepProps> = ({
         )}
 
         {manifestChecked && !manifest && (
-          <div className="bg-secondary-dark space-y-1 rounded p-3 text-sm">
+          <div className="bg-muted space-y-1 rounded p-3 text-sm">
             <div className="text-muted-foreground text-xs">
               No input specification available for this model.
             </div>
@@ -112,7 +112,7 @@ export const ModelSelectionStep: React.FC<ModelSelectionStepProps> = ({
         )}
       </div>
 
-      <div className="border-secondary-light flex-shrink-0 border-t bg-black px-3 py-3">
+      <div className="border-input flex-shrink-0 border-t bg-background px-3 py-3">
         <Button
           onClick={onNext}
           disabled={!canProceed}

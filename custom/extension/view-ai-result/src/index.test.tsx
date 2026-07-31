@@ -37,7 +37,9 @@ describe('view-ai-result toolbar module', () => {
     const Component = heatmapToggleComponent();
     render(<Component viewportId="vp-1" />);
 
-    expect(screen.getByText('🔥 Heatmap Available')).toBeTruthy();
+    expect((screen.getByRole('button', { name: 'Heatmap' }) as HTMLButtonElement).disabled).toBe(
+      false
+    );
   });
 
   it('renders nothing in viewports that have no AI result', () => {

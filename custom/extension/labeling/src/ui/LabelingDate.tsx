@@ -24,12 +24,12 @@ const LabelingDate = ({ label, label_value = '', onChange }: LabelingDateProps) 
 
   return (
     <div
-      className="group relative flex cursor-pointer items-stretch border border-transparent bg-black outline-none transition duration-300"
+      className="group relative flex cursor-pointer items-stretch border border-transparent bg-background outline-none transition duration-300"
       data-cy="measurement-item"
     >
       <div className="relative flex w-full flex-col p-1">
         <div className="mb-1 ml-2 flex items-center">
-          <div className="text-primary-light flex flex-1 items-center text-base">{label}</div>
+          <div className="text-highlight flex flex-1 items-center text-base">{label}</div>
         </div>
         <div className="ml-3 flex items-center">
           <DatePicker

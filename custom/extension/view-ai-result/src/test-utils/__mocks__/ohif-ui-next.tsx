@@ -7,6 +7,65 @@ export const FooterAction = Object.assign(Pass('footer-action'), {
   Left: Pass('footer-action-left'),
 });
 export const Separator = () => <hr data-testid="separator" />;
+
+export const Button = ({ children, ...rest }: any) => <button {...rest}>{children}</button>;
+export const Input = (props: any) => <input {...props} />;
+export const Label = ({ children, ...rest }: any) => <label {...rest}>{children}</label>;
+
+// The real Select is a Radix listbox; collapsing it to a native <select> keeps
+// the accessible role ("combobox") and the value semantics that tests drive,
+// without pulling the popper/portal machinery into jsdom.
+const SELECT_ITEM = 'ui-next-select-item';
+const SELECT_VALUE = 'ui-next-select-value';
+
+function collect(node: React.ReactNode, displayName: string, out: any[] = []): any[] {
+  React.Children.forEach(node, (child: any) => {
+    if (!React.isValidElement(child)) {
+      return;
+    }
+    if ((child.type as any)?.displayName === displayName) {
+      out.push(child);
+    } else {
+      collect((child.props as any)?.children, displayName, out);
+    }
+  });
+  return out;
+}
+
+export const Select = ({ value, onValueChange, disabled, children }: any) => {
+  const placeholder = collect(children, SELECT_VALUE)[0]?.props?.placeholder;
+  return (
+    <select
+      value={value ?? ''}
+      disabled={disabled}
+      onChange={e => onValueChange?.(e.target.value)}
+    >
+      {placeholder !== undefined && (
+        <option
+          value=""
+          disabled
+        >
+          {placeholder}
+        </option>
+      )}
+      {collect(children, SELECT_ITEM).map((item: any) => (
+        <option
+          key={item.props.value}
+          value={item.props.value}
+        >
+          {item.props.children}
+        </option>
+      ))}
+    </select>
+  );
+};
+
+export const SelectTrigger = ({ children }: any) => <>{children}</>;
+export const SelectContent = ({ children }: any) => <>{children}</>;
+export const SelectItem = ({ children }: any) => <>{children}</>;
+SelectItem.displayName = SELECT_ITEM;
+export const SelectValue = () => null;
+SelectValue.displayName = SELECT_VALUE;
 // StudyBrowser stub: surfaces tab names + thumbnail UIDs as clickable elements so
 // tests can drive onClickTab / onClickThumbnail / onDoubleClickThumbnail handlers.
 export const StudyBrowser = (props: any) => {
@@ -64,6 +123,34 @@ export const AccordionItem = Pass('accordion-item');
 export const AccordionTrigger = Pass('accordion-trigger');
 export const AccordionContent = Pass('accordion-content');
 export const Icons = new Proxy({}, { get: () => () => <span data-testid="icon" /> });
+// Mirrors the real ToolButton's DOM contract: the tool state lives on the
+// tooltip-trigger span (data-cy/data-tool/data-active/data-toggled) and the
+// click target is a plain <button> that is inert while disabled.
+export const ToolButton = ({
+  id,
+  label,
+  isActive = false,
+  isToggled = false,
+  disabled = false,
+  onInteraction,
+  children,
+}: any) => (
+  <span
+    data-testid={id}
+    data-cy={id}
+    data-tool={id}
+    data-active={String(isActive)}
+    data-toggled={String(isToggled)}
+  >
+    <button
+      aria-label={label}
+      disabled={disabled}
+      onClick={() => !disabled && onInteraction?.({ itemId: id })}
+    >
+      {children}
+    </button>
+  </span>
+);
 // 3.13 moved these context hooks out of @ohif/ui into @ohif/ui-next.
 export const useImageViewer = () => ({ StudyInstanceUIDs: [] as string[] });
 export const useUserAuthentication = () => [

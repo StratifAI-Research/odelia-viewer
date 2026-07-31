@@ -1,5 +1,5 @@
 import React from 'react';
-import HeatmapToggle from './HeatmapToggle';
+import { Icons, ToolButton } from '@ohif/ui-next';
 import { useViewportAIState } from '../stores/useAIViewportStore';
 
 /**
@@ -10,6 +10,10 @@ import { useViewportAIState } from '../stores/useAIViewportStore';
  * this button back to the viewport's AI state. The button renders nothing
  * until the viewport publishes a result, so viewports without AI output keep
  * the stock corner contents.
+ *
+ * `ToolButton` is the same component the stock corner tools use, so the
+ * hover/toggled/disabled treatment and the tooltip match the rest of the
+ * viewport chrome instead of being hand-rolled.
  */
 export function HeatmapToggleAction({ viewportId }: { viewportId?: string }) {
   const aiState = useViewportAIState(viewportId ?? '');
@@ -20,37 +24,20 @@ export function HeatmapToggleAction({ viewportId }: { viewportId?: string }) {
 
   const { hasHeatmap, isHeatmapActive, onToggleHeatmap } = aiState;
   const disabled = !hasHeatmap || !onToggleHeatmap;
-  const toggle = () => !disabled && onToggleHeatmap?.();
-  const title = disabled
-    ? 'No heatmap available for this AI result'
-    : isHeatmapActive
-      ? 'Hide heatmap'
-      : 'Show heatmap';
 
-  // The icon and the label each carry their own handler — a handler on the
-  // wrapper as well would fire twice for a click on the icon (once directly,
-  // once from the bubbled button click) and cancel itself out.
   return (
-    <div
-      className="flex items-center gap-1 text-xs"
-      title={title}
-      data-cy="ai-heatmap-toggle"
+    <ToolButton
+      id="ai-heatmap-toggle"
+      size="small"
+      label="Heatmap"
+      tooltip={isHeatmapActive ? 'Hide the AI heatmap' : 'Show the AI heatmap'}
+      isToggled={isHeatmapActive && !disabled}
+      disabled={disabled}
+      disabledText="No heatmap available for this AI result"
+      onInteraction={() => onToggleHeatmap?.()}
     >
-      <HeatmapToggle
-        onToggle={toggle}
-        isActive={isHeatmapActive && !disabled}
-        className="h-6 w-6 shadow-none"
-        disabled={disabled}
-      />
-      <span
-        className={
-          disabled ? 'cursor-not-allowed select-none text-gray-500' : 'cursor-pointer select-none'
-        }
-        onClick={disabled ? undefined : toggle}
-      >
-        {disabled ? '🔥 No Heatmap' : isHeatmapActive ? '🔥 Heatmap ON' : '🔥 Heatmap Available'}
-      </span>
-    </div>
+      <Icons.ToolFusionColor className="h-6 w-6" />
+    </ToolButton>
   );
 }
 

@@ -11,6 +11,10 @@ import AIRoutingPanel from './AIRoutingPanel';
 // over it; a stable grid reference per test avoids effect churn / act warnings.
 const mockViewport: any = {};
 jest.mock('@ohif/ui-next', () => ({
+  // moduleNameMapper already points '@ohif/ui-next' at the shared stub, so
+  // requireActual returns it — keep its Button/Icons/... and override only the
+  // two context hooks this suite needs to drive.
+  ...jest.requireActual('@ohif/ui-next'),
   useImageViewer: () => ({ StudyInstanceUIDs: mockViewport.studyUIDs }),
   useViewportGrid: () => mockViewport.grid,
 }));
@@ -171,7 +175,7 @@ describe('AIRoutingPanel — rendering & navigation', () => {
     expect(screen.queryByTestId('endpoint-config')).toBeNull();
     fireEvent.click(screen.getByTitle('Endpoint Settings'));
     expect(screen.getByTestId('endpoint-config')).toBeTruthy();
-    fireEvent.click(screen.getByText('✕'));
+    fireEvent.click(screen.getByLabelText('Close endpoint settings'));
     expect(screen.queryByTestId('endpoint-config')).toBeNull();
   });
 });

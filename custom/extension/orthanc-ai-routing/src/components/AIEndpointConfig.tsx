@@ -7,6 +7,13 @@ import {
   DialogFooter,
   DialogTitle,
   DialogDescription,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '@ohif/ui-next';
 import {
   AI_ENDPOINTS_STORAGE_KEY,
@@ -246,31 +253,25 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
         <>
           <div className="mb-2 flex flex-col">
             <div className="mb-2 flex items-center">
-              <select
-                // Both call sites sit on a dark panel; without an explicit
-                // colour the native control renders as a bright white slab.
-                className="flex-grow rounded border border-gray-700 bg-gray-800 p-2 text-white"
+              <Select
                 value={currentEndpoint?.id || ''}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                  handleEndpointSelect(e.target.value)
-                }
+                onValueChange={handleEndpointSelect}
                 disabled={isLoading || endpoints.length === 0}
               >
-                <option
-                  value=""
-                  disabled
-                >
-                  {isLoading ? 'Loading...' : 'Select AI endpoint'}
-                </option>
-                {endpoints.map(endpoint => (
-                  <option
-                    key={endpoint.id}
-                    value={endpoint.id}
-                  >
-                    {endpoint.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger aria-label="AI endpoint">
+                  <SelectValue placeholder={isLoading ? 'Loading…' : 'Select AI endpoint'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {endpoints.map(endpoint => (
+                    <SelectItem
+                      key={endpoint.id}
+                      value={endpoint.id}
+                    >
+                      {endpoint.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             {!compact && (
               <>
@@ -300,41 +301,37 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
           </div>
         </>
       ) : (
-        // Light card: the labels below are `text-gray-700` and the native
-        // inputs are white, so the surface has to be light too. `gray-50` is
-        // not in OHIF's palette (it starts at 100) — that class emitted no rule
-        // at all, which left dark labels on a dark panel.
-        <div className="rounded border bg-gray-100 p-4">
-          <h4 className="mb-3 text-sm font-medium">
+        <div className="border-input bg-popover rounded border p-3">
+          <h4 className="text-foreground mb-3 text-base font-medium">
             {editingEndpoint ? 'Edit AI Endpoint' : 'Add AI Endpoint'}
           </h4>
 
-          <div className="mb-3">
-            <label className="mb-1 block text-sm font-medium text-gray-700">Name *</label>
-            <input
-              type="text"
+          <div className="mb-3 flex flex-col space-y-1">
+            <Label htmlFor="ai-endpoint-name">Name *</Label>
+            <Input
+              id="ai-endpoint-name"
               value={formData.name}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 setFormData({ ...formData, name: e.target.value })
               }
               placeholder="AI Server Name"
-              className={`w-full rounded border p-2 ${errors.name ? 'border-red-500' : ''}`}
+              className={errors.name ? 'border-red-500' : ''}
             />
-            {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
+            {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
           </div>
 
-          <div className="mb-3">
-            <label className="mb-1 block text-sm font-medium text-gray-700">URL *</label>
-            <input
-              type="text"
+          <div className="mb-3 flex flex-col space-y-1">
+            <Label htmlFor="ai-endpoint-url">URL *</Label>
+            <Input
+              id="ai-endpoint-url"
               value={formData.url}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 setFormData({ ...formData, url: e.target.value })
               }
               placeholder="http://ai-server:8042"
-              className={`w-full rounded border p-2 ${errors.url ? 'border-red-500' : ''}`}
+              className={errors.url ? 'border-red-500' : ''}
             />
-            {errors.url && <p className="mt-1 text-xs text-red-500">{errors.url}</p>}
+            {errors.url && <p className="text-xs text-red-500">{errors.url}</p>}
           </div>
 
           <div className="flex justify-end space-x-2">
@@ -364,15 +361,20 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Confirm Delete</DialogTitle>
-                <DialogDescription>
-                  Are you sure you want to delete the endpoint &quot;{editingEndpoint?.name}&quot;? This
-                  action cannot be undone.
+                {/*
+                  DialogDescription carries no colour of its own and the dialog is
+                  portalled onto <body>, which only sets a background — so without
+                  an explicit token it inherits the browser default (black) and is
+                  unreadable on the dark `bg-muted` card.
+                */}
+                <DialogDescription className="text-foreground">
+                  Are you sure you want to delete the endpoint &quot;{editingEndpoint?.name}&quot;?
+                  This action cannot be undone.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
                 <Button
                   onClick={() => setShowDeleteConfirmation(false)}
-                  className="mr-2"
                   variant="secondary"
                 >
                   Cancel

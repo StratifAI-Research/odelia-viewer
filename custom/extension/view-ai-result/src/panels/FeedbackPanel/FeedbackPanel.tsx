@@ -1,6 +1,17 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useSystem } from '@ohif/core';
-import { useImageViewer, useUserAuthentication, useViewportGrid } from '@ohif/ui-next';
+import {
+  Button,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  useImageViewer,
+  useUserAuthentication,
+  useViewportGrid,
+} from '@ohif/ui-next';
 import { useActiveStudyUID } from '../../hooks/useActiveStudyUID';
 import { resultTsFromDisplaySet } from '../../utils/dicomDateTime';
 import { fetchFeedbackStatus, findUserVerdict, submitFeedback } from './feedbackApi';
@@ -283,8 +294,7 @@ const FeedbackPanel: React.FC = () => {
   }, [aiMeta, activeStudyUID, aiResultsService, servicesManager, displaySetService, userId]);
 
   // --- Interaction handlers ---
-  const handleDropdownChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const uid = e.target.value;
+  const handleResultSelected = (uid: string) => {
     setSelectedUID(uid);
     if (aiResultsService && activeStudyUID) {
       aiResultsService.setSelectedAIResult(activeStudyUID, uid, servicesManager);
@@ -404,19 +414,18 @@ const FeedbackPanel: React.FC = () => {
   // --- Render helpers ---
   const renderNoUserPrompt = () => {
     return (
-      <div className="flex h-full flex-col overflow-y-auto bg-black p-3 text-white">
+      <div className="bg-background text-foreground flex h-full flex-col overflow-y-auto p-3">
         <div className="mb-3 text-sm">Please enter your name to provide feedback.</div>
         <div className="mb-3 flex items-center space-x-2">
-          <input
+          <Input
             // min-w-0: a flex item will not shrink below its intrinsic width by
             // default, which pushed Save off the edge of this narrow panel.
-            className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-2 text-sm"
+            className="min-w-0 flex-1"
             placeholder="Your name"
             value={nameInput}
             onChange={e => setNameInput(e.target.value)}
           />
-          <button
-            className={`rounded px-3 py-2 ${nameInput.trim().length > 0 ? 'bg-primary-main hover:bg-primary-light' : 'cursor-not-allowed bg-gray-700'}`}
+          <Button
             disabled={nameInput.trim().length === 0}
             onClick={() => {
               saveLocalUser(nameInput);
@@ -425,7 +434,7 @@ const FeedbackPanel: React.FC = () => {
             title={nameInput.trim().length === 0 ? 'Enter a valid name' : 'Save name'}
           >
             Save
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -439,10 +448,10 @@ const FeedbackPanel: React.FC = () => {
     return (
       <div
         key={side}
-        className="mb-3 rounded border p-2"
+        className="border-input mb-3 rounded border p-2"
       >
         <div className="mb-1 font-semibold">{side} Breast</div>
-        <div className="mb-2 text-xs text-gray-400">
+        <div className="text-muted-foreground mb-2 text-xs">
           AI Prediction: {aiLabel} {formatConfidence(classification?.confidence)}
         </div>
         <div className="flex space-x-4">
@@ -462,22 +471,18 @@ const FeedbackPanel: React.FC = () => {
                   checked={isChecked}
                   onChange={() => setFeedbackValue(side, opt)}
                   disabled={locked}
-                  style={{
-                    accentColor: locked && isChecked ? '#60a5fa' : undefined,
-                    WebkitAppearance: locked && isChecked ? 'none' : undefined,
-                    appearance: locked && isChecked ? 'none' : undefined,
-                    width: locked && isChecked ? '14px' : undefined,
-                    height: locked && isChecked ? '14px' : undefined,
-                    borderRadius: locked && isChecked ? '50%' : undefined,
-                    border: locked && isChecked ? '2px solid #60a5fa' : undefined,
-                    backgroundColor: locked && isChecked ? '#60a5fa' : undefined,
-                    position: 'relative' as const,
-                    cursor: locked ? 'not-allowed' : 'pointer',
-                  }}
+                  // `accent-highlight` keeps the recorded choice legible once the
+                  // form locks: a disabled radio is dimmed by the browser, and
+                  // the accent is the only thing that still reads as "chosen".
+                  className="accent-highlight"
                 />
                 <span
                   className={`text-sm font-medium ${
-                    locked && isChecked ? 'text-blue-400' : locked ? 'text-gray-500' : 'text-white'
+                    locked && isChecked
+                      ? 'text-highlight'
+                      : locked
+                        ? 'text-muted-foreground'
+                        : 'text-foreground'
                   }`}
                 >
                   {opt}
@@ -491,56 +496,62 @@ const FeedbackPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto bg-black p-3 text-white">
+    <div className="bg-background text-foreground flex h-full flex-col overflow-y-auto p-3">
       {!userId ? (
         renderNoUserPrompt()
       ) : (
         <>
           {/* Dropdown for AI result selection */}
           <div className="mb-2">
-            <select
+            <Select
               value={selectedUID}
-              onChange={handleDropdownChange}
-              className="w-full rounded border border-gray-700 bg-gray-800 px-1 py-1 text-sm"
+              onValueChange={handleResultSelected}
             >
-              {aiMeta.map(m => {
-                const uid = m.displaySetInstanceUID;
-                const mark = hasFeedbackByUID[uid] ? ' ✓' : '';
-                return (
-                  <option
-                    key={uid}
-                    value={uid}
-                  >
-                    {(m.modelName || 'AI Result') + mark}
-                  </option>
-                );
-              })}
-            </select>
+              <SelectTrigger aria-label="AI result">
+                <SelectValue placeholder="Select AI result" />
+              </SelectTrigger>
+              <SelectContent>
+                {aiMeta.map(m => {
+                  const uid = m.displaySetInstanceUID;
+                  const mark = hasFeedbackByUID[uid] ? ' ✓' : '';
+                  return (
+                    <SelectItem
+                      key={uid}
+                      value={uid}
+                    >
+                      {(m.modelName || 'AI Result') + mark}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Navigation buttons */}
           <div className="mb-3 flex items-center justify-between space-x-2">
-            <button
-              className="flex-1 rounded bg-gray-700 px-2 py-1 hover:bg-gray-600"
+            <Button
+              variant="secondary"
+              className="flex-1"
               title="Previous AI Result"
               onClick={() => handlePrevNext(-1)}
             >
               ◀ Prev
-            </button>
-            <button
-              className="flex-1 rounded bg-gray-700 px-2 py-1 hover:bg-gray-600"
+            </Button>
+            <Button
+              variant="secondary"
+              className="flex-1"
               title="Next AI Result"
               onClick={() => handlePrevNext(1)}
             >
               Next ▶
-            </button>
+            </Button>
           </div>
 
           {/* Active Study Indicator */}
           {activeStudyUID && (
-            <div className="mb-3 rounded bg-gray-800 p-2 text-xs">
-              <div className="text-gray-400">Active Study:</div>
-              <div className="break-all font-mono text-gray-300">{activeStudyUID}</div>
+            <div className="bg-muted mb-3 rounded p-2 text-xs">
+              <div className="text-muted-foreground">Active Study:</div>
+              <div className="text-muted-foreground break-all font-mono">{activeStudyUID}</div>
             </div>
           )}
 
@@ -558,7 +569,7 @@ const FeedbackPanel: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="text-sm text-gray-400">No AI result selected.</div>
+            <div className="text-muted-foreground text-sm">No AI result selected.</div>
           )}
 
           {/* Feedback per side */}
@@ -566,14 +577,8 @@ const FeedbackPanel: React.FC = () => {
 
           {/* Submit button and status */}
           <div className="mt-auto space-y-2">
-            <button
-              className={`w-full rounded py-2 ${
-                locked
-                  ? 'cursor-not-allowed bg-gray-700'
-                  : bothSidesChosen && canQueryBackend && !isSubmitting
-                    ? 'bg-primary-main hover:bg-primary-light'
-                    : 'cursor-not-allowed bg-gray-700'
-              }`}
+            <Button
+              className="w-full"
               disabled={locked || !bothSidesChosen || !canQueryBackend || isSubmitting}
               onClick={handleSubmit}
               title={
@@ -587,34 +592,31 @@ const FeedbackPanel: React.FC = () => {
               }
             >
               {locked ? 'Submitted' : isSubmitting ? 'Saving…' : 'Submit Feedback'}
-            </button>
+            </Button>
             {locked ? (
               <div>
-                <button
-                  className={`w-full rounded py-2 ${
-                    isSubmitting
-                      ? 'cursor-not-allowed bg-gray-700'
-                      : 'bg-primary-main hover:bg-primary-light'
-                  }`}
+                <Button
+                  className="w-full"
                   disabled={isSubmitting}
                   onClick={handleStartEdit}
                   title={isSubmitting ? 'Please wait…' : 'Enable editing for this feedback'}
                 >
                   Edit Feedback
-                </button>
+                </Button>
               </div>
             ) : (
-              submitMessage && <div className="text-xs text-gray-300">{submitMessage}</div>
+              submitMessage && <div className="text-muted-foreground text-xs">{submitMessage}</div>
             )}
 
             {/* Footer: Signed in user and Change user */}
-            <div className="border-t border-gray-800 pt-2">
-              <div className="flex items-center justify-between text-xs text-gray-300">
+            <div className="border-input border-t pt-2">
+              <div className="text-muted-foreground flex items-center justify-between text-xs">
                 <div>
                   Signed in as <span className="font-medium">{userId}</span>
                 </div>
-                <button
-                  className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600"
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => {
                     try {
                       const cfg = (window as any)?.config || {};
@@ -636,7 +638,7 @@ const FeedbackPanel: React.FC = () => {
                   title="Change user"
                 >
                   Change user
-                </button>
+                </Button>
               </div>
             </div>
           </div>

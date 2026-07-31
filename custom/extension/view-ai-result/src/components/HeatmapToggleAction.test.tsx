@@ -19,6 +19,10 @@ const publish = (viewportId: string, state: Partial<ViewportAIState>) =>
     },
   });
 
+const button = () => screen.getByRole('button');
+// ToolButton stamps the tool state onto the tooltip trigger, not the button.
+const state = (attr: string) => screen.getByTestId('ai-heatmap-toggle').getAttribute(attr);
+
 describe('HeatmapToggleAction', () => {
   beforeEach(() => useAIViewportStore.setState({ viewports: {} }));
 
@@ -36,38 +40,30 @@ describe('HeatmapToggleAction', () => {
   it('offers the heatmap when one is available', () => {
     publish('v1', { onToggleHeatmap: jest.fn() });
     render(<HeatmapToggleAction viewportId="v1" />);
-    expect(screen.getByText('🔥 Heatmap Available')).toBeTruthy();
+    expect((button() as HTMLButtonElement).disabled).toBe(false);
+    expect(state('data-toggled')).toBe('false');
   });
 
   it('reports the heatmap as on while it is open', () => {
     publish('v1', { isHeatmapActive: true, onToggleHeatmap: jest.fn() });
     render(<HeatmapToggleAction viewportId="v1" />);
-    expect(screen.getByText('🔥 Heatmap ON')).toBeTruthy();
+    expect(state('data-toggled')).toBe('true');
   });
 
   it('disables itself when the result carries no heatmap', () => {
     const onToggleHeatmap = jest.fn();
     publish('v1', { hasHeatmap: false, onToggleHeatmap });
     render(<HeatmapToggleAction viewportId="v1" />);
-    expect(screen.getByText('🔥 No Heatmap')).toBeTruthy();
-    fireEvent.click(screen.getByText('🔥 No Heatmap'));
-    fireEvent.click(screen.getByRole('button'));
+    expect((button() as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(button());
     expect(onToggleHeatmap).not.toHaveBeenCalled();
   });
 
-  it('toggles exactly once per click on the icon', () => {
+  it('toggles exactly once per click', () => {
     const onToggleHeatmap = jest.fn();
     publish('v1', { onToggleHeatmap });
     render(<HeatmapToggleAction viewportId="v1" />);
-    fireEvent.click(screen.getByRole('button'));
-    expect(onToggleHeatmap).toHaveBeenCalledTimes(1);
-  });
-
-  it('toggles exactly once per click on the label', () => {
-    const onToggleHeatmap = jest.fn();
-    publish('v1', { onToggleHeatmap });
-    render(<HeatmapToggleAction viewportId="v1" />);
-    fireEvent.click(screen.getByText('🔥 Heatmap Available'));
+    fireEvent.click(button());
     expect(onToggleHeatmap).toHaveBeenCalledTimes(1);
   });
 });

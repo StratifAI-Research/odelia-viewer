@@ -113,7 +113,7 @@ export default {
           const isActive = synchronizer && !synchronizer.isDisabled();
 
           return {
-            className: isActive ? 'text-primary-active' : '',
+            className: isActive ? 'text-primary' : '',
           };
         },
       },

@@ -10,14 +10,8 @@ const STORAGE_KEY = 'odeliaDisclaimerHidden';
 installConsoleErrorFilter();
 
 describe('DisclaimerBanner', () => {
-  let openSpy: jest.SpyInstance;
   beforeEach(() => {
     sessionStorage.clear();
-    openSpy = jest.spyOn(window, 'open').mockImplementation(() => null as any);
-  });
-
-  afterEach(() => {
-    openSpy.mockRestore();
   });
 
   it('renders the banner when not previously dismissed', () => {
@@ -38,18 +32,21 @@ describe('DisclaimerBanner', () => {
     expect(screen.queryByRole('button', { name: 'Confirm and Hide' })).toBeNull();
   });
 
-  it('opens the model limitations link in a new tab', () => {
-    render(<DisclaimerBanner />);
-    fireEvent.click(screen.getByText('See model limitations'));
-    expect(window.open).toHaveBeenCalledWith(
+  // Real anchors rather than window.open: they are keyboard-reachable and
+  // middle-clickable, and `rel` is what keeps the opened tab from reaching back
+  // through window.opener.
+  it.each([
+    [
+      'See model limitations',
       'https://github.com/StratifAI-Research/odelia-deployment/blob/main/docs/model_limitations.md',
-      '_blank'
-    );
-  });
-
-  it('opens the project link in a new tab', () => {
+    ],
+    ['Learn more about the ODELIA project', 'https://odelia.ai/'],
+  ])('links %s out to a new tab', (text, href) => {
     render(<DisclaimerBanner />);
-    fireEvent.click(screen.getByText('Learn more about the ODELIA project'));
-    expect(window.open).toHaveBeenCalledWith('https://odelia.ai/', '_blank');
+    const link = screen.getByText(text) as HTMLAnchorElement;
+    expect(link.tagName).toBe('A');
+    expect(link.getAttribute('href')).toBe(href);
+    expect(link.getAttribute('target')).toBe('_blank');
+    expect(link.getAttribute('rel')).toBe('noopener noreferrer');
   });
 });
