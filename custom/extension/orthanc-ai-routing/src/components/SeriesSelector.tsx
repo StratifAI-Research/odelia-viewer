@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from '@ohif/ui';
+import { Button } from '@ohif/ui-next';
 
 export interface SeriesInfo {
   displaySetInstanceUID: string;
@@ -104,8 +104,8 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
             onSelectAll();
           }}
           className="flex-1"
-          variant="outlined"
-          size="small"
+          variant="outline"
+          size="sm"
         >
           ✓ Select All
         </Button>
@@ -115,8 +115,8 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
             onClearSelection();
           }}
           className="flex-1"
-          variant="outlined"
-          size="small"
+          variant="outline"
+          size="sm"
         >
           Clear
         </Button>

@@ -7,11 +7,10 @@ interface LabelingTableProps {
   title: string;
   measurement: { uid: string; label_data?: Record<string, string> } & Record<string, unknown>;
   config: { label_options: Array<Record<string, { type?: string; options?: string[] }>> };
-  onClick?: (labelKey: string) => void;
   onChange: (uid: string, label: string, value: string) => void;
 }
 
-const LabelingTable = ({ title, measurement, config, onClick, onChange }: LabelingTableProps) => {
+const LabelingTable = ({ title, measurement, config, onChange }: LabelingTableProps) => {
   const label_options = Object.assign({}, ...config.label_options);
   // Seed default label data only for genuinely-uninitialised measurements.
   // Never overwrite existing/imported label_data (see seedDefaultLabelData).
@@ -31,14 +30,9 @@ const LabelingTable = ({ title, measurement, config, onClick, onChange }: Labeli
                 return (
                   <LabelingOptions
                     key={key}
-                    id={index}
-                    index={index + 1}
                     label={key ?? `Label ${index + 1}`}
                     label_options={label_options[key].options ?? []}
                     label_value={measurement.label_data?.[key] ?? ''}
-                    onClick={() => {
-                      onClick?.(key);
-                    }}
                     onChange={(label, label_value) => {
                       onChange(measurement.uid, label, label_value);
                     }}
@@ -48,13 +42,8 @@ const LabelingTable = ({ title, measurement, config, onClick, onChange }: Labeli
                 return (
                   <LabelingDate
                     key={key}
-                    id={index}
-                    index={index + 1}
                     label={key ?? `Label ${index + 1}`}
                     label_value={measurement.label_data?.[key] ?? ''}
-                    onClick={() => {
-                      onClick?.(key);
-                    }}
                     onChange={(label, label_value) => {
                       onChange(measurement.uid, label, label_value);
                     }}

@@ -20,5 +20,10 @@ window.config = {
     thumbnail: 75,
     prefetch: 25,
   },
+  // The custom DisclaimerBanner (view-ai-result) replaces OHIF's own
+  // investigational-use dialog; without this they stack on top of each other.
+  investigationalUseDialog: {
+    option: 'never',
+  },
   defaultDataSourceName: 'dicomweb',
 };

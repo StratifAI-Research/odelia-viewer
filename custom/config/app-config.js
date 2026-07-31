@@ -30,6 +30,11 @@ window.config = {
     maxNumPrefetchRequests: 10,
     order: 'closest',
   },
+  // The custom DisclaimerBanner (view-ai-result) replaces OHIF's own
+  // investigational-use dialog; without this they stack on top of each other.
+  investigationalUseDialog: {
+    option: 'never',
+  },
   defaultDataSourceName: 'dicomweb',
   studyList: {
     defaultSortField: 'StudyDate',

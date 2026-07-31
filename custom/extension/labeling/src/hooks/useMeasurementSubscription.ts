@@ -9,11 +9,11 @@ import debounce from 'lodash.debounce';
  * so it is injected. Returns a `[measurements, setMeasurements]` tuple; the setter lets
  * callers (e.g. PanelLesions' active-row toggle) update the snapshot directly.
  */
-export function useMeasurementSubscription(
-  measurementService: any,
-  getMappedMeasurements: (service: any) => any[]
-): [any[], Dispatch<SetStateAction<any[]>>] {
-  const [displayMeasurements, setDisplayMeasurements] = useState<any[]>([]);
+export function useMeasurementSubscription<T = any>(
+  measurementService: AppTypes.MeasurementService,
+  getMappedMeasurements: (service: AppTypes.MeasurementService) => T[]
+): [T[], Dispatch<SetStateAction<T[]>>] {
+  const [displayMeasurements, setDisplayMeasurements] = useState<T[]>([]);
 
   useEffect(() => {
     const debouncedSetDisplayMeasurements = debounce(setDisplayMeasurements, 100);

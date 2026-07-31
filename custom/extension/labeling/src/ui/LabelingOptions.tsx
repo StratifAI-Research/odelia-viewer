@@ -1,9 +1,18 @@
-import React, { useState, useEffect } from 'react';
-import PropTypes from 'prop-types';
-import classnames from 'classnames';
+import React, { useEffect, useState } from 'react';
 
-const LabelingOptions = ({ id, index, label, label_value, label_options, onClick, onChange }) => {
-  const [isHovering, setIsHovering] = useState(false);
+export type LabelingOptionsProps = {
+  label: string;
+  label_options: string[];
+  label_value?: string;
+  onChange: (label: string, value: string) => void;
+};
+
+const LabelingOptions = ({
+  label,
+  label_options,
+  label_value = '',
+  onChange,
+}: LabelingOptionsProps) => {
   const [selectedOption, setSelectedOption] = useState(label_value);
 
   // Keep the control in sync when the incoming value changes
@@ -12,26 +21,17 @@ const LabelingOptions = ({ id, index, label, label_value, label_options, onClick
     setSelectedOption(label_value);
   }, [label_value]);
 
-  const onChangeValueHandler = event => {
-    const new_value = event.target.value;
-    setSelectedOption(new_value);
+  const onChangeValueHandler = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const newValue = event.target.value;
+    setSelectedOption(newValue);
     event.stopPropagation();
-    onChange(label, new_value);
+    onChange(label, newValue);
   };
-
-  const onMouseEnter = () => setIsHovering(true);
-  const onMouseLeave = () => setIsHovering(false);
 
   return (
     <div
-      className={classnames(
-        'group relative flex cursor-pointer items-stretch border border-transparent bg-black outline-none transition duration-300'
-      )}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-      role="button"
-      tabIndex={0}
-      data-cy={'measurement-item'}
+      className="group relative flex cursor-pointer items-stretch border border-transparent bg-black outline-none transition duration-300"
+      data-cy="measurement-item"
     >
       <div className="relative flex w-full flex-col p-1">
         <div className="mb-1 ml-2 flex items-center">
@@ -40,44 +40,23 @@ const LabelingOptions = ({ id, index, label, label_value, label_options, onClick
         <div className="ml-3 flex items-center">
           <div className="text-primary-light flex flex-1 items-center text-base">
             <select
-              onChange={e => onChangeValueHandler(e)}
+              onChange={onChangeValueHandler}
               value={selectedOption}
             >
-              {!!label_options.length &&
-                label_options.map(option => {
-                  return (
-                    <option
-                      key={option}
-                      value={option}
-                    >
-                      {option}
-                    </option>
-                  );
-                })}
+              {label_options.map(option => (
+                <option
+                  key={option}
+                  value={option}
+                >
+                  {option}
+                </option>
+              ))}
             </select>
           </div>
         </div>
       </div>
     </div>
   );
-};
-
-LabelingOptions.propTypes = {
-  id: PropTypes.oneOfType([PropTypes.number.isRequired, PropTypes.string.isRequired]),
-  index: PropTypes.number.isRequired,
-  label: PropTypes.string,
-  label_value: PropTypes.string,
-  isActive: PropTypes.bool,
-  isVisible: PropTypes.bool,
-  onClick: PropTypes.func,
-  onEdit: PropTypes.func,
-  onDelete: PropTypes.func,
-  toggleVisibility: PropTypes.func,
-};
-
-LabelingOptions.defaultProps = {
-  isActive: false,
-  label_value: '',
 };
 
 export default LabelingOptions;

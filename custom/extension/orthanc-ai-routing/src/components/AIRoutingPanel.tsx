@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useImageViewer } from '@ohif/ui';
-import { useViewportGrid } from '@ohif/ui-next';
+import { useImageViewer, useViewportGrid } from '@ohif/ui-next';
 import OrthancAIService from '../services/OrthancAIService';
 import type { ModelManifest } from '../services/OrthancAIService';
 import { useWizardState } from '../hooks/useWizardState';
@@ -41,7 +40,9 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
   // to the study active at mount.
   const dicomStudyUID = orthancAIService.getDicomStudyInstanceUIDFromURL();
 
-  const { StudyInstanceUIDs } = useImageViewer();
+  // ImageViewerContext is created with `createContext(null)` upstream, so the
+  // hook is typed as null; the provider always supplies StudyInstanceUIDs.
+  const { StudyInstanceUIDs } = useImageViewer() as unknown as { StudyInstanceUIDs: string[] };
   const [{ activeViewportId, viewports }, viewportGridService] = useViewportGrid();
 
   const wizard = useWizardState(1);

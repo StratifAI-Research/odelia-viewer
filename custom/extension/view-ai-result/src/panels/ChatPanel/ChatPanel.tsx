@@ -2,8 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { useSystem } from '@ohif/core';
-import { useImageViewer } from '@ohif/ui';
-import { useViewportGrid } from '@ohif/ui-next';
+import { useImageViewer, useViewportGrid } from '@ohif/ui-next';
 import { useChatService } from '../../hooks/useChatService';
 import { useActiveStudyUID } from '../../hooks/useActiveStudyUID';
 import { ChatMessage, ChatSeriesInfo } from '../../types/chatTypes';
@@ -50,7 +49,9 @@ const SLICE_STRATEGIES = [
  */
 const ChatPanel: React.FC = () => {
   const { servicesManager } = useSystem();
-  const { StudyInstanceUIDs } = useImageViewer();
+  // ImageViewerContext is created with `createContext(null)` upstream, so the
+  // hook is typed as null; the provider always supplies StudyInstanceUIDs.
+  const { StudyInstanceUIDs } = useImageViewer() as unknown as { StudyInstanceUIDs: string[] };
   const [{ activeViewportId, viewports }] = useViewportGrid();
   const displaySetService = servicesManager?.services?.displaySetService;
 

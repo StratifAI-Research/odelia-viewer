@@ -27,7 +27,11 @@ export default function downloadCSVReport(measurementData) {
     // imported for a study not present in the DicomMetadataStore): the row is
     // still emitted (with empty patient fields) rather than throwing on
     // `studyMetadata.series[0]`.
-    const studyMetadata = DicomMetadataStore.getStudy(referenceStudyUID);
+    // DicomMetadataStore's internal model is typed as never[], so getStudy()
+    // resolves to `never | undefined`; describe the fields read here.
+    const studyMetadata = DicomMetadataStore.getStudy(referenceStudyUID) as
+      | { series?: Array<{ SeriesInstanceUID: string }> }
+      | undefined;
     const firstSeries = studyMetadata?.series?.[0];
     const seriesMetadata = firstSeries
       ? DicomMetadataStore.getSeries(referenceStudyUID, firstSeries.SeriesInstanceUID)

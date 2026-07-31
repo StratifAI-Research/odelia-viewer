@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from '@ohif/ui';
+import { Button } from '@ohif/ui-next';
 
 interface ProgressStepProps {
   status: 'idle' | 'routing' | 'checking';

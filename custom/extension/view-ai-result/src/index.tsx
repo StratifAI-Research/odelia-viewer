@@ -127,18 +127,12 @@ export default {
         return entry.component;
       }, []);
 
+      // OHIF's own InvestigationalUseDialog would stack on top of the custom
+      // DisclaimerBanner below. It is suppressed the supported way, via
+      // `investigationalUseDialog: { option: 'never' }` in the app config, which
+      // every ODELIA config sets — not by hiding its markup from here.
       return (
         <>
-          {/*
-            Hide the UPSTREAM OHIF InvestigationalUseDialog (its confirm-and-hide
-            button carries data-cy="confirm-and-hide-button", see
-            platform/ui/.../InvestigationalUseDialog.tsx) so it does not stack on
-            top of the custom DisclaimerBanner. app-config.js does not configure
-            `investigationalUseDialog`, so DefaultLayout would otherwise show
-            OHIF's default banner. This selector targets an element rendered by
-            OHIF, not by this package — do not remove it as "dead".
-          */}
-          <style>{`.fixed:has([data-cy="confirm-and-hide-button"]) { display: none !important; }`}</style>
           <DefaultLayout {...props} />
           <DisclaimerBanner />
         </>

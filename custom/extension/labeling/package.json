@@ -41,10 +41,13 @@
   "dependencies": {
     "@babel/runtime": "7.29.7",
     "classnames": "2.5.1",
+    "date-fns": "4.1.0",
     "lodash.debounce": "4.0.8",
+    "lucide-react": "0.379.0",
     "papaparse": "5.5.4"
   },
   "devDependencies": {
+    "@types/lodash.debounce": "4.0.9",
     "@types/papaparse": "5.5.2"
   }
 }

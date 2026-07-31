@@ -3,8 +3,11 @@
     "target": "ES2020",
     "lib": ["dom", "dom.iterable", "esnext"],
     "module": "esnext",
-    "moduleResolution": "node",
-    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    // The production bundle transpiles with babel-loader + @babel/preset-react,
+    // whose classic runtime needs React in scope; "react-jsx" here would let the
+    // checker bless files that then fail at runtime.
+    "jsx": "react",
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
@@ -21,14 +24,21 @@
     "strictBindCallApply": true,
     "useUnknownInCatchVariables": true,
     "baseUrl": ".",
+    // Resolve @ohif/* to the platform SOURCE so the custom layer is checked
+    // against the real OHIF API — that is what surfaces breaking changes on an
+    // upstream bump. Mirrors the root tsconfig's paths, for the subset the
+    // custom packages import.
     "paths": {
-      "@ohif/*": ["./custom/types/ohif-any.d.ts"]
+      "@ohif/core": ["platform/core/src"],
+      "@ohif/core/types": ["platform/core/src/types"],
+      "@ohif/ui": ["platform/ui/src"],
+      "@ohif/ui-next": ["platform/ui-next/src"],
+      "@ohif/i18n": ["platform/i18n/src"],
+      "@ohif/extension-default": ["extensions/default/src"],
+      "@ohif/extension-cornerstone": ["extensions/cornerstone/src"],
+      "@ohif/mode-basic": ["modes/basic/src"]
     }
   },
-  "include": [
-    "custom/types/ohif-any.d.ts",
-    "custom/extension/*/src/**/*",
-    "custom/mode/*/src/**/*"
-  ],
-  "exclude": ["**/node_modules/**", "**/dist/**"]
+  "include": ["custom/types/*.d.ts", "custom/extension/*/src/**/*", "custom/mode/*/src/**/*"],
+  "exclude": ["**/node_modules/**", "**/dist/**", "**/coverage/**"]
 }

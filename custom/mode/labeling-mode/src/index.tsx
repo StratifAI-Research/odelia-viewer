@@ -1,6 +1,6 @@
 import { id } from './id';
-import toolbarButtons from './toolbarButtons';
 import { DicomMetadataStore } from '@ohif/core';
+import { registerModeToolbar } from '@ohif/mode-basic';
 import getStudies from './studiesList';
 
 const configs = {
@@ -55,6 +55,26 @@ function modeFactory() {
 
     onModeEnter: ({ servicesManager, extensionManager }) => {
       const { toolbarService, toolGroupService, customizationService } = servicesManager.services;
+
+      // Set up default AI overlay
+      customizationService.setCustomizations({
+        'viewportOverlay.topLeft': {
+          $set: [], // Clear default overlays to prevent conflict with AI action corners
+        },
+      });
+
+      // The mode route seeds this mode's `toolbarButtons` / `toolbarSections`
+      // (see below) onto the Mode customization scope before this runs, and any
+      // `?customization=` module layers on top, so reading them back here is what
+      // lets the toolbar be extended without this mode restating it.
+      registerModeToolbar(
+        { toolbarService },
+        {
+          toolbarButtons: customizationService.getCustomization('toolbarButtons'),
+          toolbarSections: customizationService.getCustomization('toolbarSections'),
+        }
+      );
+
       const utilityModule = extensionManager.getModuleEntry(
         '@ohif/extension-cornerstone.utilityModule.tools'
       );
@@ -84,7 +104,12 @@ function modeFactory() {
             toolName: toolNames.Zoom,
             bindings: [{ mouseButton: Enums.MouseBindings.Secondary }],
           },
-          { toolName: toolNames.StackScrollMouseWheel, bindings: [] },
+          // StackScrollMouseWheel was folded into StackScroll upstream; the wheel
+          // binding is what makes it scroll the stack.
+          {
+            toolName: toolNames.StackScroll,
+            bindings: [{ mouseButton: Enums.MouseBindings.Wheel }],
+          },
         ],
         passive: [
           { toolName: toolNames.Length },
@@ -93,7 +118,6 @@ function modeFactory() {
           { toolName: toolNames.EllipticalROI },
           { toolName: toolNames.CircleROI },
           { toolName: toolNames.RectangleROI },
-          { toolName: toolNames.StackScroll },
           { toolName: toolNames.CalibrationLine },
         ],
         // enabled
@@ -102,54 +126,6 @@ function modeFactory() {
 
       const toolGroupId = 'default';
       toolGroupService.createToolGroupAndAddTools(toolGroupId, tools, configs);
-
-      // Set up default AI overlay
-      customizationService.setCustomizations({
-        'viewportOverlay.topLeft': {
-          $set: [], // Clear default overlays to prevent conflict with AI action corners
-        },
-      });
-
-      let unsubscribe;
-
-      const activateTool = () => {
-        toolbarService.recordInteraction({
-          groupId: 'WindowLevel',
-          itemId: 'WindowLevel',
-          interactionType: 'tool',
-          commands: [
-            {
-              commandName: 'setToolActive',
-              commandOptions: {
-                toolName: 'WindowLevel',
-              },
-              context: 'CORNERSTONE',
-            },
-          ],
-        });
-
-        // We don't need to reset the active tool whenever a viewport is getting
-        // added to the toolGroup.
-        unsubscribe();
-      };
-
-      // Since we only have one viewport for the basic cs3d mode and it has
-      // only one hanging protocol, we can just use the first viewport
-      ({ unsubscribe } = toolGroupService.subscribe(
-        toolGroupService.EVENTS.VIEWPORT_ADDED,
-        activateTool
-      ));
-
-      toolbarService.init(extensionManager);
-      toolbarService.addButtons(toolbarButtons);
-      toolbarService.createButtonSection('primary', [
-        'MeasurementTools',
-        'Zoom',
-        'WindowLevel',
-        'Pan',
-        'Layout',
-        'MoreTools',
-      ]);
     },
     onModeExit: ({ servicesManager }) => {
       const { toolGroupService } = servicesManager.services;
@@ -264,6 +240,31 @@ function modeFactory() {
             },
           };
         },
+      },
+    ],
+    /**
+     * Toolbar composition. `{ $reference }` markers are expanded by the
+     * customization service at read time, so this mode reuses the cornerstone
+     * extension's button definitions instead of restating them, and only
+     * overrides which buttons each section shows. Sections not listed here
+     * (the viewport action menus, window-level menus, ...) keep upstream's.
+     */
+    toolbarButtons: [{ $reference: 'cornerstone.toolbarButtons' }],
+    toolbarSections: [
+      { $reference: 'cornerstone.toolbarSections' },
+      {
+        primary: ['MeasurementTools', 'Zoom', 'WindowLevel', 'Pan', 'Layout', 'MoreTools'],
+        // Circle ROI is the lesion-marking tool this workflow uses; it was the
+        // only measurement tool the pre-3.13 toolbar exposed.
+        MeasurementTools: ['CircleROI'],
+        MoreTools: [
+          'Reset',
+          'rotate-right',
+          'flipHorizontal',
+          'StackScroll',
+          'invert',
+          'CalibrationLine',
+        ],
       },
     ],
     /** List of extensions that are used by the mode */

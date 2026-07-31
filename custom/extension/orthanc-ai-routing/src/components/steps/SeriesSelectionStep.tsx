@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from '@ohif/ui';
+import { Button } from '@ohif/ui-next';
 import SeriesSelector, { SeriesInfo } from '../SeriesSelector';
 import { SeriesListSkeleton, EmptyState, ErrorState } from '../LoadingStates';
 
@@ -98,7 +98,7 @@ export const SeriesSelectionStep: React.FC<SeriesSelectionStepProps> = ({
         {onBack && (
           <Button
             onClick={onBack}
-            variant="outlined"
+            variant="outline"
             className="w-full"
           >
             &larr; Back

@@ -426,3 +426,15 @@ export class AIResultsService {
     }
   }
 }
+
+/**
+ * Register this extension's services on OHIF's global service map so consumers
+ * get real types from `servicesManager.services` instead of `any`.
+ */
+declare global {
+  namespace AppTypes {
+    interface Services {
+      aiResultsService?: AIResultsService;
+    }
+  }
+}

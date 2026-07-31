@@ -24,7 +24,8 @@
     "test:unit:ci": "jest --ci --runInBand --collectCoverage --passWithNoTests"
   },
   "peerDependencies": {
-    "@ohif/core": "workspace:*"
+    "@ohif/core": "workspace:*",
+    "@ohif/mode-basic": "workspace:*"
   },
   "dependencies": {
     "@babel/runtime": "7.29.7"

@@ -580,3 +580,15 @@ class OrthancAIService {
 }
 
 export default OrthancAIService;
+
+/**
+ * Register this extension's service on OHIF's global service map so consumers
+ * get real types from `servicesManager.services` instead of `any`.
+ */
+declare global {
+  namespace AppTypes {
+    interface Services {
+      orthancAIService?: OrthancAIService;
+    }
+  }
+}

@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Button } from '@ohif/ui';
+import { Button } from '@ohif/ui-next';
 import AIEndpointConfig, { AIEndpoint } from '../AIEndpointConfig';
 import OrthancAIService from '../../services/OrthancAIService';
 import type { ModelManifest } from '../../services/OrthancAIService';

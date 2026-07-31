@@ -8,6 +8,11 @@ window.config = {
   ],
   // below flag is for performance reasons, but it might not work for all servers
   showWarningMessageForCrossOrigin: true,
+  // The custom DisclaimerBanner (view-ai-result) replaces OHIF's own
+  // investigational-use dialog; without this they stack on top of each other.
+  investigationalUseDialog: {
+    option: 'never',
+  },
   showCPUFallbackMessage: true,
   showLoadingIndicator: true,
   experimentalStudyBrowserSort: false,

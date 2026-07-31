@@ -1,7 +1,6 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useSystem } from '@ohif/core';
-import { useImageViewer, useUserAuthentication } from '@ohif/ui';
-import { useViewportGrid } from '@ohif/ui-next';
+import { useImageViewer, useUserAuthentication, useViewportGrid } from '@ohif/ui-next';
 import { useActiveStudyUID } from '../../hooks/useActiveStudyUID';
 import { resultTsFromDisplaySet } from '../../utils/dicomDateTime';
 import { fetchFeedbackStatus, findUserVerdict, submitFeedback } from './feedbackApi';
@@ -36,8 +35,13 @@ const INT_TO_VERDICT: Record<number, 'Agree' | 'Unsure' | 'Disagree'> = {
 const FeedbackPanel: React.FC = () => {
   // Access OHIF services
   const { servicesManager } = useSystem();
-  const { StudyInstanceUIDs } = useImageViewer();
-  const [authState] = useUserAuthentication();
+  // ImageViewerContext is created with `createContext(null)` upstream, so the
+  // hook is typed as null; the provider always supplies StudyInstanceUIDs.
+  const { StudyInstanceUIDs } = useImageViewer() as unknown as { StudyInstanceUIDs: string[] };
+  // UserAuthenticationContext is created with its default STATE object, so the
+  // hook is typed as that object even though the provider supplies a
+  // [state, api] tuple.
+  const [authState] = useUserAuthentication() as unknown as [{ user?: unknown }, unknown];
   const [{ activeViewportId, viewports }] = useViewportGrid();
   const aiResultsService: any = servicesManager.services?.aiResultsService;
   const userAuthenticationService: any = servicesManager.services?.userAuthenticationService;
@@ -380,11 +384,13 @@ const FeedbackPanel: React.FC = () => {
         duration: 2000,
       });
     };
+    // UIModalService.show's parameter defaults are all `= null` with no type
+    // annotations, so TS infers `null` for every field of the options object.
     uiModalService?.show({
       title: 'Confirm Edit',
       content: EditConfirmModal,
       contentProps: { onConfirm },
-    });
+    } as unknown as Parameters<AppTypes.UIModalService['show']>[0]);
   }, [servicesManager.services]);
 
   // Utility to format confidence nicely

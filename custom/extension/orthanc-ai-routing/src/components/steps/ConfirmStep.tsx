@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from '@ohif/ui';
+import { Button } from '@ohif/ui-next';
 import type { AIEndpoint } from '../AIEndpointConfig';
 
 interface ConfirmStepProps {
@@ -61,7 +61,7 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({
         </Button>
         <Button
           onClick={onBack}
-          variant="outlined"
+          variant="outline"
           className="w-full"
         >
           &larr; Back

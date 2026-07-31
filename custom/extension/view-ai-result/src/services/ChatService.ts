@@ -415,3 +415,11 @@ export class ChatService {
     this.eventListeners.clear();
   }
 }
+
+declare global {
+  namespace AppTypes {
+    interface Services {
+      chatService?: ChatService;
+    }
+  }
+}

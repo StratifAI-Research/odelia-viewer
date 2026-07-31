@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from '@ohif/ui';
+import { Button } from '@ohif/ui-next';
 import type { ModelManifest } from '../../services/OrthancAIService';
 
 interface InputModeSelectionStepProps {
@@ -67,7 +67,7 @@ export const InputModeSelectionStep: React.FC<InputModeSelectionStepProps> = ({
         </Button>
         <Button
           onClick={onBack}
-          variant="outlined"
+          variant="outline"
           className="w-full"
         >
           &larr; Back

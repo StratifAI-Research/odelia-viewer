@@ -1,10 +1,12 @@
 import { renderHook, act } from '@testing-library/react';
 import { useMeasurementSubscription } from './useMeasurementSubscription';
 
+// The hook only touches EVENTS/subscribe/unsubscribe, so the double implements
+// just those; the cast keeps the hook's real MeasurementService signature.
 function makeService() {
   const unsubscribe = jest.fn();
   const subscribe = jest.fn((_evt: string, _cb: () => void) => ({ unsubscribe }));
-  return {
+  const service = {
     EVENTS: {
       MEASUREMENT_ADDED: 'added',
       RAW_MEASUREMENT_ADDED: 'addedRaw',
@@ -15,6 +17,7 @@ function makeService() {
     subscribe,
     unsubscribe,
   };
+  return service as unknown as AppTypes.MeasurementService & typeof service;
 }
 
 describe('useMeasurementSubscription', () => {
@@ -39,7 +42,9 @@ describe('useMeasurementSubscription', () => {
 
   it('exposes a setter that updates the snapshot', () => {
     const service = makeService();
-    const { result } = renderHook(() => useMeasurementSubscription(service, () => []));
+    const { result } = renderHook(() =>
+      useMeasurementSubscription<{ uid: string }>(service, () => [])
+    );
     act(() => {
       result.current[1]([{ uid: 'x' }]);
     });

@@ -80,10 +80,20 @@ export function useStudySeriesSelection({
             let studyDate = ds.StudyDate || '';
 
             // Try to get from the series' instance metadata (most reliable for imaging series)
-            const studyMetadata = DicomMetadataStore.getStudy(studyUID);
-            if (studyMetadata?.series?.length > 0) {
+            // DicomMetadataStore's internal model is typed as never[], so
+            // getStudy() resolves to `never | undefined`; describe what is read.
+            const studyMetadata = DicomMetadataStore.getStudy(studyUID) as
+              | {
+                  series?: Array<{
+                    Modality?: string;
+                    StudyDate?: string;
+                    instances?: Array<Record<string, any>>;
+                  }>;
+                }
+              | undefined;
+            if ((studyMetadata?.series?.length ?? 0) > 0) {
               // Find the first non-SR/SC series to get the real study description
-              for (const series of studyMetadata.series) {
+              for (const series of studyMetadata!.series!) {
                 const instances = series.instances || [];
                 if (instances.length > 0 && series.Modality !== 'SR' && series.Modality !== 'SC') {
                   const firstInstance = instances[0];

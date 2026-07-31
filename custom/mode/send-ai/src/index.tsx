@@ -1,4 +1,5 @@
 import { id } from './id';
+import { registerModeToolbar } from '@ohif/mode-basic';
 import { ModeFactoryParams } from './types';
 import toolbarButtons from './toolbarButtons';
 
@@ -63,6 +64,18 @@ function modeFactory() {
         'studyBrowser.tabMode': 'study-ai-subtabs',
       });
 
+      // The mode route seeds this mode's `toolbarButtons` / `toolbarSections`
+      // (see below) onto the Mode customization scope before this runs, so
+      // reading them back here picks up anything a `?customization=` module
+      // layered on top.
+      registerModeToolbar(
+        { toolbarService },
+        {
+          toolbarButtons: customizationService.getCustomization('toolbarButtons'),
+          toolbarSections: customizationService.getCustomization('toolbarSections'),
+        }
+      );
+
       // Obtain Cornerstone tool definitions
       const utilityModule = extensionManager.getModuleEntry(
         '@ohif/extension-cornerstone.utilityModule.tools'
@@ -110,18 +123,6 @@ function modeFactory() {
           err
         );
       }
-
-      // Register toolbar buttons (safe to call multiple times – service de-dupes)
-      toolbarService?.addButtons?.(toolbarButtons);
-
-      // Ensure buttons appear in primary section
-      toolbarService?.createButtonSection?.('primary', [
-        'Zoom',
-        'WindowLevel',
-        'Pan',
-        'Reset',
-        'ImageSliceSync',
-      ]);
     },
     onModeExit: ({ servicesManager }: ModeFactoryParams) => {
       const {
@@ -190,6 +191,18 @@ function modeFactory() {
           };
         },
       },
+    ],
+    /**
+     * Toolbar composition. `{ $reference }` markers are expanded by the
+     * customization service at read time, so the standard tool buttons come from
+     * the cornerstone extension's pack and only this mode's own button is
+     * defined locally. Sections not listed here (viewport action menus, ...)
+     * keep upstream's contents.
+     */
+    toolbarButtons: [{ $reference: 'cornerstone.toolbarButtons' }, ...toolbarButtons],
+    toolbarSections: [
+      { $reference: 'cornerstone.toolbarSections' },
+      { primary: ['Zoom', 'WindowLevel', 'Pan', 'Reset', 'HeatmapSliceSync'] },
     ],
     /** List of extensions that are used by the mode */
     extensions: extensionDependencies,

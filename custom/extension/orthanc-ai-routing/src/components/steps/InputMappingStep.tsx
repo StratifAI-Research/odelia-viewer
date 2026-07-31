@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Button } from '@ohif/ui';
+import { Button } from '@ohif/ui-next';
 import type { InputConfiguration } from '../../services/OrthancAIService';
 import type { SeriesInfo } from '../SeriesSelector';
 
@@ -109,7 +109,7 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
         </Button>
         <Button
           onClick={onBack}
-          variant="outlined"
+          variant="outline"
           className="w-full"
         >
           &larr; Back
