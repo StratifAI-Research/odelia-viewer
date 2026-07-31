@@ -44,19 +44,26 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
   const seriesSignature = availableSeries.map(s => s.SeriesInstanceUID).join('|');
 
   useEffect(() => {
-    if (availableSeries.length === 0) {
+    const availableUIDs = new Set(availableSeries.map(s => s.SeriesInstanceUID));
+    const assigned = Object.entries(mapping).filter(
+      (entry): entry is [string, string] => entry[1] != null
+    );
+    const stale = assigned.filter(([, uid]) => !availableUIDs.has(uid));
+
+    // Every assignment still resolves — leave the reader's mapping alone.
+    if (stale.length === 0 && assigned.length > 0) {
       return;
     }
-    const availableUIDs = new Set(availableSeries.map(s => s.SeriesInstanceUID));
-    const assigned = Object.values(mapping).filter((uid): uid is string => uid != null);
-    // Re-detect when nothing is mapped yet, and also when *any* assignment has
-    // gone stale — `isValid` only checks for non-null, so a single surviving
-    // assignment must not mask the dead ones next to it. `onAutoDetect` rewrites
-    // the whole mapping, so one pass clears every stale UID.
-    const hasStale = assigned.some(uid => !availableUIDs.has(uid));
-    if (assigned.length === 0 || hasStale) {
+    // Nothing usable is mapped (fresh step, or the whole set was replaced):
+    // run detection against the series we actually have.
+    if (stale.length === assigned.length && availableSeries.length > 0) {
       onAutoDetect(selectedConfig, availableSeries);
+      return;
     }
+    // Some assignments survived. Keep those — `onAutoDetect` would rewrite the
+    // whole mapping and could overwrite a deliberate pick — and drop only the
+    // dead ones, so `isValid` stops accepting series that no longer exist.
+    stale.forEach(([key]) => onSetInputSeries(key, null));
     // `mapping` is deliberately not a dependency: it is what this effect writes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedConfig.id, seriesSignature]);

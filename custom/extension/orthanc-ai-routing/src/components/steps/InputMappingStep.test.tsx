@@ -95,15 +95,20 @@ describe('InputMappingStep', () => {
     expect(onAutoDetect).toHaveBeenCalledWith(config, replaced);
   });
 
-  // One surviving assignment must not mask the dead ones beside it: `isValid`
+  // One surviving assignment must not mask the dead one beside it: `isValid`
   // only checks for non-null, so a partially-stale mapping would still pass.
-  it('re-detects when only some of the mapped series survive the swap', () => {
+  // Only the dead entry is dropped — re-running detection over everything could
+  // overwrite the assignment the reader deliberately made.
+  it('drops only the stale assignment when some of the mapped series survive', () => {
     const onAutoDetect = jest.fn();
+    const onSetInputSeries = jest.fn();
+    const mapping = { t1: 's1', t2: 's2' };
     const { rerender } = render(
       <InputMappingStep
         {...base}
-        mapping={{ t1: 's1', t2: 's2' }}
+        mapping={mapping}
         onAutoDetect={onAutoDetect}
+        onSetInputSeries={onSetInputSeries}
       />
     );
     expect(onAutoDetect).not.toHaveBeenCalled();
@@ -116,12 +121,43 @@ describe('InputMappingStep', () => {
     rerender(
       <InputMappingStep
         {...base}
-        mapping={{ t1: 's1', t2: 's2' }}
+        mapping={mapping}
         availableSeries={partly}
         onAutoDetect={onAutoDetect}
+        onSetInputSeries={onSetInputSeries}
       />
     );
-    expect(onAutoDetect).toHaveBeenCalledWith(config, partly);
+    expect(onSetInputSeries).toHaveBeenCalledWith('t2', null);
+    expect(onSetInputSeries).not.toHaveBeenCalledWith('t1', null);
+    expect(onAutoDetect).not.toHaveBeenCalled();
+  });
+
+  // With no series left there is nothing to detect against, so the assignments
+  // must be cleared rather than left pointing at series that are gone.
+  it('clears the mapping when the series list empties', () => {
+    const onAutoDetect = jest.fn();
+    const onSetInputSeries = jest.fn();
+    const mapping = { t1: 's1', t2: 's2' };
+    const { rerender } = render(
+      <InputMappingStep
+        {...base}
+        mapping={mapping}
+        onAutoDetect={onAutoDetect}
+        onSetInputSeries={onSetInputSeries}
+      />
+    );
+    rerender(
+      <InputMappingStep
+        {...base}
+        mapping={mapping}
+        availableSeries={[]}
+        onAutoDetect={onAutoDetect}
+        onSetInputSeries={onSetInputSeries}
+      />
+    );
+    expect(onSetInputSeries).toHaveBeenCalledWith('t1', null);
+    expect(onSetInputSeries).toHaveBeenCalledWith('t2', null);
+    expect(onAutoDetect).not.toHaveBeenCalled();
   });
 
   it('renders required markers and a Required hint for unmapped required inputs', () => {
