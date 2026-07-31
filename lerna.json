@@ -1,5 +1,0 @@
-{
-  "version": "3.10.0-beta.141",
-  "packages": ["extensions/*", "platform/*", "modes/*", "custom/extension/*", "addOns/externals/*"],
-  "npmClient": "npm"
-}

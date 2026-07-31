@@ -1,5 +1,4 @@
 import React from 'react';
-import { useSystem } from '@ohif/core';
 
 import { useMeasurements } from '../hooks/useMeasurements';
 import StudyMeasurements from '../components/StudyMeasurements';
@@ -12,7 +11,7 @@ import StudyMeasurements from '../components/StudyMeasurements';
  *
  * Creates a default study measurements panel with default children:
  * ```
- * <PanelMEasurement>
+ * <PanelMeasurement>
  *   <StudyMeasurements />
  * </PanelMeasurement>
  * ```
@@ -60,16 +59,13 @@ import StudyMeasurements from '../components/StudyMeasurements';
 export default function PanelMeasurement(props): React.ReactNode {
   const { measurementFilter, emptyComponent: EmptyComponent, children } = props;
 
-  const system = useSystem();
-  const displayMeasurements = useMeasurements(system.servicesManager, {
-    measurementFilter,
-  });
+  const displayMeasurements = useMeasurements({ measurementFilter });
 
   if (!displayMeasurements.length) {
     return EmptyComponent ? (
       <EmptyComponent items={displayMeasurements} />
     ) : (
-      <span className="text-white">No Measurements</span>
+      <span className="text-foreground">No Measurements</span>
     );
   }
 
@@ -82,6 +78,7 @@ export default function PanelMeasurement(props): React.ReactNode {
     );
     return cloned;
   }
+
   // Need to merge defaults on the content props to ensure they get passed to children
   return <StudyMeasurements items={displayMeasurements} />;
 }

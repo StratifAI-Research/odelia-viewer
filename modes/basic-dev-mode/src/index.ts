@@ -26,7 +26,6 @@ const dicomsr = {
 
 const dicomvideo = {
   sopClassHandler: '@ohif/extension-dicom-video.sopClassHandlerModule.dicom-video',
-  viewport: '@ohif/extension-dicom-video.viewportModule.dicom-video',
 };
 
 const dicompdf = {
@@ -70,11 +69,11 @@ function modeFactory({ modeConfiguration }) {
           },
           {
             toolName: toolNames.Zoom,
-            bindings: [{ mouseButton: Enums.MouseBindings.Secondary }],
+            bindings: [{ mouseButton: Enums.MouseBindings.Secondary }, { numTouchPoints: 2 }],
           },
           {
             toolName: toolNames.StackScroll,
-            bindings: [{ mouseButton: Enums.MouseBindings.Wheel }],
+            bindings: [{ mouseButton: Enums.MouseBindings.Wheel }, { numTouchPoints: 3 }],
           },
         ],
         passive: [
@@ -94,9 +93,9 @@ function modeFactory({ modeConfiguration }) {
 
       toolGroupService.createToolGroupAndAddTools('default', tools);
 
-      toolbarService.addButtons(toolbarButtons);
-      toolbarService.createButtonSection('primary', [
-        'measurementSection',
+      toolbarService.register(toolbarButtons);
+      toolbarService.updateSection('primary', [
+        'MeasurementTools',
         'Zoom',
         'WindowLevel',
         'Pan',
@@ -141,11 +140,7 @@ function modeFactory({ modeConfiguration }) {
               viewports: [
                 {
                   namespace: cs3d.viewport,
-                  displaySetsToDisplay: [ohif.sopClassHandler],
-                },
-                {
-                  namespace: dicomvideo.viewport,
-                  displaySetsToDisplay: [dicomvideo.sopClassHandler],
+                  displaySetsToDisplay: [ohif.sopClassHandler, dicomvideo.sopClassHandler],
                 },
                 {
                   namespace: dicompdf.viewport,

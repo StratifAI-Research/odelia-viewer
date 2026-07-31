@@ -1,19 +1,32 @@
-import { test } from '@playwright/test';
-import { visitStudy, checkForScreenshot, screenShotPaths, simulateClicksOnElement } from './utils';
+import {
+  checkForScreenshot,
+  screenShotPaths,
+  test,
+  visitStudy,
+  waitForPaintToSettle,
+  waitForViewportRenderCycle,
+} from './utils';
 
 test.beforeEach(async ({ page }) => {
-  const studyInstanceUID = '1.3.6.1.4.1.25403.345050719074.3824.20170125095258.1';
+  const studyInstanceUID = '1.3.6.1.4.1.25403.345050719074.3824.20170125095438.5';
   const mode = 'viewer';
-  await visitStudy(page, studyInstanceUID, mode, 2000);
+  await visitStudy(page, studyInstanceUID, mode, 5000);
 });
 
-test('should hydrate in MPR correctly', async ({ page }) => {
-  await page.getByTestId('side-panel-header-right').click();
-  await page.getByTestId('trackedMeasurements-btn').click();
+test('should hydrate in MPR correctly', async ({
+  page,
+  DOMOverlayPageObject,
+  leftPanelPageObject,
+  mainToolbarPageObject,
+  rightPanelPageObject,
+  viewportPageObject,
+}) => {
+  await rightPanelPageObject.toggle();
+  await rightPanelPageObject.measurementsPanel.select();
 
-  // get the div that has Body 4.0 Lung I and double click it
+  await leftPanelPageObject.loadSeriesByDescription('Body 4.0 CE', 1);
 
-  await page.locator(':text("S:7")').first().dblclick();
+  await page.waitForTimeout(5000);
 
   await page.evaluate(() => {
     // Access cornerstone directly from the window object
@@ -34,71 +47,100 @@ test('should hydrate in MPR correctly', async ({ page }) => {
     }
   });
 
-  await page.getByTestId('MeasurementTools-split-button-secondary').click();
-  await page.getByTestId('Bidirectional').click();
-  const locator = page.getByTestId('viewport-pane').locator('canvas');
+  await page.waitForTimeout(5000);
 
-  await simulateClicksOnElement({
-    locator,
-    points: [
-      {
-        x: 405,
-        y: 277,
-      },
-      {
-        x: 515,
-        y: 339,
-      },
-    ],
-  });
+  await mainToolbarPageObject.measurementTools.bidirectional.click();
+  const activeViewport = await viewportPageObject.active;
+  await activeViewport.clickAt([
+    { x: 405, y: 277 },
+    { x: 515, y: 339 },
+  ]);
 
-  // wait 2 seconds
   await page.waitForTimeout(2000);
 
-  await page.getByTestId('prompt-begin-tracking-yes-btn').click();
+  await DOMOverlayPageObject.viewport.measurementTracking.confirm.click();
 
   // scroll away
-  await checkForScreenshot(page, page, screenShotPaths.jumpToMeasurementMPR.initialDraw);
+  await checkForScreenshot(
+    page,
+    viewportPageObject.grid,
+    screenShotPaths.jumpToMeasurementMPR.initialDraw
+  );
 
-  // use mouse wheel to scroll away
-  await page.mouse.wheel(0, 100);
+  // Focus on the canvas first, then use mouse wheel to scroll away
+  await page.evaluate(() => {
+    // Access cornerstone directly from the window object
+    const cornerstone = window.cornerstone;
+    if (!cornerstone) {
+      return;
+    }
 
-  // wait 2 seconds
-  await page.waitForTimeout(2000);
+    const enabledElements = cornerstone.getEnabledElements();
+    if (enabledElements.length === 0) {
+      return;
+    }
 
-  await checkForScreenshot(page, page, screenShotPaths.jumpToMeasurementMPR.scrollAway);
-
-  await page.getByTestId('data-row').first().click();
-
-  await page.waitForTimeout(5000);
-
-  await checkForScreenshot(page, page, screenShotPaths.jumpToMeasurementMPR.jumpToMeasurementStack);
-
-  await page.getByTestId('Layout').click();
-  await page.locator('div').filter({ hasText: /^MPR$/ }).first().click();
-
-  // wait 2 seconds
-  await page.waitForTimeout(2000);
-
-  // jump in viewport again
-  await page.getByTestId('data-row').first().click();
-
-  await page.waitForTimeout(3000);
-
-  await checkForScreenshot(page, page, screenShotPaths.jumpToMeasurementMPR.jumpInMPR);
-
-  await page.locator(':text("S:3")').first().dblclick();
-  await page.waitForTimeout(5000);
-
-  await checkForScreenshot(page, page, screenShotPaths.jumpToMeasurementMPR.changeSeriesInMPR);
-
-  await page.getByTestId('data-row').first().click();
+    const viewport = enabledElements[0].viewport;
+    if (viewport) {
+      viewport.setImageIdIndex(0);
+      viewport.render();
+    }
+  });
 
   await page.waitForTimeout(5000);
 
   await checkForScreenshot(
     page,
+    viewportPageObject.grid,
+    screenShotPaths.jumpToMeasurementMPR.scrollAway
+  );
+
+  await rightPanelPageObject.measurementsPanel.panel.nthMeasurement(0).click();
+
+  await checkForScreenshot(
     page,
+    viewportPageObject.grid,
+    screenShotPaths.jumpToMeasurementMPR.jumpToMeasurementStack
+  );
+
+  await mainToolbarPageObject.layoutSelection.MPR.click();
+
+  await page.waitForTimeout(5000);
+
+  // jump in viewport again
+  await rightPanelPageObject.measurementsPanel.panel.nthMeasurement(0).click();
+
+  await page.waitForTimeout(3000);
+
+  await checkForScreenshot(
+    page,
+    viewportPageObject.grid,
+    screenShotPaths.jumpToMeasurementMPR.jumpInMPR
+  );
+
+  const seriesChangeRenderCycle = waitForViewportRenderCycle(page, { renderedTimeout: 30000 });
+
+  await leftPanelPageObject.loadSeriesByDescription('Lung 3.0 CE');
+
+  await seriesChangeRenderCycle;
+  // Series change unloads the old volume and progressively streams the new
+  // one; the wait helper resolves when loadStatus.loaded flips true, but the
+  // MPR mappers can still be sampling stale low-res frames for one tick.
+  // Give the streaming tail a chance to upload before screenshotting.
+  await page.waitForTimeout(2000);
+  await waitForPaintToSettle(page);
+
+  await checkForScreenshot(
+    page,
+    viewportPageObject.grid,
+    screenShotPaths.jumpToMeasurementMPR.changeSeriesInMPR
+  );
+
+  await rightPanelPageObject.measurementsPanel.panel.nthMeasurement(0).click();
+
+  await checkForScreenshot(
+    page,
+    viewportPageObject.grid,
     screenShotPaths.jumpToMeasurementMPR.jumpToMeasurementAfterSeriesChange
   );
 });

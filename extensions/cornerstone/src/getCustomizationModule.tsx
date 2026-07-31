@@ -6,30 +6,42 @@ import viewportClickCommandsCustomization from './customizations/viewportClickCo
 import measurementsCustomization from './customizations/measurementsCustomization';
 import volumeRenderingCustomization from './customizations/volumeRenderingCustomization';
 import colorbarCustomization from './customizations/colorbarCustomization';
+import modalityColorMapCustomization from './customizations/modalityColorMapCustomization';
 import windowLevelPresetsCustomization from './customizations/windowLevelPresetsCustomization';
+import toolbarButtonsCustomization from './customizations/toolbarButtonsCustomization';
+import segmentationToolbarCustomization from './customizations/segmentationToolbarCustomization';
+import getToolGroupToolsCustomization from './customizations/toolGroupToolsCustomization';
 import miscCustomization from './customizations/miscCustomization';
 import captureViewportModalCustomization from './customizations/captureViewportModalCustomization';
 import viewportDownloadWarningCustomization from './customizations/viewportDownloadWarningCustomization';
-import viewportActionMenuCustomizations from './customizations/viewportActionMenuCustomizations';
+import getViewportScrollbarCustomization from './customizations/viewportScrollbarCustomization';
 
-function getCustomizationModule({ commandsManager, servicesManager }) {
+function getCustomizationModule({ commandsManager, servicesManager, extensionManager }) {
   return [
     {
       name: 'default',
       value: {
         ...viewportOverlayCustomization,
-        ...getSegmentationPanelCustomization({ commandsManager, servicesManager }),
+        ...getSegmentationPanelCustomization({
+          commandsManager,
+          servicesManager,
+          extensionManager,
+        }),
         ...layoutSelectorCustomization,
         ...viewportToolsCustomization,
         ...viewportClickCommandsCustomization,
         ...measurementsCustomization,
         ...volumeRenderingCustomization,
         ...colorbarCustomization,
+        ...modalityColorMapCustomization,
         ...windowLevelPresetsCustomization,
+        ...toolbarButtonsCustomization,
+        ...segmentationToolbarCustomization,
+        ...getToolGroupToolsCustomization({ commandsManager }),
         ...miscCustomization,
         ...captureViewportModalCustomization,
         ...viewportDownloadWarningCustomization,
-        ...viewportActionMenuCustomizations,
+        ...getViewportScrollbarCustomization(),
       },
     },
   ];

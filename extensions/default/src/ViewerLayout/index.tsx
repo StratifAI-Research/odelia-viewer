@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import PropTypes from 'prop-types';
 
-import { InvestigationalUseDialog } from '@ohif/ui';
+import { InvestigationalUseDialog } from '@ohif/ui-next';
 import { HangingProtocolService, CommandsManager } from '@ohif/core';
 import { useAppConfig } from '@state';
 import ViewerHeader from './ViewerHeader';
@@ -9,7 +9,7 @@ import SidePanelWithServices from '../Components/SidePanelWithServices';
 import { Onboarding, ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@ohif/ui-next';
 import useResizablePanels from './ResizablePanelsHook';
 
-const resizableHandleClassName = 'mt-[1px] bg-black';
+const resizableHandleClassName = 'mt-[1px] bg-background';
 
 function ViewerLayout({
   // From Extension Module Params
@@ -24,6 +24,10 @@ function ViewerLayout({
   rightPanelClosed = false,
   leftPanelResizable = false,
   rightPanelResizable = false,
+  leftPanelInitialExpandedWidth,
+  rightPanelInitialExpandedWidth,
+  leftPanelMinimumExpandedWidth,
+  rightPanelMinimumExpandedWidth,
 }: withAppTypes): React.FunctionComponent {
   const [appConfig] = useAppConfig();
 
@@ -52,8 +56,18 @@ function ViewerLayout({
     leftPanelClosed,
     setLeftPanelClosed,
     rightPanelClosed,
-    setRightPanelClosed
+    setRightPanelClosed,
+    hasLeftPanels,
+    hasRightPanels,
+    leftPanelInitialExpandedWidth,
+    rightPanelInitialExpandedWidth,
+    leftPanelMinimumExpandedWidth,
+    rightPanelMinimumExpandedWidth
   );
+
+  const handleMouseEnter = () => {
+    (document.activeElement as HTMLElement)?.blur();
+  };
 
   const LoadingIndicatorProgress = customizationService.getCustomization(
     'ui.loadingIndicatorProgress'
@@ -65,10 +79,11 @@ function ViewerLayout({
    * is sized to our viewport.
    */
   useEffect(() => {
-    document.body.classList.add('bg-black');
+    document.body.classList.add('bg-background');
     document.body.classList.add('overflow-hidden');
+
     return () => {
-      document.body.classList.remove('bg-black');
+      document.body.classList.remove('bg-background');
       document.body.classList.remove('overflow-hidden');
     };
   }, []);
@@ -143,14 +158,13 @@ function ViewerLayout({
         appConfig={appConfig}
       />
       <div
-        className="relative flex w-full flex-row flex-nowrap items-stretch overflow-hidden bg-black"
-        style={{ height: 'calc(100vh - 52px' }}
+        className="relative flex w-full flex-row flex-nowrap items-stretch overflow-hidden bg-background"
+        style={{ height: 'calc(100vh - 52px)' }}
       >
         <React.Fragment>
-          {showLoadingIndicator && <LoadingIndicatorProgress className="h-full w-full bg-black" />}
+          {showLoadingIndicator && <LoadingIndicatorProgress className="h-full w-full bg-background" />}
           <ResizablePanelGroup {...resizablePanelGroupProps}>
             {/* LEFT SIDEPANELS */}
-
             {hasLeftPanels ? (
               <>
                 <ResizablePanel {...resizableLeftPanelProps}>
@@ -171,7 +185,10 @@ function ViewerLayout({
             {/* TOOLBAR + GRID */}
             <ResizablePanel {...resizableViewportGridPanelProps}>
               <div className="flex h-full flex-1 flex-col">
-                <div className="relative flex h-full flex-1 items-center justify-center overflow-hidden bg-black">
+                <div
+                  className="relative flex h-full flex-1 items-center justify-center overflow-hidden bg-background"
+                  onMouseEnter={handleMouseEnter}
+                >
                   <ViewportGridComp
                     servicesManager={servicesManager}
                     viewportComponents={viewportComponents}

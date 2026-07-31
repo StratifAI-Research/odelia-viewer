@@ -19,7 +19,24 @@ if (window.location.search === '?today') {
 window.config = {
   routerBasename: null,
   extensions: [],
-  modes: ['@ohif/mode-longitudinal', '@ohif/mode-tmtv', '@ohif/mode-test'],
+  // Every upstream mode is opted out of the default set in pluginConfig.json
+  // (ODELIA deployments ship only the custom modes), so the e2e suite has to
+  // list the modes its specs navigate to.
+  modes: [
+    '@ohif/mode-longitudinal',
+    '@ohif/mode-basic',
+    '@ohif/mode-segmentation',
+    '@ohif/mode-tmtv',
+    '@ohif/mode-microscopy',
+    '@ohif/mode-preclinical-4d',
+    '@ohif/mode-ultrasound-pleura-bline',
+    '@ohif/mode-test',
+  ],
+  // Allow the `default` prefix so e2e specs can exercise `?customization=` (e.g.
+  // Customization.spec.ts loads `?customization=veterinary/veterinaryOverlay`).
+  customizationUrlPrefixes: {
+    default: './customizations/',
+  },
   showStudyList: true,
   // below flag is for performance reasons, but it might not work for all servers
   maxNumberOfWebWorkers: 3,
@@ -113,7 +130,8 @@ window.config = {
         wadoRoot: '/viewer-testdata',
         qidoSupportsIncludeField: false,
         imageRendering: 'wadors',
-        thumbnailRendering: 'wadors',
+        thumbnailRendering: 'thumbnail',
+        thumbnailRequestStrategy: 'fetch',
         enableStudyLazyLoad: true,
         supportsFuzzyMatching: false,
         supportsWildcard: true,
@@ -138,7 +156,7 @@ window.config = {
         supportsReject: true,
         supportsStow: true,
         imageRendering: 'wadors',
-        thumbnailRendering: 'wadors',
+        thumbnailRendering: 'thumbnail',
         enableStudyLazyLoad: true,
         supportsFuzzyMatching: false,
         supportsWildcard: true,

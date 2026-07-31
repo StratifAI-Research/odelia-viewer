@@ -8,6 +8,7 @@ import { Toolbar } from '../Toolbar/Toolbar';
 import HeaderPatientInfo from './HeaderPatientInfo';
 import { PatientInfoVisibility } from './HeaderPatientInfo/HeaderPatientInfo';
 import { preserveQueryParameters } from '@ohif/app';
+import { Types } from '@ohif/core';
 
 function ViewerHeader({ appConfig }: withAppTypes<{ appConfig: AppTypes.Config }>) {
   const { servicesManager, extensionManager, commandsManager } = useSystem();
@@ -27,7 +28,7 @@ function ViewerHeader({ appConfig }: withAppTypes<{ appConfig: AppTypes.Config }
     if (dataSourceIdx !== -1 && existingDataSource) {
       searchQuery.append('datasources', pathname.substring(dataSourceIdx + 1));
     }
-    preserveQueryParameters(searchQuery);
+    preserveQueryParameters(searchQuery, customizationService);
 
     navigate({
       pathname: '/',
@@ -38,31 +39,54 @@ function ViewerHeader({ appConfig }: withAppTypes<{ appConfig: AppTypes.Config }
   const { t } = useTranslation();
   const { show } = useModal();
 
-  const AboutModal = customizationService.getCustomization('ohif.aboutModal');
-  const UserPreferencesModal = customizationService.getCustomization('ohif.userPreferencesModal');
+  const AboutModal = customizationService.getCustomization(
+    'ohif.aboutModal'
+  ) as Types.MenuComponentCustomization;
+
+  const AppearanceModal = customizationService.getCustomization(
+    'ohif.appearanceModal'
+  ) as Types.MenuComponentCustomization;
+
+  const UserPreferencesModal = customizationService.getCustomization(
+    'ohif.userPreferencesModal'
+  ) as Types.MenuComponentCustomization;
 
   const menuOptions = [
     {
-      title: t('Header:About'),
+      title: AboutModal?.menuTitle ?? t('Header:About'),
       icon: 'info',
       onClick: () =>
         show({
           content: AboutModal,
-          title: t('AboutModal:About OHIF Viewer'),
-          containerClassName: 'max-w-md',
+          title: AboutModal?.title ?? t('AboutModal:About OHIF Viewer'),
+          containerClassName: AboutModal?.containerClassName ?? 'max-w-md',
         }),
     },
     {
-      title: t('Header:Preferences'),
+      title: UserPreferencesModal.menuTitle ?? t('Header:Preferences'),
       icon: 'settings',
       onClick: () =>
         show({
           content: UserPreferencesModal,
-          title: t('UserPreferencesModal:User preferences'),
-          containerClassName: 'flex max-w-4xl p-6 flex-col',
+          title: UserPreferencesModal.title ?? t('UserPreferencesModal:User preferences'),
+          containerClassName:
+            UserPreferencesModal?.containerClassName ?? 'flex max-w-4xl p-6 flex-col',
         }),
     },
   ];
+
+  if (AppearanceModal) {
+    menuOptions.splice(1, 0, {
+      title: AppearanceModal.menuTitle ?? t('Header:Appearance'),
+      icon: 'ColorChange',
+      onClick: () =>
+        show({
+          content: AppearanceModal,
+          title: AppearanceModal.title ?? t('AppearanceModal:Appearance'),
+          containerClassName: AppearanceModal.containerClassName ?? 'max-w-md',
+        }),
+    });
+  }
 
   if (appConfig.oidc) {
     menuOptions.push({
@@ -80,12 +104,7 @@ function ViewerHeader({ appConfig }: withAppTypes<{ appConfig: AppTypes.Config }
       isReturnEnabled={!!appConfig.showStudyList}
       onClickReturnButton={onClickReturnButton}
       WhiteLabeling={appConfig.whiteLabeling}
-      Secondary={
-        <Toolbar
-          servicesManager={servicesManager}
-          buttonSection="secondary"
-        />
-      }
+      Secondary={<Toolbar buttonSection="secondary" />}
       PatientInfo={
         appConfig.showPatientInfo !== PatientInfoVisibility.DISABLED && (
           <HeaderPatientInfo
@@ -95,10 +114,11 @@ function ViewerHeader({ appConfig }: withAppTypes<{ appConfig: AppTypes.Config }
         )
       }
       UndoRedo={
-        <div className="text-primary-active flex cursor-pointer items-center">
+        <div className="text-primary flex cursor-pointer items-center">
           <Button
             variant="ghost"
-            className="hover:bg-primary-dark"
+            className="hover:bg-muted"
+            data-cy="undo-btn"
             onClick={() => {
               commandsManager.run('undo');
             }}
@@ -107,7 +127,8 @@ function ViewerHeader({ appConfig }: withAppTypes<{ appConfig: AppTypes.Config }
           </Button>
           <Button
             variant="ghost"
-            className="hover:bg-primary-dark"
+            className="hover:bg-muted"
+            data-cy="redo-btn"
             onClick={() => {
               commandsManager.run('redo');
             }}
@@ -118,7 +139,7 @@ function ViewerHeader({ appConfig }: withAppTypes<{ appConfig: AppTypes.Config }
       }
     >
       <div className="relative flex justify-center gap-[4px]">
-        <Toolbar servicesManager={servicesManager} />
+        <Toolbar buttonSection="primary" />
       </div>
     </Header>
   );

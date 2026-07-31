@@ -1,8 +1,8 @@
 import React, { useEffect, useCallback, useState, ReactElement, useMemo } from 'react';
 import PropTypes from 'prop-types';
 import debounce from 'lodash.debounce';
-import { PanelSection, WindowLevel } from '@ohif/ui';
-import { Enums, eventTarget } from '@cornerstonejs/core';
+import { PanelSection, WindowLevel } from '@ohif/ui-next';
+import { Enums, eventTarget, utilities as csUtils, Types } from '@cornerstonejs/core';
 import { useActiveViewportDisplaySets } from '@ohif/core';
 import {
   getNodeOpacity,
@@ -20,17 +20,23 @@ const ViewportWindowLevel = ({
   viewportId: string;
 }>): ReactElement => {
   const { cornerstoneViewportService } = servicesManager.services;
-  const [windowLevels, setWindowLevels] = useState([]);
+  const [windowLevels, setWindowLevels] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const displaySets = useActiveViewportDisplaySets({ servicesManager });
+  const displaySets = useActiveViewportDisplaySets();
 
   const getViewportsWithVolumeIds = useCallback(
     (volumeIds: string[]) => {
       const renderingEngine = cornerstoneViewportService.getRenderingEngine();
-      const viewports = renderingEngine.getVolumeViewports();
+      // getVolumeViewports() was removed in the GenericViewport architecture
+      // (a PLANAR_NEXT viewport can be volume-capable without being a VolumeViewport).
+      // Official replacement: getViewports() + the viewportSupportsVolumeCompatibility
+      // capability guard (cornerstone codemod cornerstone3d/5/generic-viewport).
+      const viewports = renderingEngine
+        .getViewports()
+        .filter(csUtils.viewportSupportsVolumeCompatibility);
 
       return viewports.filter(vp => {
-        const viewportVolumeIds = vp.getActors().map(actor => actor.referencedId);
+        const viewportVolumeIds = (vp as Types.IVolumeViewport).getAllVolumeIds();
         return (
           volumeIds.length === viewportVolumeIds.length &&
           volumeIds.every(volumeId => viewportVolumeIds.includes(volumeId))
@@ -124,7 +130,9 @@ const ViewportWindowLevel = ({
         return;
       }
 
-      const viewportVolumeIds = viewport.getActors().map(actor => actor.referencedId);
+      const viewportVolumeIds = csUtils.viewportSupportsVolumeId(viewport)
+        ? (viewport as Types.IVolumeViewport).getAllVolumeIds()
+        : [];
       const viewports = getViewportsWithVolumeIds(viewportVolumeIds);
 
       viewports.forEach(vp => {
@@ -200,29 +208,36 @@ const ViewportWindowLevel = ({
   }, [viewportId, cornerstoneViewportService, updateViewportHistograms, displaySetIds, isLoading]);
 
   return (
-    <PanelSection title="Window Level">
-      {windowLevels.map((windowLevel, i) => {
-        if (!windowLevel.histogram) {
-          return null;
-        }
+    <PanelSection defaultOpen={true}>
+      <PanelSection.Header>Window Level</PanelSection.Header>
+      <PanelSection.Content className="bg-muted py-1">
+        {windowLevels.map((windowLevel, i) => {
+          if (!windowLevel.histogram) {
+            return null;
+          }
 
-        return (
-          <WindowLevel
-            key={windowLevel.volumeId}
-            title={`${windowLevel.modality}`}
-            histogram={windowLevel.histogram}
-            voi={windowLevel.voi}
-            step={windowLevel.step}
-            showOpacitySlider={windowLevel.showOpacitySlider}
-            colormap={windowLevel.colormap}
-            onVOIChange={voi => handleVOIChange(windowLevel.volumeId, voi)}
-            opacity={windowLevel.opacity}
-            onOpacityChange={opacity =>
-              handleOpacityChange(windowLevel.viewportId, i, windowLevel.volumeId, opacity)
-            }
-          />
-        );
-      })}
+          return (
+            <WindowLevel
+              key={windowLevel.volumeId}
+              histogram={windowLevel.histogram}
+              voi={windowLevel.voi}
+              step={windowLevel.step}
+              showOpacitySlider={windowLevel.showOpacitySlider}
+              colormap={windowLevel.colormap}
+              onVOIChange={voi => handleVOIChange(windowLevel.volumeId, voi)}
+              opacity={windowLevel.opacity}
+              onOpacityChange={opacity =>
+                handleOpacityChange(windowLevel.viewportId, i, windowLevel.volumeId, opacity)
+              }
+            />
+          );
+        })}
+        {windowLevels.length === 0 && !isLoading && (
+          <div className="text-muted-foreground py-2 text-center text-sm">
+            No window level data available
+          </div>
+        )}
+      </PanelSection.Content>
     </PanelSection>
   );
 };

@@ -1,9 +1,11 @@
 import React from 'react';
 import { Button, Icons } from '@ohif/ui-next';
 import { useSystem } from '@ohif/core';
+import { useTranslation } from 'react-i18next';
 
 export function StudyMeasurementsActions({ items, StudyInstanceUID, measurementFilter, actions }) {
   const { commandsManager } = useSystem();
+  const { t } = useTranslation('MeasurementTable');
   const disabled = !items?.length;
 
   if (disabled) {
@@ -45,7 +47,7 @@ export function StudyMeasurementsActions({ items, StudyInstanceUID, measurementF
           }}
         >
           <Icons.Add />
-          Create SR
+          {t('Create SR')}
         </Button>
         <Button
           size="sm"
@@ -53,13 +55,17 @@ export function StudyMeasurementsActions({ items, StudyInstanceUID, measurementF
           className="pl-0.5"
           onClick={e => {
             e.stopPropagation();
+            if (actions?.onDelete) {
+              actions.onDelete();
+              return;
+            }
             commandsManager.runCommand('clearMeasurements', {
               measurementFilter,
             });
           }}
         >
           <Icons.Delete />
-          Delete
+          {t('Delete')}
         </Button>
       </div>
     </div>

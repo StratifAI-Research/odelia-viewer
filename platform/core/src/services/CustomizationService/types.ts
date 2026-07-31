@@ -31,14 +31,22 @@ export interface CallbackCustomization extends BaseCustomization {
   callbacks: Array<(...props: any) => any>;
 }
 
+export type MenuComponentCustomization = React.ComponentType & {
+  menuTitle?: string;
+  title?: string;
+  containerClassName?: string;
+};
+
 export type Customization =
+  | MenuComponentCustomization
   | React.ComponentType
   | BaseCustomization
   | LabelCustomization
   | CommandCustomization
   | CodeCustomization
   | ComponentCustomization
-  | CallbackCustomization;
+  | CallbackCustomization
+  | string | number | boolean;
 
 export default Customization;
 

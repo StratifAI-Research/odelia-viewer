@@ -27,6 +27,7 @@ import { useHangingProtocolStageIndexStore } from './stores/useHangingProtocolSt
 import { useToggleHangingProtocolStore } from './stores/useToggleHangingProtocolStore';
 import { useToggleOneUpViewportGridStore } from './stores/useToggleOneUpViewportGridStore';
 import { callInputDialogAutoComplete, callInputDialog } from './utils/callInputDialog';
+import { releaseLocalWadouriRegistrations } from './utils/registerNaturalizedDatasetForLocalWadouri';
 import colorPickerDialog from './utils/colorPickerDialog';
 
 import promptSaveReport from './utils/promptSaveReport';
@@ -37,6 +38,8 @@ import * as utils from './utils';
 import { Toolbox } from './utils';
 import MoreDropdownMenu from './Components/MoreDropdownMenu';
 import requestDisplaySetCreationForStudy from './Panels/requestDisplaySetCreationForStudy';
+import { Toolbar } from './Toolbar/Toolbar';
+
 const defaultExtension: Types.Extensions.Extension = {
   /**
    * Only required property. Should be a unique value across all extensions.
@@ -50,6 +53,9 @@ const defaultExtension: Types.Extensions.Extension = {
     useHangingProtocolStageIndexStore.getState().clearHangingProtocolStageIndexMap();
     useToggleHangingProtocolStore.getState().clearToggleHangingProtocol();
     useViewportsByPositionStore.getState().clearViewportsByPosition();
+    // Free the Part 10 Blobs (and any parsed copies) retained for locally
+    // generated instances (SEG etc.) registered with the wadouri loader.
+    releaseLocalWadouriRegistrations();
   },
   getDataSourcesModule,
   getViewportModule,
@@ -103,4 +109,5 @@ export {
   requestDisplaySetCreationForStudy,
   callInputDialog,
   createReportDialogPrompt,
+  Toolbar,
 };
