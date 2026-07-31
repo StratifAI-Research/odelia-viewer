@@ -95,6 +95,35 @@ describe('InputMappingStep', () => {
     expect(onAutoDetect).toHaveBeenCalledWith(config, replaced);
   });
 
+  // One surviving assignment must not mask the dead ones beside it: `isValid`
+  // only checks for non-null, so a partially-stale mapping would still pass.
+  it('re-detects when only some of the mapped series survive the swap', () => {
+    const onAutoDetect = jest.fn();
+    const { rerender } = render(
+      <InputMappingStep
+        {...base}
+        mapping={{ t1: 's1', t2: 's2' }}
+        onAutoDetect={onAutoDetect}
+      />
+    );
+    expect(onAutoDetect).not.toHaveBeenCalled();
+
+    // s1 survives, s2 is replaced by s8.
+    const partly = [
+      series({ SeriesInstanceUID: 's1', SeriesDescription: 'T1 axial', Modality: 'MR' }),
+      series({ SeriesInstanceUID: 's8', SeriesDescription: 'CT scan', Modality: 'CT' }),
+    ];
+    rerender(
+      <InputMappingStep
+        {...base}
+        mapping={{ t1: 's1', t2: 's2' }}
+        availableSeries={partly}
+        onAutoDetect={onAutoDetect}
+      />
+    );
+    expect(onAutoDetect).toHaveBeenCalledWith(config, partly);
+  });
+
   it('renders required markers and a Required hint for unmapped required inputs', () => {
     render(
       <InputMappingStep

@@ -48,12 +48,13 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
       return;
     }
     const availableUIDs = new Set(availableSeries.map(s => s.SeriesInstanceUID));
-    // A mapping only counts if it still resolves against the current series;
-    // `onAutoDetect` rewrites the whole mapping, so this also drops stale UIDs.
-    const hasLiveMapping = Object.values(mapping).some(
-      uid => uid != null && availableUIDs.has(uid)
-    );
-    if (!hasLiveMapping) {
+    const assigned = Object.values(mapping).filter((uid): uid is string => uid != null);
+    // Re-detect when nothing is mapped yet, and also when *any* assignment has
+    // gone stale — `isValid` only checks for non-null, so a single surviving
+    // assignment must not mask the dead ones next to it. `onAutoDetect` rewrites
+    // the whole mapping, so one pass clears every stale UID.
+    const hasStale = assigned.some(uid => !availableUIDs.has(uid));
+    if (assigned.length === 0 || hasStale) {
       onAutoDetect(selectedConfig, availableSeries);
     }
     // `mapping` is deliberately not a dependency: it is what this effect writes.
