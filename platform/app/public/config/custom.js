@@ -26,4 +26,31 @@ window.config = {
     option: 'never',
   },
   defaultDataSourceName: 'dicomweb',
+  // A config with `defaultDataSourceName` but no `dataSources` crashes appInit,
+  // so this build-time default carries the same Orthanc routes the deployment
+  // uses. In the container, custom/config/app-config.js replaces this file at
+  // image build time (see the Dockerfile) — keep the two in sync.
+  dataSources: [
+    {
+      namespace: '@ohif/extension-default.dataSourcesModule.dicomweb',
+      sourceName: 'dicomweb',
+      configuration: {
+        friendlyName: 'Orthanc Server',
+        name: 'Orthanc',
+        wadoUriRoot: '/wado',
+        qidoRoot: '/pacs/dicom-web',
+        wadoRoot: '/pacs/dicom-web',
+        qidoSupportsIncludeField: true,
+        supportsReject: true,
+        imageRendering: 'wadors',
+        thumbnailRendering: 'wadors',
+        enableStudyLazyLoad: true,
+        supportsFuzzyMatching: true,
+        supportsWildcard: true,
+        dicomUploadEnabled: true,
+        omitQuotationForMultipartRequest: true,
+        bulkDataURI: { enabled: true },
+      },
+    },
+  ],
 };
