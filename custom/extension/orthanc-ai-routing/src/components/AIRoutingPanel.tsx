@@ -43,7 +43,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
   // ImageViewerContext is created with `createContext(null)` upstream, so the
   // hook is typed as null; the provider always supplies StudyInstanceUIDs.
   const { StudyInstanceUIDs } = useImageViewer() as unknown as { StudyInstanceUIDs: string[] };
-  const [{ activeViewportId, viewports }, viewportGridService] = useViewportGrid();
+  const [{ activeViewportId, viewports }] = useViewportGrid();
 
   const wizard = useWizardState(1);
 

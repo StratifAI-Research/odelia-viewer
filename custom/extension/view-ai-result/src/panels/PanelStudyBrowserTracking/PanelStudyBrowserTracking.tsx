@@ -65,11 +65,6 @@ type ViewPreset = {
   selected: boolean;
 };
 
-const DIALOG_ID = {
-  UNTRACK_SERIES: 'untrack-series',
-  REJECT_REPORT: 'ds-reject-sr',
-};
-
 /**
  *
  * @param {*} param0
@@ -91,7 +86,6 @@ export default function PanelStudyBrowserTracking({
     uiNotificationService,
     studyPrefetcherService,
     customizationService,
-    uiModalService,
     aiResultsService,
   } = servicesManager.services as Required<AppTypes.Services>;
 
@@ -150,7 +144,6 @@ export default function PanelStudyBrowserTracking({
   // Detect study changes and notify AIResultsService
   useStudyChangeDetector({
     servicesManager,
-    viewportGridService,
     displaySetService,
     activeViewportId,
     viewports,

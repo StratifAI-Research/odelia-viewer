@@ -36,8 +36,10 @@ export default tseslint.config(
     rules: {
       ...reactPlugin.configs.flat.recommended.rules,
       ...reactHooks.configs.flat.recommended.rules,
-      // JSX is compiled with the automatic runtime, so React need not be in scope.
+      // The production bundle uses babel's classic JSX runtime, so React must be
+      // imported — but it is then referenced only by the compiled output.
       'react/react-in-jsx-scope': 'off',
+      // Props are typed with TypeScript, not runtime propTypes.
       'react/prop-types': 'off',
       // Consistent brace style for control statements (carried over from the
       // fork's previous .eslintrc rules).
@@ -45,15 +47,40 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-unused-vars': [
         'error',
-        { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrorsIgnorePattern: '^_' },
+        {
+          args: 'after-used',
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          ignoreRestSiblings: true,
+        },
       ],
+      // `declare global { namespace AppTypes { ... } }` is how an extension adds
+      // its services to OHIF's global service map; upstream's own AppTypes.ts
+      // disables this rule for the same reason.
+      '@typescript-eslint/no-namespace': 'off',
+      // eslint-plugin-react-hooks 7 added compiler-informed rules that flag a lot
+      // of pre-existing, working patterns in these panels. They are useful signal
+      // but not a merge gate, so they report as warnings until addressed.
+      'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/refs': 'warn',
+      'react-hooks/immutability': 'warn',
+      'react-hooks/globals': 'warn',
+      'react-hooks/use-memo': 'warn',
     },
+  },
+  {
+    // Tooling configs are CommonJS by design.
+    files: ['custom/**/*.config.js'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
   {
     files: ['custom/**/*.test.{ts,tsx,js,jsx}', 'custom/**/test-utils/**', 'custom/**/__mocks__/**'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'off',
       '@typescript-eslint/no-require-imports': 'off',
+      // Test doubles are intentionally anonymous inline components.
+      'react/display-name': 'off',
     },
   }
 );

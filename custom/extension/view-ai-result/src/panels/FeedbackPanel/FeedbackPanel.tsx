@@ -201,7 +201,7 @@ const FeedbackPanel: React.FC = () => {
         } else {
           setLocked(false);
         }
-      } catch (e) {
+      } catch {
         // Aborted requests and network errors are non-fatal; keep the UI functional.
       }
     },

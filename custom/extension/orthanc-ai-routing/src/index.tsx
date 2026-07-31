@@ -35,7 +35,7 @@ export default {
    * (e.g. cornerstone, cornerstoneTools, ...) or registering any services that
    * this extension is providing.
    */
-  preRegistration: ({ servicesManager, commandsManager, configuration = {} }: any) => {
+  preRegistration: ({ servicesManager }: any) => {
     // Create a service factory function
     const createOrthancAIService = () => {
       return {
@@ -58,7 +58,7 @@ export default {
   /**
    * PanelModule provides the "Analyze with AI" routing panel rendered in the sidebar.
    */
-  getPanelModule: ({ servicesManager, commandsManager, extensionManager }: any) => {
+  getPanelModule: ({ servicesManager }: any) => {
     const wrappedAIRoutingPanel = () => {
       return <AIRoutingPanel servicesManager={servicesManager} />;
     };
@@ -77,7 +77,7 @@ export default {
   /**
    * CommandsModule exposes the routeToAI command used to send a study to the AI server.
    */
-  getCommandsModule: ({ servicesManager, commandsManager, extensionManager }: any) => {
+  getCommandsModule: () => {
     return {
       definitions: [
         {

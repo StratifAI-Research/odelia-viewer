@@ -21,7 +21,7 @@ export default {
    * (e.g. cornerstone, cornerstoneTools, ...) or registering any services that
    * this extension is providing.
    */
-  preRegistration: ({ servicesManager, commandsManager, configuration = {} }) => {
+  preRegistration: ({ servicesManager }) => {
     // Register atomically and fail fast. A partially-registered extension
     // (e.g. aiResultsService present but the heatmap synchronizer missing) only
     // surfaces much later as confusing "missing behaviour"; rethrow a descriptive
@@ -88,7 +88,7 @@ export default {
    * {name, defaultComponent, clickHandler }. Examples include radioGroupIcons and
    * splitButton toolButton that the default extension is providing.
    */
-  getToolbarModule: ({ servicesManager, commandsManager, extensionManager }) => {
+  getToolbarModule: ({ servicesManager }) => {
     return [
       {
         name: 'evaluate.heatmapSync',
@@ -113,12 +113,7 @@ export default {
    * a Header, left and right sidebars, and a viewport section in the middle
    * of the viewer.
    */
-  getLayoutTemplateModule: ({
-    servicesManager,
-    commandsManager,
-    extensionManager,
-    hotkeysManager,
-  }) => {
+  getLayoutTemplateModule: ({ extensionManager }) => {
     function OdeliaViewerLayout(props) {
       const DefaultLayout = useMemo(() => {
         const entry = extensionManager.getModuleEntry(
@@ -162,7 +157,7 @@ export default {
    * object of functions, definitions is an object of available commands, their
    * options, and defaultContext is the default context for the command to run against.
    */
-  getCommandsModule: ({ servicesManager, commandsManager, extensionManager }) => {
+  getCommandsModule: ({ servicesManager }) => {
     const actions = {
       resetCrosshairs: () => {
         // Intentionally empty – crosshairs tool not used in this extension

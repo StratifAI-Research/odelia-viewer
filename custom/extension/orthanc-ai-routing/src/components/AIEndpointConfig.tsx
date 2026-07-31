@@ -359,7 +359,7 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
               <DialogHeader>
                 <DialogTitle>Confirm Delete</DialogTitle>
                 <DialogDescription>
-                  Are you sure you want to delete the endpoint "{editingEndpoint?.name}"? This
+                  Are you sure you want to delete the endpoint &quot;{editingEndpoint?.name}&quot;? This
                   action cannot be undone.
                 </DialogDescription>
               </DialogHeader>

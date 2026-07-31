@@ -189,7 +189,6 @@ describe('PanelStudyBrowserTracking', () => {
     mockImageViewerReturn = { StudyInstanceUIDs: ['study-1'] };
     const svc = makeServices({ active: [mrDs(), srDs()] });
     await renderPanel(svc);
-    const browser = screen.getByTestId('study-browser');
     await act(async () => {
       fireEvent.click(screen.getByTestId('sb-tab-all'));
     });

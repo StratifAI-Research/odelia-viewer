@@ -1,18 +1,6 @@
 import { AIEndpoint, toPersistableEndpoints } from '../components/AIEndpointConfig';
 import { AI_ENDPOINTS_STORAGE_KEY } from '../constants';
 
-interface OrthancStudy {
-  ID: string;
-  MainDicomTags: {
-    PatientName: string;
-    StudyDescription: string;
-    StudyInstanceUID: string;
-    [key: string]: string;
-  };
-  Series: string[];
-  [key: string]: any;
-}
-
 interface RoutingRequest {
   study_id: string;
   target: string;

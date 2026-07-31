@@ -151,7 +151,7 @@ function modeFactory() {
      * so a bare boolean reads as `undefined` and disables the mode. This mode
      * accepts any study.
      */
-    isValidMode: ({ modalities }) => {
+    isValidMode: () => {
       return { valid: true };
     },
     /**
@@ -169,7 +169,7 @@ function modeFactory() {
     routes: [
       {
         path: 'template',
-        layoutTemplate: ({ location, servicesManager }) => {
+        layoutTemplate: ({ servicesManager }) => {
           return {
             id: ohif.layout,
             props: {

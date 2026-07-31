@@ -5,9 +5,9 @@ import AITrackedViewport, { areEqual } from './AITrackedViewport';
 import { AISideBySideViewportProps } from '../types';
 
 // Stub cornerstone viewport component: surfaces received props into the DOM.
-let lastViewportProps: any = null;
+let _lastViewportProps: any = null;
 const StubViewport = (props: any) => {
-  lastViewportProps = props;
+  _lastViewportProps = props;
   return (
     <div data-testid="cs-viewport">
       <span data-testid="cs-viewport-id">{props.viewportId}</span>
@@ -48,7 +48,7 @@ installConsoleErrorFilter({ silenceLog: true });
 
 describe('AITrackedViewport', () => {
   beforeEach(() => {
-    lastViewportProps = null;
+    _lastViewportProps = null;
   });
 
   it('renders the cornerstone viewport wrapper for a primary viewport', () => {

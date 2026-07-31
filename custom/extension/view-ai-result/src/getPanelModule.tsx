@@ -27,7 +27,7 @@ function _createGetImageSrcFromImageIdFn(extensionManager) {
   try {
     const { cornerstone } = utilities.exports.getCornerstoneLibraries();
     return getImageSrcFromImageId.bind(null, cornerstone);
-  } catch (ex) {
+  } catch {
     throw new Error('Required command not found');
   }
 }
@@ -57,7 +57,10 @@ function WrappedPanelStudyBrowserTracking() {
   );
 }
 
-function getPanelModule({ commandsManager, extensionManager, servicesManager }): Panel[] {
+// The panel components read the managers from context (useSystem), so the module
+// factory ignores its argument — the parameter is kept because OHIF's extension
+// manager always passes one.
+function getPanelModule(_extensionParams?: Record<string, unknown>): Panel[] {
   return [
     {
       name: 'seriesList',

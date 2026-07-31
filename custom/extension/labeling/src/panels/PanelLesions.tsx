@@ -6,6 +6,7 @@ import CSVImporter from './CSVImporter';
 import LabelingTable from '../ui/LabelingTable';
 import LesionAnnotationDialog from './LesionAnnotationDialog';
 import Config from '../utils/config';
+import configJson from '../utils/config.json';
 import { getPanelConfig } from '../utils/panelConfig';
 import { useMeasurementSubscription } from '../hooks/useMeasurementSubscription';
 
@@ -39,8 +40,7 @@ export default function PanelLesionTable({
     _getMappedMeasurements
   );
 
-  const totalConfig: Config = require('../utils/config.json');
-  const config = getPanelConfig(totalConfig, name);
+  const config = getPanelConfig(configJson as Config, name);
 
   function exportReport() {
     downloadCSVReport(measurementService.getMeasurements());

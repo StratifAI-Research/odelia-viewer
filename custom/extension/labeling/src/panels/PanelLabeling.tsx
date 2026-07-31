@@ -6,6 +6,7 @@ import LabelingTable from '../ui/LabelingTable';
 import downloadCSVReport from '../utils/downloadCSVReport';
 import importCSVReport from '../utils/importCSVReport';
 import Config from '../utils/config';
+import configJson from '../utils/config.json';
 import { getPanelConfig } from '../utils/panelConfig';
 import { useMeasurementSubscription } from '../hooks/useMeasurementSubscription';
 
@@ -28,8 +29,7 @@ export default function PanelLabeling({
     measurementService: AppTypes.MeasurementService;
   };
 
-  const totalConfig: Config = require('../utils/config.json');
-  const config = getPanelConfig(totalConfig, name);
+  const config = getPanelConfig(configJson as Config, name);
   const { t } = useTranslation('PanelLabeling');
   const [displayMeasurements] = useMeasurementSubscription(
     measurementService,

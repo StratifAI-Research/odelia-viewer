@@ -40,7 +40,7 @@ protocol).
 ## Development
 
 ```sh
-bun run test:unit:ci   # jest (see jest.config.js)
+pnpm run test:unit:ci   # jest (see jest.config.js)
 ```
 
 The unit suite is timezone-independent: `formatDicomDateTime` renders DICOM

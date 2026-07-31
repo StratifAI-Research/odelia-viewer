@@ -7,12 +7,12 @@ const RETRY_WINDOW = 150 + 100 * 11; // initial 150ms + 10 retries @100ms (sourc
 
 function makeDSS(initial: any[]) {
   let current = initial;
-  const listeners: Record<string, Function[]> = {};
+  const listeners: Record<string, Array<(...args: any[]) => void>> = {};
   const unsubs: jest.Mock[] = [];
   return {
     EVENTS: { DISPLAY_SETS_CHANGED: 'changed' },
     getActiveDisplaySets: jest.fn(() => current),
-    subscribe: jest.fn((evt: string, cb: Function) => {
+    subscribe: jest.fn((evt: string, cb: (...args: any[]) => void) => {
       (listeners[evt] ||= []).push(cb);
       const unsubscribe = jest.fn();
       unsubs.push(unsubscribe);

@@ -1,8 +1,0 @@
-name: Setup Bun (pinned)
-description: Install the repo-pinned Bun version (single source of truth to avoid drift across workflows)
-runs:
-  using: composite
-  steps:
-    - uses: oven-sh/setup-bun@v2
-      with:
-        bun-version: 1.2.23

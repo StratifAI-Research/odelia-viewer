@@ -3,7 +3,6 @@ import { useActiveStudyUID } from './useActiveStudyUID';
 
 interface StudyChangeDetectorConfig {
   servicesManager: any;
-  viewportGridService: any;
   displaySetService: any;
   activeViewportId: string | null;
   viewports: Map<string, any>;
@@ -17,7 +16,6 @@ interface StudyChangeDetectorConfig {
 export const useStudyChangeDetector = (config: StudyChangeDetectorConfig): void => {
   const {
     servicesManager,
-    viewportGridService,
     displaySetService,
     activeViewportId,
     viewports,

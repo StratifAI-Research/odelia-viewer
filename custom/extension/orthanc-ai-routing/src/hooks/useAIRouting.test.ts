@@ -6,7 +6,7 @@ import type OrthancAIService from '../services/OrthancAIService';
 // Duck-typed stub of the methods useAIRouting actually calls. A missing stub
 // fails loudly at runtime (calling undefined), so this is a documentation aid,
 // not a compile-time drift guard.
-type MockService = Pick<
+type _MockService = Pick<
   OrthancAIService,
   | 'getCurrentEndpoint'
   | 'setCurrentEndpoint'

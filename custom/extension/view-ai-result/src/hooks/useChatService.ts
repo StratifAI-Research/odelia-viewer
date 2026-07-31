@@ -4,7 +4,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSystem } from '@ohif/core';
-import { ChatMessage, CHAT_EVENTS, ChatSession } from '../types/chatTypes';
+import { ChatMessage, CHAT_EVENTS } from '../types/chatTypes';
 import { ChatService } from '../services/ChatService';
 
 // Generate unique message IDs
