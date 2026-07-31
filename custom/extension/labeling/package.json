@@ -1,6 +1,7 @@
 {
   "name": "labeling",
   "version": "0.0.1",
+  "private": true,
   "description": "OHIF extension: ODELIA study/lesion labeling panels with CSV import/export.",
   "author": "Bulat Maksudov",
   "license": "MIT",

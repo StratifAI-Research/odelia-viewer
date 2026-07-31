@@ -1,6 +1,7 @@
 {
   "name": "send-ai",
   "version": "0.0.1",
+  "private": true,
   "description": "OHIF mode: ODELIA analyze-with-AI workflow (route a study to an AI model and review the result).",
   "author": "Bulat Maksudov",
   "license": "MIT",

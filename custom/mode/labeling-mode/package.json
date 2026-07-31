@@ -1,6 +1,7 @@
 {
   "name": "labeling-mode",
   "version": "0.0.1",
+  "private": true,
   "description": "OHIF mode: ODELIA labeling workflow (patient/study/lesion labels).",
   "author": "Bulat Maksudov",
   "license": "MIT",
