@@ -31,8 +31,9 @@ protocol).
 
 - **AI sub-tabs** — the nested study-browser grouping is toggled by the
   `studyBrowser.tabMode` customization; `send-ai` sets it to `study-ai-subtabs`
-  on mode enter. AI results are grouped by `InstanceCreationDateTime` (with DICOM
-  timezone offset) via the shared `utils/aiTabHelpers.ts`.
+  on mode enter. AI results are grouped by the report SR's SOP Instance UID via
+  the shared `utils/aiTabHelpers.ts`; `InstanceCreationDateTime` (with DICOM
+  timezone offset) only labels and sorts the groups.
 - **AI result classification** — an SR/SC display set is treated as an AI result
   by `isAIResult` (Modality `SR` or `SC`).
 

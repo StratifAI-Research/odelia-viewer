@@ -1,7 +1,7 @@
 import { AIResult } from '../types';
 import { extractAIResultData } from '../utils/extractAIResultData';
 import { findMatchingSRForHeatmap } from '../utils/aiResultPairing';
-import { formatDicomDateTime } from '../utils/dicomDateTime';
+import { formatCreationDateTime } from '../utils/aiTabHelpers';
 import {
   buildAIResult,
   extractAIResultsForStudy,
@@ -316,19 +316,13 @@ export class AIResultsService {
     if (aiResult && this.uiNotificationService) {
       const modelName = aiResult.modelInfo?.name || 'AI Model';
 
-      // Reuse the shared DICOM date/time formatter instead of
-      // re-implementing the YYYYMMDD/HHMMSS slicing here.
-      let dateTimeInfo = '';
-      if (targetDisplaySet?.instance) {
-        const creationDate = targetDisplaySet.instance.InstanceCreationDate;
-        const creationTime = targetDisplaySet.instance.InstanceCreationTime;
-        const formatted = formatDicomDateTime(creationDate, creationTime);
-        if (formatted) {
-          // Drop the "00:00:00" clock when no time component was present.
-          const label = creationTime ? formatted : formatted.replace(/ 00:00:00$/, '');
-          dateTimeInfo = ` (Created: ${label})`;
-        }
-      }
+      // ODV-223: reuse the shared creation-date/time formatter, which
+      // applies the labeled-timezone display policy (… UTC when the DICOM offset
+      // is present, … (timezone unknown) otherwise, date-only for a dateless
+      // value). Passing through the offset keeps the notification consistent
+      // with the AI-result tab labels.
+      const formatted = formatCreationDateTime(targetDisplaySet);
+      const dateTimeInfo = formatted ? ` (Created: ${formatted})` : '';
 
       this.uiNotificationService.show({
         title: 'AI Result Switched',

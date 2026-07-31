@@ -4,6 +4,7 @@ import {
   findMatchingSRForHeatmap,
   referencedSopInstanceUIDs,
   ownSopInstanceUIDs,
+  primarySopInstanceUID,
   creationEpochMs,
   PAIRING_TIME_WINDOW_MS,
 } from './aiResultPairing';
@@ -70,6 +71,26 @@ describe('referencedSopInstanceUIDs / ownSopInstanceUIDs', () => {
   });
 });
 
+describe('primarySopInstanceUID', () => {
+  it('prefers the instance SOP Instance UID', () => {
+    expect(primarySopInstanceUID(sr('sr', { sop: 'sop-1' }))).toBe('sop-1');
+  });
+
+  it('falls back to the display-set-level SOPInstanceUID', () => {
+    expect(primarySopInstanceUID({ SOPInstanceUID: 'top', instance: {} })).toBe('top');
+  });
+
+  it('falls back to the first UID from instances/images lists', () => {
+    expect(primarySopInstanceUID({ instances: [{ SOPInstanceUID: 'a' }] })).toBe('a');
+    expect(primarySopInstanceUID({ images: [{ SOPInstanceUID: 'c' }] })).toBe('c');
+  });
+
+  it('returns undefined when no SOP Instance UID is present', () => {
+    expect(primarySopInstanceUID({ instance: {} })).toBeUndefined();
+    expect(primarySopInstanceUID(undefined)).toBeUndefined();
+  });
+});
+
 describe('creationEpochMs', () => {
   it('returns undefined when time is missing (preserves date+time contract)', () => {
     expect(creationEpochMs(sr('x', { time: undefined }))).toBeUndefined();
@@ -113,6 +134,21 @@ describe('findMatch — time proximity', () => {
     expect(findMatch(sr('sr'), [])).toBeNull();
     expect(findMatch(sr('sr', { time: undefined }), [sc('sc', { time: undefined })])).toBeNull();
   });
+
+  it('refuses to guess when two candidates are equally close and unreferenced', () => {
+    // Two heatmaps at the SR's exact second, neither referenced → ambiguous.
+    // Attaching one arbitrarily could show the wrong heatmap for a report.
+    const a = sc('a', { time: '101010' });
+    const b = sc('b', { time: '101010' });
+    expect(findMatch(sr('sr', { time: '101010' }), [a, b])).toBeNull();
+  });
+
+  it('still resolves an ambiguous-time tie via a referenced UID', () => {
+    const a = sc('a', { sop: 'sop-a', time: '101010' });
+    const b = sc('b', { sop: 'sop-b', time: '101010' });
+    const report = sr('sr', { time: '101010', refs: ['sop-b'] });
+    expect(findMatch(report, [a, b])?.displaySetInstanceUID).toBe('b');
+  });
 });
 
 describe('findMatch — referenced-UID identity', () => {
@@ -152,5 +188,16 @@ describe('findMatchingHeatmap / findMatchingSRForHeatmap', () => {
     expect(
       findMatchingHeatmap(sr('sr', { time: '101010' }), [a, b], 'ModelY')?.displaySetInstanceUID
     ).toBe('b');
+  });
+
+  it('does not let a model-name match override a strictly closer candidate', () => {
+    // The exact-time candidate must win even though a 1ms-farther one matches the
+    // model name — model name is a secondary tiebreak, never a distance nudge.
+    const closest = sc('closest', { time: '120000.010', desc: 'Other' });
+    const farther = sc('farther', { time: '120000.011', desc: 'Heatmap ModelX' });
+    expect(
+      findMatchingHeatmap(sr('sr', { time: '120000.010' }), [closest, farther], 'ModelX')
+        ?.displaySetInstanceUID
+    ).toBe('closest');
   });
 });
