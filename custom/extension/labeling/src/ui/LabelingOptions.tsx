@@ -45,7 +45,9 @@ const LabelingOptions = ({
               <SelectValue placeholder="Select…" />
             </SelectTrigger>
             <SelectContent>
-              {label_options.map(option => (
+              {/* Radix throws on an empty item value, and the option list comes
+                  straight from the panel config. */}
+              {label_options.filter(Boolean).map(option => (
                 <SelectItem
                   key={option}
                   value={option}

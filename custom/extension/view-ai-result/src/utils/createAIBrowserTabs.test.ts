@@ -172,7 +172,11 @@ describe('createAIBrowserTabs', () => {
       Modality: 'SR',
       displaySetInstanceUID: uid,
       numInstances: 1,
-      instance: { SOPInstanceUID: sop, InstanceCreationDate: '20240101', InstanceCreationTime: time },
+      instance: {
+        SOPInstanceUID: sop,
+        InstanceCreationDate: '20240101',
+        InstanceCreationTime: time,
+      },
     });
     const srA = mkSR('study-1', 'sr-a', 'sop-a', '120001'); // 1s from the SC, same study
     const srB = mkSR('study-2', 'sr-b', 'sop-b', '120000'); // exact SC time, different study

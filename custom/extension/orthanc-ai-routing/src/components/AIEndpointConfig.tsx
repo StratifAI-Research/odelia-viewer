@@ -262,14 +262,19 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
                   <SelectValue placeholder={isLoading ? 'Loading…' : 'Select AI endpoint'} />
                 </SelectTrigger>
                 <SelectContent>
-                  {endpoints.map(endpoint => (
-                    <SelectItem
-                      key={endpoint.id}
-                      value={endpoint.id}
-                    >
-                      {endpoint.name}
-                    </SelectItem>
-                  ))}
+                  {/* Radix throws on an empty item value; endpoint ids come from
+                      localStorage / window.config, so a malformed entry must not
+                      take the whole panel down with it. */}
+                  {endpoints
+                    .filter(endpoint => endpoint.id)
+                    .map(endpoint => (
+                      <SelectItem
+                        key={endpoint.id}
+                        value={endpoint.id}
+                      >
+                        {endpoint.name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>

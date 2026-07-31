@@ -73,7 +73,7 @@ export const ProgressStep: React.FC<ProgressStepProps> = ({
           {!error && (
             <>
               <div className="text-center">
-                <div className="mb-2 text-lg font-medium text-foreground">{getStatusTitle()}</div>
+                <div className="text-foreground mb-2 text-lg font-medium">{getStatusTitle()}</div>
               </div>
 
               <div className="border-input bg-muted rounded border p-4">

@@ -87,7 +87,7 @@ export const SeriesSelectionStep: React.FC<SeriesSelectionStepProps> = ({
         {renderContent()}
       </div>
 
-      <div className="border-input flex-shrink-0 space-y-2 border-t bg-background px-3 py-3">
+      <div className="border-input bg-background flex-shrink-0 space-y-2 border-t px-3 py-3">
         <Button
           onClick={onNext}
           disabled={selectedSeriesUIDs.size === 0 || isLoading}

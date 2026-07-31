@@ -50,9 +50,7 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
               key={seriesItem.SeriesInstanceUID}
               onClick={() => onToggleSeries(seriesItem.SeriesInstanceUID)}
               className={`border-input cursor-pointer rounded border p-2 transition-colors ${
-                isSelected
-                  ? 'bg-primary/20 border-primary'
-                  : 'hover:bg-muted bg-background'
+                isSelected ? 'bg-primary/20 border-primary' : 'hover:bg-muted bg-background'
               } `}
             >
               <div className="flex items-start gap-3">
@@ -60,9 +58,7 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
                 <div className="mt-1 flex-shrink-0">
                   <div
                     className={`flex h-4 w-4 items-center justify-center rounded border-2 ${
-                      isSelected
-                        ? 'border-primary bg-primary'
-                        : 'border-input'
+                      isSelected ? 'border-primary bg-primary' : 'border-input'
                     } `}
                   >
                     {isSelected && (
@@ -83,7 +79,7 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
 
                 {/* Series info */}
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-foreground">
+                  <div className="text-foreground text-sm font-medium">
                     {seriesItem.SeriesDescription || `Series ${seriesItem.SeriesNumber || 'N/A'}`}
                   </div>
                   <div className="text-muted-foreground mt-1 text-xs">

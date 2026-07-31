@@ -95,7 +95,7 @@ export const ModelSelectionStep: React.FC<ModelSelectionStepProps> = ({
 
         {manifestChecked && manifest && (
           <div className="bg-muted space-y-2 rounded p-3 text-sm">
-            <div className="font-medium text-foreground">{manifest.model_name}</div>
+            <div className="text-foreground font-medium">{manifest.model_name}</div>
             <div className="text-muted-foreground space-y-1 text-xs">
               <div>Version: {manifest.version}</div>
               <div>Input modes: {manifest.input_configurations.map(c => c.name).join(', ')}</div>
@@ -112,7 +112,7 @@ export const ModelSelectionStep: React.FC<ModelSelectionStepProps> = ({
         )}
       </div>
 
-      <div className="border-input flex-shrink-0 border-t bg-background px-3 py-3">
+      <div className="border-input bg-background flex-shrink-0 border-t px-3 py-3">
         <Button
           onClick={onNext}
           disabled={!canProceed}

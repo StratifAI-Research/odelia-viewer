@@ -33,7 +33,7 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({
         <h4 className="text-muted-foreground text-sm font-medium">Confirm &amp; Run</h4>
 
         <div className="bg-muted space-y-2 rounded p-3 text-sm">
-          <div className="font-medium text-foreground">Summary</div>
+          <div className="text-foreground font-medium">Summary</div>
           <div className="text-muted-foreground space-y-1 text-xs">
             <div>&bull; Model: {currentEndpoint?.name || 'Not configured'}</div>
             <div>&bull; Study: {studyDescription}</div>
@@ -43,7 +43,7 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({
 
         {inputMappingDescription && (
           <div className="bg-muted space-y-2 rounded p-3 text-sm">
-            <div className="font-medium text-foreground">Input Mapping</div>
+            <div className="text-foreground font-medium">Input Mapping</div>
             <div className="text-muted-foreground whitespace-pre-line text-xs">
               {inputMappingDescription}
             </div>
@@ -51,7 +51,7 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({
         )}
       </div>
 
-      <div className="border-input flex-shrink-0 space-y-2 border-t bg-background px-3 py-3">
+      <div className="border-input bg-background flex-shrink-0 space-y-2 border-t px-3 py-3">
         <Button
           onClick={onSend}
           disabled={!currentEndpoint}

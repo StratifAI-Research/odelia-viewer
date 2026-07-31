@@ -155,6 +155,29 @@ describe('FeedbackPanel', () => {
     expect(screen.getByText('No AI result selected.')).toBeTruthy();
   });
 
+  // The submit payload takes study_uid from the *current* study but the model /
+  // version / timestamp from whatever result is on screen. If a study without
+  // AI results kept the previous study's result, the panel would file feedback
+  // against a (study, result) pair that never existed.
+  it('drops the previous study’s result when the new study has none', async () => {
+    mockAuthReturn = [{ user: { profile: { sub: 'u1' } } }];
+    const svc = services();
+    const { rerender } = await renderPanel(svc);
+    expect(screen.getByText(/AI Prediction: Benign/)).toBeTruthy();
+
+    // Same mounted panel, viewport now on a study with no AI output.
+    svc.services.aiResultsService.getSelectedAIResult = jest.fn(() => null);
+    svc.services.aiResultsService.getAIResultMetadata = jest.fn(() => []);
+    mockImageViewerReturn = { StudyInstanceUIDs: ['study-2'] };
+    await act(async () => {
+      rerender(<FeedbackPanel />);
+    });
+
+    expect(screen.queryByText(/AI Prediction: Benign/)).toBeNull();
+    expect(screen.getByText('No AI result selected.')).toBeTruthy();
+    expect((screen.getByText('Submit Feedback') as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('keeps submit disabled until both Left and Right verdicts are chosen (validation branch)', async () => {
     mockAuthReturn = [{ user: { profile: { sub: 'u1' } } }];
     await renderPanel();

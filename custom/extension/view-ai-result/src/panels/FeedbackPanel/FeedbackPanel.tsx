@@ -102,7 +102,14 @@ const FeedbackPanel: React.FC = () => {
       const firstUID = meta[0].displaySetInstanceUID;
       setSelectedUID(firstUID);
       aiResultsService.setSelectedAIResult?.(activeStudyUID, firstUID, servicesManager);
+      return;
     }
+    // This study has no AI results. Drop the previous study's selection: the
+    // submit payload takes `study_uid` from the *current* study but the model /
+    // version / timestamp from whatever result is still on screen, so a
+    // retained selection would file feedback against a (study, result) pair
+    // that never existed.
+    setSelectedUID('');
   }, [aiResultsService, activeStudyUID, servicesManager]);
 
   // Helper to refresh the currently displayed AI result
@@ -110,10 +117,11 @@ const FeedbackPanel: React.FC = () => {
     if (!aiResultsService || !activeStudyUID) {
       return;
     }
-    const res = aiResultsService.getSelectedAIResult?.(activeStudyUID, servicesManager);
-    if (res) {
-      setCurrentResult(res);
-    }
+    // Clear on an empty response for the same reason as above — the result on
+    // screen must always belong to the study on screen.
+    setCurrentResult(
+      aiResultsService.getSelectedAIResult?.(activeStudyUID, servicesManager) ?? null
+    );
   }, [aiResultsService, activeStudyUID, servicesManager]);
 
   // Initialize activeStudyUID on mount

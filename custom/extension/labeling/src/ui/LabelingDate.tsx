@@ -24,7 +24,7 @@ const LabelingDate = ({ label, label_value = '', onChange }: LabelingDateProps) 
 
   return (
     <div
-      className="group relative flex cursor-pointer items-stretch border border-transparent bg-background outline-none transition duration-300"
+      className="bg-background group relative flex cursor-pointer items-stretch border border-transparent outline-none transition duration-300"
       data-cy="measurement-item"
     >
       <div className="relative flex w-full flex-col p-1">

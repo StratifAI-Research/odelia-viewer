@@ -426,7 +426,9 @@ const ChatPanel: React.FC = () => {
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="text-foreground truncate">{series.SeriesDescription}</div>
+                            <div className="text-foreground truncate">
+                              {series.SeriesDescription}
+                            </div>
                             <div className="text-muted-foreground">
                               {series.Modality} · {series.numImageFrames} frames
                             </div>
@@ -535,7 +537,9 @@ const ChatPanel: React.FC = () => {
           )}
 
           {/* Timestamp */}
-          <div className="text-muted-foreground mt-1 text-xs">{message.timestamp.toLocaleTimeString()}</div>
+          <div className="text-muted-foreground mt-1 text-xs">
+            {message.timestamp.toLocaleTimeString()}
+          </div>
         </div>
       </div>
     );

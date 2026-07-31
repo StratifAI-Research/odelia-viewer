@@ -163,13 +163,7 @@ const AITrackedViewportInner = ({
         }
       }
     },
-    [
-      isHeatmapViewport,
-      showHeatmap,
-      currentAIResult,
-      applyHeatmapLayout,
-      primaryDisplaySetKey,
-    ]
+    [isHeatmapViewport, showHeatmap, currentAIResult, applyHeatmapLayout, primaryDisplaySetKey]
   );
 
   // Subscribe to AI result selection events

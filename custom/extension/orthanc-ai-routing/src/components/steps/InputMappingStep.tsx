@@ -11,6 +11,11 @@ import {
 import type { InputConfiguration } from '../../services/OrthancAIService';
 import type { SeriesInfo } from '../SeriesSelector';
 
+// Radix rejects an empty-string item value (it reserves '' for "no selection"),
+// so clearing a mapping needs an explicit sentinel item rather than the
+// `<option value="">` a native select would use.
+const UNASSIGNED = '__unassigned__';
+
 interface InputMappingStepProps {
   selectedConfig: InputConfiguration;
   availableSeries: SeriesInfo[];
@@ -32,14 +37,28 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
   onNext,
   onBack,
 }) => {
+  // Identity, not length: the series list can be replaced by a different list
+  // of the same size (display sets still streaming in), which would leave the
+  // mapping pointing at UIDs that no longer exist while `isValid` still reports
+  // true — i.e. the wizard would send dead series UIDs to the AI.
+  const seriesSignature = availableSeries.map(s => s.SeriesInstanceUID).join('|');
+
   useEffect(() => {
-    if (availableSeries.length > 0) {
-      const hasAnyMapping = Object.values(mapping).some(v => v != null);
-      if (!hasAnyMapping) {
-        onAutoDetect(selectedConfig, availableSeries);
-      }
+    if (availableSeries.length === 0) {
+      return;
     }
-  }, [selectedConfig.id, availableSeries.length]);
+    const availableUIDs = new Set(availableSeries.map(s => s.SeriesInstanceUID));
+    // A mapping only counts if it still resolves against the current series;
+    // `onAutoDetect` rewrites the whole mapping, so this also drops stale UIDs.
+    const hasLiveMapping = Object.values(mapping).some(
+      uid => uid != null && availableUIDs.has(uid)
+    );
+    if (!hasLiveMapping) {
+      onAutoDetect(selectedConfig, availableSeries);
+    }
+    // `mapping` is deliberately not a dependency: it is what this effect writes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConfig.id, seriesSignature]);
 
   const formatSeriesOption = (s: SeriesInfo) => {
     const desc = s.SeriesDescription || `Series ${s.SeriesNumber}`;
@@ -84,13 +103,19 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
                     {input.required && <span className="ml-1 text-red-400">*</span>}
                   </Label>
                   <Select
-                    value={currentValue}
-                    onValueChange={value => onSetInputSeries(input.key, value || null)}
+                    // Map "no mapping" onto the sentinel rather than '': with ''
+                    // Radix shows the placeholder and marks nothing selected, so
+                    // "Not assigned" would never read back as the current choice.
+                    value={currentValue || UNASSIGNED}
+                    onValueChange={value =>
+                      onSetInputSeries(input.key, value === UNASSIGNED ? null : value)
+                    }
                   >
                     <SelectTrigger aria-label={input.label}>
                       <SelectValue placeholder="Select series…" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value={UNASSIGNED}>Not assigned</SelectItem>
                       {filteredSeries.map(s => (
                         <SelectItem
                           key={s.SeriesInstanceUID}
