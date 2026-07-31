@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useActiveStudyUID } from './useActiveStudyUID';
 
 interface StudyChangeDetectorConfig {
-  servicesManager: any;
+  servicesManager: AppTypes.ServicesManager;
   displaySetService: any;
   activeViewportId: string | null;
   viewports: Map<string, any>;

@@ -1,8 +1,6 @@
 import { DicomMetadataStore } from '@ohif/core';
 
-// `any` for the isolated custom typecheck (@ohif shimmed to any). Swap back to
-// `Types.StudyMetadata` from '@ohif/core' when real platform types are wired.
-type StudyMetadata = any;
+type StudyMetadata = AppTypes.StudyMetadata.StudyMetadata;
 
 /**
  * Compare function for sorting
@@ -57,7 +55,10 @@ const getStudiesFromUIDs = (studyUids?: string[]): StudyMetadata[] | undefined =
   if (!studyUids?.length) {
     return;
   }
-  return studyUids.map(uid => DicomMetadataStore.getStudy(uid));
+  // `getStudy` is untyped upstream (it infers `undefined` from an empty model
+  // literal); a UID with no stored study genuinely yields a hole, which the
+  // callers already tolerate.
+  return studyUids.map(uid => DicomMetadataStore.getStudy(uid)) as unknown as StudyMetadata[];
 };
 
 /** Gets the array of studies */

@@ -21,7 +21,7 @@ export function isAIResultModality(modality?: string): boolean {
 export function resolveInitialSelectedSRUID(
   studyInstanceUIDs: string[] | undefined,
   aiResultsService: any,
-  servicesManager: any
+  servicesManager: AppTypes.ServicesManager
 ): string | null {
   if (!studyInstanceUIDs?.length || !aiResultsService) {
     return null;

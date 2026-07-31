@@ -1,5 +1,3 @@
-// `any` for the isolated custom typecheck (@ohif shimmed to any). Swap back to
-// `import type { Panel } from '@ohif/core'` when real platform types are wired.
 import PanelStudyBrowserTracking from './panels/PanelStudyBrowserTracking/PanelStudyBrowserTracking';
 import i18n from 'i18next';
 import React, { useCallback } from 'react';
@@ -8,7 +6,8 @@ import { requestDisplaySetCreationForStudy } from '@ohif/extension-default';
 import getImageSrcFromImageId from './utils/getImageSrcFromImageId';
 import FeedbackPanel from './panels/FeedbackPanel/FeedbackPanel';
 import ChatPanel from './panels/ChatPanel/ChatPanel';
-type Panel = any;
+
+type Panel = AppTypes.PanelModule.Panel;
 
 function _getStudyForPatientUtility(extensionManager) {
   const utilityModule = extensionManager.getModuleEntry(

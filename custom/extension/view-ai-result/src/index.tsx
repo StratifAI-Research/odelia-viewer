@@ -2,7 +2,9 @@ import React, { useMemo } from 'react';
 import { id } from './id';
 import AITrackedViewport from './components/AITrackedViewport';
 import DisclaimerBanner from './components/DisclaimerBanner';
+import HeatmapToggleAction from './components/HeatmapToggleAction';
 import getPanelModule from './getPanelModule';
+import getCustomizationModule from './getCustomizationModule';
 import getHangingProtocolModule from './getHangingProtocolModule';
 import { AIResultsService } from './services/AIResultsService';
 import { ChatService } from './services/ChatService';
@@ -61,6 +63,12 @@ export default {
   getPanelModule,
 
   /**
+   * CustomizationModule exposes named customization blocks that a mode can opt
+   * into by reference (see getCustomizationModule for the naming rule).
+   */
+  getCustomizationModule,
+
+  /**
    * ViewportModule should provide a list of viewports that will be available in OHIF
    * for Modes to consume and use in the viewports. Each viewport is defined by
    * {name, component} object. Example of a viewport module is the CornerstoneViewport
@@ -90,6 +98,12 @@ export default {
    */
   getToolbarModule: ({ servicesManager }) => {
     return [
+      {
+        // Action-corner entry; a mode opts in by putting `aiHeatmapToggle`
+        // into `viewportActionMenu.topRight`.
+        name: 'viewAIResult.heatmapToggle',
+        defaultComponent: HeatmapToggleAction,
+      },
       {
         name: 'evaluate.heatmapSync',
         evaluate: () => {

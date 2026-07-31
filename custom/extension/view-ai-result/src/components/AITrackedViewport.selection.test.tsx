@@ -10,16 +10,14 @@ import AITrackedViewport from './AITrackedViewport';
 
 let mockInitialResult: any = null;
 const mockToggleHeatmapLayout = jest.fn();
-const mockSetupCorner = jest.fn();
-const mockUpdateOverlay = jest.fn();
+// Stands in for the store write: records the AI state the viewport publishes
+// for its overlay item and action-corner button.
+const mockPublishAIState = jest.fn();
 const mockSubRef: { onSelected: ((r: any, uid: string) => void) | null } = { onSelected: null };
 
 jest.mock('../hooks/useAIResult', () => ({ useAIResult: () => mockInitialResult }));
 jest.mock('../hooks/useAIOverlay', () => ({
-  useAIOverlay: () => ({
-    updateOverlay: mockUpdateOverlay,
-    setupHeatmapActionCorner: mockSetupCorner,
-  }),
+  useAIOverlay: (config: any) => mockPublishAIState(config),
 }));
 jest.mock('../hooks/useViewportElement', () => ({
   useViewportElement: () => ({ onElementEnabled: () => {}, onElementDisabled: () => {} }),
@@ -109,11 +107,11 @@ describe('AITrackedViewport — AI result selection & heatmap', () => {
     act(() => {
       mockSubRef.onSelected!(resultX, 'x');
     });
-    // currentAIResult is now X — the action corner reflects it.
-    expect(mockSetupCorner.mock.calls.some(c => c[0]?.id === 'X')).toBe(true);
+    // currentAIResult is now X — that is what the viewport publishes.
+    expect(mockPublishAIState.mock.calls.some((c: any[]) => c[0]?.aiResult?.id === 'X')).toBe(true);
 
     // Navigate to a different study: new primary display set + new initial result B.
-    mockSetupCorner.mockClear();
+    mockPublishAIState.mockClear();
     mockInitialResult = { id: 'B' };
     act(() => {
       rerender(
@@ -124,8 +122,8 @@ describe('AITrackedViewport — AI result selection & heatmap', () => {
     });
 
     // The stale selection X must be gone; the new study's initial result B wins.
-    const cornerResultIds = mockSetupCorner.mock.calls.map(c => c[0]?.id);
-    expect(cornerResultIds).toContain('B');
-    expect(cornerResultIds).not.toContain('X');
+    const publishedIds = mockPublishAIState.mock.calls.map((c: any[]) => c[0]?.aiResult?.id);
+    expect(publishedIds).toContain('B');
+    expect(publishedIds).not.toContain('X');
   });
 });

@@ -48,7 +48,7 @@ interface Props {
   onDoubleClickThumbnail: (uid: string) => void;
   onClickUntrack?: (uid: string) => void;
   activeDisplaySetInstanceUIDs: string[];
-  servicesManager: any;
+  servicesManager: AppTypes.ServicesManager;
   commandsManager: any;
   showSettings?: boolean;
   viewPresets?: any[];
@@ -91,7 +91,9 @@ export const StudyBrowserNested: React.FC<Props> = ({
   ) => {
     event.stopPropagation(); // Prevent accordion toggle
 
-    const { displaySetService, uiDialogService, uiNotificationService } = servicesManager.services;
+    // appInit registers all three; AppTypes marks every service optional.
+    const { displaySetService, uiDialogService, uiNotificationService } =
+      servicesManager.services as Required<AppTypes.Services>;
 
     // Resolve from `onClose` (fired on every close path: button, Esc, overlay)
     // rather than the buttons alone, so a dismissal always settles the Promise.

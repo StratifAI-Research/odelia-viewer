@@ -70,8 +70,9 @@ export default tseslint.config(
     },
   },
   {
-    // Tooling configs are CommonJS by design.
-    files: ['custom/**/*.config.js'],
+    // Tooling configs are CommonJS by design — including the shared bases
+    // (jest.config.base.js, babel.config.base.js) the leaf configs extend.
+    files: ['custom/**/*.config.js', 'custom/**/*.config.*.js'],
     rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
   {

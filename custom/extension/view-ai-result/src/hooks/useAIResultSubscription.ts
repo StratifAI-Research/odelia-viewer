@@ -4,7 +4,7 @@ import { AIResult } from '../types';
 interface AIResultSubscriptionConfig {
   viewportId: string;
   isHeatmapViewport: boolean;
-  servicesManager: any;
+  servicesManager: AppTypes.ServicesManager;
   onAIResultSelected: (aiResult: AIResult, clickedDisplaySetUID: string) => void;
   onAIResultCleared?: (eventData: any) => void;
 }

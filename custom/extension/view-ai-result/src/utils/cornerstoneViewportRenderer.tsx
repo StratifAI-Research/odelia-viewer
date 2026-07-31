@@ -5,7 +5,7 @@ interface ViewportRendererProps {
   displaySets: any[];
   viewportOptions: any;
   extensionManager: any;
-  servicesManager: any;
+  servicesManager: AppTypes.ServicesManager;
   commandsManager: any;
   onElementEnabled: (evt: any) => void;
   onElementDisabled: () => void;

@@ -4,17 +4,8 @@ export interface AIOverlayHookConfig {
   viewportId: string;
   aiResult: AIResult | null;
   isHeatmapViewport: boolean;
-  servicesManager: any;
-}
-
-export interface AIOverlayHookReturn {
-  updateOverlay: (aiResult: AIResult) => void;
-  clearOverlay: () => void;
-  setupHeatmapActionCorner: (
-    aiResult: AIResult,
-    onToggle: () => void,
-    isActive: boolean,
-    hasHeatmap?: boolean
-  ) => void;
-  clearActionCorners: () => void;
+  /** Whether the heatmap layout is currently open for this viewport. */
+  isHeatmapActive?: boolean;
+  /** Opens / closes the heatmap layout; omitted when the viewport cannot. */
+  onToggleHeatmap?: (() => void) | null;
 }

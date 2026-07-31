@@ -64,6 +64,12 @@ function modeFactory() {
         'studyBrowser.tabMode': 'study-ai-subtabs',
       });
 
+      // Replace the stock viewport overlay text with the AI summary. Mode
+      // scope, so it is undone when the user leaves this mode.
+      customizationService?.setCustomizations?.([
+        'view-ai-result.customizationModule.aiViewportOverlay',
+      ]);
+
       // The mode route seeds this mode's `toolbarButtons` / `toolbarSections`
       // (see below) onto the Mode customization scope before this runs, so
       // reading them back here picks up anything a `?customization=` module
@@ -75,6 +81,13 @@ function modeFactory() {
           toolbarSections: customizationService.getCustomization('toolbarSections'),
         }
       );
+
+      // Append (updateSection appends to an existing section) rather than
+      // restating cornerstone's topRight corner, so upstream's badges keep
+      // working and this mode only adds the heatmap toggle.
+      toolbarService.updateSection(toolbarService.sections.viewportActionMenu.topRight, [
+        'aiHeatmapToggle',
+      ]);
 
       // Obtain Cornerstone tool definitions
       const utilityModule = extensionManager.getModuleEntry(

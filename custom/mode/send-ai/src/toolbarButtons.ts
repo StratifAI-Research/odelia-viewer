@@ -23,6 +23,18 @@ const toolbarButtons: Button[] = [
       evaluate: 'evaluate.heatmapSync',
     },
   },
+  {
+    // Viewport action-corner entry (see the topRight section in index.tsx).
+    // It renders itself from the viewport's published AI state rather than
+    // running a command, so it has no `commands` / `evaluate`.
+    id: 'aiHeatmapToggle',
+    uiType: 'viewAIResult.heatmapToggle',
+    props: {
+      id: 'aiHeatmapToggle',
+      icon: 'icon-status-alert',
+      label: 'Heatmap',
+    },
+  },
 ];
 
 export default toolbarButtons;
