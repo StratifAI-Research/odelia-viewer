@@ -247,7 +247,9 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
           <div className="mb-2 flex flex-col">
             <div className="mb-2 flex items-center">
               <select
-                className="flex-grow rounded border p-2"
+                // Both call sites sit on a dark panel; without an explicit
+                // colour the native control renders as a bright white slab.
+                className="flex-grow rounded border border-gray-700 bg-gray-800 p-2 text-white"
                 value={currentEndpoint?.id || ''}
                 onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
                   handleEndpointSelect(e.target.value)
@@ -298,7 +300,11 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
           </div>
         </>
       ) : (
-        <div className="rounded border bg-gray-50 p-4">
+        // Light card: the labels below are `text-gray-700` and the native
+        // inputs are white, so the surface has to be light too. `gray-50` is
+        // not in OHIF's palette (it starts at 100) — that class emitted no rule
+        // at all, which left dark labels on a dark panel.
+        <div className="rounded border bg-gray-100 p-4">
           <h4 className="mb-3 text-sm font-medium">
             {editingEndpoint ? 'Edit AI Endpoint' : 'Add AI Endpoint'}
           </h4>

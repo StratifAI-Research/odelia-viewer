@@ -13,6 +13,10 @@ module.exports = {
     '../ui/src/**/*.{jsx,js,ts,tsx,css}',
     '../ui-next/src/**/*.{jsx,js,ts,tsx,css}',
     '../../modes/*/src/**/*.{jsx,js,ts,tsx,css}',
+    // ODELIA's out-of-tree extensions and modes (see the `directory` entries in
+    // pluginConfig.json). Without this their class names are purged, and any
+    // utility upstream does not happen to use itself renders as nothing.
+    '../../custom/*/*/src/**/*.{jsx,js,ts,tsx,css}',
     './node_modules/@ohif/ui/src/**/*.{js,jsx,ts,tsx,css}',
     '../../node_modules/@ohif/ui/src/**/*.{js,jsx,ts,tsx,css}',
     '../../node_modules/@ohif/ui-next/src/**/*.{js,jsx,ts,tsx,css}',

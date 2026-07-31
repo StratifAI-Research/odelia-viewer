@@ -408,7 +408,9 @@ const FeedbackPanel: React.FC = () => {
         <div className="mb-3 text-sm">Please enter your name to provide feedback.</div>
         <div className="mb-3 flex items-center space-x-2">
           <input
-            className="flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-2 text-sm"
+            // min-w-0: a flex item will not shrink below its intrinsic width by
+            // default, which pushed Save off the edge of this narrow panel.
+            className="min-w-0 flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-2 text-sm"
             placeholder="Your name"
             value={nameInput}
             onChange={e => setNameInput(e.target.value)}
