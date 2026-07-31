@@ -59,9 +59,8 @@ function modeFactory() {
         '@ohif/extension-cornerstone.utilityModule.tools'
       );
 
-      // MODE-L8: guard the module lookup (parity with send-ai) so a missing
-      // cornerstone tools module degrades gracefully instead of throwing during
-      // mode entry.
+      // Guard the module lookup (parity with send-ai) so a missing cornerstone
+      // tools module degrades gracefully instead of throwing during mode entry.
       if (!utilityModule?.exports) {
         console.warn(
           'labeling-mode: Cornerstone tools utility module not found – tools not activated'
@@ -162,10 +161,12 @@ function modeFactory() {
       series: [],
     },
     /**
-     * A boolean return value that indicates whether the mode is valid for the
-     * modalities of the selected studies. This mode accepts any study.
+     * Whether the mode is valid for the modalities of the selected studies.
+     * Must return `{ valid, description? }` — WorkList destructures `.valid`,
+     * so a bare boolean reads as `undefined` and disables the mode. This mode
+     * accepts any study.
      */
-    isValidMode: ({ modalities }) => true,
+    isValidMode: ({ modalities }) => ({ valid: true }),
     /**
      * Mode Routes are used to define the mode's behavior. A list of Mode Route
      * that includes the mode's path and the layout to be used. The layout will

@@ -1,11 +1,11 @@
 import { getStaticDate } from './dateCache';
 import { extractAIResultData } from './extractAIResultData';
-import { formatDicomDateTime } from './dicomDateTime';
-import { findMatchingSRForHeatmap } from './aiResultPairing';
+import { formatDicomDateTime, creationSortKey } from './dicomDateTime';
 import {
   isAIResult,
   getRealDisplaySet,
   getCreationTzOffset,
+  resolveAIGroupIdentity,
   clearAITabCache,
   getAITabCacheSize,
 } from './aiTabHelpers';
@@ -20,34 +20,10 @@ interface AIEntry {
 }
 
 /**
- * Group key for an AI entry. SR (report) display sets are keyed by
- * model + run datetime so two *different* models produced at the same DICOM
- * second stay in separate groups. An SC (heatmap) joins the group of the SR it
- * pairs with — by
- * referenced SOP UID / time proximity — so a report and its heatmap stay
- * together; an unpaired heatmap falls back to a datetime-only key. Returns
- * `null` when the entry has no usable date (handled as a missing-date group).
- */
-function aiGroupKey(entry: AIEntry, srEntries: AIEntry[]): string | null {
-  if (!entry.formattedDateTime) {
-    return null;
-  }
-  if (entry.modality === 'SC') {
-    const matchSR = findMatchingSRForHeatmap(
-      entry.real,
-      srEntries.map(s => s.real)
-    );
-    const paired = matchSR ? srEntries.find(s => s.real === matchSR) : undefined;
-    if (paired && paired.formattedDateTime) {
-      return `${paired.modelName}|${paired.formattedDateTime}`;
-    }
-    return `AI Model|${entry.formattedDateTime}`;
-  }
-  return `${entry.modelName}|${entry.formattedDateTime}`;
-}
-
-/**
- * Creates tabs for the study browser that groups AI results by model name + datetime
+ * Creates tabs for the study browser that groups AI results by report identity.
+ * Each group is keyed by the SR (report) SOP Instance UID (ODV-223), so two runs
+ * that share a model and a creation second stay separate; a heatmap (SC) joins
+ * the group of the SR it pairs with (referenced SOP UID / time proximity).
  * @param {string[]} primaryStudyInstanceUIDs
  * @param {object[]} studyDisplayList
  * @param {object[]} displaySets - These are thumbnail objects, not actual display sets
@@ -62,8 +38,10 @@ export function createAIBrowserTabs(
 ) {
   // Group display sets
   const originalSeries = new Map();
-  const aiResultGroups = new Map(); // Key: "modelName|datetime", Value: series data
-  const missingDateGroups = new Map(); // Key: 'UNKNOWN', Value: series data
+  // Both keyed by report identity (SR SOP Instance UID); whether an entry has a
+  // usable date decides which map holds its group. Value: series data.
+  const aiResultGroups = new Map();
+  const missingDateGroups = new Map();
 
   // First pass: split original series from AI results, resolving each AI
   // thumbnail's real display set (instance metadata) once.
@@ -83,7 +61,9 @@ export function createAIBrowserTabs(
           realDisplaySet?.Modality || thumbnailDisplaySet.Modality || thumbnailDisplaySet.modality,
         modelName,
         formattedDateTime: formatDicomDateTime(creationDate, creationTime, tzOffset),
-        sortKey: `${creationDate || '99999999'}${creationTime || '999999'}`,
+        // Sort by the true UTC instant so display order matches the labeled
+        // timestamps even across mixed offsets (ODV-223).
+        sortKey: creationSortKey(creationDate, creationTime, tzOffset),
       });
     } else {
       // Original (non-AI) series
@@ -106,61 +86,71 @@ export function createAIBrowserTabs(
     }
   });
 
-  // Second pass: assign AI entries to groups. Process SR (report) entries first
-  // so each group's identity/order is anchored by its report and heatmaps
-  // resolve against a fully-populated SR list.
+  // Second pass: assign AI entries to groups keyed by report SOP Instance UID
+  // (ODV-223). Process SR (report) entries first so each group is created and
+  // labeled from its report, and heatmaps resolve against a fully-populated SR
+  // list. An entry whose identity already has a group (its report was seen
+  // first) joins that group regardless of its own date, so a dateless heatmap
+  // still stays with its dated report.
   const srEntries = aiEntries.filter(e => e.modality === 'SR');
+  // Index SR display sets by study so a heatmap only ever pairs with a report
+  // from its OWN study (this flat builder can receive multiple studies at once).
+  const srRealByStudy = new Map<string, any[]>();
+  srEntries.forEach(e => {
+    const sid = e.thumb.StudyInstanceUID;
+    if (!srRealByStudy.has(sid)) {
+      srRealByStudy.set(sid, []);
+    }
+    srRealByStudy.get(sid)!.push(e.real);
+  });
   const orderedEntries = [...srEntries, ...aiEntries.filter(e => e.modality !== 'SR')];
 
-  orderedEntries.forEach(entry => {
-    const groupKey = aiGroupKey(entry, srEntries);
+  const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9._-]/g, '_');
 
-    if (groupKey === null) {
-      const missingGroupKey = 'UNKNOWN';
-      if (!missingDateGroups.has(missingGroupKey)) {
-        missingDateGroups.set(missingGroupKey, {
-          studyInstanceUid: `${entry.thumb.StudyInstanceUID}_AI_UNKNOWN`.replace(
-            /[^a-zA-Z0-9._-]/g,
-            '_'
-          ),
-          date: 'Date Unknown',
-          description: `AI Results - Date Unknown`,
-          modalities: 'AI',
-          numInstances: 0,
-          displaySets: [],
-          modelName: entry.modelName,
-        });
-      }
-      const group = missingDateGroups.get(missingGroupKey);
-      group.displaySets.push(entry.thumb);
-      group.numInstances += entry.thumb.numInstances || 1;
+  orderedEntries.forEach(entry => {
+    const sameStudySrReal = srRealByStudy.get(entry.thumb.StudyInstanceUID) || [];
+    const { key: identity } = resolveAIGroupIdentity(entry.real, sameStudySrReal);
+
+    // Join an existing group for this identity (dated or missing-date) if one
+    // was already created by its report.
+    const existing = aiResultGroups.get(identity) || missingDateGroups.get(identity);
+    if (existing) {
+      existing.displaySets.push(entry.thumb);
+      existing.numInstances += entry.thumb.numInstances || 1;
       return;
     }
 
-    if (!aiResultGroups.has(groupKey)) {
-      // A group is created by the first entry seen for the key — an SR when one
-      // exists, so the label carries the report's model name for disambiguation.
-      const named = entry.modelName && entry.modelName !== 'AI Model';
-      aiResultGroups.set(groupKey, {
-        studyInstanceUid: `${entry.thumb.StudyInstanceUID}_AI_${groupKey}`.replace(
-          /[^a-zA-Z0-9._-]/g,
-          '_'
-        ),
-        date: entry.formattedDateTime,
-        description: named
-          ? `${entry.modelName} - ${entry.formattedDateTime}`
-          : `AI Results - ${entry.formattedDateTime}`,
+    if (!entry.formattedDateTime) {
+      // New missing-date group — keyed by identity so distinct dateless reports
+      // are not merged together.
+      const group = {
+        studyInstanceUid: sanitize(`${entry.thumb.StudyInstanceUID}_AI_${identity}_UNKNOWN`),
+        date: 'Date Unknown',
+        description: `AI Results - Date Unknown`,
         modalities: 'AI',
-        numInstances: 0,
-        displaySets: [],
+        numInstances: entry.thumb.numInstances || 1,
+        displaySets: [entry.thumb],
         modelName: entry.modelName,
-        sortKey: entry.sortKey,
-      });
+      };
+      missingDateGroups.set(identity, group);
+      return;
     }
 
-    const group = aiResultGroups.get(groupKey);
-    group.displaySets.push(entry.thumb);
-    group.numInstances += entry.thumb.numInstances || 1;
+    // New dated group. The creating entry is an SR when one exists, so the label
+    // carries the report's model name for disambiguation.
+    const named = entry.modelName && entry.modelName !== 'AI Model';
+    aiResultGroups.set(identity, {
+      studyInstanceUid: sanitize(`${entry.thumb.StudyInstanceUID}_AI_${identity}`),
+      date: entry.formattedDateTime,
+      description: named
+        ? `${entry.modelName} - ${entry.formattedDateTime}`
+        : `AI Results - ${entry.formattedDateTime}`,
+      modalities: 'AI',
+      numInstances: entry.thumb.numInstances || 1,
+      displaySets: [entry.thumb],
+      modelName: entry.modelName,
+      sortKey: entry.sortKey,
+    });
   });
 
   // Create tabs in the specified order
@@ -188,7 +178,8 @@ export function createAIBrowserTabs(
     });
   });
 
-  // 3. Missing-date tab — every dateless AI result shares one 'UNKNOWN' bucket
+  // 3. Missing-date tabs — one per report identity, so distinct dateless
+  //    reports stay in separate tabs rather than merging into one bucket
   Array.from(missingDateGroups.values()).forEach((group, index) => {
     tabs.push({
       name: `ai-missing-${index}`,

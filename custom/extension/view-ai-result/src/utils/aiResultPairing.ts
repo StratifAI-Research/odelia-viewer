@@ -54,6 +54,28 @@ export function ownSopInstanceUIDs(displaySet: any): Set<string> {
 }
 
 /**
+ * The canonical SOP Instance UID identifying a display set — its DICOM identity
+ * (ODV-223). Prefers the single `instance.SOPInstanceUID` (SR documents and SC
+ * images are single-instance display sets), then a display-set-level
+ * `SOPInstanceUID`, then the first UID from its `instances`/`images` lists.
+ * Returns undefined only when the display set carries no SOP Instance UID at all
+ * — in which case callers fall back to a session-stable identity so that
+ * distinct display sets are still never grouped together.
+ */
+export function primarySopInstanceUID(displaySet: any): string | undefined {
+  const direct = displaySet?.instance?.SOPInstanceUID ?? displaySet?.SOPInstanceUID;
+  if (typeof direct === 'string' && direct.length > 0) {
+    return direct;
+  }
+  // ownSopInstanceUIDs preserves insertion order (instance → own → instances → images);
+  // the first entry is the most specific available identity.
+  for (const uid of ownSopInstanceUIDs(displaySet)) {
+    return uid;
+  }
+  return undefined;
+}
+
+/**
  * SOP Instance UIDs *referenced* by a display set, collected by a bounded
  * recursive walk over its `instance` metadata (covers ReferencedImageSequence,
  * evidence sequences, content-sequence references, etc. without hard-coding a
@@ -162,31 +184,37 @@ export function findMatch(source: any, candidates: any[], opts: FindMatchOptions
   const pool = linked.length > 0 ? linked : candidates;
 
   const srcMs = creationEpochMs(source);
-  let best: any = null;
-  let bestDiff = Infinity;
-  for (const candidate of pool) {
+  // Rank by creation-time distance (primary, ascending); a model-name match is
+  // only a *secondary* tiebreak among equally-close candidates — never a nudge
+  // that could let a farther candidate overtake a strictly closer one. Array
+  // sort is stable, so equal candidates keep their input order (deterministic).
+  const scored = pool.map(candidate => {
     const candMs = creationEpochMs(candidate);
-    let diff = Infinity;
-    if (srcMs !== undefined && candMs !== undefined) {
-      diff = Math.abs(candMs - srcMs);
-    }
-    // Model-name tiebreak: nudge a name-matching candidate ahead of an equal one.
-    const adjusted = matchesModelName(candidate, opts.modelName) ? diff - 1 : diff;
-    if (adjusted < bestDiff) {
-      best = candidate;
-      bestDiff = adjusted;
-    }
-  }
+    const diff =
+      srcMs !== undefined && candMs !== undefined ? Math.abs(candMs - srcMs) : Infinity;
+    return { candidate, diff, modelMatch: matchesModelName(candidate, opts.modelName) };
+  });
+  scored.sort((a, b) => a.diff - b.diff || Number(b.modelMatch) - Number(a.modelMatch));
+
+  const best = scored[0];
+  const runnerUp = scored[1];
+  // Ambiguous only when the runner-up is just as good on BOTH keys.
+  const tie =
+    !!runnerUp && runnerUp.diff === best.diff && runnerUp.modelMatch === best.modelMatch;
 
   if (linked.length > 0) {
-    // Referenced-UID identity wins; if timestamps are available use the closest
-    // linked candidate, otherwise fall back to the first linked one.
-    return best ?? linked[0];
+    // Referenced-UID identity is authoritative; use the closest linked candidate
+    // (or the first, when timestamps are unavailable).
+    return best.candidate;
   }
 
-  // No identity link: require creation-time proximity within the window.
-  if (best !== null && srcMs !== undefined && bestDiff <= PAIRING_TIME_WINDOW_MS) {
-    return best;
+  // No identity link: require creation-time proximity within the window AND an
+  // unambiguous winner. When two candidates are equally close (e.g. two heatmaps
+  // stamped at the same second as two same-second reports, none carrying a
+  // referenced UID), the data cannot tell us which belongs to which — refuse to
+  // guess rather than silently attach a heatmap to the wrong report.
+  if (best.diff <= PAIRING_TIME_WINDOW_MS && !tie) {
+    return best.candidate;
   }
   return null;
 }
