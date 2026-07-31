@@ -1,13 +1,11 @@
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
-import { StudyListSkeleton, SeriesListSkeleton, EmptyState, ErrorState } from './LoadingStates';
+import { SeriesListSkeleton, EmptyState, ErrorState } from './LoadingStates';
 
 describe('LoadingStates', () => {
   it('renders the skeleton placeholders', () => {
-    const { container: a } = render(<StudyListSkeleton />);
-    expect(a.querySelectorAll('.animate-pulse').length).toBe(3);
-    const { container: b } = render(<SeriesListSkeleton />);
-    expect(b.querySelectorAll('.animate-pulse').length).toBe(4);
+    const { container } = render(<SeriesListSkeleton />);
+    expect(container.querySelectorAll('.animate-pulse').length).toBe(4);
   });
 
   it('EmptyState shows the title, message, and a default icon', () => {

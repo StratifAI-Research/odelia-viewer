@@ -6,8 +6,6 @@ import {
   getRealDisplaySet,
   getCreationTzOffset,
   resolveAIGroupIdentity,
-  clearAITabCache,
-  getAITabCacheSize,
 } from './aiTabHelpers';
 
 interface AIEntry {
@@ -204,19 +202,4 @@ export function createAIBrowserTabs(
   }
 
   return tabs;
-}
-
-/**
- * Clear the display set cache to prevent memory leaks. Delegates to the shared cache in
- * aiTabHelpers; kept as a named export for existing callers and tests.
- */
-export function clearDisplaySetCache() {
-  clearAITabCache();
-}
-
-/**
- * Get cache size for debugging. Delegates to the shared cache in aiTabHelpers.
- */
-export function getDisplaySetCacheSize() {
-  return getAITabCacheSize();
 }

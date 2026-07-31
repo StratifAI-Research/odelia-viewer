@@ -7,7 +7,6 @@ import {
   getCreationTzOffset,
   formatCreationDateTime,
   resolveAIGroupIdentity,
-  clearAITabCache,
 } from './aiTabHelpers';
 
 /**
@@ -141,8 +140,4 @@ export function createStudyAIBrowserTabsNested(
       studies: allStudies,
     },
   ];
-}
-
-export function clearNestedTabCache() {
-  clearAITabCache();
 }

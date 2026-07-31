@@ -1,7 +1,5 @@
-import {
-  createStudyAIBrowserTabsNested,
-  clearNestedTabCache,
-} from './createStudyAIBrowserTabsNested';
+import { createStudyAIBrowserTabsNested } from './createStudyAIBrowserTabsNested';
+import { clearAITabCache } from './aiTabHelpers';
 
 const originalThumb = (over: any = {}) => ({
   StudyInstanceUID: 'study-1',
@@ -23,7 +21,7 @@ const aiThumb = (over: any = {}) => ({
   ...over,
 });
 
-beforeEach(() => clearNestedTabCache());
+beforeEach(() => clearAITabCache());
 
 describe('createStudyAIBrowserTabsNested', () => {
   it('always returns a single "All Studies" tab', () => {
