@@ -8,13 +8,13 @@ import PanelStudyBrowserTracking from './PanelStudyBrowserTracking';
 let mockImageViewerReturn: any = { StudyInstanceUIDs: [] };
 let mockViewportGridReturn: any;
 
-jest.mock('@ohif/ui', () => {
-  const actual = jest.requireActual('@ohif/ui');
-  return { ...actual, useImageViewer: () => mockImageViewerReturn };
-});
 jest.mock('@ohif/ui-next', () => {
   const actual = jest.requireActual('@ohif/ui-next');
-  return { ...actual, useViewportGrid: () => mockViewportGridReturn };
+  return {
+    ...actual,
+    useImageViewer: () => mockImageViewerReturn,
+    useViewportGrid: () => mockViewportGridReturn,
+  };
 });
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k }),

@@ -2,7 +2,7 @@
 jest.mock('@ohif/core', () => ({ DicomMetadataStore: { subscribe: jest.fn() } }), {
   virtual: true,
 });
-jest.mock('./toolbarButtons', () => ({ __esModule: true, default: [] }));
+jest.mock('@ohif/mode-basic', () => ({ registerModeToolbar: jest.fn() }), { virtual: true });
 jest.mock('./studiesList', () => ({ __esModule: true, default: () => [] }));
 
 import mode from './index';

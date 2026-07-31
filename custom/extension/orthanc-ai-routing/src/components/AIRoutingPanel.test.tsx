@@ -10,10 +10,8 @@ import AIRoutingPanel from './AIRoutingPanel';
 // Controllable viewport context. mock-prefixed so the jest.mock factories may close
 // over it; a stable grid reference per test avoids effect churn / act warnings.
 const mockViewport: any = {};
-jest.mock('@ohif/ui', () => ({
-  useImageViewer: () => ({ StudyInstanceUIDs: mockViewport.studyUIDs }),
-}));
 jest.mock('@ohif/ui-next', () => ({
+  useImageViewer: () => ({ StudyInstanceUIDs: mockViewport.studyUIDs }),
   useViewportGrid: () => mockViewport.grid,
 }));
 

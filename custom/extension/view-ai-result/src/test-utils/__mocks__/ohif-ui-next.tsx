@@ -64,6 +64,12 @@ export const AccordionItem = Pass('accordion-item');
 export const AccordionTrigger = Pass('accordion-trigger');
 export const AccordionContent = Pass('accordion-content');
 export const Icons = new Proxy({}, { get: () => () => <span data-testid="icon" /> });
+// 3.13 moved these context hooks out of @ohif/ui into @ohif/ui-next.
+export const useImageViewer = () => ({ StudyInstanceUIDs: [] as string[] });
+export const useUserAuthentication = () => [
+  { user: null },
+  { getAuthorizationHeader: () => ({}) },
+];
 export const useViewportGrid = () => [
   { activeViewportId: 'v1', viewports: new Map() },
   { setActiveViewportId: jest.fn() },

@@ -16,18 +16,14 @@ let mockViewportGridReturn: any = [
   { setActiveViewportId: jest.fn() },
 ];
 
-jest.mock('@ohif/ui', () => {
-  const actual = jest.requireActual('@ohif/ui');
+jest.mock('@ohif/ui-next', () => {
+  const actual = jest.requireActual('@ohif/ui-next');
   return {
     ...actual,
     useImageViewer: () => mockImageViewerReturn,
     useUserAuthentication: () => mockAuthReturn,
+    useViewportGrid: () => mockViewportGridReturn,
   };
-});
-
-jest.mock('@ohif/ui-next', () => {
-  const actual = jest.requireActual('@ohif/ui-next');
-  return { ...actual, useViewportGrid: () => mockViewportGridReturn };
 });
 
 // AI result metadata + current result fixtures.
