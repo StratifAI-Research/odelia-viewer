@@ -20,7 +20,10 @@
 # Stage 1: Build the application
 # docker build -t ohif/viewer:latest .
 # Copy Files
-FROM node:24.15.0-slim as builder
+# Only needs to be new enough to launch corepack/pnpm: `pnpm install` below
+# downloads the exact Node from package.json#devEngines.runtime and runs the
+# build with it, so the base image tag does not pin what the build uses.
+FROM node:24-slim as builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential python3 unzip \
     && rm -rf /var/lib/apt/lists/*

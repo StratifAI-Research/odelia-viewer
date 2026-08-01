@@ -1,8 +1,9 @@
 name: Setup Node + pnpm (pinned)
 description: >
-  Installs the Node version from .node-version and activates the pnpm version
-  pinned in the root package.json's `packageManager` field via corepack. Single
-  source of truth so workflows cannot drift from the lockfile's package manager.
+  Bootstraps the Node major from .node-version and activates the pnpm version
+  pinned in the root package.json's `packageManager` field via corepack. This
+  Node only has to be new enough to run pnpm: `pnpm install` downloads the exact
+  runtime from package.json#devEngines.runtime and runs project scripts with it.
 runs:
   using: composite
   steps:
