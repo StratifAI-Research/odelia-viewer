@@ -134,5 +134,12 @@
       "git add"
     ]
   },
-  "version": "3.13.2"
+  "version": "3.13.2",
+  "devEngines": {
+    "runtime": {
+      "name": "node",
+      "version": "24.15.0",
+      "onFail": "download"
+    }
+  }
 }

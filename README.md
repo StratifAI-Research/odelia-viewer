@@ -77,14 +77,18 @@ Common entrypoint env vars:
 
 ### Prerequisites
 
-- **[Node](https://nodejs.org/) 24.15** — JavaScript runtime (pinned in [`.node-version`](.node-version); `engines` requires ≥24). A version manager such as [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm) makes it easy to match.
-- **[pnpm](https://pnpm.io/) 11** — package manager and script runner (pinned via `packageManager` in [`package.json`](package.json), activated by corepack).
+- **[pnpm](https://pnpm.io/) 11 or newer** — install it with pnpm's [standalone script](https://pnpm.io/installation#using-a-standalone-script) or Homebrew; both work without a pre-existing Node.
 - **[Docker](https://www.docker.com/get-started/)** *(optional)* — only needed to build the production image.
+
+Node is **not** a prerequisite. It is declared as `devEngines.runtime` in
+[`package.json`](package.json), so `pnpm install` downloads the pinned version, records its
+resolution in `pnpm-lock.yaml`, and runs every project script with it — no version manager, and no
+mismatch with CI.
 
 ### Setup
 
 ```bash
-pnpm install        # install & link workspace dependencies (versions pinned in pnpm-lock.yaml)
+pnpm install        # fetch the pinned Node + workspace dependencies
 pnpm run dev        # start the dev server (http://localhost:3000)
 docker build -t stratifai/odelia-viewer:local .  # optional: build docker image
 ```

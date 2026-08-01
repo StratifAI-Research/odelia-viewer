@@ -86,3 +86,27 @@ try {
 } catch (err) {
   console.log(`Skipped skill symlink setup: ${err.message}`);
 }
+
+// The Node version is pinned in three places that cannot reference each other:
+// `devEngines.runtime` (what pnpm installs and runs project scripts with),
+// `.node-version` (what actions/setup-node reads to bootstrap CI), and the
+// Dockerfile's base image. Drift between them is silent and reproduces as
+// "works on my machine", so fail the install instead.
+try {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, 'package.json'), 'utf8'));
+  const declared = pkg.devEngines?.runtime?.version;
+  const bootstrap = fs.readFileSync(path.join(__dirname, '.node-version'), 'utf8').trim();
+
+  if (declared && declared !== bootstrap) {
+    throw new Error(
+      `Node version pins disagree: package.json devEngines.runtime is ${declared}, ` +
+        `.node-version is ${bootstrap}. Update both (and the Dockerfile base image).`
+    );
+  }
+} catch (err) {
+  if (err.code === 'ENOENT') {
+    console.log(`Skipped Node pin check: ${err.message}`);
+  } else {
+    throw err;
+  }
+}
