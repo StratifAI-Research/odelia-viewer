@@ -39,6 +39,6 @@
       "@ohif/mode-basic": ["modes/basic/src"]
     }
   },
-  "include": ["custom/types/*.d.ts", "custom/extension/*/src/**/*", "custom/mode/*/src/**/*"],
+  "include": ["custom/extension/*/src/**/*", "custom/mode/*/src/**/*"],
   "exclude": ["**/node_modules/**", "**/dist/**", "**/coverage/**"]
 }

@@ -95,9 +95,6 @@ export default function PanelStudyBrowserTracking({
     | string
     | undefined;
 
-  /*
-
-  */
   const { t } = useTranslation('Common');
 
   // Normally you nest the components so the tree isn't so deep, and the data
@@ -321,10 +318,6 @@ export default function PanelStudyBrowserTracking({
           hasUID: !!studyInstanceUID,
         });
       }
-
-      // Local selection state removed – the global service event will update UI
-    } else {
-      // For medical images, we could implement different behavior if needed
     }
   };
 
@@ -676,7 +669,6 @@ export default function PanelStudyBrowserTracking({
       const element = document.getElementById(`thumbnail-${displaySetInstanceUID}`);
 
       if (element && typeof element.scrollIntoView === 'function') {
-        // TODO: Any way to support IE here?
         element.scrollIntoView({ behavior: 'smooth' });
 
         setJumpToDisplaySet(null);

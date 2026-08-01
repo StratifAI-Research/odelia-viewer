@@ -28,7 +28,6 @@ export class AIResultsService {
   // Event constants
   static EVENTS = {
     AI_RESULT_SELECTED: 'AI_RESULT_SELECTED',
-    AI_RESULT_UPDATED: 'AI_RESULT_UPDATED',
     AI_RESULT_CLEARED: 'AI_RESULT_CLEARED',
     STUDY_CHANGED: 'STUDY_CHANGED',
   };

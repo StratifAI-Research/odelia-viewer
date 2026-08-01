@@ -253,108 +253,6 @@ describe('OrthancAIService — getModelManifest (+ cache)', () => {
   });
 });
 
-describe('OrthancAIService — routeStudyToAI', () => {
-  let fetchMock: jest.Mock;
-  let service: OrthancAIService;
-
-  beforeEach(() => {
-    installLocalStorageMock();
-    fetchMock = installFetchMock();
-    silenceConsole();
-    service = new OrthancAIService({ configuration: { orthancUrl: 'http://orthanc:8042' } });
-    service.setCurrentEndpoint(AI_ENDPOINT);
-  });
-  afterEach(() => jest.restoreAllMocks());
-
-  it('looks up the study id then POSTs to /send-to-ai', async () => {
-    fetchMock
-      .mockResolvedValueOnce(
-        mockResponse({ json: [{ ID: 'orthanc-99', Type: 'Study', Path: '' }] })
-      )
-      .mockResolvedValueOnce(
-        mockResponse({ json: { status: 'success', workitem_uid: 'w1', message: 'ok' } })
-      );
-
-    const res = await service.routeStudyToAI('1.2.3');
-    expect(res).toEqual({ status: 'success', workitem_uid: 'w1', message: 'ok' });
-
-    const [sendUrl, sendInit] = fetchMock.mock.calls[1];
-    expect(sendUrl).toBe('http://orthanc:8042/send-to-ai');
-    expect(JSON.parse(sendInit.body)).toEqual({
-      study_id: 'orthanc-99',
-      target: 'test-ai',
-      target_url: AI_ENDPOINT.url,
-    });
-  });
-
-  it('throws when no endpoint is configured', async () => {
-    // Explicit precondition: empty endpoints array → loadCurrentEndpoint leaves it null.
-    localStorage.setItem('aiEndpoints', JSON.stringify([]));
-    const bare = new OrthancAIService({ configuration: {} });
-    expect(bare.getCurrentEndpoint()).toBeNull();
-    await expect(bare.routeStudyToAI('1.2.3')).rejects.toThrow('No AI endpoint configured');
-  });
-
-  it('surfaces {message} from a non-ok send response', async () => {
-    fetchMock
-      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
-      .mockResolvedValueOnce(
-        mockResponse({ ok: false, status: 400, json: { message: 'bad input' } })
-      );
-    await expect(service.routeStudyToAI('1.2.3')).rejects.toThrow('bad input');
-  });
-
-  it('maps an AbortError to a timeout message', async () => {
-    fetchMock.mockResolvedValueOnce(
-      mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] })
-    );
-    fetchMock.mockRejectedValueOnce(Object.assign(new Error('aborted'), { name: 'AbortError' }));
-    await expect(service.routeStudyToAI('1.2.3')).rejects.toThrow(
-      'Request timed out after 30 seconds'
-    );
-  });
-
-  // /send-to-ai is the routing plugin's route, not Orthanc's. A 404 there means
-  // the plugin is missing — telling the reader to check `orthancUrl` (which the
-  // successful lookup just proved correct) would send them the wrong way.
-  it('blames the routing plugin, not the configuration, for a 404 on /send-to-ai', async () => {
-    fetchMock
-      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
-      .mockResolvedValueOnce(mockResponse({ ok: false, status: 404, text: '<html>404</html>' }));
-    const error = await service.routeStudyToAI('1.2.3').catch((e: Error) => e);
-    expect((error as Error).message).toBe(
-      'The Orthanc server at http://orthanc:8042 has no POST /send-to-ai route (HTTP 404). ' +
-        'The AI routing plugin is probably not installed or not enabled.'
-    );
-    expect((error as Error).message).not.toMatch(/orthancUrl/);
-  });
-
-  it('surfaces {error} from a non-ok send response', async () => {
-    fetchMock
-      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
-      .mockResolvedValueOnce(
-        mockResponse({ ok: false, status: 422, json: { error: 'validation failed' } })
-      );
-    await expect(service.routeStudyToAI('1.2.3')).rejects.toThrow('validation failed');
-  });
-
-  // The error body is read once as text and JSON.parse is attempted. A non-JSON
-  // body (e.g. an HTML error page) is never surfaced raw — the status-based
-  // message is used instead.
-  it('falls back to the status-based message when the error body is not JSON', async () => {
-    fetchMock
-      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
-      .mockResolvedValueOnce(
-        mockResponse({ ok: false, status: 502, text: '<html>Bad Gateway</html>' })
-      );
-    const error = await service.routeStudyToAI('1.2.3').catch((e: Error) => e);
-    expect((error as Error).message).toBe(
-      'Failed to send the study to the AI endpoint (HTTP 502).'
-    );
-    expect((error as Error).message).not.toMatch(/[<>]/);
-  });
-});
-
 describe('OrthancAIService — routeSeriesToAI', () => {
   let fetchMock: jest.Mock;
   let service: OrthancAIService;
@@ -423,6 +321,46 @@ describe('OrthancAIService — routeSeriesToAI', () => {
     await expect(service.routeSeriesToAI('1.2.3', ['s1'])).rejects.toThrow(
       'Request timed out after 30 seconds'
     );
+  });
+
+  it('surfaces {error} from a non-ok send response', async () => {
+    fetchMock
+      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
+      .mockResolvedValueOnce(
+        mockResponse({ ok: false, status: 422, json: { error: 'validation failed' } })
+      );
+    await expect(service.routeSeriesToAI('1.2.3', ['s1'])).rejects.toThrow('validation failed');
+  });
+
+  // /send-to-ai is the routing plugin's route, not Orthanc's. A 404 there means
+  // the plugin is missing — telling the reader to check `orthancUrl` (which the
+  // successful lookup just proved correct) would send them the wrong way.
+  it('blames the routing plugin, not the configuration, for a 404 on /send-to-ai', async () => {
+    fetchMock
+      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
+      .mockResolvedValueOnce(mockResponse({ ok: false, status: 404, text: '<html>404</html>' }));
+    const error = await service.routeSeriesToAI('1.2.3', ['s1']).catch((e: Error) => e);
+    expect((error as Error).message).toBe(
+      'The Orthanc server at http://orthanc:8042 has no POST /send-to-ai route (HTTP 404). ' +
+        'The AI routing plugin is probably not installed or not enabled.'
+    );
+    expect((error as Error).message).not.toMatch(/orthancUrl/);
+  });
+
+  // The error body is read once as text and JSON.parse is attempted. A non-JSON
+  // body (e.g. an HTML error page) is never surfaced raw — the status-based
+  // message is used instead.
+  it('falls back to the status-based message when the error body is not JSON', async () => {
+    fetchMock
+      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
+      .mockResolvedValueOnce(
+        mockResponse({ ok: false, status: 502, text: '<html>Bad Gateway</html>' })
+      );
+    const error = await service.routeSeriesToAI('1.2.3', ['s1']).catch((e: Error) => e);
+    expect((error as Error).message).toBe(
+      'Failed to send the study to the AI endpoint (HTTP 502).'
+    );
+    expect((error as Error).message).not.toMatch(/[<>]/);
   });
 });
 

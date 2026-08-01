@@ -110,16 +110,9 @@ class OrthancAIService {
    * Load the current AI endpoint from localStorage
    */
   private loadCurrentEndpoint(): void {
-    try {
-      const savedEndpoints = localStorage.getItem(AI_ENDPOINTS_STORAGE_KEY);
-      if (savedEndpoints) {
-        const endpoints: AIEndpoint[] = JSON.parse(savedEndpoints);
-        if (endpoints.length > 0) {
-          this.setCurrentEndpoint(endpoints[0]);
-        }
-      }
-    } catch (error) {
-      console.error('Failed to load AI endpoints:', error);
+    const [firstEndpoint] = this.getAIEndpoints();
+    if (firstEndpoint) {
+      this.setCurrentEndpoint(firstEndpoint);
     }
   }
 
@@ -323,7 +316,6 @@ class OrthancAIService {
 
   /**
    * POSTs a routing request to the /send-to-ai endpoint.
-   * Shared by routeStudyToAI and routeSeriesToAI.
    */
   private async postRouting(
     routingRequest: RoutingRequest & {
@@ -358,30 +350,6 @@ class OrthancAIService {
       return (await response.json()) as RoutingResponse;
     } catch {
       throw new Error(describeUnexpectedBody(ctx));
-    }
-  }
-
-  async routeStudyToAI(dicomStudyUID: string): Promise<RoutingResponse> {
-    try {
-      // Check if we have a valid AI endpoint
-      if (!this.currentEndpoint) {
-        throw new Error('No AI endpoint configured. Please add an AI endpoint first.');
-      }
-
-      // Get the Orthanc study ID using the lookup API
-      const orthancStudyId = await this.getOrthancStudyId(dicomStudyUID);
-
-      // Create the routing request with the Orthanc study ID
-      const routingRequest: RoutingRequest = {
-        study_id: orthancStudyId,
-        target: this.currentEndpoint.name,
-        target_url: this.currentEndpoint.url,
-      };
-
-      return await this.postRouting(routingRequest);
-    } catch (error) {
-      console.error('Error routing study to AI:', error);
-      throw error;
     }
   }
 

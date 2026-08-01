@@ -79,19 +79,6 @@ export interface ChatSeriesInfo {
 }
 
 /**
- * Chat session state
- */
-export interface ChatSession {
-  sessionId: string | null;
-  studyUID: string | null;
-  messages: ChatMessage[];
-  isConnected: boolean;
-  isStreaming: boolean;
-  preprocessingStatus?: string;
-  preprocessingProgress?: number;
-}
-
-/**
  * Chat service events
  */
 export const CHAT_EVENTS = {

@@ -10,7 +10,7 @@ interface SeriesSelectionStepProps {
   onSelectAll: () => void;
   onClearSelection: () => void;
   onNext: () => void;
-  onBack?: () => void; // Optional - kept for compatibility but won't be used
+  onBack?: () => void;
   onRetry?: () => void; // Retry loading series on error
   isLoading?: boolean;
   error?: string | null;

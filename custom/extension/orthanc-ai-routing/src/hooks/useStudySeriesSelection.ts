@@ -31,7 +31,6 @@ export function useStudySeriesSelection({
   const [isLoadingSeries, setIsLoadingSeries] = useState<boolean>(false);
 
   // Error states
-  const [studiesError, setStudiesError] = useState<string | null>(null);
   const [seriesError, setSeriesError] = useState<string | null>(null);
 
   // Track if hook is mounted
@@ -50,7 +49,6 @@ export function useStudySeriesSelection({
     const loadStudies = () => {
       try {
         setIsLoadingStudies(true);
-        setStudiesError(null);
 
         const displaySets = displaySetService.getActiveDisplaySets();
 
@@ -153,7 +151,6 @@ export function useStudySeriesSelection({
         setIsLoadingStudies(false);
       } catch (error) {
         console.error('Error loading studies:', error);
-        setStudiesError(error instanceof Error ? error.message : 'Failed to load studies');
         setIsLoadingStudies(false);
       }
     };
@@ -373,7 +370,6 @@ export function useStudySeriesSelection({
     isLoadingSeries,
 
     // Error states
-    studiesError,
     seriesError,
 
     // Actions

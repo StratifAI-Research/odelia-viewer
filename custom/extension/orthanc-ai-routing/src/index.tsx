@@ -66,28 +66,11 @@ export default {
     return [
       {
         name: 'ai-routing-panel',
-        iconName: 'clipboard', // Changed to a more relevant icon
+        iconName: 'clipboard',
         iconLabel: 'AI',
         label: 'Analyze with AI',
         component: wrappedAIRoutingPanel,
       },
     ];
-  },
-
-  /**
-   * CommandsModule exposes the routeToAI command used to send a study to the AI server.
-   */
-  getCommandsModule: () => {
-    return {
-      definitions: [
-        {
-          commandName: 'routeToAI',
-          commandFn: ({ orthancAIService }: any, { studyInstanceUID }: any) => {
-            return orthancAIService.routeStudyToAI(studyInstanceUID);
-          },
-          context: { orthancAIService: true },
-        },
-      ],
-    };
   },
 };
