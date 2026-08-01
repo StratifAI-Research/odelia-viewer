@@ -3,7 +3,9 @@
 # TOML Reference:
 # https://www.netlify.com/docs/netlify-toml-reference/
 #
-# We use Netlify for deploy previews and for publishing docs (gh-pages branch).
+# We use Netlify for deploy previews. Upstream also publishes platform/docs this
+# way; this fork does not, so there is no docs deploy workflow here — build them
+# by hand with `pnpm run docs:build` if needed.
 # https://viewer.ohif.org is created using a different process that is
 # managed by CircleCI and deployed to our Google Hosting
 

@@ -33,6 +33,23 @@ jobs:
       - name: Type-check custom/
         run: pnpm run typecheck:custom
 
+  # Enforcing: a manifest that declares a version an override exists to replace
+  # is what GitHub's dependency graph reads, even though the install is correct.
+  check-overrides:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check manifests against pnpm-workspace.yaml overrides
+        run: pnpm run check:overrides
+
   lint-js:
     runs-on: ubuntu-latest
     steps:
