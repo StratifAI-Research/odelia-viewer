@@ -31,7 +31,7 @@ export default function PanelLabeling({
 
   const config = getPanelConfig(configJson as Config, name);
   const { t } = useTranslation('PanelLabeling');
-  const [displayMeasurements] = useMeasurementSubscription(
+  const displayMeasurements = useMeasurementSubscription(
     measurementService,
     _getMappedMeasurements
   );

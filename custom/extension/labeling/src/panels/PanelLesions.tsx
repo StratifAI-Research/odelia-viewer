@@ -35,7 +35,7 @@ export default function PanelLesionTable({
     measurementService: AppTypes.MeasurementService;
     uiDialogService: AppTypes.UIDialogService;
   };
-  const [displayMeasurements, setDisplayMeasurements] = useMeasurementSubscription(
+  const displayMeasurements = useMeasurementSubscription(
     measurementService,
     _getMappedMeasurements
   );
@@ -46,10 +46,17 @@ export default function PanelLesionTable({
     downloadCSVReport(measurementService.getMeasurements());
   }
 
+  // Selection lives on the MeasurementService rather than in local state: the
+  // subscription below re-projects from the service on every measurement event,
+  // so a locally-held flag is wiped as soon as anything changes. Only rows whose
+  // state actually differs are written, keeping this to at most two broadcasts.
   const selectMeasurement = (uid: string) => {
-    setDisplayMeasurements(current =>
-      current.map(measurement => ({ ...measurement, isSelected: measurement.uid === uid }))
-    );
+    measurementService.getMeasurements().forEach(measurement => {
+      const shouldSelect = measurement.uid === uid;
+      if (!!measurement.isSelected !== shouldSelect) {
+        measurementService.setMeasurementSelected(measurement.uid, shouldSelect);
+      }
+    });
   };
 
   const jumpToMeasurement = (uid: string) => {
@@ -154,20 +161,18 @@ function _getMappedMeasurements(measurementService) {
  * preserves the shipped behavior rather than newly surfacing that text.
  */
 function _mapMeasurementToDisplay(measurement) {
-  const { uid, label: baseLabel, type, selected, findingSites, finding } = measurement;
+  const { label: baseLabel, findingSites, finding } = measurement;
 
   const firstSite = findingSites?.[0];
   const label = baseLabel || finding?.text || firstSite?.text || 'Lesion not annotated';
 
+  // `isSelected` deliberately comes through the spread: it is owned by the
+  // MeasurementService (see selectMeasurement). An earlier version read a
+  // non-existent `selected` key and wrote the result over the real value,
+  // which cleared the highlight on every measurement event.
   return {
     ...measurement,
-    uid,
     label,
-    baseLabel,
-    measurementType: type,
     displayText: { primary: [], secondary: [] },
-    isSelected: !!selected,
-    finding,
-    findingSites,
   };
 }
