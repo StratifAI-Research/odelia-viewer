@@ -1,9 +1,5 @@
-// `@ohif/core` is not resolvable from this package, so mock it virtually.
-jest.mock('@ohif/core', () => ({ DicomMetadataStore: { subscribe: jest.fn() } }), {
-  virtual: true,
-});
+// `@ohif/mode-basic` is not resolvable from this package, so mock it virtually.
 jest.mock('@ohif/mode-basic', () => ({ registerModeToolbar: jest.fn() }), { virtual: true });
-jest.mock('./studiesList', () => ({ __esModule: true, default: () => [] }));
 
 import mode from './index';
 

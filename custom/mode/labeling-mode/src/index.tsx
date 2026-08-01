@@ -1,7 +1,5 @@
 import { id } from './id';
-import { DicomMetadataStore } from '@ohif/core';
 import { registerModeToolbar } from '@ohif/mode-basic';
-import getStudies from './studiesList';
 
 const configs = {
   Length: {},
@@ -151,14 +149,20 @@ function modeFactory() {
     routes: [
       {
         path: 'template',
-        init: async (
-          { servicesManager, extensionManager, studyInstanceUIDs, dataSource, filters },
-          hangingProtocolId
-        ) => {
-          const { displaySetService, hangingProtocolService, measurementService } =
-            servicesManager.services;
+        /**
+         * Only this mode's own setup belongs here.
+         *
+         * OHIF's ModeRoute calls `defaultRouteInit` immediately after this
+         * (platform/app/src/routes/Mode/Mode.tsx), and that already subscribes to
+         * INSTANCES_ADDED, retrieves the series metadata for every study, and runs
+         * the hanging protocol with this mode's `hangingProtocol` id. Repeating any
+         * of it here fetched every study's metadata twice and ran the protocol
+         * twice — and ModeRoute discards whatever `init` returns, so a subscription
+         * registered here could never be torn down.
+         */
+        init: ({ servicesManager, extensionManager, studyInstanceUIDs }) => {
+          const { measurementService } = servicesManager.services;
 
-          const unsubscriptions: any[] = [];
           const initLabels = extensionManager.getModuleEntry(
             'labeling.utilityModule.initLabels'
           ).exports;
@@ -177,46 +181,6 @@ function modeFactory() {
             measurementService,
             StudyInstanceUID: studyInstanceUIDs[0],
           });
-
-          const { unsubscribe: instanceAddedUnsubscribe } = DicomMetadataStore.subscribe(
-            DicomMetadataStore.EVENTS.INSTANCES_ADDED,
-            function ({ StudyInstanceUID, SeriesInstanceUID, madeInClient = false }) {
-              const seriesMetadata = DicomMetadataStore.getSeries(
-                StudyInstanceUID,
-                SeriesInstanceUID
-              );
-              displaySetService.makeDisplaySets(seriesMetadata.instances, madeInClient);
-            }
-          );
-
-          unsubscriptions.push(instanceAddedUnsubscribe);
-
-          const allRetrieves = studyInstanceUIDs.map(StudyInstanceUID =>
-            dataSource.retrieve.series.metadata({
-              StudyInstanceUID,
-              filters,
-            })
-          );
-
-          Promise.allSettled(allRetrieves).then(() => {
-            const displaySets = displaySetService.getActiveDisplaySets();
-
-            if (!displaySets || !displaySets.length) {
-              return;
-            }
-
-            // Gets the studies list to use
-            const studies = getStudies(studyInstanceUIDs, displaySets);
-
-            // study being displayed, and is thus the "active" study.
-            const activeStudy = studies[0];
-
-            // run the hanging protocol matching on the displaySets with the predefined
-            // hanging protocol in the mode configuration
-            hangingProtocolService.run({ studies, activeStudy, displaySets }, hangingProtocolId);
-          });
-
-          return unsubscriptions;
         },
         layoutTemplate: () => {
           return {
