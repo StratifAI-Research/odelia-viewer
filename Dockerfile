@@ -62,13 +62,21 @@ COPY --exclude=**/.venv/** --exclude=pnpm-lock.yaml --exclude=package.json --exc
 # Build here
 # After install it should hopefully be stable until the local directory changes
 ENV QUICK_BUILD true
-# ENV GENERATE_SOURCEMAP=false
 ARG APP_CONFIG=config/default.js
 ARG PUBLIC_URL=/
 ENV PUBLIC_URL=${PUBLIC_URL}
 
 # RUN pnpm run show:config
 RUN pnpm run build
+
+# Upstream's webpack copies the whole of node_modules/onnxruntime-web/dist into
+# dist/ort (platform/app/.webpack/webpack.pwa.js), which includes the ONNX
+# *training* runtime. The viewer only ever runs inference, so that variant is
+# ~11 MB of an image that can never load it. The inference variants are left
+# alone: onnxruntime-web picks between them at runtime from SIMD/threads/WebGPU
+# capability detection, so dropping one breaks segmentation on whichever
+# browsers resolve to it.
+RUN rm -f platform/app/dist/ort/ort-training-* platform/app/dist/ort/ort.training.*
 
 # Precompress files
 RUN chmod u+x .docker/compressDist.sh
@@ -95,10 +103,13 @@ RUN rm /etc/nginx/conf.d/default.conf
 USER nginx
 COPY --chown=nginx:nginx .docker/Viewer-v3.x /usr/src
 RUN chmod 777 /usr/src/entrypoint.sh
-COPY --from=builder /usr/src/app/platform/app/dist /usr/share/nginx/html${PUBLIC_URL}
+# --chown here rather than a `chown -R` afterwards: a recursive chown rewrites
+# every file, and because each layer stores whole files rather than metadata
+# deltas, that produced a second complete copy of the ~120 MB tree in the image.
+COPY --chown=nginx:nginx --from=builder /usr/src/app/platform/app/dist /usr/share/nginx/html${PUBLIC_URL}
 # Copy paths that are renamed/redirected generally
 # Microscopy libraries depend on root level include, so must be copied
-COPY --from=builder /usr/src/app/platform/app/dist/dicom-microscopy-viewer /usr/share/nginx/html/dicom-microscopy-viewer
+COPY --chown=nginx:nginx --from=builder /usr/src/app/platform/app/dist/dicom-microscopy-viewer /usr/share/nginx/html/dicom-microscopy-viewer
 
 # Copy app-config.js
 COPY --chown=nginx:nginx custom/config/app-config.js /usr/share/nginx/html${PUBLIC_URL}app-config.js
@@ -111,7 +122,10 @@ COPY ./platform/app/.recipes/Nginx-Orthanc-Keycloak/config/entrypoint.sh /entryp
 # The nginx user cannot chmod it, so change to root.
 USER root
 RUN chmod +x entrypoint.sh
-RUN chown -R nginx:nginx /usr/share/nginx/html
+# The html tree is already nginx-owned via COPY --chown above; only the
+# directory itself needs adjusting, and non-recursively so the layer stays a
+# single inode rather than another full copy of the tree.
+RUN chown nginx:nginx /usr/share/nginx/html
 USER nginx
 # Expose necessary ports
 EXPOSE 80 443 4180
