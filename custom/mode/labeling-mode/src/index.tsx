@@ -56,13 +56,6 @@ function modeFactory() {
     onModeEnter: ({ servicesManager, extensionManager }) => {
       const { toolbarService, toolGroupService, customizationService } = servicesManager.services;
 
-      // Set up default AI overlay
-      customizationService.setCustomizations({
-        'viewportOverlay.topLeft': {
-          $set: [], // Clear default overlays to prevent conflict with AI action corners
-        },
-      });
-
       // The mode route seeds this mode's `toolbarButtons` / `toolbarSections`
       // (see below) onto the Mode customization scope before this runs, and any
       // `?customization=` module layers on top, so reading them back here is what
