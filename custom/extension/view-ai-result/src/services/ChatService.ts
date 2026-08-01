@@ -16,6 +16,7 @@ import {
   CHAT_EVENTS,
   ChatEventType,
 } from '../types/chatTypes';
+import { EventfulService } from './EventfulService';
 
 // Reconnection settings
 const RECONNECT_INITIAL_DELAY = 1000;
@@ -44,12 +45,11 @@ export enum ChatConnectionState {
   CLOSED = 'CLOSED',
 }
 
-export class ChatService {
+export class ChatService extends EventfulService<ChatEventType> {
   private ws: WebSocket | null = null;
   private sessionId: string | null = null;
   private connectPromise: Promise<string> | null = null;
   private wsUrl: string;
-  private eventListeners: Map<string, Array<(data: any) => void>> = new Map();
   private reconnectAttempts = 0;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private state: ChatConnectionState = ChatConnectionState.DISCONNECTED;
@@ -59,6 +59,7 @@ export class ChatService {
   EVENTS = CHAT_EVENTS;
 
   constructor() {
+    super();
     // Try to get WebSocket URL from config, fallback to derived URL
     this.wsUrl = this.getWebSocketUrl();
   }
@@ -370,49 +371,11 @@ export class ChatService {
   }
 
   /**
-   * Subscribe to events
-   */
-  subscribe(eventName: ChatEventType, callback: (data: any) => void): { unsubscribe: () => void } {
-    if (!this.eventListeners.has(eventName)) {
-      this.eventListeners.set(eventName, []);
-    }
-    this.eventListeners.get(eventName)!.push(callback);
-
-    return {
-      unsubscribe: () => {
-        const listeners = this.eventListeners.get(eventName);
-        if (listeners) {
-          const index = listeners.indexOf(callback);
-          if (index > -1) {
-            listeners.splice(index, 1);
-          }
-        }
-      },
-    };
-  }
-
-  /**
-   * Publish events
-   */
-  private publish(eventName: ChatEventType, data: any): void {
-    const listeners = this.eventListeners.get(eventName);
-    if (listeners) {
-      listeners.forEach(callback => {
-        try {
-          callback(data);
-        } catch (e) {
-          console.error(`[ChatService] Error in event listener for ${eventName}:`, e);
-        }
-      });
-    }
-  }
-
-  /**
    * Cleanup - call on unmount
    */
   destroy(): void {
     this.disconnect();
-    this.eventListeners.clear();
+    this.clearListeners();
   }
 }
 
