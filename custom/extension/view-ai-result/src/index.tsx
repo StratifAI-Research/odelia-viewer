@@ -173,20 +173,12 @@ export default {
    */
   getCommandsModule: ({ servicesManager }) => {
     const actions = {
-      resetCrosshairs: () => {
-        // Intentionally empty – crosshairs tool not used in this extension
-      },
       toggleHeatmapImageSliceSync: () => {
         toggleHeatmapImageSliceSync({ servicesManager });
       },
     };
 
     const definitions = {
-      resetCrosshairs: {
-        commandFn: actions.resetCrosshairs,
-        storeContexts: [],
-        options: {},
-      },
       toggleHeatmapImageSliceSync: {
         commandFn: actions.toggleHeatmapImageSliceSync,
         storeContexts: [],
