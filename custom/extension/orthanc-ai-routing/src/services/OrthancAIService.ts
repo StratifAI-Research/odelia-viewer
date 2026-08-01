@@ -1,5 +1,13 @@
 import { AIEndpoint, toPersistableEndpoints } from '../components/AIEndpointConfig';
 import { AI_ENDPOINTS_STORAGE_KEY } from '../constants';
+import {
+  REQUEST_TIMEOUT_MS,
+  describeHttpFailure,
+  describeRequestFailure,
+  describeUnexpectedBody,
+  formatDuration,
+  type RequestContext,
+} from '../utils/httpErrors';
 
 interface RoutingRequest {
   study_id: string;
@@ -66,6 +74,12 @@ interface WorkitemDicomJson {
 }
 
 /**
+ * Consecutive failed status polls before the job is reported as lost. One
+ * failure is usually a blip; several in a row means the server is gone.
+ */
+const MAX_CONSECUTIVE_POLL_FAILURES = 5;
+
+/**
  * Interface for a single lookup response item from Orthanc
  */
 interface OrthancLookupResponseItem {
@@ -78,6 +92,9 @@ class OrthancAIService {
   private orthancUrl: string;
   private currentEndpoint: AIEndpoint | null = null;
   private workitemPollingInterval: number | null = null;
+  // Bumped on every stop/start. A tick that is already awaiting a response
+  // compares against this to tell whether it still speaks for the current run.
+  private pollingGeneration = 0;
   private manifestCache: Map<string, ModelManifest | null> = new Map();
 
   constructor({ configuration = {} }: { configuration?: OrthancAIServiceConfig }) {
@@ -169,6 +186,25 @@ class OrthancAIService {
   }
 
   /**
+   * fetch with a shared timeout and human-readable failure messages.
+   *
+   * Every Orthanc call goes through here so a missing or misconfigured server
+   * produces one consistent, actionable message instead of a bare
+   * "Failed to fetch" or a hang.
+   */
+  private async request(url: string, init: RequestInit, ctx: RequestContext): Promise<Response> {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+      return await fetch(url, { ...init, signal: controller.signal });
+    } catch (error) {
+      throw new Error(describeRequestFailure(error, ctx));
+    } finally {
+      clearTimeout(timeoutId);
+    }
+  }
+
+  /**
    * Get Orthanc study ID using the /tools/lookup API
    * This endpoint lets us find Orthanc resources by DICOM UIDs
    *
@@ -179,53 +215,48 @@ class OrthancAIService {
    * @returns The Orthanc study ID
    */
   async getOrthancStudyId(studyInstanceUID: string): Promise<string> {
-    // Bound the lookup with a timeout (mirrors postRouting) so a hung Orthanc
-    // does not block routing indefinitely.
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
-    try {
-      // Call Orthanc's lookup API with the StudyInstanceUID as plain text in the body
-      const response = await fetch(`${this.orthancUrl}/tools/lookup`, {
+    const ctx: RequestContext = {
+      action: 'look up the study in Orthanc',
+      route: 'POST /tools/lookup',
+      baseUrl: this.orthancUrl,
+      missingRouteMeans: 'not-orthanc',
+    };
+
+    const response = await this.request(
+      `${this.orthancUrl}/tools/lookup`,
+      {
         method: 'POST',
         headers: {
           'Content-Type': 'text/plain',
         },
-        body: studyInstanceUID, // Send the UID directly as plain text
-        signal: controller.signal,
-      });
+        body: studyInstanceUID, // Orthanc expects the bare UID as plain text
+      },
+      ctx
+    );
 
-      if (!response.ok) {
-        // Try to extract error message from response body
-        let errorMessage = `Failed to lookup study (${response.status})`;
-        try {
-          const errorText = await response.text();
-          if (errorText) {
-            errorMessage = `Failed to lookup study: ${errorText}`;
-          }
-        } catch (parseError) {
-          console.warn('Could not parse lookup error response:', parseError);
-        }
-        console.error(errorMessage);
-        throw new Error(errorMessage);
-      }
-
-      // The response is an array of lookup results
-      const lookupResults: OrthancLookupResponseItem[] = await response.json();
-
-      // Find the study result (there could be multiple results)
-      const studyResult = lookupResults.find(result => result.Type === 'Study');
-
-      if (!studyResult || !studyResult.ID) {
-        throw new Error(`No Orthanc Study ID found for StudyInstanceUID: ${studyInstanceUID}`);
-      }
-
-      return studyResult.ID;
-    } catch (error) {
-      console.error('Error getting Orthanc study ID:', error);
-      throw error;
-    } finally {
-      clearTimeout(timeoutId);
+    if (!response.ok) {
+      throw new Error(await describeHttpFailure(response, ctx));
     }
+
+    // A non-Orthanc server can answer 200 with an HTML page (SPA fallback), so
+    // the shape is checked rather than assumed — otherwise the reader would get
+    // a raw "Unexpected token <" SyntaxError.
+    let lookupResults: OrthancLookupResponseItem[];
+    try {
+      lookupResults = await response.json();
+    } catch {
+      throw new Error(describeUnexpectedBody(ctx));
+    }
+    if (!Array.isArray(lookupResults)) {
+      throw new Error(describeUnexpectedBody(ctx));
+    }
+
+    const studyResult = lookupResults.find(result => result.Type === 'Study');
+    if (!studyResult?.ID) {
+      throw new Error(`Orthanc has no study with StudyInstanceUID ${studyInstanceUID}.`);
+    }
+
+    return studyResult.ID;
   }
 
   /**
@@ -240,7 +271,18 @@ class OrthancAIService {
 
     try {
       const url = `${this.orthancUrl}/ai-manifest?target_url=${encodeURIComponent(endpointUrl)}`;
-      const response = await fetch(url);
+      const response = await this.request(
+        url,
+        { method: 'GET' },
+        {
+          // No `missingRouteMeans`: this caller swallows every failure and
+          // falls back to flat series selection by design, so it never builds
+          // an HTTP message. Declaring one here would be dead configuration.
+          action: 'fetch the model manifest',
+          route: 'GET /ai-manifest',
+          baseUrl: this.orthancUrl,
+        }
+      );
 
       if (!response.ok) {
         // Do not cache a transient fetch failure: a network blip would otherwise
@@ -280,34 +322,8 @@ class OrthancAIService {
   }
 
   /**
-   * Derives a user-facing message from a non-ok response.
-   *
-   * The body stream can only be consumed once, so we read it as text and then
-   * try to parse JSON. A non-JSON body (e.g. an HTML error page) falls back to
-   * the clean status message rather than surfacing raw markup.
-   */
-  private async extractErrorMessage(response: Response): Promise<string> {
-    const fallback = `HTTP error! status: ${response.status}`;
-    let bodyText: string;
-    try {
-      bodyText = await response.text();
-    } catch {
-      return fallback;
-    }
-    if (!bodyText) {
-      return fallback;
-    }
-    try {
-      const errorData = JSON.parse(bodyText);
-      return errorData.message || errorData.error || fallback;
-    } catch {
-      return fallback;
-    }
-  }
-
-  /**
-   * POSTs a routing request to the /send-to-ai endpoint with a 30s timeout and
-   * shared error handling. Shared by routeStudyToAI and routeSeriesToAI.
+   * POSTs a routing request to the /send-to-ai endpoint.
+   * Shared by routeStudyToAI and routeSeriesToAI.
    */
   private async postRouting(
     routingRequest: RoutingRequest & {
@@ -315,34 +331,33 @@ class OrthancAIService {
       input_configuration_id?: string;
     }
   ): Promise<RoutingResponse> {
-    // Set up timeout using AbortController
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    const ctx: RequestContext = {
+      action: 'send the study to the AI endpoint',
+      route: 'POST /send-to-ai',
+      baseUrl: this.orthancUrl,
+      missingRouteMeans: 'plugin-missing',
+    };
 
-    try {
-      const response = await fetch(`${this.orthancUrl}/send-to-ai`, {
+    const response = await this.request(
+      `${this.orthancUrl}/send-to-ai`,
+      {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(routingRequest),
-        signal: controller.signal,
-      });
+      },
+      ctx
+    );
 
-      clearTimeout(timeoutId);
+    if (!response.ok) {
+      throw new Error(await describeHttpFailure(response, ctx));
+    }
 
-      if (!response.ok) {
-        throw new Error(await this.extractErrorMessage(response));
-      }
-
-      const data = await response.json();
-      return data as RoutingResponse;
-    } catch (error: unknown) {
-      clearTimeout(timeoutId);
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Request timed out after 30 seconds');
-      }
-      throw error;
+    try {
+      return (await response.json()) as RoutingResponse;
+    } catch {
+      throw new Error(describeUnexpectedBody(ctx));
     }
   }
 
@@ -475,19 +490,28 @@ class OrthancAIService {
    * @returns Parsed workitem status
    */
   async getWorkitemStatus(workitemUid: string): Promise<WorkitemStatus> {
+    // No `missingRouteMeans`: a deleted or unknown workitem legitimately 404s,
+    // so a 404 here must not be reported as a broken configuration.
+    const ctx: RequestContext = {
+      action: 'read the AI job status',
+      route: 'GET /ups-rs/workitems',
+      baseUrl: this.orthancUrl,
+    };
+
     try {
-      const response = await fetch(`${this.orthancUrl}/ups-rs/workitems/${workitemUid}`, {
-        method: 'GET',
-        headers: {
-          Accept: 'application/dicom+json, application/json',
+      const response = await this.request(
+        `${this.orthancUrl}/ups-rs/workitems/${workitemUid}`,
+        {
+          method: 'GET',
+          headers: {
+            Accept: 'application/dicom+json, application/json',
+          },
         },
-      });
+        ctx
+      );
 
       if (!response.ok) {
-        console.error(`Failed to get workitem status: ${response.status}`);
-        const errorText = await response.text();
-        console.error(`Response body: ${errorText}`);
-        throw new Error(`Failed to get workitem status: ${response.status}`);
+        throw new Error(await describeHttpFailure(response, ctx));
       }
 
       // Parse the JSON body directly (parity with getModelManifest;
@@ -496,8 +520,11 @@ class OrthancAIService {
       try {
         workitemJson = await response.json();
       } catch (parseError) {
+        // The raw SyntaxError embeds an excerpt of the body ("Unexpected token
+        // '<', \"<!DOCTYPE \"..."), and this message now reaches the panel via
+        // the lost-contact path, so it must not be interpolated.
         console.error('Failed to parse workitem JSON:', parseError);
-        throw new Error(`Failed to parse workitem JSON: ${parseError}`);
+        throw new Error(describeUnexpectedBody(ctx));
       }
 
       return this.parseWorkitemStatus(workitemJson);
@@ -522,19 +549,64 @@ class OrthancAIService {
   ): void {
     // Stop any existing polling
     this.stopWorkitemPolling();
+    // clearInterval only cancels *future* ticks, and a poll can stay in flight
+    // for up to the request timeout — at a 2s interval that is ~15 overlapping
+    // requests. Without this token those stragglers would keep calling back
+    // after the run was cancelled, reset, or replaced by a different workitem.
+    const generation = this.pollingGeneration;
+    const isCurrentRun = () => generation === this.pollingGeneration;
 
     // Bound the number of ticks so a workitem that never reaches a terminal
     // state — or a persistently failing/404-ing endpoint — cannot poll forever.
-    // On timeout, stop and surface it to the caller.
-    const maxAttempts = Math.max(1, Math.ceil(maxDurationMs / interval));
-    let attempts = 0;
+    // Ticks are counted, not completed requests: the count then tracks elapsed
+    // wall-clock regardless of how long any individual request takes.
+    const maxTicks = Math.max(1, Math.ceil(maxDurationMs / interval));
+    let ticks = 0;
+    let consecutiveFailures = 0;
+    let inFlight = false;
 
     // Start polling
     this.workitemPollingInterval = window.setInterval(async () => {
-      attempts++;
+      if (!isCurrentRun()) {
+        return;
+      }
+
+      // Decided synchronously at tick entry, before any await, so a slow request
+      // can neither delay the deadline nor let a fast one trip it early.
+      ticks++;
+      if (ticks >= maxTicks) {
+        this.stopWorkitemPolling();
+        callback({
+          state: 'CANCELED',
+          cancellationReason:
+            `AI analysis timed out after ${formatDuration(maxTicks * interval)} ` +
+            'without a result. The job may still be running on the server.',
+        });
+        return;
+      }
+
+      // One request at a time. At the 2s interval the panel uses, against a
+      // server that can take the full request timeout to answer, ticks would
+      // otherwise pile up ~15 requests deep — and overlapping replies would
+      // scramble the failure counter and the terminal-state handling.
+      if (inFlight) {
+        return;
+      }
+      inFlight = true;
+
       try {
         const status = await this.getWorkitemStatus(workitemUid);
+        if (!isCurrentRun()) {
+          return;
+        }
+        consecutiveFailures = 0;
         callback(status);
+
+        // Re-check: the callback may itself have stopped polling or started a
+        // run for a different workitem, which this stop would otherwise kill.
+        if (!isCurrentRun()) {
+          return;
+        }
 
         // Stop polling if workitem reached a terminal state
         if (status.state === 'COMPLETED' || status.state === 'CANCELED') {
@@ -542,16 +614,32 @@ class OrthancAIService {
           return;
         }
       } catch (error) {
+        if (!isCurrentRun()) {
+          return;
+        }
         console.error('Error during workitem polling:', error);
-        // Don't stop polling on a single error — a transient failure may recover.
-      }
-
-      if (attempts >= maxAttempts) {
-        this.stopWorkitemPolling();
-        callback({
-          state: 'CANCELED',
-          cancellationReason: `Polling timed out after ${maxAttempts} attempts`,
-        });
+        consecutiveFailures++;
+        // A single failure may be transient, so keep polling. A run of them is
+        // not: without this the reader watched a progress bar for the full
+        // maxDuration before learning the server had gone away.
+        if (consecutiveFailures >= MAX_CONSECUTIVE_POLL_FAILURES) {
+          this.stopWorkitemPolling();
+          // Reuse the sanitiser rather than interpolating the error: this string
+          // is rendered in the panel, and a raw one could carry a parser excerpt
+          // of an HTML body.
+          const reason = describeRequestFailure(error, {
+            action: 'read the AI job status',
+            route: 'GET /ups-rs/workitems',
+            baseUrl: this.orthancUrl,
+          });
+          callback({
+            state: 'CANCELED',
+            cancellationReason: `Lost contact with the server while the AI job was running. ${reason}`,
+          });
+          return;
+        }
+      } finally {
+        inFlight = false;
       }
     }, interval);
   }
@@ -560,6 +648,9 @@ class OrthancAIService {
    * Stop polling for workitem status
    */
   stopWorkitemPolling(): void {
+    // Retire the current generation first, so a tick already awaiting a
+    // response becomes a no-op instead of reporting into a stopped run.
+    this.pollingGeneration++;
     if (this.workitemPollingInterval !== null) {
       window.clearInterval(this.workitemPollingInterval);
       this.workitemPollingInterval = null;

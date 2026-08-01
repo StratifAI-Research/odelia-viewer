@@ -36,6 +36,25 @@ export const EmptyState: React.FC<{
   );
 };
 
+/**
+ * Inline error banner for the wizard steps.
+ *
+ * Uses OHIF's destructive tokens rather than a hand-rolled `bg-red-100` /
+ * `text-red-700` pair, which rendered a light-mode alert inside the dark panel.
+ * `break-words` matters: these messages name the configured Orthanc URL, and an
+ * unbroken URL would otherwise overflow the side panel.
+ */
+export const ErrorMessage: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  return (
+    <div
+      role="alert"
+      className="bg-destructive text-destructive-foreground rounded px-3 py-2 text-sm break-words"
+    >
+      {children}
+    </div>
+  );
+};
+
 export const ErrorState: React.FC<{
   title: string;
   message: string;

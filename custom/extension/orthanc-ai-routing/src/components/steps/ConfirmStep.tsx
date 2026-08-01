@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from '@ohif/ui-next';
 import type { AIEndpoint } from '../AIEndpointConfig';
+import { ErrorMessage } from '../LoadingStates';
 
 interface ConfirmStepProps {
   currentEndpoint: AIEndpoint | null;
@@ -24,11 +25,7 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-3 pt-4 pb-4">
-        {error && (
-          <div className="rounded border border-red-400 bg-red-100 px-4 py-3 text-sm text-red-700">
-            {error}
-          </div>
-        )}
+        {error && <ErrorMessage>{error}</ErrorMessage>}
 
         <h4 className="text-muted-foreground text-sm font-medium">Confirm &amp; Run</h4>
 

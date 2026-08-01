@@ -3,6 +3,7 @@ import { Button } from '@ohif/ui-next';
 import AIEndpointConfig, { AIEndpoint } from '../AIEndpointConfig';
 import OrthancAIService from '../../services/OrthancAIService';
 import type { ModelManifest } from '../../services/OrthancAIService';
+import { ErrorMessage } from '../LoadingStates';
 
 interface ModelSelectionStepProps {
   orthancAIService: OrthancAIService;
@@ -69,11 +70,7 @@ export const ModelSelectionStep: React.FC<ModelSelectionStepProps> = ({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-3 pt-4 pb-4">
-        {(error || manifestError) && (
-          <div className="rounded border border-red-400 bg-red-100 px-4 py-3 text-sm text-red-700">
-            {error || manifestError}
-          </div>
-        )}
+        {(error || manifestError) && <ErrorMessage>{error || manifestError}</ErrorMessage>}
 
         <div>
           <h4 className="text-muted-foreground mb-3 text-sm font-medium">Select AI Model</h4>
