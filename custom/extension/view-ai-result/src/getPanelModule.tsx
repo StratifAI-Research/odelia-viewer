@@ -70,14 +70,14 @@ function getPanelModule(_extensionParams?: Record<string, unknown>): Panel[] {
     },
     {
       name: 'aiFeedback',
-      iconName: 'tab-linear',
+      iconName: 'odelia-ai-feedback',
       iconLabel: 'Feedback',
       label: 'Feedback',
       component: props => <FeedbackPanel {...props} />,
     },
     {
       name: 'aiChat',
-      iconName: 'tab-patient-info',
+      iconName: 'odelia-ai-chat',
       iconLabel: 'AI Chat',
       label: 'AI Chat',
       component: props => <ChatPanel {...props} />,

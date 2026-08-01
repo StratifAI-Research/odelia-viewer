@@ -8,6 +8,7 @@ import getCustomizationModule from './getCustomizationModule';
 import getHangingProtocolModule from './getHangingProtocolModule';
 import { AIResultsService } from './services/AIResultsService';
 import { ChatService } from './services/ChatService';
+import { registerIcons } from './icons';
 import createHeatmapImageSliceSynchronizer from './utils/createHeatmapImageSliceSynchronizer';
 import { toggleHeatmapImageSliceSync } from './utils/toggleHeatmapImageSliceSync';
 
@@ -29,6 +30,9 @@ export default {
     // surfaces much later as confusing "missing behaviour"; rethrow a descriptive
     // startup error instead of swallowing it.
     try {
+      // Before any panel renders, so the rail never falls back to "Missing Icon".
+      registerIcons();
+
       servicesManager.registerService({
         name: 'aiResultsService',
         create: () => new AIResultsService(servicesManager.services?.uiNotificationService),

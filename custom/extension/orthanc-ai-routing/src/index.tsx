@@ -2,6 +2,7 @@ import React from 'react';
 import { id } from './id';
 import OrthancAIService from './services/OrthancAIService';
 import AIRoutingPanel from './components/AIRoutingPanel';
+import { registerIcons } from './icons';
 
 // Add TypeScript declaration for the window.config
 declare global {
@@ -36,6 +37,9 @@ export default {
    * this extension is providing.
    */
   preRegistration: ({ servicesManager }: any) => {
+    // Before any panel renders, so the rail never falls back to "Missing Icon".
+    registerIcons();
+
     // Create a service factory function
     const createOrthancAIService = () => {
       return {
@@ -66,7 +70,7 @@ export default {
     return [
       {
         name: 'ai-routing-panel',
-        iconName: 'clipboard',
+        iconName: 'odelia-ai-model',
         iconLabel: 'AI',
         label: 'Analyze with AI',
         component: wrappedAIRoutingPanel,

@@ -2,6 +2,11 @@ import React from 'react';
 import { render, act } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import getPanelModule from './getPanelModule';
+import { VIEW_AI_RESULT_ICONS } from './icons';
+// The real registry, not the `@ohif/ui-next` mock: that mock is a Proxy whose
+// every property is a component, so asserting against it would pass for any
+// string at all.
+import { Icons as UpstreamIcons } from '../../../../platform/ui-next/src/components/Icons/Icons';
 import { installConsoleErrorFilter, makeServicesManager, withSystem } from './test-utils/harness';
 
 // Harness managers passed to the panel-module factory. The seriesList panel
@@ -80,14 +85,36 @@ describe('getPanelModule', () => {
 
     expect(byName.seriesList).toMatchObject({ iconName: 'tab-studies', iconLabel: 'Studies' });
     expect(byName.aiFeedback).toMatchObject({
-      iconName: 'tab-linear',
+      iconName: 'odelia-ai-feedback',
       iconLabel: 'Feedback',
       label: 'Feedback',
     });
     expect(byName.aiChat).toMatchObject({
-      iconName: 'tab-patient-info',
+      iconName: 'odelia-ai-chat',
       iconLabel: 'AI Chat',
       label: 'AI Chat',
+    });
+  });
+
+  // Icons.ByName resolves these strings against a shared registry and silently
+  // renders a literal "Missing Icon" box for a name that is not in it, so a typo
+  // — or an icon this extension declares but forgets to register — is only ever
+  // caught by eye. (It had not been: the labeling extension shipped a
+  // 'list-bullets' panel icon that has never existed.)
+  it('declares only icon names that will resolve at runtime', () => {
+    // What Icons holds once preRegistration has run: upstream's set plus ours.
+    const available = new Set([
+      ...Object.keys(UpstreamIcons),
+      ...Object.keys(VIEW_AI_RESULT_ICONS),
+    ]);
+
+    // Guard the guard — a set that accepted anything would make this vacuous.
+    expect(available.has('list-bullets')).toBe(false);
+
+    const panels = getPanelModule(makeManagers());
+    expect(panels.length).toBeGreaterThan(0);
+    panels.forEach(panel => {
+      expect([panel.name, available.has(panel.iconName as string)]).toEqual([panel.name, true]);
     });
   });
 

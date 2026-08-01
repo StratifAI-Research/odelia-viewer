@@ -62,7 +62,9 @@ export default {
       },
       {
         name: 'panelLabelingStudy',
-        iconName: 'list-bullets',
+        // ui-next has no 'list-bullets'; Icons.ByName rendered a literal
+        // "Missing Icon" box in the panel rail for it.
+        iconName: 'icon-list-view',
         iconLabel: 'Study labels',
         label: 'Study labels',
         component: wrappedPanelLabeling('study table'),
