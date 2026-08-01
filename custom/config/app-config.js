@@ -76,7 +76,12 @@ window.config = {
       },
     }
   ],
-  // Preconfigured AI endpoints
+  // Preconfigured AI endpoints.
+  //
+  // These seed the endpoint list, and changes here reach browsers that already
+  // hold a stored list: `id` is the identity, so an entry edited here is
+  // updated in place, a new entry is added, and one removed here is removed
+  // locally. Endpoints a user added by hand are never touched.
   aiEndpoints: [
     {
       id: 'mst-ai',

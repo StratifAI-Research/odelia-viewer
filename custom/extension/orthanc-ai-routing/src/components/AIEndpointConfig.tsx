@@ -20,6 +20,7 @@ import {
   DEFAULT_AI_ENDPOINT_NAME,
   DEFAULT_AI_ENDPOINT_URL,
 } from '../constants';
+import { AI_ENDPOINTS_CONFIG_BASE_KEY, reconcileEndpoints } from '../utils/reconcileEndpoints';
 
 // Interface for AI endpoint configuration
 export interface AIEndpoint {
@@ -53,6 +54,25 @@ export type PersistedEndpoint = Pick<AIEndpoint, 'id' | 'name' | 'url'>;
 export const toPersistableEndpoints = (endpoints: AIEndpoint[]): PersistedEndpoint[] =>
   endpoints.map(({ id, name, url }) => ({ id, name, url }));
 
+/**
+ * Read an endpoint array out of localStorage, or null when the key is absent or
+ * unusable. Null and `[]` are distinct for the config base: absent means "never
+ * reconciled", empty means "config declared nothing last time".
+ */
+const readEndpoints = (key: string): AIEndpoint[] | null => {
+  const raw = localStorage.getItem(key);
+  if (raw === null) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (error) {
+    console.error(`Failed to parse ${key} from localStorage:`, error);
+    return null;
+  }
+};
+
 const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   onEndpointChange,
   currentEndpoint,
@@ -81,36 +101,28 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   const onEndpointChangeRef = useRef(onEndpointChange);
   onEndpointChangeRef.current = onEndpointChange;
 
-  // Load endpoints from localStorage or config on component mount (once).
+  // Load endpoints on mount, merging any change made to the deployment config
+  // into what is already stored. See reconcileEndpoints for why this is a
+  // three-way merge rather than "whichever side we read first wins".
   useEffect(() => {
-    let loadedEndpoints: AIEndpoint[] = [];
+    const stored = readEndpoints(AI_ENDPOINTS_STORAGE_KEY) ?? [];
+    const base = readEndpoints(AI_ENDPOINTS_CONFIG_BASE_KEY);
+    const config: AIEndpoint[] = (window as any).config?.aiEndpoints || [];
 
-    // First, check if user has saved endpoints (priority)
-    const savedEndpoints = localStorage.getItem(AI_ENDPOINTS_STORAGE_KEY);
-    if (savedEndpoints) {
-      try {
-        loadedEndpoints = JSON.parse(savedEndpoints);
-      } catch (error) {
-        console.error('Failed to parse saved AI endpoints:', error);
-        loadedEndpoints = [];
-      }
-    }
+    const merged = reconcileEndpoints({ stored, config, base });
+    // Nothing stored and nothing configured — fall back to the built-in.
+    const loadedEndpoints = merged.length > 0 ? merged : [DEFAULT_ENDPOINT];
 
-    // If no localStorage data, load from config
-    if (loadedEndpoints.length === 0) {
-      const configEndpoints: AIEndpoint[] = (window as any).config?.aiEndpoints || [];
-      if (configEndpoints.length > 0) {
-        loadedEndpoints = configEndpoints;
-      } else {
-        // If no config either, use default
-        loadedEndpoints = [DEFAULT_ENDPOINT];
-      }
-      // Save to localStorage for future
-      localStorage.setItem(
-        AI_ENDPOINTS_STORAGE_KEY,
-        JSON.stringify(toPersistableEndpoints(loadedEndpoints))
-      );
-    }
+    localStorage.setItem(
+      AI_ENDPOINTS_STORAGE_KEY,
+      JSON.stringify(toPersistableEndpoints(loadedEndpoints))
+    );
+    // Record what config said this time, so the next load can tell a config
+    // change apart from a user edit.
+    localStorage.setItem(
+      AI_ENDPOINTS_CONFIG_BASE_KEY,
+      JSON.stringify(toPersistableEndpoints(config))
+    );
 
     setEndpoints(loadedEndpoints);
     setIsLoading(false);
