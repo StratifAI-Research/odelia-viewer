@@ -100,6 +100,51 @@ describe('ChatService', () => {
     expect(svc.getSessionId()).toBeNull();
   });
 
+  // The published image is commonly run as `docker run -p 3000:80`, which puts
+  // it on localhost:3000 — the same host/port the dev-server fallback matches.
+  // Only the NODE_ENV guard keeps the two apart, and webpack strips the branch
+  // from a production bundle, so assert the guard rather than the host check.
+  describe('dev-server fallback', () => {
+    const asLocalhost3000 = (run: () => void) => {
+      const original = window.location;
+      Object.defineProperty(window, 'location', {
+        value: { protocol: 'http:', hostname: 'localhost', port: '3000', host: 'localhost:3000' },
+        configurable: true,
+      });
+      try {
+        run();
+      } finally {
+        Object.defineProperty(window, 'location', { value: original, configurable: true });
+      }
+    };
+
+    const wsUrlFor = (nodeEnv: string) => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = nodeEnv;
+      let url = '';
+      try {
+        asLocalhost3000(() => {
+          const svc = new ChatService();
+          svc.connect().catch(() => {});
+          const ws = lastWs();
+          url = ws.url;
+          ws.close();
+        });
+      } finally {
+        process.env.NODE_ENV = originalEnv;
+      }
+      return url;
+    };
+
+    it('points at the separate middleware port in development', () => {
+      expect(wsUrlFor('development')).toBe('ws://localhost:5560/ws/chat/new');
+    });
+
+    it('stays on the viewer origin in a production build', () => {
+      expect(wsUrlFor('production')).toBe('ws://localhost:3000/ws/chat/new');
+    });
+  });
+
   it('honors an explicit wsUrl from window.config', () => {
     (window as any).config = { chatMiddleware: { wsUrl: 'ws://custom/ws' } };
     const svc = new ChatService();

@@ -89,6 +89,11 @@ window.config = {
       url: 'http://orthanc-router-mst:8042/dicom-web',
     },
   ],
+  // Chat middleware. Both keys are optional and default to this origin, which
+  // is correct whenever /ws and /chat-api are proxied to the middleware
+  // alongside the viewer. Set them when the middleware is served elsewhere.
+  //   chatMiddleware: { wsUrl: 'wss://example.org/ws/chat/new' },
+  //   chatApiBase: 'https://example.org/chat-api',
   httpErrorHandler: error => {
     console.warn(`HTTP Error Handler (status: ${error.status})`, error);
   },

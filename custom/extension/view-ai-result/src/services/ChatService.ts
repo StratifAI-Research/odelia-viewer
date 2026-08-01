@@ -87,18 +87,26 @@ export class ChatService extends EventfulService<ChatEventType> {
       console.warn('[ChatService] Error getting config:', e);
     }
 
-    // Derive WebSocket URL from current origin
-    // This works for both development (localhost) and production (proxied through nginx)
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-
-    // In development on localhost, use direct connection to chat-middleware
-    if (window.location.hostname === 'localhost' && window.location.port === '3000') {
+    // Dev-server fallback: `pnpm run dev` serves the viewer on :3000 with the
+    // chat middleware running separately on :5560 and no proxy in between.
+    //
+    // The NODE_ENV guard matters. Webpack replaces it with a literal, so this
+    // branch is eliminated from a production bundle entirely — without it, the
+    // published image would match the host/port check whenever it is run the
+    // way the README documents (`docker run -p 3000:80`) and point chat at a
+    // middleware that is not there. Set `chatMiddleware.wsUrl` in app-config.js
+    // to override in any deployment that is not simply proxying /ws.
+    if (
+      process.env.NODE_ENV !== 'production' &&
+      window.location.hostname === 'localhost' &&
+      window.location.port === '3000'
+    ) {
       return 'ws://localhost:5560/ws/chat/new';
     }
 
-    // In production/proxied environment, use the proxied path
-    return `${protocol}//${host}/ws/chat/new`;
+    // Proxied deployment: same origin as the viewer.
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}/ws/chat/new`;
   }
 
   /**
