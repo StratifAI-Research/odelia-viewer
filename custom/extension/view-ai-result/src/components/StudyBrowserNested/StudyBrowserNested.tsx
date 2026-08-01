@@ -162,14 +162,15 @@ export const StudyBrowserNested: React.FC<Props> = ({
     setDeletingGroups(prev => new Set(prev).add(group.key));
 
     try {
-      const { aiResultsService } = servicesManager.services;
+      const { aiResultsService, orthancAIService } = servicesManager.services;
       const removedDisplaySetUIDs: string[] = [];
 
       // Delete from both Orthanc storage and OHIF viewer.
       // Derive the Orthanc series base from app-config (same source as
       // the feedback API) so a deployment path change doesn't silently break
-      // deletion. `/tools/lookup` stays at root — that is where the proxy exposes
-      // Orthanc's lookup endpoint (distinct from the /pacs-mounted series ops).
+      // deletion. The UID→Orthanc-id lookup goes through orthancAIService, which
+      // owns `/tools/lookup` (at the proxy root, distinct from the /pacs-mounted
+      // series ops) together with its timeout and failure messages.
       const orthancSeriesBase = deriveFeedbackApiBase(); // e.g. '/pacs'
       const deleteResults = { viewer: 0, storage: 0, storageFailed: 0 };
 
@@ -191,48 +192,46 @@ export const StudyBrowserNested: React.FC<Props> = ({
           if (realDisplaySet.SeriesInstanceUID) {
             storageOk = false;
             try {
-              // Step 1: Lookup Orthanc internal ID from DICOM SeriesInstanceUID
-              const lookupResponse = await fetch('/tools/lookup', {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain' },
-                body: realDisplaySet.SeriesInstanceUID,
-              });
+              if (!orthancAIService) {
+                // Only the send-ai mode renders this browser, and it depends on
+                // orthanc-ai-routing — so this is a wiring error, not a runtime
+                // state. Count it as a storage failure so the series stays in the
+                // viewer rather than being hidden while it is still on the server.
+                throw new Error(
+                  'orthancAIService is not registered; cannot delete from Orthanc storage.'
+                );
+              }
 
-              if (lookupResponse.ok) {
-                const lookupData = await lookupResponse.json();
-                // lookupData is array of objects: [{ Type: "Series", ID: "orthanc-id", Path: "/series/..." }]
-                const seriesEntry = lookupData.find((item: any) => item.Type === 'Series');
+              // Step 1: Lookup Orthanc internal ID from DICOM SeriesInstanceUID.
+              // Throws (with a reader-facing message) on a transport or non-Orthanc
+              // failure; resolves to null when Orthanc simply has no such series.
+              const seriesId = await orthancAIService.lookupResourceId(
+                realDisplaySet.SeriesInstanceUID,
+                'Series',
+                'look up the AI result series in Orthanc'
+              );
 
-                if (seriesEntry?.ID) {
-                  // Step 2: Delete using Orthanc internal ID (series operations are under /pacs)
-                  const deleteResponse = await fetch(
-                    `${orthancSeriesBase}/series/${seriesEntry.ID}`,
-                    {
-                      method: 'DELETE',
-                    }
-                  );
+              if (seriesId) {
+                // Step 2: Delete using Orthanc internal ID (series operations are under /pacs)
+                const deleteResponse = await fetch(`${orthancSeriesBase}/series/${seriesId}`, {
+                  method: 'DELETE',
+                });
 
-                  if (deleteResponse.ok) {
-                    deleteResults.storage++;
-                    storageOk = true;
-                  } else {
-                    deleteResults.storageFailed++;
-                    console.error(
-                      `Failed to delete from Orthanc: ${deleteResponse.status} ${deleteResponse.statusText}`
-                    );
-                  }
-                } else {
-                  // Not in Orthanc: already absent, so removing it from the viewer
-                  // keeps them in sync (distinct from a lookup/network error).
+                if (deleteResponse.ok) {
+                  deleteResults.storage++;
                   storageOk = true;
-                  console.warn(
-                    `No Orthanc series entry found for ${realDisplaySet.SeriesInstanceUID}; treating as already deleted`
+                } else {
+                  deleteResults.storageFailed++;
+                  console.error(
+                    `Failed to delete from Orthanc: ${deleteResponse.status} ${deleteResponse.statusText}`
                   );
                 }
               } else {
-                deleteResults.storageFailed++;
-                console.error(
-                  `Orthanc lookup failed: ${lookupResponse.status} ${lookupResponse.statusText}`
+                // Not in Orthanc: already absent, so removing it from the viewer
+                // keeps them in sync (distinct from a lookup/network error).
+                storageOk = true;
+                console.warn(
+                  `No Orthanc series entry found for ${realDisplaySet.SeriesInstanceUID}; treating as already deleted`
                 );
               }
             } catch (storageErr) {

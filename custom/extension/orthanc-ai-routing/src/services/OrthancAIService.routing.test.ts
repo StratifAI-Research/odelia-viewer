@@ -196,6 +196,66 @@ describe('OrthancAIService — getOrthancStudyId', () => {
   });
 });
 
+// getOrthancStudyId delegates here, so the whole error surface above is shared.
+// These pin the parts only the generic entry point exposes: picking a
+// non-Study resource kind, and answering "not present" with null instead of
+// throwing — the distinction StudyBrowserNested relies on to tell an
+// already-deleted series apart from a failed lookup.
+describe('OrthancAIService — lookupResourceId', () => {
+  let fetchMock: jest.Mock;
+  let service: OrthancAIService;
+
+  beforeEach(() => {
+    installLocalStorageMock();
+    fetchMock = installFetchMock();
+    silenceConsole();
+    service = new OrthancAIService({ configuration: { orthancUrl: 'http://orthanc:8042' } });
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('returns the id of the requested resource type', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({
+        json: [
+          { ID: 'orthanc-99', Type: 'Study', Path: '' },
+          { ID: 'series-1', Type: 'Series', Path: '' },
+        ],
+      })
+    );
+    const id = await service.lookupResourceId('1.2.3', 'Series', 'look up the series');
+    expect(id).toBe('series-1');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('http://orthanc:8042/tools/lookup');
+    expect(init.body).toBe('1.2.3');
+  });
+
+  it('resolves to null (not a throw) when the type is absent from the results', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({ json: [{ ID: 'orthanc-99', Type: 'Study', Path: '' }] })
+    );
+    await expect(service.lookupResourceId('1.2.3', 'Series', 'look up the series')).resolves.toBeNull();
+  });
+
+  it('resolves to null on an empty result set', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ json: [] }));
+    await expect(service.lookupResourceId('1.2.3', 'Series', 'look up the series')).resolves.toBeNull();
+  });
+
+  it('still throws a reader-facing message on a transport failure', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await expect(service.lookupResourceId('1.2.3', 'Series', 'look up the series')).rejects.toThrow(
+      'Cannot reach the Orthanc server at http://orthanc:8042'
+    );
+  });
+
+  it('names the caller-supplied action in an HTTP failure message', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 500, text: 'boom' }));
+    await expect(service.lookupResourceId('1.2.3', 'Series', 'look up the series')).rejects.toThrow(
+      'Failed to look up the series (HTTP 500): boom'
+    );
+  });
+});
+
 describe('OrthancAIService — getModelManifest (+ cache)', () => {
   let fetchMock: jest.Mock;
   let service: OrthancAIService;

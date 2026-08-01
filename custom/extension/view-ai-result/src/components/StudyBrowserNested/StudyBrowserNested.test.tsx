@@ -21,12 +21,20 @@ function makeDialogService() {
   return { service: { show, hide }, state };
 }
 
+// The UID→Orthanc-id lookup is owned by orthanc-ai-routing's OrthancAIService:
+// it resolves to the id, to null when Orthanc has no such resource, and rejects
+// on a transport / non-Orthanc failure.
+const makeOrthancAIService = (lookup: any = jest.fn(async () => 'orthanc-1')) => ({
+  lookupResourceId: lookup,
+});
+
 const makeServices = (over: any = {}) => ({
   services: {
     displaySetService: { getDisplaySetByUID: jest.fn(), deleteDisplaySet: jest.fn() },
     uiDialogService: { show: jest.fn() },
     uiNotificationService: { show: jest.fn() },
     aiResultsService: { removeDisplaySetsFromCache: jest.fn() },
+    orthancAIService: makeOrthancAIService(),
     ...over,
   },
 });
@@ -144,7 +152,6 @@ describe('StudyBrowserNested', () => {
     });
     (global as any).fetch = jest
       .fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => [{ Type: 'Series', ID: 'orthanc-1' }] }) // lookup
       .mockResolvedValueOnce({ ok: false, status: 500, statusText: 'error' }); // DELETE fails
 
     render(
@@ -181,10 +188,7 @@ describe('StudyBrowserNested', () => {
       uiNotificationService,
       aiResultsService,
     });
-    (global as any).fetch = jest
-      .fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => [{ Type: 'Series', ID: 'orthanc-1' }] }) // lookup
-      .mockResolvedValueOnce({ ok: true, status: 200 }); // DELETE succeeds
+    (global as any).fetch = jest.fn().mockResolvedValueOnce({ ok: true, status: 200 }); // DELETE succeeds
 
     render(
       <StudyBrowserNested
@@ -215,9 +219,10 @@ describe('StudyBrowserNested', () => {
       uiDialogService: dialog.service,
       uiNotificationService,
       aiResultsService,
+      // Lookup succeeds but Orthanc holds no such Series → already absent.
+      orthancAIService: makeOrthancAIService(jest.fn(async () => null)),
     });
-    // Lookup succeeds but returns no Series entry → already absent from storage.
-    (global as any).fetch = jest.fn().mockResolvedValueOnce({ ok: true, json: async () => [] });
+    (global as any).fetch = jest.fn();
 
     render(
       <StudyBrowserNested
@@ -233,8 +238,81 @@ describe('StudyBrowserNested', () => {
     // Confirmed-absent series is dropped from the viewer (kept in sync), with no
     // DELETE call attempted.
     expect(displaySetService.deleteDisplaySet).toHaveBeenCalledWith('ai-1');
-    expect((global as any).fetch).toHaveBeenCalledTimes(1); // lookup only, no DELETE
+    expect((global as any).fetch).not.toHaveBeenCalled(); // no DELETE
     expect(uiNotificationService.show.mock.calls[0][0].type).toBe('success');
+  });
+
+  it('keeps the display set in the viewer when the Orthanc lookup fails', async () => {
+    const dialog = makeDialogService();
+    const displaySetService = {
+      getDisplaySetByUID: jest.fn(() => ({ SeriesInstanceUID: 'series-x' })),
+      deleteDisplaySet: jest.fn(),
+    };
+    const uiNotificationService = { show: jest.fn() };
+    const aiResultsService = { removeDisplaySetsFromCache: jest.fn() };
+    const svc = makeServices({
+      displaySetService,
+      uiDialogService: dialog.service,
+      uiNotificationService,
+      aiResultsService,
+      // A transport / non-Orthanc failure rejects rather than resolving to null,
+      // so it must NOT be mistaken for "already deleted".
+      orthancAIService: makeOrthancAIService(
+        jest.fn(async () => {
+          throw new Error('Cannot reach the Orthanc server at http://x.');
+        })
+      ),
+    });
+    (global as any).fetch = jest.fn();
+
+    render(
+      <StudyBrowserNested
+        {...baseProps({ expandedStudyInstanceUIDs: ['study-1'], servicesManager: svc })}
+      />
+    );
+    fireEvent.click(screen.getByTitle('Delete AI Result'));
+    await act(async () => {
+      fireEvent.click(dialog.state.contentRender.getByText('Delete'));
+    });
+    await waitFor(() => expect(uiNotificationService.show).toHaveBeenCalled());
+
+    expect((global as any).fetch).not.toHaveBeenCalled(); // never reached the DELETE
+    expect(displaySetService.deleteDisplaySet).not.toHaveBeenCalled();
+    expect(aiResultsService.removeDisplaySetsFromCache).not.toHaveBeenCalled();
+    expect(uiNotificationService.show.mock.calls[0][0].title).toBe('Deletion Incomplete');
+  });
+
+  it('does not remove anything when orthancAIService is not registered', async () => {
+    const dialog = makeDialogService();
+    const displaySetService = {
+      getDisplaySetByUID: jest.fn(() => ({ SeriesInstanceUID: 'series-x' })),
+      deleteDisplaySet: jest.fn(),
+    };
+    const uiNotificationService = { show: jest.fn() };
+    const svc = makeServices({
+      displaySetService,
+      uiDialogService: dialog.service,
+      uiNotificationService,
+      orthancAIService: undefined,
+    });
+    (global as any).fetch = jest.fn();
+
+    render(
+      <StudyBrowserNested
+        {...baseProps({ expandedStudyInstanceUIDs: ['study-1'], servicesManager: svc })}
+      />
+    );
+    fireEvent.click(screen.getByTitle('Delete AI Result'));
+    await act(async () => {
+      fireEvent.click(dialog.state.contentRender.getByText('Delete'));
+    });
+    await waitFor(() => expect(uiNotificationService.show).toHaveBeenCalled());
+
+    // Without the service the storage copy cannot be deleted, so the viewer must
+    // keep the series rather than hiding one that is still on the server.
+    expect((global as any).fetch).not.toHaveBeenCalled();
+    expect(displaySetService.deleteDisplaySet).not.toHaveBeenCalled();
+    expect(uiNotificationService.show.mock.calls[0][0].title).toBe('Deletion Incomplete');
   });
 
   it('skips a stale group entry that no longer resolves to a display set', async () => {

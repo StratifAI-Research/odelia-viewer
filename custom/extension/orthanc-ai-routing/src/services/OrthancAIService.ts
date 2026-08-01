@@ -88,6 +88,9 @@ interface OrthancLookupResponseItem {
   Type: string;
 }
 
+/** Orthanc resource kinds addressable by `/tools/lookup`. */
+export type OrthancResourceType = 'Patient' | 'Study' | 'Series' | 'Instance';
+
 class OrthancAIService {
   private orthancUrl: string;
   private currentEndpoint: AIEndpoint | null = null;
@@ -198,18 +201,31 @@ class OrthancAIService {
   }
 
   /**
-   * Get Orthanc study ID using the /tools/lookup API
-   * This endpoint lets us find Orthanc resources by DICOM UIDs
+   * Resolve a DICOM UID to Orthanc's internal resource ID via the /tools/lookup
+   * API, which finds Orthanc resources by DICOM UID.
    *
    * According to the Orthanc API documentation, the /tools/lookup endpoint
    * expects the DICOM identifier as plain text in the request body.
    *
-   * @param studyInstanceUID The DICOM StudyInstanceUID
-   * @returns The Orthanc study ID
+   * Returns null when Orthanc holds no resource of that type for the UID — an
+   * ordinary answer (e.g. a series already deleted), and deliberately distinct
+   * from the failures below, which throw a message written for the reader.
+   *
+   * Every caller needing an Orthanc id goes through here, so the shared timeout,
+   * the not-an-Orthanc-server diagnosis and the HTML-body guard are applied once
+   * instead of being re-implemented per call site.
+   *
+   * @param dicomUID The DICOM UID to look up
+   * @param type The Orthanc resource kind to pick out of the response
+   * @param action Infinitive describing the goal, for failure messages
    */
-  async getOrthancStudyId(studyInstanceUID: string): Promise<string> {
+  async lookupResourceId(
+    dicomUID: string,
+    type: OrthancResourceType,
+    action: string
+  ): Promise<string | null> {
     const ctx: RequestContext = {
-      action: 'look up the study in Orthanc',
+      action,
       route: 'POST /tools/lookup',
       baseUrl: this.orthancUrl,
       missingRouteMeans: 'not-orthanc',
@@ -222,7 +238,7 @@ class OrthancAIService {
         headers: {
           'Content-Type': 'text/plain',
         },
-        body: studyInstanceUID, // Orthanc expects the bare UID as plain text
+        body: dicomUID, // Orthanc expects the bare UID as plain text
       },
       ctx
     );
@@ -244,12 +260,31 @@ class OrthancAIService {
       throw new Error(describeUnexpectedBody(ctx));
     }
 
-    const studyResult = lookupResults.find(result => result.Type === 'Study');
-    if (!studyResult?.ID) {
+    return lookupResults.find(result => result.Type === type)?.ID ?? null;
+  }
+
+  /**
+   * Get the Orthanc study ID for a DICOM StudyInstanceUID.
+   *
+   * Unlike {@link lookupResourceId}, a missing study throws: every caller here
+   * is about to route that study to an AI endpoint, so there is nothing useful
+   * to do with a null.
+   *
+   * @param studyInstanceUID The DICOM StudyInstanceUID
+   * @returns The Orthanc study ID
+   */
+  async getOrthancStudyId(studyInstanceUID: string): Promise<string> {
+    const orthancId = await this.lookupResourceId(
+      studyInstanceUID,
+      'Study',
+      'look up the study in Orthanc'
+    );
+
+    if (!orthancId) {
       throw new Error(`Orthanc has no study with StudyInstanceUID ${studyInstanceUID}.`);
     }
 
-    return studyResult.ID;
+    return orthancId;
   }
 
   /**
