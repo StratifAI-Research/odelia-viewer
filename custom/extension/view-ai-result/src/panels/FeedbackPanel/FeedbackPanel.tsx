@@ -124,17 +124,9 @@ const FeedbackPanel: React.FC = () => {
     );
   }, [aiResultsService, activeStudyUID, servicesManager]);
 
-  // Initialize activeStudyUID on mount
-  useEffect(() => {
-    if (!activeStudyUID) {
-      const initialStudyUID = getStudyUIDFromActiveViewport();
-      if (initialStudyUID) {
-        setActiveStudyUID(initialStudyUID);
-      }
-    }
-  }, [activeStudyUID, getStudyUIDFromActiveViewport]);
-
-  // Track viewport changes and update activeStudyUID
+  // Track viewport changes and update activeStudyUID. This also performs the
+  // initial resolve — on mount `activeStudyUID` is null, so the inequality below
+  // is already true — so no separate mount effect is needed.
   useEffect(() => {
     const studyUID = getStudyUIDFromActiveViewport();
     if (studyUID && studyUID !== activeStudyUID) {

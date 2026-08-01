@@ -78,15 +78,9 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
     );
   }, [activeViewportId, viewports, displaySetService, StudyInstanceUIDs, dicomStudyUID]);
 
-  useEffect(() => {
-    if (!activeStudyUID) {
-      const initialStudyUID = getStudyUIDFromActiveViewport();
-      if (initialStudyUID) {
-        setActiveStudyUID(initialStudyUID);
-      }
-    }
-  }, [activeStudyUID, getStudyUIDFromActiveViewport]);
-
+  // One effect covers both the initial resolve and every later change: on mount
+  // `activeStudyUID` is null, so the inequality below is already true. A separate
+  // "initialize on mount" effect only added a second render pass.
   useEffect(() => {
     const studyUID = getStudyUIDFromActiveViewport();
     if (studyUID && studyUID !== activeStudyUID) {

@@ -135,7 +135,8 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Save endpoints to localStorage whenever they change
+  // Save endpoints to localStorage whenever they change. This is the single
+  // persistence point — mutators below only call setEndpoints and let this run.
   useEffect(() => {
     if (endpoints.length > 0) {
       localStorage.setItem(
@@ -222,25 +223,19 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   const handleDeleteEndpoint = (endpointId: string) => {
     const updatedEndpoints = endpoints.filter(endpoint => endpoint.id !== endpointId);
 
-    // If no endpoints left, create a new default one
+    // Both branches leave a non-empty list, so the save effect above persists it —
+    // these used to write localStorage again by hand, duplicating that write.
     if (updatedEndpoints.length === 0) {
+      // If no endpoints left, create a new default one
       const defaultEndpoint = { ...DEFAULT_ENDPOINT };
       setEndpoints([defaultEndpoint]);
       onEndpointChange(defaultEndpoint);
-      localStorage.setItem(
-        AI_ENDPOINTS_STORAGE_KEY,
-        JSON.stringify(toPersistableEndpoints([defaultEndpoint]))
-      );
     } else {
       setEndpoints(updatedEndpoints);
       // If we're deleting the current endpoint, select another one
       if (currentEndpoint && currentEndpoint.id === endpointId) {
         onEndpointChange(updatedEndpoints[0]);
       }
-      localStorage.setItem(
-        AI_ENDPOINTS_STORAGE_KEY,
-        JSON.stringify(toPersistableEndpoints(updatedEndpoints))
-      );
     }
 
     handleCloseForm();
