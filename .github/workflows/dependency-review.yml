@@ -17,3 +17,8 @@ jobs:
         uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
           fail-on-severity: high
+          # Accepted risk, already recorded in pnpm-workspace.yaml's
+          # `auditConfig.ignoreGhsas`. That key only governs `pnpm audit`; this
+          # action never reads it, so the two gates have to be told separately.
+          # Keep this list and that one in sync.
+          allow-ghsas: GHSA-mp2f-45pm-3cg9
