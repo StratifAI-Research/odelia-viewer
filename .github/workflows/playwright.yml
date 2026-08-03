@@ -35,6 +35,14 @@ jobs:
       - name: Set up Git safe directory
         run: git config --global --add safe.directory /__w/Viewers/Viewers
       - name: Run Playwright tests
+        # TEST_ENV=true is what `pnpm run test:e2e:ci` sets via cross-env; this step
+        # calls Playwright directly for --shard/--reporter/--workers, so it must set
+        # the variable itself. Without it the bundle gets the normal series sort order
+        # instead of the stable test one, and every baseline in tests/screenshots/**
+        # mismatches. It is read when rspack builds, not per test, so it belongs on
+        # the step that starts Playwright's `webServer` — not inside a spec.
+        env:
+          TEST_ENV: 'true'
         run: |
           export NODE_OPTIONS="--max_old_space_size=8192"
           pnpm exec playwright test \
