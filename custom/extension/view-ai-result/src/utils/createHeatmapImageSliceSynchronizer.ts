@@ -4,7 +4,6 @@ import {
   getRenderingEngine,
   metaData,
   utilities,
-  VolumeViewport,
   Types,
 } from '@cornerstonejs/core';
 import { vec3, mat4 } from 'gl-matrix';
@@ -36,9 +35,8 @@ async function imageSliceSyncCallback(
   const sourceImageIndex = sViewport.getCurrentImageIdIndex();
   const sourceImageIds = sViewport.getImageIds();
 
-  // Note: We rely on spatial position matching (imagePositionPatient) rather than manual index reversal
-  // The volume→stack reversal is handled later (line ~104) when setting the target index
-
+  // Matching is purely spatial, on imagePositionPatient -- see the note at the jump below
+  // for why no index adjustment may be layered on top of it.
   const sourceImageId = sourceImageIds[sourceImageIndex];
   const imagePlaneModule1 = metaData.get('imagePlaneModule', sourceImageId);
   const sourceImagePositionPatient = imagePlaneModule1.imagePositionPatient;
@@ -99,18 +97,23 @@ async function imageSliceSyncCallback(
     { distance: Infinity, index: -1 }
   );
 
-  // Handle index reversal for volume→stack synchronization
-  let imageIndexToSet = closestResult.index;
-
-  // If source is volume and target is stack, reverse the target index
-  // because volume displays in reverse of anatomical order
-  if (sViewport instanceof VolumeViewport && !(tViewport instanceof VolumeViewport)) {
-    imageIndexToSet = targetImageIds.length - closestResult.index - 1;
-  }
-
+  // `closestResult.index` is already the spatially correct slice: it is whichever target
+  // image sits nearest the registered source position, found by comparing
+  // imagePositionPatient above. Nothing further may be applied to it.
+  //
+  // This used to reverse the index for a volume source and a stack target
+  // (`targetImageIds.length - index - 1`), on the premise that "volume displays in reverse
+  // of anatomical order". That premise is false for these series, and the reversal was the
+  // cause of the heatmap tracking the wrong way: measured against the ODELIA study, the MR
+  // volume's imageIds and the heatmap stack's are BOTH ascending in z (both run
+  // -43.24 -> 55.75), and the volume's own index maps monotonically onto that order.
+  // Reversing therefore turned a correct match into a mirrored one -- MR index 12 (z
+  // -3.64) drove the heatmap to 18 (z 16.16) instead of 12, and index 25 to 5 instead of
+  // 25, both exactly 31 - index - 1. A spatial match and an index reversal are mutually
+  // exclusive; keep the spatial one.
   if (closestResult.index !== -1 && tViewport.getCurrentImageIdIndex() !== closestResult.index) {
     await utilities.jumpToSlice(tViewport.element, {
-      imageIndex: imageIndexToSet,
+      imageIndex: closestResult.index,
     });
   }
 }
