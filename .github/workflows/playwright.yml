@@ -34,6 +34,31 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Set up Git safe directory
         run: git config --global --add safe.directory /__w/Viewers/Viewers
+      - name: Log the WebGL renderer
+        # Which GL path this container actually gets decides whether upstream's 10s
+        # actionTimeout is realistic here: upstream calibrated it on a self-hosted
+        # machine, and a CPU rasteriser needs far longer to build a 3D volume. This is
+        # the first thing to check when a 3D spec times out, so record it per run.
+        # Shard 1 only — the container is identical across shards.
+        if: matrix.shardIndex == 1
+        run: |
+          node -e '
+          const { chromium } = require("@playwright/test");
+          (async () => {
+            const browser = await chromium.launch({ args: ["--use-gl=egl"] });
+            const page = await browser.newPage();
+            console.log("WebGL renderer:", await page.evaluate(() => {
+              const gl = document.createElement("canvas").getContext("webgl2");
+              if (!gl) return "NO WEBGL";
+              const info = gl.getExtension("WEBGL_debug_renderer_info");
+              return info
+                ? gl.getParameter(info.UNMASKED_VENDOR_WEBGL) +
+                    " | " + gl.getParameter(info.UNMASKED_RENDERER_WEBGL)
+                : "WEBGL_debug_renderer_info unavailable";
+            }));
+            await browser.close();
+          })();
+          '
       - name: Run Playwright tests
         # TEST_ENV=true is what `pnpm run test:e2e:ci` sets via cross-env; this step
         # calls Playwright directly for --shard/--reporter/--workers, so it must set
