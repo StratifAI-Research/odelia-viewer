@@ -12,6 +12,18 @@ const ohif = {
   leftPanel: '@ohif/extension-default.panelModule.seriesList',
 };
 
+// This study family carries an AI report as a DICOM SR. Without these handlers the stack
+// handler declines it (a non-image instance with no Rows) and DisplaySetService falls back
+// to getDisplaySetsFromUnsupportedSeries, which wraps the SR in an ImageSet whose `.images`
+// is truthy -- so DicomWebDataSource mints a `/frames/1` imageId for an object with no
+// pixel data, the study prefetcher requests it, Orthanc answers 400, and the bare
+// XMLHttpRequest rejection surfaces as an "Uncaught runtime errors" overlay with no
+// message. See 6aca73e94c, which fixed the same defect in send-ai.
+const dicomsr = {
+  sopClassHandler: '@ohif/extension-cornerstone-dicom-sr.sopClassHandlerModule.dicom-sr',
+  sopClassHandler3D: '@ohif/extension-cornerstone-dicom-sr.sopClassHandlerModule.dicom-sr-3d',
+};
+
 const labeling = {
   patientPanel: 'labeling.panelModule.panelLabeling',
   studyPanel: 'labeling.panelModule.panelLabelingStudy',
@@ -29,6 +41,9 @@ const cornerstone = {
 const extensionDependencies = {
   '@ohif/extension-default': '^3.0.0',
   '@ohif/extension-cornerstone': '^3.0.0',
+  // Registered on mode entry via Mode.tsx's `loadModules(Object.keys(extensions))`, so
+  // being `default: false` in pluginConfig.json does not keep it out of this mode.
+  '@ohif/extension-cornerstone-dicom-sr': '^3.0.0',
   labeling: '^0.0.1',
   'view-ai-result': '^0.0.1',
 };
@@ -228,8 +243,13 @@ function modeFactory() {
     extensions: extensionDependencies,
     /** HangingProtocol used by the mode */
     hangingProtocol: 'view-ai-result.hpSinglePrimary',
-    /** SopClassHandlers used by the mode */
-    sopClassHandlers: [ohif.sopClassHandler],
+    /**
+     * SopClassHandlers used by the mode. Order mirrors mode-basic: the stack handler
+     * first, then SR with 3D ahead of 2D. `displaySetsToDisplay` above still lists only
+     * the stack handler, so registering these does not put an SR into a viewport -- it
+     * only stops the SR being mistaken for pixel data.
+     */
+    sopClassHandlers: [ohif.sopClassHandler, dicomsr.sopClassHandler3D, dicomsr.sopClassHandler],
     /** hotkeys for mode */
     hotkeys: [],
   };

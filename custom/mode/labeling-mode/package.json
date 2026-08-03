@@ -25,6 +25,7 @@
   },
   "peerDependencies": {
     "@ohif/core": "workspace:*",
+    "@ohif/extension-cornerstone-dicom-sr": "workspace:*",
     "@ohif/mode-basic": "workspace:*",
     "react": "18.3.1",
     "react-dom": "18.3.1"
