@@ -402,6 +402,9 @@ importers:
       '@ohif/core':
         specifier: workspace:*
         version: link:../../../platform/core
+      '@ohif/extension-cornerstone-dicom-sr':
+        specifier: workspace:*
+        version: link:../../../extensions/cornerstone-dicom-sr
       '@ohif/mode-basic':
         specifier: workspace:*
         version: link:../../../modes/basic

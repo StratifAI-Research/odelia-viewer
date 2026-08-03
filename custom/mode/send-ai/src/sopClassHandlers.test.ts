@@ -11,14 +11,13 @@ const SR_3D = '@ohif/extension-cornerstone-dicom-sr.sopClassHandlerModule.dicom-
 describe('send-ai SOP class handlers', () => {
   const sopClassHandlers = mode.modeFactory().sopClassHandlers as string[];
 
-  // Regression: with only the stack handler, the stack handler declines an SR (it skips a
-  // non-image instance with no Rows) and DisplaySetService falls back to
-  // getDisplaySetsFromUnsupportedSeries, which wraps the SR in an ImageSet. That gives it a
-  // truthy `.images`, so DicomWebDataSource mints a `/frames/1` imageId for an object with
-  // no pixel data; the prefetcher requests it and Orthanc returns 400. The rejection is a
-  // bare XMLHttpRequest, which has neither `message` nor `stack`, so ErrorBoundary shows an
-  // empty "Something went wrong" dialog. The same fallback also clobbers `.instance`, which
-  // extractAIResultData() needs for `ContentSequence`.
+  // These assertions cover the WIRING only — that the ids and the dependency are declared.
+  // They do not exercise the behaviour that motivated the change (an SR resolving to the SR
+  // handler, keeping `.instance`, and yielding no image ids); that needs a test which drives
+  // the real handler and the DICOMweb data source. See the commit message for the full chain:
+  // stack-handler-only => getDisplaySetsFromUnsupportedSeries => truthy `.images` =>
+  // a `/frames/1` request for an object with no pixel data => 400 => bare XMLHttpRequest
+  // rejection with no message/stack => empty ErrorBoundary dialog.
   it('registers the SR handlers so AI report series are not treated as pixel data', () => {
     expect(sopClassHandlers).toContain(SR_2D);
     expect(sopClassHandlers).toContain(SR_3D);
