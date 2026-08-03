@@ -123,17 +123,32 @@ export function _escapeCsvValue(value) {
   return str;
 }
 
-function _mapReportsToRowArray(reportMap, columns) {
-  const results = [columns];
+type ReportMap = {
+  [uid: string]: {
+    report: { columns: string[]; values: unknown[] };
+    commonRowItems: Record<string, unknown>;
+  };
+};
+
+export function _mapReportsToRowArray(reportMap: ReportMap, columns: string[]) {
+  const results: unknown[][] = [columns];
   Object.keys(reportMap).forEach(id => {
     const { report, commonRowItems } = reportMap[id];
-    const row: any[] = [];
+    // Sparse on purpose: a report that omits a column leaves a hole, and
+    // Array.prototype.map preserves holes, so column alignment is kept.
+    const row: unknown[] = [];
     // For commonRowItems, find the correct index and add the value to the
     // correct row in the results array
     Object.keys(commonRowItems).forEach(key => {
       const index = columns.indexOf(key);
-      const value = commonRowItems[key];
-      row[index] = value;
+      // A key with no column would assign row[-1] -- a property named "-1" rather
+      // than a cell, so the value vanishes from the file with no error. Skip it
+      // explicitly instead: silently losing data is worse than omitting it.
+      if (index === -1) {
+        console.warn(`downloadCSVReport: no '${key}' column; value omitted from the report`);
+        return;
+      }
+      row[index] = commonRowItems[key];
     });
 
     // For each annotation data, find the correct index and add the value to the
@@ -160,11 +175,17 @@ export function _getCommonRowItems(measurement, seriesMetadata) {
     firstInstance?.PatientName?.Alphabetic ??
     (typeof firstInstance?.PatientName === 'string' ? firstInstance.PatientName : '');
 
+  // Every key here must also appear in the `columns` seed at the top of
+  // downloadCSVReport, or _mapReportsToRowArray drops it (see the guard there).
+  // A dead `Label: measurement.label || ''` used to live here: nothing sets
+  // `measurement.label` (ODELIALabel carries `label_data`), and 'Label' was never
+  // a column, so it was discarded twice over. 'Label' remains in
+  // importCSVReport's `unusedColumns` because a foreign producer emits one --
+  // that filter is the only place this repo needs to know the name.
   return {
     'Patient ID': firstInstance?.PatientID ?? '', // Patient ID
     'Patient Name': patientName, // PatientName
     StudyInstanceUID: measurement.referenceStudyUID, // StudyInstanceUID
-    Label: measurement.label || '', // Label
   };
 }
 

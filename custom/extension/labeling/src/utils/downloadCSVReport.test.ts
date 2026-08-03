@@ -1,7 +1,12 @@
 // @ohif/core is a webpack external, unresolvable in this package's jest env.
 // downloadCSVReport only touches DicomMetadataStore in its main path, which the
 // tests below do not exercise.
-import { _escapeCsvValue, _createAndDownloadFile, _getCommonRowItems } from './downloadCSVReport';
+import {
+  _escapeCsvValue,
+  _createAndDownloadFile,
+  _getCommonRowItems,
+  _mapReportsToRowArray,
+} from './downloadCSVReport';
 
 jest.mock(
   '@ohif/core',
@@ -63,6 +68,51 @@ describe('_getCommonRowItems (metadata guards)', () => {
     expect(row['Patient ID']).toBe('');
     expect(row['Patient Name']).toBe('');
     expect(row.StudyInstanceUID).toBe('S1');
+  });
+
+  // A `Label` key used to be returned here but was never in `columns`, so it was
+  // written to row[-1] and silently dropped. It is gone; 'Label' stays in
+  // importCSVReport's `unusedColumns` only to filter a foreign producer's column.
+  it('emits only keys the report has columns for, with no dead Label', () => {
+    const row = _getCommonRowItems({ referenceStudyUID: 'S1', label: 'ignored' }, undefined);
+    expect(Object.keys(row)).toEqual(['Patient ID', 'Patient Name', 'StudyInstanceUID']);
+    expect(row).not.toHaveProperty('Label');
+  });
+});
+
+describe('_mapReportsToRowArray', () => {
+  const columns = ['Patient ID', 'StudyInstanceUID', 'AnnotationType'];
+  const reportMap = {
+    uid1: {
+      report: { columns: ['AnnotationType'], values: ['ODELIALabel'] },
+      commonRowItems: { 'Patient ID': 'PID', StudyInstanceUID: 'S1' },
+    },
+  };
+
+  it('places common items and report values at their column indices', () => {
+    const [header, row] = _mapReportsToRowArray(reportMap, columns);
+    expect(header).toBe(columns);
+    expect(row).toEqual(['PID', 'S1', 'ODELIALabel']);
+  });
+
+  it('omits a common item with no column instead of assigning row[-1]', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const withOrphan = {
+      uid1: {
+        ...reportMap.uid1,
+        commonRowItems: { ...reportMap.uid1.commonRowItems, Orphan: 'lost' },
+      },
+    };
+
+    const [, row] = _mapReportsToRowArray(withOrphan, columns);
+
+    // The bug this guards: row[-1] = 'lost' creates a "-1" property, so the value
+    // disappears from the file with no error and no trace.
+    expect(row).not.toHaveProperty('-1');
+    expect(row).toEqual(['PID', 'S1', 'ODELIALabel']);
+    expect(row).toHaveLength(3);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("no 'Orphan' column"));
+    warn.mockRestore();
   });
 });
 
