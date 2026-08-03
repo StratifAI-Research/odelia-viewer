@@ -29,6 +29,7 @@ const dicomsr = {
 
 const viewAIResult = {
   viewport: 'view-ai-result.viewportModule.ai-tracked-viewport',
+  hangingProtocol: 'view-ai-result.hpSinglePrimary',
 };
 
 // Panels from view-ai-result extension
@@ -240,6 +241,32 @@ function modeFactory() {
     ],
     /** List of extensions that are used by the mode */
     extensions: extensionDependencies,
+    /**
+     * HangingProtocol used by the mode -- the same one labeling-mode pins.
+     *
+     * Without this, setActiveProtocolIds() nulls activeProtocolIds ("No active
+     * protocols, setting all to active") and run() falls to ProtocolEngine matching,
+     * where every registered protocol competes and the layout rests on hpSinglePrimary's
+     * weight-100 rule out-scoring the rest. It does win for a single-study MR/SC/SR URL,
+     * but two protocols already outscore it whenever their rules pass:
+     * @ohif/hpCompare (weight 1000, requires a prior study, so any multi-study URL) and
+     * @ohif/hpMammo (150, an MG study). So this is a live exposure, not a guard against
+     * some future protocol.
+     *
+     * Naming it takes run()'s getProtocolById branch, which skips protocol matching
+     * altogether -- also what quietens the "no matching rules - specify
+     * protocolMatchingRules for default/mpr/..." warnings on entry (40 logs down to 8).
+     *
+     * Trade-off, shared with labeling-mode, which has always pinned this: forcing the
+     * protocol also skips its own protocolMatchingRules. A study that fails
+     * `numberOfDisplaySetsWithImages > 0` (SR-only, PDF/video-only) can no longer fall
+     * through to another protocol and hangs a 1x1 EmptyViewport with no explanation.
+     * `allowUnmatchedView: true` does not help -- it governs later drop/replace, not
+     * initial matching. Acceptable here because this mode exists to show one study's
+     * primary imaging alongside its AI result, and a study with no primary imaging has
+     * nothing for it to do.
+     */
+    hangingProtocol: viewAIResult.hangingProtocol,
     /**
      * SopClassHandlers used by the mode. Order mirrors mode-basic: the stack handler
      * first, then SR with 3D ahead of 2D. DisplaySetService runs every handler in turn
