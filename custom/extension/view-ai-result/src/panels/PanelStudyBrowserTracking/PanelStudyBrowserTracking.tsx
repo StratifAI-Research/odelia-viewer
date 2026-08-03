@@ -618,6 +618,20 @@ export default function PanelStudyBrowserTracking({
         )
       : createAIBrowserTabs(StudyInstanceUIDs, studyDisplayList, displaySets, servicesManager);
 
+  // `tabs` is rebuilt on every render, so it is a fresh array identity every time
+  // and useless as an effect dependency — the styling effect below was re-running
+  // on every single render, tearing down and recreating the MutationObserver and
+  // re-running applyAIThumbnailStyles()'s document-wide querySelectorAll sweep
+  // twice, even when the tabs were identical. Key that effect on the tab names
+  // instead, so it runs when the tab set actually changes.
+  //
+  // Deliberately not useMemo(tabs): createAIBrowserTabs/createStudyAIBrowserTabsNested
+  // resolve display sets through displaySetService and read mutable instance
+  // metadata, so they are not pure functions of the values available as deps here —
+  // a memo would risk serving stale tab labels/grouping, which is a worse failure
+  // than the wasted work. Rebuilding stays cheap; only the DOM sweep was costly.
+  const tabsKey = tabs.map(tab => tab.name).join(' ');
+
   // Ensure activeTabName is valid
   useEffect(() => {
     if (!tabs.find(t => t.name === activeTabName) && tabs.length) {
@@ -644,7 +658,11 @@ export default function PanelStudyBrowserTracking({
       // Disconnect the MutationObserver on unmount so its full-subtree sweep stops.
       disconnectObserver();
     };
-  }, [tabs, activeTabName]);
+    // tabsKey, not tabs: see the note above. This body reads neither, so keying on
+    // the tab names costs no exhaustive-deps accuracy. Re-running when the tab set
+    // changes is also what lets setupAIThumbnailObserver() upgrade its observation
+    // root from document.body to the study-browser container once that exists.
+  }, [tabsKey, activeTabName]);
 
   // TODO: Should not fire this on "close"
   function _handleStudyClick(StudyInstanceUID) {
