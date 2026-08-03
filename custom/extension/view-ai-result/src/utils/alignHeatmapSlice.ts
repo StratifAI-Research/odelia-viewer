@@ -10,8 +10,25 @@ type SyncableViewport = {
   getCurrentImageIdIndex(): number;
   getImageIds(): string[];
   getFrameOfReferenceUID(): string;
+  getCurrentImageId?(): string | undefined;
+  getNumberOfSlices?(): number;
   element: HTMLDivElement;
 };
+
+/**
+ * The imageId of the slice a viewport is actually showing.
+ *
+ * MUST NOT be `getImageIds()[getCurrentImageIdIndex()]`. On a VolumeViewport that index is a
+ * SLICE index, and the slice axis runs opposite to the flat imageIds array: measured on the
+ * ODELIA dynamic MR (155 imageIds = 31 slices x 5 temporal positions), slice 0 is at
+ * z = +55.75 while imageIds[0] is at z = -43.24, and the two agree only at the midpoint,
+ * slice 15. Indexing the array therefore yields the MIRRORED position, which is what made
+ * the heatmap track the wrong way; the old `length - index - 1` reversal existed to cancel
+ * that error rather than to fix it. getCurrentImageId() asks the viewport what it is showing
+ * and is correct for both viewport types.
+ */
+const currentImageIdOf = (viewport: SyncableViewport): string | undefined =>
+  viewport.getCurrentImageId?.() ?? viewport.getImageIds()[viewport.getCurrentImageIdIndex()];
 
 /**
  * Move `tViewport` to the slice that sits at the same patient position as `sViewport`'s
@@ -34,13 +51,34 @@ export default async function alignHeatmapSlice(
     useInitialPosition?: boolean;
   }
 ): Promise<number | null> {
-  const sourceImageIds = sViewport.getImageIds();
-  const sourceImageId = sourceImageIds[sViewport.getCurrentImageIdIndex()];
+  const sourceImageId = currentImageIdOf(sViewport);
+
+  if (!sourceImageId) {
+    return null;
+  }
+
   const imagePlaneModule = metaData.get('imagePlaneModule', sourceImageId);
   const sourceImagePositionPatient = imagePlaneModule?.imagePositionPatient;
 
   if (!sourceImagePositionPatient) {
     return null;
+  }
+
+  // A volume TARGET is not supported: the spatial search below returns an index into the
+  // target's flat imageIds, while jumpToSlice on a VolumeViewport expects a SLICE index, and
+  // for a dynamic volume those are neither the same range (155 vs 31) nor the same direction.
+  // Passing one for the other jumps to an unrelated slice or out of range, so decline rather
+  // than move the reader somewhere wrong. The direction this feature exists for -- a volume
+  // source driving the heatmap stack -- is unaffected.
+  if (typeof tViewport.getNumberOfSlices === 'function') {
+    const slices = tViewport.getNumberOfSlices();
+    if (slices != null && slices !== tViewport.getImageIds().length) {
+      console.warn(
+        '[HeatmapSync] target is a volume whose slice index differs from its imageIds; ' +
+          'skipping rather than jumping to the wrong slice'
+      );
+      return null;
+    }
   }
 
   const targetImageIds = tViewport.getImageIds();

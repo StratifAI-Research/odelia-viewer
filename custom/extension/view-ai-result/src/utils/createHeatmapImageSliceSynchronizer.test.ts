@@ -49,44 +49,56 @@ describe('createHeatmapImageSliceSynchronizer', () => {
 // The callback is not exported, so it is taken from the createSynchronizer mock, which is
 // where the production code hands it over.
 describe('imageSliceSyncCallback slice selection', () => {
-  // Geometry from the ODELIA study this synchronizer exists for: an MR volume of 31 slices
-  // per temporal position and a 31-frame SC heatmap, both ascending in z over the same
-  // range with a shared Frame of Reference.
+  // Geometry measured from the ODELIA study, including the part that makes this subtle:
+  //
+  //   MR   VolumeViewport  155 imageIds (31 slices x 5 temporal positions), 31 slices
+  //   SC   StackViewport    31 imageIds
+  //
+  // The volume's SLICE index runs OPPOSITE to its own flat imageIds array. Slice 0 sits at
+  // z = +55.75 while imageIds[0] sits at z = -43.24; they coincide only at the midpoint,
+  // slice 15. So the correct target frame for source slice j is 30 - j, and a test whose
+  // fake volume has slice index == array index cannot tell a correct implementation from one
+  // that indexes the array (an earlier version of this test did exactly that, and passed
+  // against code that read the mirrored position).
   const FOR = 'shared-frame-of-reference';
   const N = 31;
-  // Measured endpoints of both series; the step is derived rather than written out, which
-  // also keeps it clear of no-loss-of-precision.
+  const TEMPORAL = 5;
   const Z_FIRST = -43.242647;
   const Z_LAST = 55.754175;
-  const zAt = (i: number) => Z_FIRST + (i * (Z_LAST - Z_FIRST)) / (N - 1);
+  const zAsc = i => Z_FIRST + (i * (Z_LAST - Z_FIRST)) / (N - 1);
 
-  // The source MUST be a real VolumeViewport instance: the reversal this guards against was
-  // gated on `sViewport instanceof VolumeViewport`, so a plain object silently skips the
-  // branch and the test would pass either way. (It did, until this was fixed.)
-  const makeViewport = (kind: 'volume' | 'stack', currentIndex: number) =>
-    // The jest mock's VolumeViewport is a bare `class {}`; the published typings declare a
-    // constructor argument, so cast to construct it the way the mock actually is.
-    Object.assign(kind === 'volume' ? new (VolumeViewport as unknown as new () => object)() : {}, {
-      getCurrentImageIdIndex: jest.fn(() => currentIndex),
-      getImageIds: jest.fn(() => Array.from({ length: N }, (_, i) => `${kind}:${i}`)),
-      getFrameOfReferenceUID: jest.fn(() => FOR),
-      element: { kind },
-    });
+  // Ascending in z, like the acquisition order: [t1s0..t1s30, t2s0..t2s30, ...].
+  const volumeImageIds = Array.from({ length: N * TEMPORAL }, (_, k) => `vol:${k % N}`);
+  // Slice index -> imageId, descending in z: slice 0 is the LAST ascending position.
+  const volumeSliceImageId = slice => `vol:${N - 1 - slice}`;
 
-  const run = async (sourceIndex: number) => {
-    const source = makeViewport('volume', sourceIndex);
-    const target = makeViewport('stack', 0);
+  const makeVolumeSource = sliceIndex => ({
+    getCurrentImageIdIndex: jest.fn(() => sliceIndex),
+    getCurrentImageId: jest.fn(() => volumeSliceImageId(sliceIndex)),
+    getImageIds: jest.fn(() => volumeImageIds),
+    getNumberOfSlices: jest.fn(() => N),
+    getFrameOfReferenceUID: jest.fn(() => FOR),
+    element: { kind: 'volume' },
+  });
 
+  const makeStackTarget = currentIndex => ({
+    getCurrentImageIdIndex: jest.fn(() => currentIndex),
+    getCurrentImageId: jest.fn(() => `stack:${currentIndex}`),
+    getImageIds: jest.fn(() => Array.from({ length: N }, (_, i) => `stack:${i}`)),
+    getNumberOfSlices: jest.fn(() => N),
+    getFrameOfReferenceUID: jest.fn(() => FOR),
+    element: { kind: 'stack' },
+  });
+
+  const run = async (source, target) => {
+    const cs = jest.requireMock('@cornerstonejs/core');
     (getRenderingEngine as jest.Mock).mockReturnValue({
       getViewport: (id: string) => (id === 'src' ? source : target),
     });
-    (metaData.get as jest.Mock).mockImplementation((_module: string, imageId: string) => ({
-      imagePositionPatient: [0, 0, zAt(Number(String(imageId).split(':')[1]))],
-    }));
-    // The shared core mock carries only imageIdToURI; add what this code path uses.
-    // Reporting no stored registration while both viewports share a Frame of Reference
-    // makes the production code fall back to an identity matrix -- source position ==
-    // target position, which is the real geometry of these two series.
+    (metaData.get as jest.Mock).mockImplementation((_m: string, imageId: string) => {
+      const [, n] = String(imageId).split(':');
+      return { imagePositionPatient: [0, 0, zAsc(Number(n))] };
+    });
     const u = utilities as Record<string, unknown>;
     u.spatialRegistrationMetadataProvider = { get: jest.fn(() => undefined) };
     u.calculateViewportsSpatialRegistration = jest.fn();
@@ -102,27 +114,51 @@ describe('imageSliceSyncCallback slice selection', () => {
     return u.jumpToSlice as jest.Mock;
   };
 
-  // Regression: the volume->stack branch used to set `targetImageIds.length - index - 1`,
-  // mirroring the heatmap against the anatomy. Both stacks ascend in z here, so the
-  // spatial match must be used as-is. 12 -> 18 and 25 -> 5 were the observed failures.
+  // 8 -> 22 is the pair measured in the browser: MR slice 8 and heatmap frame 22 are both
+  // at z = 29.36.
   it.each([
-    [12, 12],
-    [25, 25],
-    [5, 5],
-    [0, 0],
-    [N - 1, N - 1],
-  ])('drives a volume source at index %i to the same-z stack slice %i', async (from, expected) => {
-    const jumpToSlice = await run(from);
+    [8, 22],
+    [12, 18],
+    [25, 5],
+    [2, 28],
+  ])('drives volume slice %i to the same-z stack frame %i', async (slice, expected) => {
+    const jumpToSlice = await run(makeVolumeSource(slice), makeStackTarget(0));
 
-    expect(jumpToSlice).toHaveBeenCalledTimes(expected === 0 ? 0 : 1);
-    if (expected !== 0) {
-      expect(jumpToSlice).toHaveBeenCalledWith({ kind: 'stack' }, { imageIndex: expected });
-    }
+    expect(jumpToSlice).toHaveBeenCalledWith({ kind: 'stack' }, { imageIndex: expected });
   });
 
-  it('does not mirror the index (the reversal would give 31 - i - 1)', async () => {
-    const jumpToSlice = await run(12);
+  it('lands on the same index only at the midpoint, where the two axes cross', async () => {
+    const jumpToSlice = await run(makeVolumeSource(15), makeStackTarget(0));
 
-    expect(jumpToSlice).not.toHaveBeenCalledWith(expect.anything(), { imageIndex: N - 12 - 1 });
+    expect(jumpToSlice).toHaveBeenCalledWith({ kind: 'stack' }, { imageIndex: 15 });
+  });
+
+  // The failure mode this guards: reading getImageIds()[getCurrentImageIdIndex()] instead of
+  // getCurrentImageId() yields the mirrored position, which for slice 8 would move the stack
+  // to frame 8 rather than 22.
+  it('does not take the source position from the flat imageIds array', async () => {
+    const jumpToSlice = await run(makeVolumeSource(8), makeStackTarget(0));
+
+    expect(jumpToSlice).not.toHaveBeenCalledWith(expect.anything(), { imageIndex: 8 });
+  });
+
+  it('does nothing when the target is already on the matching frame', async () => {
+    const jumpToSlice = await run(makeVolumeSource(8), makeStackTarget(22));
+
+    expect(jumpToSlice).not.toHaveBeenCalled();
+  });
+
+  // A volume TARGET would need a slice index, but the spatial search yields a flat imageIds
+  // index -- 155 entries against 31 slices, in the opposite direction. Declining beats
+  // jumping the reader to an unrelated slice.
+  it('declines a volume target rather than passing it a flat imageIds index', async () => {
+    const volumeTarget = {
+      ...makeVolumeSource(0),
+      getImageIds: jest.fn(() => volumeImageIds),
+      element: { kind: 'volumeTarget' },
+    };
+    const jumpToSlice = await run(makeStackTarget(3), volumeTarget);
+
+    expect(jumpToSlice).not.toHaveBeenCalled();
   });
 });
