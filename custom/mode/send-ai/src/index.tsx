@@ -55,6 +55,14 @@ const extensionDependencies = {
   'view-ai-result': '^0.0.1',
 };
 
+/**
+ * GRID_STATE_CHANGED subscription for the automatic heatmap slice sync, held here so
+ * onModeExit can drop it -- it outlives any single onModeEnter local, and onModeExit
+ * destroys syncGroupService, so a surviving subscription would re-arm sync against torn-down
+ * services.
+ */
+let gridSubscription: { unsubscribe: () => void } | undefined;
+
 function modeFactory() {
   return {
     /**
@@ -74,7 +82,7 @@ function modeFactory() {
      * Runs when the Mode Route is mounted to the DOM. Usually used to initialize
      * Services and other resources.
      */
-    onModeEnter: ({ servicesManager, extensionManager }: ModeFactoryParams) => {
+    onModeEnter: ({ servicesManager, extensionManager, commandsManager }: ModeFactoryParams) => {
       const { measurementService, toolbarService, toolGroupService } = servicesManager.services;
 
       // Clear existing measurements
@@ -110,6 +118,31 @@ function modeFactory() {
       toolbarService.updateSection(toolbarService.sections.viewportActionMenu.topRight, [
         'aiHeatmapToggle',
       ]);
+
+      // Link the viewports as soon as a heatmap opens beside its primary imaging, instead
+      // of waiting for the reader to press the toggle. Subscribed rather than done once
+      // here because the second viewport appears later, when a thumbnail is dragged in.
+      //
+      // Driven through commands rather than importing view-ai-result's helpers: a mode
+      // depends on an extension by module id, and this one is not a package dependency of
+      // send-ai. `ensureHeatmapImageSliceSync` is built for this call site -- it no-ops
+      // unless a second viewport holds an AI result, every viewport is renderable, and sync
+      // is off, so firing it on every grid change is cheap. The toolbar toggle stays
+      // authoritative: switching sync off records that preference and this stops re-arming
+      // it, which is what `resetHeatmapSyncPreference` clears on each entry.
+      const { viewportGridService } = servicesManager.services;
+
+      commandsManager.run('resetHeatmapSyncPreference');
+      gridSubscription?.unsubscribe();
+      gridSubscription = viewportGridService.subscribe(
+        viewportGridService.EVENTS.GRID_STATE_CHANGED,
+        () => {
+          Promise.resolve(commandsManager.run('ensureHeatmapImageSliceSync')).catch(
+            (error: unknown) =>
+              console.warn('send-ai: automatic heatmap slice sync failed', error)
+          );
+        }
+      );
 
       // Obtain Cornerstone tool definitions
       const utilityModule = extensionManager.getModuleEntry(
@@ -168,6 +201,11 @@ function modeFactory() {
         uiDialogService,
         uiModalService,
       } = servicesManager.services;
+
+      // Before the services below are destroyed: this subscription re-arms slice sync, and
+      // it must not fire against a torn-down syncGroupService.
+      gridSubscription?.unsubscribe();
+      gridSubscription = undefined;
 
       uiDialogService.hideAll();
       uiModalService.hide();

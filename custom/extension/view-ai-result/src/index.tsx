@@ -10,7 +10,11 @@ import { AIResultsService } from './services/AIResultsService';
 import { ChatService } from './services/ChatService';
 import { registerIcons } from './icons';
 import createHeatmapImageSliceSynchronizer from './utils/createHeatmapImageSliceSynchronizer';
-import { toggleHeatmapImageSliceSync } from './utils/toggleHeatmapImageSliceSync';
+import {
+  toggleHeatmapImageSliceSync,
+  ensureHeatmapImageSliceSync,
+  resetHeatmapSyncPreference,
+} from './utils/toggleHeatmapImageSliceSync';
 
 export default {
   /**
@@ -177,14 +181,28 @@ export default {
    */
   getCommandsModule: ({ servicesManager }) => {
     const actions = {
-      toggleHeatmapImageSliceSync: () => {
-        toggleHeatmapImageSliceSync({ servicesManager });
-      },
+      // Returned, not awaited-and-dropped: the toolbar does not await commands, but handing
+      // the promise back lets callers (and tests) wait for the initial alignment.
+      toggleHeatmapImageSliceSync: () => toggleHeatmapImageSliceSync({ servicesManager }),
+      // Exposed as commands so a mode can drive the automatic behaviour without importing
+      // this extension's internals -- modes depend on extensions by module id, not package.
+      ensureHeatmapImageSliceSync: () => ensureHeatmapImageSliceSync({ servicesManager }),
+      resetHeatmapSyncPreference: () => resetHeatmapSyncPreference(),
     };
 
     const definitions = {
       toggleHeatmapImageSliceSync: {
         commandFn: actions.toggleHeatmapImageSliceSync,
+        storeContexts: [],
+        options: {},
+      },
+      ensureHeatmapImageSliceSync: {
+        commandFn: actions.ensureHeatmapImageSliceSync,
+        storeContexts: [],
+        options: {},
+      },
+      resetHeatmapSyncPreference: {
+        commandFn: actions.resetHeatmapSyncPreference,
         storeContexts: [],
         options: {},
       },
