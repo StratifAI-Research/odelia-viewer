@@ -25,6 +25,7 @@
   },
   "peerDependencies": {
     "@ohif/core": "workspace:*",
+    "@ohif/extension-cornerstone-dicom-sr": "workspace:*",
     "@ohif/mode-basic": "workspace:*"
   },
   "dependencies": {

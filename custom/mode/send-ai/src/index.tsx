@@ -9,6 +9,24 @@ const ohif = {
   leftPanel: 'view-ai-result.panelModule.seriesList',
 };
 
+// AI results arrive as DICOM SR. Without these handlers the stack handler declines the
+// SR (getSopClassHandlerModule skips a non-image instance with no Rows) and
+// DisplaySetService falls back to getDisplaySetsFromUnsupportedSeries, which wraps the
+// SR in an ImageSet. That fallback is actively harmful here:
+//   - the ImageSet has a truthy `.images`, so DicomWebDataSource mints a
+//     `/frames/1` wadors imageId for an object with no pixel data. The study prefetcher
+//     then requests it, Orthanc answers 400, and the rejection surfaces as an
+//     "Something went wrong" toast carrying a bare XMLHttpRequest (no message, no
+//     stack), so the error dialog renders blank.
+//   - it sets `instance: instances[instance.length - 1]`, i.e. `instances[NaN]` ===
+//     undefined, so `displaySet.instance` is lost and extractAIResultData()'s
+//     `displaySet.instance?.ContentSequence` guard silently returns null.
+// A real SR display set has no `.images` and keeps `.instance`, which fixes both.
+const dicomsr = {
+  sopClassHandler: '@ohif/extension-cornerstone-dicom-sr.sopClassHandlerModule.dicom-sr',
+  sopClassHandler3D: '@ohif/extension-cornerstone-dicom-sr.sopClassHandlerModule.dicom-sr-3d',
+};
+
 const viewAIResult = {
   viewport: 'view-ai-result.viewportModule.ai-tracked-viewport',
 };
@@ -29,6 +47,9 @@ const orthancAI = {
 const extensionDependencies = {
   '@ohif/extension-default': '^3.0.0',
   '@ohif/extension-cornerstone': '^3.0.0',
+  // Registered on mode entry via Mode.tsx's `loadModules(Object.keys(extensions))`, so
+  // being `default: false` in pluginConfig.json does not keep it out of this mode.
+  '@ohif/extension-cornerstone-dicom-sr': '^3.0.0',
   'orthanc-ai-routing': '^0.0.1',
   'view-ai-result': '^0.0.1',
 };
@@ -219,8 +240,14 @@ function modeFactory() {
     ],
     /** List of extensions that are used by the mode */
     extensions: extensionDependencies,
-    /** SopClassHandlers used by the mode */
-    sopClassHandlers: [ohif.sopClassHandler],
+    /**
+     * SopClassHandlers used by the mode. Order mirrors mode-basic: the stack handler
+     * first, then SR with 3D ahead of 2D. DisplaySetService runs every handler in turn
+     * and drops the instances each one claims, so the stack handler's position is not
+     * load-bearing here (it declines the SR outright) -- but keeping upstream's relative
+     * order avoids surprises if that changes.
+     */
+    sopClassHandlers: [ohif.sopClassHandler, dicomsr.sopClassHandler3D, dicomsr.sopClassHandler],
   };
 }
 
