@@ -499,6 +499,25 @@ export default function getToolbarModule({ servicesManager, extensionManager }: 
           toolGroupService,
         }),
     },
+    // Registered here rather than in extension-cornerstone-dicom-seg, which is where
+    // it used to live, because the button that uses it -- SegmentLabelTool, in this
+    // extension's `cornerstone.toolbarButtons` pack -- is owned by this extension, as
+    // are its tool and commands. With the evaluator in the SEG extension, any mode
+    // that took the button pack via `{ $reference: 'cornerstone.toolbarButtons' }`
+    // without also depending on that extension crashed: refreshToolbarState()
+    // evaluates every *registered* button, not just the rendered ones, so an
+    // unreachable button still threw "Evaluate function not found", and the throw
+    // unmounted <ViewportGridWithDataSource>. Every mode depending on the SEG
+    // extension also depends on this one, so nothing loses the evaluator.
+    {
+      name: 'evaluate.cornerstone.hasSegmentation',
+      evaluate: ({ viewportId }) => {
+        const segmentations = segmentationService.getSegmentationRepresentations(viewportId);
+        return {
+          disabled: !segmentations?.length,
+        };
+      },
+    },
     {
       name: 'evaluate.cornerstone.synchronizer',
       evaluate: ({ viewportId, button }) => {

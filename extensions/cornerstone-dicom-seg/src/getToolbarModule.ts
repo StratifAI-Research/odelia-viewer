@@ -30,15 +30,15 @@ export function getToolbarModule({ servicesManager }: withAppTypes) {
         };
       },
     },
-    {
-      name: 'evaluate.cornerstone.hasSegmentation',
-      evaluate: ({ viewportId }) => {
-        const segmentations = segmentationService.getSegmentationRepresentations(viewportId);
-        return {
-          disabled: !segmentations?.length,
-        };
-      },
-    },
+    // `evaluate.cornerstone.hasSegmentation` moved to extension-cornerstone's
+    // getToolbarModule, next to the SegmentLabelTool button that consumes it. See the
+    // note there.
+    //
+    // `hasSegmentationOfType` below stays put. It is referenced only from the
+    // `cornerstone.segmentationToolbar*` packs, which a mode has to opt into
+    // explicitly, and a mode wiring up segmentation editing will depend on this
+    // extension anyway. It carries the same latent coupling if a mode ever references
+    // those packs without depending on this extension.
     {
       name: 'evaluate.cornerstone.hasSegmentationOfType',
       evaluate: ({ viewportId, segmentationRepresentationType }) => {
