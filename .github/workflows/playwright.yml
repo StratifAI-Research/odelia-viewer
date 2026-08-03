@@ -71,6 +71,7 @@ jobs:
         run: |
           export NODE_OPTIONS="--max_old_space_size=8192"
           pnpm exec playwright test \
+            --config=playwright.ci.config.ts \
             --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }} \
             --reporter=blob \
             --workers=2
