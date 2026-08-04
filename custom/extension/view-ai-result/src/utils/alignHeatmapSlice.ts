@@ -1,4 +1,4 @@
-import { metaData, utilities } from '@cornerstonejs/core';
+import { metaData, utilities, VolumeViewport } from '@cornerstonejs/core';
 import { vec3, mat4 } from 'gl-matrix';
 
 /**
@@ -76,21 +76,30 @@ function areViewportsCoplanar(a: SyncableViewport, b: SyncableViewport): boolean
  * public utility covers the cases reachable here without importing the class.
  */
 function isVolumeNavigated(viewport: SyncableViewport): boolean {
+  // Every signal here is POSITIVE-ONLY and they are OR-ed. An earlier version returned
+  // viewportIsInVolumeMode()'s answer directly, which silently misclassified real
+  // VolumeViewports: that helper reads `getCurrentMode()`, a method these viewports do not
+  // implement, so it answers false and short-circuited the rest. The MR then took the stack
+  // path and a heatmap at z=-23.44 drove it to slice 6 instead of 24.
+  if (viewport instanceof VolumeViewport) {
+    return true;
+  }
+
   const inVolumeMode = (utilities as any).viewportIsInVolumeMode;
 
   if (typeof inVolumeMode === 'function') {
     try {
-      return !!inVolumeMode(viewport);
+      if (inVolumeMode(viewport)) {
+        return true;
+      }
     } catch {
-      // Falls through to the weaker test below.
+      // Not decisive; fall through.
     }
   }
 
-  // Fallback only for when that utility is unavailable. Deliberately NOT "has
-  // getNumberOfSlices": a real StackViewport implements it too (measured: a 31-image stack
-  // reports 31 slices), so that would classify every stack as a volume and refuse all syncing.
-  // Unequal counts still catch a DYNAMIC volume; a plain volume is missed, which is why the
-  // capability check above is the primary path.
+  // Deliberately NOT "has getNumberOfSlices": a real StackViewport implements it too (measured:
+  // a 31-image stack reports 31 slices), so that alone would classify every stack as a volume
+  // and refuse all syncing. Unequal counts catch a DYNAMIC volume.
   const slices = viewport.getNumberOfSlices?.();
 
   return slices !== undefined && slices !== viewport.getImageIds().length;
@@ -128,14 +137,7 @@ export default async function alignHeatmapSlice(
     return { status: 'unsupported', reason: 'source slice has no usable imagePositionPatient' };
   }
 
-  // A volume TARGET needs a slice index, while the spatial search below yields an index into
-  // the target's flat imageIds. For a dynamic volume those are neither the same range (155 vs
-  // 31) nor the same direction, and cornerstone's own `targetImageIds.length - index - 1`
-  // formula is only right for the non-dynamic case. Refuse every volume target until this
-  // navigates by world position instead.
-  if (isVolumeNavigated(tViewport)) {
-    return { status: 'unsupported', reason: 'target navigates by volume slice' };
-  }
+  const targetIsVolume = isVolumeNavigated(tViewport);
 
   // Two DISTINCT checks, which an earlier comment here wrongly conflated. A shared Frame of
   // Reference says the position vectors use the same coordinate system; it says nothing about
@@ -222,17 +224,133 @@ export default async function alignHeatmapSlice(
     };
   }
 
-  // `closest.index` is used as-is. No index reversal belongs here PROVIDED the source position
-  // came from getCurrentImageId(): the reversal this file used to apply existed only to cancel
-  // the error of reading the source out of the flat array. Verified: MR slice 8 (z 29.36)
-  // resolves to heatmap frame 22 (z 29.36).
-  if (tViewport.getCurrentImageIdIndex() === closest.index) {
+  // For a STACK target `closest.index` is the answer as-is. No index reversal belongs here
+  // PROVIDED the source position came from getCurrentImageId(): the reversal this file used to
+  // apply existed only to cancel the error of reading the source out of the flat array.
+  // Verified: MR slice 8 (z 29.36) resolves to heatmap frame 22 (z 29.36).
+  //
+  // For a VOLUME target it is NOT the answer: jumpToSlice wants a slice index, and the flat
+  // imageIds array is neither the same length (155 vs 31 slices for the dynamic MR) nor the
+  // same direction. Cornerstone's `targetImageIds.length - index - 1` is right only when those
+  // lengths happen to match, so resolve the slice index from world position instead.
+  const imageIndex = targetIsVolume
+    ? volumeSliceIndexFor(tViewport, targetImagePositionPatient)
+    : closest.index;
+
+  if (imageIndex === undefined) {
+    return { status: 'unsupported', reason: 'could not map the position to a target slice index' };
+  }
+
+  if (tViewport.getCurrentImageIdIndex() === imageIndex) {
     return { status: 'alreadyAligned' };
   }
 
-  await utilities.jumpToSlice(tViewport.element, { imageIndex: closest.index });
+  await utilities.jumpToSlice(tViewport.element, { imageIndex });
 
-  return { status: 'aligned', imageIndex: closest.index };
+  return { status: 'aligned', imageIndex };
+}
+
+/**
+ * The SLICE index of a volume viewport showing `worldPosition`.
+ *
+ * A volume exposes its acquisition imageIds flat, while it navigates by slice; for a dynamic
+ * volume the two differ in both length and direction (measured on the ODELIA MR: 155 imageIds
+ * ascending in z, 31 slices descending, agreeing only at the midpoint). So this reduces the
+ * imageIds to their distinct positions -- which is the slice count -- and then works in that
+ * space.
+ *
+ * The axis direction is CALIBRATED from the viewport's current state rather than assumed:
+ * whichever of `s === q` or `s === M-1-q` holds for the slice it is showing now tells us how
+ * its slice index runs. Assuming a direction is what produced the original mirroring bug, and
+ * hardcoding the reversal the way upstream does is only correct for a plain volume.
+ */
+function volumeSliceIndexFor(
+  tViewport: SyncableViewport,
+  worldPosition: vec3
+): number | undefined {
+  const sliceCount = tViewport.getNumberOfSlices?.();
+
+  if (!sliceCount || sliceCount < 1) {
+    return undefined;
+  }
+
+  const normal = tViewport.getCamera?.()?.viewPlaneNormal;
+
+  if (!isUsablePosition(normal)) {
+    return undefined;
+  }
+
+  // Distinct positions along the view normal, ascending. Projection rather than raw z so this
+  // holds for obliquely-acquired series too.
+  const project = (position: number[]) => vec3.dot(position as vec3, normal as vec3);
+  const seen = new Map<string, { projection: number; position: number[] }>();
+
+  for (const imageId of tViewport.getImageIds()) {
+    const position = positionOf(imageId);
+
+    if (!position) {
+      continue;
+    }
+
+    const projection = project(position);
+    const key = projection.toFixed(3);
+
+    if (!seen.has(key)) {
+      seen.set(key, { projection, position });
+    }
+  }
+
+  const ascending = [...seen.values()].sort((a, b) => a.projection - b.projection);
+
+  if (ascending.length !== sliceCount) {
+    // The distinct positions should BE the slices. If they are not, this mapping is not
+    // trustworthy and guessing would move the reader somewhere arbitrary.
+    return undefined;
+  }
+
+  const rankOf = (target: vec3) => {
+    let best = { distance: Infinity, index: -1 };
+    ascending.forEach((entry, index) => {
+      const distance = Math.abs(project(entry.position) - vec3.dot(target, normal as vec3));
+      if (distance < best.distance) {
+        best = { distance, index };
+      }
+    });
+    return best.index;
+  };
+
+  // Calibrate: where does the slice the viewport is showing NOW sit in the ascending list?
+  const currentPosition = positionOf(tViewport.getCurrentImageId?.());
+
+  if (!currentPosition) {
+    return undefined;
+  }
+
+  // Slice index is the rank in PROJECTION order, with no mirroring. Projecting onto the view
+  // normal is what makes this direction-free: the normal already encodes which way the volume
+  // is stacked, so slice index is monotonic with projection by construction.
+  //
+  // Measured on the ODELIA MR, whose normal is [0.008, 0, -0.99997], i.e. essentially -z:
+  // slice 0 is z=+55.75 (projection -55.7) and slice 30 is z=-43.24 (projection +43.2). So
+  // slice index ascends with projection even though it DESCENDS with z.
+  //
+  // Two earlier attempts got this wrong by reasoning in z and then applying a correction.
+  // Calibrating the direction from the viewport's current slice is ambiguous at the midpoint
+  // (`s === q` and `s === M-1-q` are both true there), and the MR happened to sit on slice 15
+  // of 31; guessing a convention to break that tie then sent the heatmap's z=-23.44 to slice 6
+  // instead of 24, because the rank was already in projection order. Ranking in projection
+  // space needs no tie-break at all.
+  const currentSlice = tViewport.getCurrentImageIdIndex();
+  const currentRank = rankOf(currentPosition as vec3);
+
+  // Self-check rather than calibration: if the viewport's own current slice does not equal its
+  // projection rank, this mapping does not describe the viewport and guessing would move the
+  // reader somewhere arbitrary.
+  if (currentSlice !== currentRank) {
+    return undefined;
+  }
+
+  return rankOf(worldPosition);
 }
 
 /** Median gap between consecutive target slice positions, or undefined if not derivable. */

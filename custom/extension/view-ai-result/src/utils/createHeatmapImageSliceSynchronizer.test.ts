@@ -75,7 +75,11 @@ describe('imageSliceSyncCallback slice selection', () => {
     getImageIds: jest.fn(() => volumeImageIds),
     getNumberOfSlices: jest.fn(() => N),
     getFrameOfReferenceUID: jest.fn(() => FOR),
-    getCamera: jest.fn(() => ({ viewPlaneNormal: [0, 0, 1] })),
+    // -z, like the real MR. That is not incidental: a volume's slice index ascends with
+    // projection along its OWN normal, so a viewport whose slice 0 sits at maximum z must have
+    // a normal pointing the other way. Modelling +z here would describe a viewport cornerstone
+    // never produces, and the earlier version of this double did exactly that.
+    getCamera: jest.fn(() => ({ viewPlaneNormal: [0, 0, -1] })),
     element: { kind: 'volume' },
   });
 
@@ -155,7 +159,10 @@ describe('imageSliceSyncCallback slice selection', () => {
   // A volume TARGET would need a slice index, but the spatial search yields a flat imageIds
   // index -- 155 entries against 31 slices, in the opposite direction. Declining beats
   // jumping the reader to an unrelated slice.
-  it('declines a DYNAMIC volume target rather than passing it a flat imageIds index', async () => {
+  // A volume target gets a SLICE index resolved from world position, never the flat imageIds
+  // index. Here the target is showing slice 0 at the LAST ascending position, so its axis
+  // calibrates as descending: a source at ascending rank 3 must become slice 31-1-3 = 27.
+  it('resolves a DYNAMIC volume target to a slice index, not a flat imageIds index', async () => {
     const volumeTarget = {
       ...makeVolumeSource(0),
       getImageIds: jest.fn(() => volumeImageIds),
@@ -163,12 +170,18 @@ describe('imageSliceSyncCallback slice selection', () => {
     };
     const jumpToSlice = await run(makeStackTarget(3), volumeTarget);
 
-    expect(jumpToSlice).not.toHaveBeenCalled();
+    expect(jumpToSlice).toHaveBeenCalledWith(
+      { kind: 'volume-dynamic-target' },
+      { imageIndex: 27 }
+    );
+    // 155 - 3 - 1 = 151 is what upstream's formula would give, and is out of range for 31 slices.
+    expect(jumpToSlice).not.toHaveBeenCalledWith(expect.anything(), { imageIndex: 151 });
   });
 
-  // The case the count heuristic could NOT see: a plain volume reports slices === imageIds,
-  // so it used to fall through as a stack and receive the flat (mirrored) index.
-  it('declines a PLAIN volume target, whose slice and image counts are equal', async () => {
+  // The case the count heuristic could NOT see: a plain volume reports slices === imageIds, so
+  // it used to fall through as a stack and receive the flat index. This one is showing slice 0
+  // at the FIRST ascending position, so its axis calibrates as ascending.
+  it('resolves a PLAIN volume target, whose slice and image counts are equal', async () => {
     const plainVolumeTarget = {
       getCurrentImageIdIndex: jest.fn(() => 0),
       getCurrentImageId: jest.fn(() => 'stack:0'),
@@ -178,7 +191,20 @@ describe('imageSliceSyncCallback slice selection', () => {
       getCamera: jest.fn(() => ({ viewPlaneNormal: [0, 0, 1] })),
       element: { kind: 'volume-plain-target' },
     };
+    // Source slice 8 sits at ascending rank 22; an ascending target therefore wants slice 22.
     const jumpToSlice = await run(makeVolumeSource(8), plainVolumeTarget);
+
+    expect(jumpToSlice).toHaveBeenCalledWith({ kind: 'volume-plain-target' }, { imageIndex: 22 });
+  });
+
+  it('refuses a volume target whose distinct positions do not match its slice count', async () => {
+    const inconsistent = {
+      ...makeVolumeSource(0),
+      getImageIds: jest.fn(() => volumeImageIds),
+      getNumberOfSlices: jest.fn(() => 7),
+      element: { kind: 'volume-inconsistent' },
+    };
+    const jumpToSlice = await run(makeStackTarget(3), inconsistent);
 
     expect(jumpToSlice).not.toHaveBeenCalled();
   });

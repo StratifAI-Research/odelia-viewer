@@ -130,26 +130,18 @@ beforeEach(() => {
 });
 
 describe('resolveSyncPair', () => {
-  it('adds exactly the pair, with one-way roles', async () => {
+  it('adds exactly the pair, as both source and target', async () => {
     const { servicesManager, addViewportToSyncGroup } = makeServices();
 
     await toggleHeatmapImageSliceSync({ servicesManager });
 
-    // Primary drives, heatmap follows. Registering both as source AND target advertised a
-    // reverse direction that silently did nothing, because a volume target is refused.
+    // Bidirectional: scrolling either viewport drives the other. This was briefly one-way
+    // while a volume target was refused, since advertising a reverse direction that silently
+    // did nothing was worse than not offering it.
     expect(addViewportToSyncGroup).toHaveBeenCalledTimes(2);
-    expect(addViewportToSyncGroup).toHaveBeenCalledWith('v1', 'engine-v1', {
-      type: 'heatmapImageSlice',
-      id: HEATMAP_SYNC_ID,
-      source: true,
-      target: false,
-    });
-    expect(addViewportToSyncGroup).toHaveBeenCalledWith('v2', 'engine-v2', {
-      type: 'heatmapImageSlice',
-      id: HEATMAP_SYNC_ID,
-      source: false,
-      target: true,
-    });
+    const roles = { type: 'heatmapImageSlice', id: HEATMAP_SYNC_ID, source: true, target: true };
+    expect(addViewportToSyncGroup).toHaveBeenCalledWith('v1', 'engine-v1', roles);
+    expect(addViewportToSyncGroup).toHaveBeenCalledWith('v2', 'engine-v2', roles);
   });
 
   // The old gate asked whether ANY two viewports were linked and then added EVERY populated

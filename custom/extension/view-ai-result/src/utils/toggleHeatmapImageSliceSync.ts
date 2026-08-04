@@ -136,9 +136,10 @@ export function isHeatmapSyncComplete({ servicesManager }): boolean {
  * reported as complete but was not aligned -- and the automatic path, seeing "complete", never
  * retried it. Aligning first means there is nothing to undo when alignment is refused.
  *
- * Roles are one-way on purpose: primary is source-only, heatmap target-only. Registering both
- * as source and target advertised a reverse direction (scroll the heatmap, move the MR) that
- * silently did nothing, because a volume target is refused. One-way is honest about what works.
+ * Both viewports are registered as source AND target. This was briefly one-way, because a
+ * volume target was refused and advertising a reverse direction that silently did nothing was
+ * worse than not offering it; now that alignHeatmapSlice resolves a volume target's slice index
+ * from world position, scrolling either viewport drives the other.
  */
 export async function enableHeatmapImageSliceSync({ servicesManager }): Promise<boolean> {
   const { syncGroupService, cornerstoneViewportService } = servicesManager.services;
@@ -182,8 +183,8 @@ export async function enableHeatmapImageSliceSync({ servicesManager }): Promise<
   };
 
   try {
-    add(pair.primaryViewportId, primary, true, false);
-    add(pair.heatmapViewportId, heatmap, false, true);
+    add(pair.primaryViewportId, primary, true, true);
+    add(pair.heatmapViewportId, heatmap, true, true);
   } catch (error) {
     added.forEach(({ viewportId, renderingEngineId }) =>
       syncGroupService.removeViewportFromSyncGroup(viewportId, renderingEngineId, HEATMAP_SYNC_ID)
