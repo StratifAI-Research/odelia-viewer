@@ -47,7 +47,11 @@ const srDs = (over: any = {}) => ({
   SeriesDescription: 'AI Report',
   SeriesNumber: 99,
   StudyInstanceUID: 'study-1',
-  numImageFrames: 1,
+  // No numImageFrames: an SR display set has no such field at all -- the real SR handler
+  // never sets one, because a report is not an image. Claiming a frame count here is the
+  // very confusion that caused the /frames/1 bug, and it would also let this fixture pass
+  // hpSinglePrimary's `numImageFrames > 0` rule, whose job is to keep SRs out of the
+  // primary viewport.
   instance: { InstanceCreationDate: '20240315', InstanceCreationTime: '100000' },
   ...over,
 });
