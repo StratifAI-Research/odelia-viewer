@@ -55,21 +55,19 @@ const extensionDependencies = {
   'view-ai-result': '^0.0.1',
 };
 
-/**
- * GRID_STATE_CHANGED subscriptions for the automatic heatmap slice sync, held outside
- * onModeEnter so onModeExit can drop them -- onModeExit destroys syncGroupService, and a
- * surviving subscription would re-arm sync against torn-down services.
- *
- * Keyed on servicesManager rather than a single module-level variable: with one variable, a
- * second viewer root in the same realm -- or this mode being re-entered while the previous
- * instance is still exiting -- would overwrite the stored subscription, after which the older
- * onModeExit would unsubscribe the NEWER viewer's subscription and leave its own alive. A
- * WeakMap keeps each viewer's subscription separate and lets it be collected with the viewer.
- */
-const gridSubscriptions = new WeakMap<object, { unsubscribe: () => void }>();
-
 function modeFactory() {
   return {
+    /**
+     * Unsubscribe handles for subscriptions this mode instance creates, released by its own
+     * onModeExit. Held on the INSTANCE, matching mode-basic's `_unsubscriptions`.
+     *
+     * Neither a module-level variable nor a WeakMap keyed on servicesManager is correct here:
+     * both are shared by every mode instance that has the same key, so entering this mode while
+     * a previous instance is still exiting lets the older onModeExit unsubscribe the NEWER
+     * subscription and leave its own alive. Each instance owning its exact handles is what
+     * makes overlapping lifecycles safe.
+     */
+    _unsubscriptions: [] as Array<() => void>,
     /**
      * Mode ID, which should be unique among modes used by the viewer. This ID
      * is used to identify the mode in the viewer's state.
@@ -87,7 +85,10 @@ function modeFactory() {
      * Runs when the Mode Route is mounted to the DOM. Usually used to initialize
      * Services and other resources.
      */
-    onModeEnter: ({ servicesManager, extensionManager, commandsManager }: ModeFactoryParams) => {
+    // A method, not an arrow function: it has to see the mode instance as `this` to own its
+    // own unsubscribe handles (see _unsubscriptions above). Mode.tsx invokes it as
+    // `mode?.onModeEnter(...)`, so `this` is the instance.
+    onModeEnter({ servicesManager, extensionManager, commandsManager }: ModeFactoryParams) {
       const { measurementService, toolbarService, toolGroupService } = servicesManager.services;
 
       // Clear existing measurements
@@ -138,16 +139,18 @@ function modeFactory() {
       const { viewportGridService } = servicesManager.services;
 
       commandsManager.run('resetHeatmapSyncPreference');
-      gridSubscriptions.get(servicesManager)?.unsubscribe();
-      gridSubscriptions.set(
-        servicesManager,
-        viewportGridService.subscribe(viewportGridService.EVENTS.GRID_STATE_CHANGED, () => {
+
+      const { unsubscribe } = viewportGridService.subscribe(
+        viewportGridService.EVENTS.GRID_STATE_CHANGED,
+        () => {
           Promise.resolve(commandsManager.run('ensureHeatmapImageSliceSync')).catch(
             (error: unknown) =>
               console.warn('send-ai: automatic heatmap slice sync failed', error)
           );
-        })
+        }
       );
+
+      this._unsubscriptions = [...(this._unsubscriptions ?? []), unsubscribe];
 
       // Obtain Cornerstone tool definitions
       const utilityModule = extensionManager.getModuleEntry(
@@ -197,7 +200,8 @@ function modeFactory() {
         );
       }
     },
-    onModeExit: ({ servicesManager }: ModeFactoryParams) => {
+    // A method for the same reason as onModeEnter: it releases the handles held on `this`.
+    onModeExit({ servicesManager }: ModeFactoryParams) {
       const {
         toolGroupService,
         syncGroupService,
@@ -207,11 +211,12 @@ function modeFactory() {
         uiModalService,
       } = servicesManager.services;
 
-      // Before the services below are destroyed: this subscription re-arms slice sync, and
-      // it must not fire against a torn-down syncGroupService. Scoped to this viewer, so
-      // tearing down one viewer cannot cancel another's.
-      gridSubscriptions.get(servicesManager)?.unsubscribe();
-      gridSubscriptions.delete(servicesManager);
+      // Before the services below are destroyed: the grid subscription re-arms slice sync and
+      // must not fire against a torn-down syncGroupService. Releases exactly the handles THIS
+      // instance created, so a mode being re-entered while this one exits cannot have its
+      // subscription cancelled by us.
+      this._unsubscriptions?.forEach(unsubscribe => unsubscribe());
+      this._unsubscriptions = [];
 
       uiDialogService.hideAll();
       uiModalService.hide();

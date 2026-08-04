@@ -75,6 +75,7 @@ describe('imageSliceSyncCallback slice selection', () => {
     getImageIds: jest.fn(() => volumeImageIds),
     getNumberOfSlices: jest.fn(() => N),
     getFrameOfReferenceUID: jest.fn(() => FOR),
+    getCamera: jest.fn(() => ({ viewPlaneNormal: [0, 0, 1] })),
     element: { kind: 'volume' },
   });
 
@@ -84,6 +85,7 @@ describe('imageSliceSyncCallback slice selection', () => {
     getImageIds: jest.fn(() => Array.from({ length: N }, (_, i) => `stack:${i}`)),
     getNumberOfSlices: jest.fn(() => N),
     getFrameOfReferenceUID: jest.fn(() => FOR),
+    getCamera: jest.fn(() => ({ viewPlaneNormal: [0, 0, 1] })),
     element: { kind: 'stack' },
   });
 
@@ -99,6 +101,12 @@ describe('imageSliceSyncCallback slice selection', () => {
     u.spatialRegistrationMetadataProvider = { get: jest.fn(() => undefined) };
     u.calculateViewportsSpatialRegistration = jest.fn();
     u.jumpToSlice = jest.fn();
+    // The capability check the production code prefers. Modelled explicitly rather than left
+    // to the count heuristic, because a real StackViewport also implements getNumberOfSlices
+    // and the heuristic alone cannot tell a plain volume from a stack.
+    u.viewportIsInVolumeMode = jest.fn(
+      (vp: any) => String(vp?.element?.kind ?? '').startsWith('volume')
+    );
 
     createHeatmapImageSliceSynchronizer('heatmap-sync');
     const callback = (SynchronizerManager.createSynchronizer as jest.Mock).mock.calls[0][2];
@@ -147,14 +155,84 @@ describe('imageSliceSyncCallback slice selection', () => {
   // A volume TARGET would need a slice index, but the spatial search yields a flat imageIds
   // index -- 155 entries against 31 slices, in the opposite direction. Declining beats
   // jumping the reader to an unrelated slice.
-  it('declines a volume target rather than passing it a flat imageIds index', async () => {
+  it('declines a DYNAMIC volume target rather than passing it a flat imageIds index', async () => {
     const volumeTarget = {
       ...makeVolumeSource(0),
       getImageIds: jest.fn(() => volumeImageIds),
-      element: { kind: 'volumeTarget' },
+      element: { kind: 'volume-dynamic-target' },
     };
     const jumpToSlice = await run(makeStackTarget(3), volumeTarget);
 
     expect(jumpToSlice).not.toHaveBeenCalled();
+  });
+
+  // The case the count heuristic could NOT see: a plain volume reports slices === imageIds,
+  // so it used to fall through as a stack and receive the flat (mirrored) index.
+  it('declines a PLAIN volume target, whose slice and image counts are equal', async () => {
+    const plainVolumeTarget = {
+      getCurrentImageIdIndex: jest.fn(() => 0),
+      getCurrentImageId: jest.fn(() => 'stack:0'),
+      getImageIds: jest.fn(() => Array.from({ length: N }, (_, i) => `stack:${i}`)),
+      getNumberOfSlices: jest.fn(() => N),
+      getFrameOfReferenceUID: jest.fn(() => FOR),
+      getCamera: jest.fn(() => ({ viewPlaneNormal: [0, 0, 1] })),
+      element: { kind: 'volume-plain-target' },
+    };
+    const jumpToSlice = await run(makeVolumeSource(8), plainVolumeTarget);
+
+    expect(jumpToSlice).not.toHaveBeenCalled();
+  });
+
+  it('refuses when a viewport cannot report a view-plane normal', async () => {
+    const blindTarget = { ...makeStackTarget(0), getCamera: jest.fn(() => ({})) };
+    const jumpToSlice = await run(makeVolumeSource(8), blindTarget);
+
+    expect(jumpToSlice).not.toHaveBeenCalled();
+  });
+
+  it('refuses non-coplanar viewports', async () => {
+    const sagittal = {
+      ...makeStackTarget(0),
+      getCamera: jest.fn(() => ({ viewPlaneNormal: [1, 0, 0] })),
+    };
+    const jumpToSlice = await run(makeVolumeSource(8), sagittal);
+
+    expect(jumpToSlice).not.toHaveBeenCalled();
+  });
+
+  it('refuses when the two viewports report no Frame of Reference', async () => {
+    const source = { ...makeVolumeSource(8), getFrameOfReferenceUID: jest.fn(() => '') };
+    const target = { ...makeStackTarget(0), getFrameOfReferenceUID: jest.fn(() => '') };
+    const jumpToSlice = await run(source, target);
+
+    // Two MISSING UIDs compare equal; that must not be read as "same frame of reference".
+    expect(jumpToSlice).not.toHaveBeenCalled();
+  });
+
+  it('does not jump when no target slice has a usable position', async () => {
+    const source = makeVolumeSource(8);
+    const target = makeStackTarget(0);
+    (getRenderingEngine as jest.Mock).mockReturnValue({
+      getViewport: (id: string) => (id === 'src' ? source : target),
+    });
+    const u = utilities as Record<string, unknown>;
+    u.spatialRegistrationMetadataProvider = { get: jest.fn(() => undefined) };
+    u.jumpToSlice = jest.fn();
+    u.viewportIsInVolumeMode = jest.fn(() => false);
+    (metaData.get as jest.Mock).mockImplementation((_m: string, imageId: string) =>
+      String(imageId).startsWith('vol:')
+        ? { imagePositionPatient: [0, 0, 0] }
+        : { imagePositionPatient: undefined }
+    );
+
+    createHeatmapImageSliceSynchronizer('heatmap-sync');
+    const callback = (SynchronizerManager.createSynchronizer as jest.Mock).mock.calls[0][2];
+    await callback(
+      { getOptions: () => ({}) },
+      { renderingEngineId: 're', viewportId: 'src' },
+      { renderingEngineId: 're', viewportId: 'tgt' }
+    );
+
+    expect(u.jumpToSlice).not.toHaveBeenCalled();
   });
 });

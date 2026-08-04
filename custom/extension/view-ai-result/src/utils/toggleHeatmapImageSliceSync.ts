@@ -3,28 +3,28 @@ import { haveSopIdentityLink } from './aiResultPairing';
 
 const HEATMAP_SYNC_ID = 'HEATMAP_IMAGE_SLICE_SYNC';
 
+/** Modalities an ODELIA AI result arrives as. Used only to assign ROLES within an already
+ *  DICOM-linked pair -- never on its own to decide that two viewports are related. */
+const AI_RESULT_MODALITIES = new Set(['SC', 'SR']);
+
 /**
  * Whether the reader switched sync off by hand, per servicesManager.
  *
  * ensureHeatmapImageSliceSync() turns sync on automatically and fires on every grid change, so
  * without this it would immediately undo a manual switch-off and the toggle would look broken.
- *
- * Keyed on the servicesManager rather than held as a module-level boolean: a module global is
- * shared by every viewer in the JS realm, so two viewer roots -- or a mode being entered while
- * another is still exiting -- would read and clobber each other's preference. A WeakMap also
- * means the entry disappears with the viewer instead of leaking.
+ * Keyed on the servicesManager rather than a module-level boolean, which every viewer in the
+ * realm would share; a WeakMap also lets the entry be collected with the viewer.
  */
 const userDisabledSync = new WeakMap<object, boolean>();
+
+/** In-flight enable per viewer, so overlapping grid events cannot interleave two attempts. */
+const inFlight = new WeakMap<object, Promise<boolean>>();
 
 export const isHeatmapSyncUserDisabled = ({ servicesManager }): boolean =>
   userDisabledSync.get(servicesManager) === true;
 
 export const resetHeatmapSyncPreference = ({ servicesManager }): void => {
   userDisabledSync.delete(servicesManager);
-};
-
-const setUserDisabled = (servicesManager, disabled: boolean): void => {
-  userDisabledSync.set(servicesManager, disabled);
 };
 
 const syncableViewports = viewportGridService =>
@@ -34,155 +34,162 @@ const syncableViewports = viewportGridService =>
 
 const viewportIdOf = (gridViewport: any) => gridViewport.viewportOptions?.viewportId;
 
-const isInHeatmapSyncGroup = (syncGroupService, gridViewport: any) =>
-  syncGroupService
-    .getSynchronizersForViewport(viewportIdOf(gridViewport))
-    .some(syncState => syncState.id === HEATMAP_SYNC_ID);
-
 const displaySetsOf = (displaySetService, gridViewport: any) =>
   (gridViewport.displaySetInstanceUIDs || [])
     .map(uid => displaySetService?.getDisplaySetByUID?.(uid))
     .filter(Boolean);
 
+const isAIResult = (displaySets: any[]) =>
+  displaySets.some(ds => AI_RESULT_MODALITIES.has(ds?.Modality));
+
+export type SyncPair = { primaryViewportId: string; heatmapViewportId: string };
+
 /**
- * True when ANY viewport is in the heatmap sync group -- the toggle's on/off question.
+ * The ONE primary/heatmap pair to couple, or null.
+ *
+ * Two conditions, and both matter. Relatedness comes from the DICOM: haveSopIdentityLink walks
+ * one display set's referenced SOP Instance UIDs against the other's own UIDs. For this study
+ * the heatmap's ReferencedImageSequence names an MR instance belonging to the MR series, so the
+ * link resolves. A modality test alone would couple any incidental screenshot or report sitting
+ * in the study; modality is used only to decide which side of a linked pair is the AI result.
+ *
+ * Returning a PAIR, not a predicate, is the point: the previous version asked whether *any* two
+ * viewports were linked and then added *every* populated viewport to the group, so one valid
+ * pair in a three-viewport layout dragged an unrelated third viewport in with it.
  */
+export function resolveSyncPair({ servicesManager }): SyncPair | null {
+  const { viewportGridService, displaySetService } = servicesManager.services;
+  const viewportArray = syncableViewports(viewportGridService);
+
+  for (let i = 0; i < viewportArray.length; i++) {
+    for (let j = i + 1; j < viewportArray.length; j++) {
+      const a = viewportArray[i] as any;
+      const b = viewportArray[j] as any;
+      const dsA = displaySetsOf(displaySetService, a);
+      const dsB = displaySetsOf(displaySetService, b);
+
+      const linked = dsA.some(x => dsB.some(y => x !== y && haveSopIdentityLink(x, y)));
+
+      if (!linked) {
+        continue;
+      }
+
+      const aIsResult = isAIResult(dsA);
+      const bIsResult = isAIResult(dsB);
+
+      // Exactly one side must be the AI result; two results, or none, is not a pair this
+      // feature understands.
+      if (aIsResult === bIsResult) {
+        continue;
+      }
+
+      return aIsResult
+        ? { primaryViewportId: viewportIdOf(b), heatmapViewportId: viewportIdOf(a) }
+        : { primaryViewportId: viewportIdOf(a), heatmapViewportId: viewportIdOf(b) };
+    }
+  }
+
+  return null;
+}
+
+const inGroup = (syncGroupService, viewportId: string) =>
+  (syncGroupService.getSynchronizersForViewport(viewportId) || []).some(
+    s => s.id === HEATMAP_SYNC_ID
+  );
+
+/** True when ANY viewport is in the heatmap sync group -- the toggle's on/off question. */
 export function isHeatmapSyncEnabled({ servicesManager }): boolean {
   const { syncGroupService, viewportGridService } = servicesManager.services;
 
-  return syncableViewports(viewportGridService).some((gridViewport: any) =>
-    isInHeatmapSyncGroup(syncGroupService, gridViewport)
+  return syncableViewports(viewportGridService).some((vp: any) =>
+    inGroup(syncGroupService, viewportIdOf(vp))
   );
 }
 
 /**
- * True when EVERY populated viewport is in the group, i.e. sync actually works.
+ * True when the resolved PAIR -- not merely some set of viewports -- is in the group.
  *
- * Distinct from isHeatmapSyncEnabled on purpose. A grid change can rebuild one cornerstone
- * viewport after the group was formed -- opening the heatmap in a second viewport recreates
- * the first -- which silently drops it, leaving a group that contains the heatmap but not
- * the series it is supposed to follow. Gating the automatic path on `some` treated that
- * half-built state as "already on" and never repaired it: measured with the MR viewport
- * reporting inSyncGroup=false while the heatmap reported true, 16.50 mm apart and staying
- * apart while scrolling.
+ * Membership-only-over-all-viewports was wrong twice: it treated a half-built group as done
+ * (opening the heatmap recreates the first viewport's cornerstone instance and silently drops
+ * it, measured at 16.50 mm apart and staying apart), and it would call a group complete that
+ * contained unrelated viewports.
  */
 export function isHeatmapSyncComplete({ servicesManager }): boolean {
-  const { syncGroupService, viewportGridService } = servicesManager.services;
-  const viewportArray = syncableViewports(viewportGridService);
+  const { syncGroupService } = servicesManager.services;
+  const pair = resolveSyncPair({ servicesManager });
+
+  if (!pair) {
+    return false;
+  }
 
   return (
-    viewportArray.length >= 2 &&
-    viewportArray.every((gridViewport: any) =>
-      isInHeatmapSyncGroup(syncGroupService, gridViewport)
-    )
+    inGroup(syncGroupService, pair.primaryViewportId) &&
+    inGroup(syncGroupService, pair.heatmapViewportId)
   );
 }
 
 /**
- * Whether two viewports show display sets that are actually related.
+ * Couple the primary series to its heatmap.
  *
- * A modality test ("is either an SC or an SR") is not good enough: those modalities are
- * generic, so an unrelated screenshot or report sitting in the same study would auto-link
- * viewports the reader never asked to couple. This asks the DICOM instead --
- * haveSopIdentityLink walks one display set's referenced SOP Instance UIDs against the
- * other's own UIDs.
+ * Order matters: preflight and ALIGN first, install membership last. An earlier version added
+ * every viewport to the group and then aligned, so a failed alignment left a group that
+ * reported as complete but was not aligned -- and the automatic path, seeing "complete", never
+ * retried it. Aligning first means there is nothing to undo when alignment is refused.
  *
- * That resolves for this study family: the heatmap's ReferencedImageSequence names both an MR
- * Image Storage instance (1.2.840.10008.5.1.4.1.1.4) belonging to the MR series and the SR
- * document, so heatmap<->MR and heatmap<->SR both link. Note the convenience wrappers in
- * aiResultPairing (findMatchingHeatmap / findMatchingSRForHeatmap) pair SR to SC only and are
- * deliberately NOT used here -- the primitive is what generalises to the primary series.
- */
-const arePaired = (displaySetService, a: any, b: any): boolean => {
-  const dsA = displaySetsOf(displaySetService, a);
-  const dsB = displaySetsOf(displaySetService, b);
-
-  return dsA.some(x => dsB.some(y => x !== y && haveSopIdentityLink(x, y)));
-};
-
-/**
- * Add every populated viewport to the heatmap sync group, then align them straight away.
- *
- * addViewportToSyncGroup only arms the synchronizer for the NEXT slice-change event, so on
- * its own it leaves the newly opened heatmap on whichever slice it loaded at -- the reader
- * had to scroll before anything lined up. The explicit alignHeatmapSlice pass is what makes
- * enabling sync take effect at the moment it is enabled.
- *
- * All-or-nothing: if the initial alignment fails, the viewports added here are removed again.
- * Leaving a built-but-unaligned group behind is the worst outcome -- it reports as synced, so
- * the automatic path treats it as done and never retries, while the viewports disagree.
+ * Roles are one-way on purpose: primary is source-only, heatmap target-only. Registering both
+ * as source and target advertised a reverse direction (scroll the heatmap, move the MR) that
+ * silently did nothing, because a volume target is refused. One-way is honest about what works.
  */
 export async function enableHeatmapImageSliceSync({ servicesManager }): Promise<boolean> {
-  const { syncGroupService, cornerstoneViewportService, viewportGridService } =
-    servicesManager.services;
+  const { syncGroupService, cornerstoneViewportService } = servicesManager.services;
+  const pair = resolveSyncPair({ servicesManager });
 
-  const viewportArray = syncableViewports(viewportGridService);
+  if (!pair) {
+    console.warn('[HeatmapSync] no primary/heatmap pair to sync');
+    return false;
+  }
 
-  if (viewportArray.length < 2) {
-    console.warn('[HeatmapSync] Need at least 2 viewports to sync');
+  const primary = cornerstoneViewportService.getCornerstoneViewport(pair.primaryViewportId);
+  const heatmap = cornerstoneViewportService.getCornerstoneViewport(pair.heatmapViewportId);
+
+  if (!primary || !heatmap) {
+    // A grid change lands before the cornerstone viewports behind it exist; a later event
+    // retries. Nothing has been mutated, so there is nothing to undo.
+    return false;
+  }
+
+  const outcome = await alignHeatmapSlice(primary, heatmap, {
+    sourceViewportId: pair.primaryViewportId,
+    targetViewportId: pair.heatmapViewportId,
+  });
+
+  if (outcome.status === 'unsupported' || outcome.status === 'failed') {
+    console.warn(`[HeatmapSync] not syncing: ${outcome.reason}`);
     return false;
   }
 
   const added: Array<{ viewportId: string; renderingEngineId: string }> = [];
 
-  viewportArray.forEach((gridViewport: any) => {
-    const viewportId = viewportIdOf(gridViewport);
-    const viewport = cornerstoneViewportService.getCornerstoneViewport(viewportId);
-
-    if (!viewport) {
-      console.warn('[HeatmapSync] Viewport not found:', viewportId);
-      return;
-    }
-
+  const add = (viewportId: string, viewport: any, source: boolean, target: boolean) => {
     const renderingEngineId = viewport.getRenderingEngine().id;
-
     syncGroupService.addViewportToSyncGroup(viewportId, renderingEngineId, {
       type: 'heatmapImageSlice',
       id: HEATMAP_SYNC_ID,
-      source: true,
-      target: true,
+      source,
+      target,
     });
     added.push({ viewportId, renderingEngineId });
-  });
+  };
 
-  const rollback = () =>
+  try {
+    add(pair.primaryViewportId, primary, true, false);
+    add(pair.heatmapViewportId, heatmap, false, true);
+  } catch (error) {
     added.forEach(({ viewportId, renderingEngineId }) =>
       syncGroupService.removeViewportFromSyncGroup(viewportId, renderingEngineId, HEATMAP_SYNC_ID)
     );
-
-  // The active viewport is the one the reader is driving, so it is the source everything
-  // else lines up to.
-  const activeViewportId = viewportGridService.getState().activeViewportId;
-  const source = cornerstoneViewportService.getCornerstoneViewport(activeViewportId);
-
-  if (!source) {
-    rollback();
+    console.warn('[HeatmapSync] could not install sync roles, undone:', error);
     return false;
-  }
-
-  for (const gridViewport of viewportArray) {
-    const viewportId = viewportIdOf(gridViewport);
-
-    if (viewportId === activeViewportId) {
-      continue;
-    }
-
-    const target = cornerstoneViewportService.getCornerstoneViewport(viewportId);
-
-    if (!target) {
-      continue;
-    }
-
-    try {
-      await alignHeatmapSlice(source, target, {
-        sourceViewportId: activeViewportId,
-        targetViewportId: viewportId,
-      });
-    } catch (error) {
-      console.warn('[HeatmapSync] initial alignment failed, undoing sync group:', error);
-      rollback();
-      return false;
-    }
   }
 
   return true;
@@ -209,54 +216,38 @@ export function disableHeatmapImageSliceSync({ servicesManager }): void {
 }
 
 /**
- * Turn sync on automatically once a second viewport shows a RELATED AI result, unless the
+ * Turn sync on automatically once the heatmap opens beside its primary series, unless the
  * reader turned it off.
  *
- * Written to be safe on every GRID_STATE_CHANGED, which fires often: it bails out early on
- * each condition below rather than doing work, and once sync is complete the
- * isHeatmapSyncComplete() check makes it a cheap no-op.
+ * Safe on every GRID_STATE_CHANGED: it bails out early on each condition, is a cheap no-op once
+ * the pair is synced, and serialises concurrent attempts so two grid events in quick succession
+ * cannot both run the enable path.
  */
 export async function ensureHeatmapImageSliceSync({ servicesManager }): Promise<void> {
-  const { viewportGridService, cornerstoneViewportService, displaySetService } =
-    servicesManager.services;
-
   if (isHeatmapSyncUserDisabled({ servicesManager })) {
     return;
   }
 
-  const viewportArray = syncableViewports(viewportGridService);
-
-  if (viewportArray.length < 2) {
-    return;
-  }
-
-  // `Complete`, not `Enabled`: a half-built group must be repaired, not mistaken for done.
   if (isHeatmapSyncComplete({ servicesManager })) {
     return;
   }
 
-  // Only couple viewports whose display sets are actually related -- see arePaired. Two
-  // unrelated series, or an incidental screenshot, are left alone.
-  const hasRelatedPair = viewportArray.some((a: any, i: number) =>
-    viewportArray.slice(i + 1).some((b: any) => arePaired(displaySetService, a, b))
-  );
-
-  if (!hasRelatedPair) {
+  if (!resolveSyncPair({ servicesManager })) {
     return;
   }
 
-  // A grid change lands before the cornerstone viewports behind it necessarily exist.
-  // Enabling now would add only the resolvable ones and leave the group half-built, so
-  // wait and let a later event do it.
-  const allRenderable = viewportArray.every((gridViewport: any) =>
-    cornerstoneViewportService.getCornerstoneViewport(viewportIdOf(gridViewport))
-  );
+  const running = inFlight.get(servicesManager);
 
-  if (!allRenderable) {
+  if (running) {
+    await running;
     return;
   }
 
-  await enableHeatmapImageSliceSync({ servicesManager });
+  const attempt = enableHeatmapImageSliceSync({ servicesManager }).finally(() =>
+    inFlight.delete(servicesManager)
+  );
+  inFlight.set(servicesManager, attempt);
+  await attempt;
 }
 
 /**
@@ -271,11 +262,11 @@ export async function toggleHeatmapImageSliceSync({ servicesManager }): Promise<
   }
 
   if (isHeatmapSyncEnabled({ servicesManager })) {
-    setUserDisabled(servicesManager, true);
+    userDisabledSync.set(servicesManager, true);
     disableHeatmapImageSliceSync({ servicesManager });
     return;
   }
 
-  setUserDisabled(servicesManager, false);
+  userDisabledSync.set(servicesManager, false);
   await enableHeatmapImageSliceSync({ servicesManager });
 }
