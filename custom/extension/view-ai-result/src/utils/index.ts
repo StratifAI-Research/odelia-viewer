@@ -4,6 +4,8 @@ export { getPrimaryDisplaySets } from './displaySetFilters';
 export {
   toggleHeatmapImageSliceSync,
   ensureHeatmapImageSliceSync,
+  enableHeatmapImageSliceSync,
+  disableHeatmapImageSliceSync,
   isHeatmapSyncEnabled,
   isHeatmapSyncComplete,
   isHeatmapSyncUserDisabled,

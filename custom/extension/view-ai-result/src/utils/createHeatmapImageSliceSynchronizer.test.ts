@@ -1,12 +1,9 @@
 import createHeatmapImageSliceSynchronizer from './createHeatmapImageSliceSynchronizer';
 import { SynchronizerManager } from '@cornerstonejs/tools';
-import {
-  Enums,
-  getRenderingEngine,
-  metaData,
-  utilities,
-  VolumeViewport,
-} from '@cornerstonejs/core';
+// No VolumeViewport import: the implementation identifies a volume by getNumberOfSlices()
+// disagreeing with getImageIds().length rather than by `instanceof`, so plain objects suffice
+// and the doubles no longer have to be real instances to exercise the branch.
+import { Enums, getRenderingEngine, metaData, utilities } from '@cornerstonejs/core';
 
 describe('createHeatmapImageSliceSynchronizer', () => {
   beforeEach(() => {
@@ -91,7 +88,6 @@ describe('imageSliceSyncCallback slice selection', () => {
   });
 
   const run = async (source, target) => {
-    const cs = jest.requireMock('@cornerstonejs/core');
     (getRenderingEngine as jest.Mock).mockReturnValue({
       getViewport: (id: string) => (id === 'src' ? source : target),
     });

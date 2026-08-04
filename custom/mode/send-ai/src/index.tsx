@@ -56,12 +56,17 @@ const extensionDependencies = {
 };
 
 /**
- * GRID_STATE_CHANGED subscription for the automatic heatmap slice sync, held here so
- * onModeExit can drop it -- it outlives any single onModeEnter local, and onModeExit
- * destroys syncGroupService, so a surviving subscription would re-arm sync against torn-down
- * services.
+ * GRID_STATE_CHANGED subscriptions for the automatic heatmap slice sync, held outside
+ * onModeEnter so onModeExit can drop them -- onModeExit destroys syncGroupService, and a
+ * surviving subscription would re-arm sync against torn-down services.
+ *
+ * Keyed on servicesManager rather than a single module-level variable: with one variable, a
+ * second viewer root in the same realm -- or this mode being re-entered while the previous
+ * instance is still exiting -- would overwrite the stored subscription, after which the older
+ * onModeExit would unsubscribe the NEWER viewer's subscription and leave its own alive. A
+ * WeakMap keeps each viewer's subscription separate and lets it be collected with the viewer.
  */
-let gridSubscription: { unsubscribe: () => void } | undefined;
+const gridSubscriptions = new WeakMap<object, { unsubscribe: () => void }>();
 
 function modeFactory() {
   return {
@@ -133,15 +138,15 @@ function modeFactory() {
       const { viewportGridService } = servicesManager.services;
 
       commandsManager.run('resetHeatmapSyncPreference');
-      gridSubscription?.unsubscribe();
-      gridSubscription = viewportGridService.subscribe(
-        viewportGridService.EVENTS.GRID_STATE_CHANGED,
-        () => {
+      gridSubscriptions.get(servicesManager)?.unsubscribe();
+      gridSubscriptions.set(
+        servicesManager,
+        viewportGridService.subscribe(viewportGridService.EVENTS.GRID_STATE_CHANGED, () => {
           Promise.resolve(commandsManager.run('ensureHeatmapImageSliceSync')).catch(
             (error: unknown) =>
               console.warn('send-ai: automatic heatmap slice sync failed', error)
           );
-        }
+        })
       );
 
       // Obtain Cornerstone tool definitions
@@ -203,9 +208,10 @@ function modeFactory() {
       } = servicesManager.services;
 
       // Before the services below are destroyed: this subscription re-arms slice sync, and
-      // it must not fire against a torn-down syncGroupService.
-      gridSubscription?.unsubscribe();
-      gridSubscription = undefined;
+      // it must not fire against a torn-down syncGroupService. Scoped to this viewer, so
+      // tearing down one viewer cannot cancel another's.
+      gridSubscriptions.get(servicesManager)?.unsubscribe();
+      gridSubscriptions.delete(servicesManager);
 
       uiDialogService.hideAll();
       uiModalService.hide();

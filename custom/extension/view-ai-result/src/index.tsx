@@ -187,7 +187,8 @@ export default {
       // Exposed as commands so a mode can drive the automatic behaviour without importing
       // this extension's internals -- modes depend on extensions by module id, not package.
       ensureHeatmapImageSliceSync: () => ensureHeatmapImageSliceSync({ servicesManager }),
-      resetHeatmapSyncPreference: () => resetHeatmapSyncPreference(),
+      // Takes servicesManager: the preference is scoped per viewer, not module-global.
+      resetHeatmapSyncPreference: () => resetHeatmapSyncPreference({ servicesManager }),
     };
 
     const definitions = {

@@ -8,39 +8,52 @@ import {
   resetHeatmapSyncPreference,
 } from './toggleHeatmapImageSliceSync';
 
-// The alignment itself is covered by createHeatmapImageSliceSynchronizer.test.ts against
-// real geometry; here only the fact that enabling triggers it matters.
+// The alignment itself is covered by createHeatmapImageSliceSynchronizer.test.ts against real
+// geometry; here only whether enabling triggers it, and what happens when it fails, matter.
 jest.mock('./alignHeatmapSlice', () => jest.fn(async () => 7));
 
 const HEATMAP_SYNC_ID = 'HEATMAP_IMAGE_SLICE_SYNC';
-
-const gridViewport = (viewportId: string, displaySetInstanceUIDs = ['ds']) => ({
-  displaySetInstanceUIDs,
-  viewportOptions: { viewportId },
-});
 
 const makeServices = (
   opts: {
     hasSync?: boolean;
     viewportIds?: string[];
     missing?: string[];
-    /** viewportId -> Modality of the display set it shows. Defaults to MR everywhere. */
-    modalities?: Record<string, string>;
+    /** Whether the display sets carry a DICOM reference linking them. Default: they do. */
+    paired?: boolean;
     activeViewportId?: string;
+    /** Explicit per-viewport sync membership, for describing a HALF-BUILT group. */
     syncedIds?: string[];
   } = {}
 ) => {
   const viewportIds = opts.viewportIds ?? ['v1', 'v2'];
   const missing = new Set(opts.missing ?? []);
+  const paired = opts.paired !== false;
 
   const viewports = new Map<string, any>();
-  viewportIds.forEach(id => viewports.set(id, gridViewport(id, [`ds-${id}`])));
+  viewportIds.forEach(id =>
+    viewports.set(id, {
+      displaySetInstanceUIDs: [`ds-${id}`],
+      viewportOptions: { viewportId: id },
+    })
+  );
 
+  // The first viewport is the primary series; every other one references it, which is how the
+  // real heatmap points at the MR (its ReferencedImageSequence names an MR SOP instance).
+  const primary = viewportIds[0];
+  const getDisplaySetByUID = jest.fn((uid: string) => {
+    const id = String(uid).replace(/^ds-/, '');
+    const sop = `sop-${id}`;
+    const instance: any = { SOPInstanceUID: sop };
+    if (paired && id !== primary) {
+      instance.ReferencedImageSequence = [{ ReferencedSOPInstanceUID: `sop-${primary}` }];
+    }
+    return { Modality: id === primary ? 'MR' : 'SC', SOPInstanceUID: sop, instance };
+  });
+
+  const syncedIds = opts.syncedIds ? new Set(opts.syncedIds) : undefined;
   const addViewportToSyncGroup = jest.fn();
   const removeViewportFromSyncGroup = jest.fn();
-  // `syncedIds` lets a test describe a HALF-BUILT group; `hasSync` keeps the all-or-nothing
-  // shorthand the older tests use.
-  const syncedIds = opts.syncedIds ? new Set(opts.syncedIds) : undefined;
   const getSynchronizersForViewport = jest.fn((id: string) =>
     (syncedIds ? syncedIds.has(id) : opts.hasSync)
       ? [{ id: HEATMAP_SYNC_ID }]
@@ -53,15 +66,13 @@ const makeServices = (
       : {
           getRenderingEngine: () => ({ id: `engine-${id}` }),
           getCurrentImageIdIndex: () => 0,
+          getCurrentImageId: () => `${id}:0`,
           getImageIds: () => ['a', 'b'],
           getFrameOfReferenceUID: () => 'FOR',
+          getCamera: () => ({ viewPlaneNormal: [0, 0, 1] }),
           element: { id },
         }
   );
-
-  const getDisplaySetByUID = jest.fn((uid: string) => ({
-    Modality: opts.modalities?.[String(uid).replace(/^ds-/, '')] ?? 'MR',
-  }));
 
   const servicesManager = {
     services: {
@@ -90,25 +101,23 @@ const makeServices = (
 };
 
 beforeEach(() => {
-  resetHeatmapSyncPreference();
   (alignHeatmapSlice as jest.Mock).mockClear();
+  (alignHeatmapSlice as jest.Mock).mockImplementation(async () => 7);
 });
 
 describe('toggleHeatmapImageSliceSync', () => {
-  it('does nothing when fewer than two viewports have display sets', () => {
+  it('does nothing when fewer than two viewports have display sets', async () => {
     const { servicesManager, addViewportToSyncGroup, removeViewportFromSyncGroup } = makeServices({
       viewportIds: ['v1'],
     });
-    toggleHeatmapImageSliceSync({ servicesManager });
+    await toggleHeatmapImageSliceSync({ servicesManager });
     expect(addViewportToSyncGroup).not.toHaveBeenCalled();
     expect(removeViewportFromSyncGroup).not.toHaveBeenCalled();
   });
 
-  it('enables sync by adding every viewport to the sync group', () => {
-    const { servicesManager, addViewportToSyncGroup, removeViewportFromSyncGroup } = makeServices({
-      hasSync: false,
-    });
-    toggleHeatmapImageSliceSync({ servicesManager });
+  it('enables sync by adding every viewport to the sync group', async () => {
+    const { servicesManager, addViewportToSyncGroup, removeViewportFromSyncGroup } = makeServices();
+    await toggleHeatmapImageSliceSync({ servicesManager });
 
     expect(removeViewportFromSyncGroup).not.toHaveBeenCalled();
     expect(addViewportToSyncGroup).toHaveBeenCalledTimes(2);
@@ -120,80 +129,28 @@ describe('toggleHeatmapImageSliceSync', () => {
     });
   });
 
-  it('disables sync by removing every viewport when one already has sync', () => {
+  it('disables sync by removing every viewport when one already has sync', async () => {
     const { servicesManager, addViewportToSyncGroup, removeViewportFromSyncGroup } = makeServices({
       hasSync: true,
     });
-    toggleHeatmapImageSliceSync({ servicesManager });
+    await toggleHeatmapImageSliceSync({ servicesManager });
 
     expect(addViewportToSyncGroup).not.toHaveBeenCalled();
     expect(removeViewportFromSyncGroup).toHaveBeenCalledTimes(2);
     expect(removeViewportFromSyncGroup).toHaveBeenCalledWith('v2', 'engine-v2', HEATMAP_SYNC_ID);
   });
 
-  it('skips viewports the cornerstone service cannot resolve on the enable path', () => {
-    const { servicesManager, addViewportToSyncGroup } = makeServices({
-      hasSync: false,
-      missing: ['v2'],
-    });
-    toggleHeatmapImageSliceSync({ servicesManager });
+  it('skips viewports the cornerstone service cannot resolve on the enable path', async () => {
+    const { servicesManager, addViewportToSyncGroup } = makeServices({ missing: ['v2'] });
+    await toggleHeatmapImageSliceSync({ servicesManager });
     expect(addViewportToSyncGroup).toHaveBeenCalledTimes(1);
     expect(addViewportToSyncGroup).toHaveBeenCalledWith('v1', 'engine-v1', expect.anything());
-  });
-
-  it('round-trips on repeated toggles against shared sync state', () => {
-    // One stateful mock: add/remove mutate the synced set and the synchronizer
-    // lookup reflects it, so each toggle observes the previous toggle's effect.
-    const synced = new Set<string>();
-    const viewports = new Map<string, any>();
-    ['v1', 'v2'].forEach(id => viewports.set(id, gridViewport(id)));
-
-    const addViewportToSyncGroup = jest.fn((id: string) => {
-      synced.add(id);
-    });
-    const removeViewportFromSyncGroup = jest.fn((id: string) => {
-      synced.delete(id);
-    });
-    const getSynchronizersForViewport = jest.fn((id: string) =>
-      synced.has(id) ? [{ id: HEATMAP_SYNC_ID }] : [{ id: 'something-else' }]
-    );
-    const getCornerstoneViewport = jest.fn((id: string) => ({
-      getRenderingEngine: () => ({ id: `engine-${id}` }),
-    }));
-
-    const servicesManager = {
-      services: {
-        syncGroupService: {
-          addViewportToSyncGroup,
-          removeViewportFromSyncGroup,
-          getSynchronizersForViewport,
-        },
-        cornerstoneViewportService: { getCornerstoneViewport },
-        viewportGridService: { getState: () => ({ viewports }) },
-      },
-    };
-
-    // First toggle: nothing synced yet -> enable both viewports.
-    toggleHeatmapImageSliceSync({ servicesManager });
-    expect(addViewportToSyncGroup).toHaveBeenCalledTimes(2);
-    expect(removeViewportFromSyncGroup).not.toHaveBeenCalled();
-    expect(synced).toEqual(new Set(['v1', 'v2']));
-
-    // Second toggle: shared state now reports sync -> disable both viewports.
-    toggleHeatmapImageSliceSync({ servicesManager });
-    expect(removeViewportFromSyncGroup).toHaveBeenCalledTimes(2);
-    expect(synced.size).toBe(0);
-
-    // Third toggle: back to enabled, proving a clean round-trip.
-    toggleHeatmapImageSliceSync({ servicesManager });
-    expect(addViewportToSyncGroup).toHaveBeenCalledTimes(4);
-    expect(synced).toEqual(new Set(['v1', 'v2']));
   });
 });
 
 describe('aligning on enable', () => {
-  // The defect: addViewportToSyncGroup only arms the synchronizer for the NEXT
-  // slice-change event, so pressing sync appeared to do nothing until the reader scrolled.
+  // The defect: addViewportToSyncGroup only arms the synchronizer for the NEXT slice-change
+  // event, so pressing sync appeared to do nothing until the reader scrolled.
   it('aligns the non-active viewports to the active one when sync is switched on', async () => {
     const { servicesManager } = makeServices({ activeViewportId: 'v1' });
 
@@ -219,14 +176,6 @@ describe('aligning on enable', () => {
     expect(targets).toEqual(['v1', 'v3']);
   });
 
-  it('still builds the sync group when an alignment throws', async () => {
-    (alignHeatmapSlice as jest.Mock).mockRejectedValueOnce(new Error('no metadata'));
-    const { servicesManager, addViewportToSyncGroup } = makeServices();
-
-    await expect(toggleHeatmapImageSliceSync({ servicesManager })).resolves.toBeUndefined();
-    expect(addViewportToSyncGroup).toHaveBeenCalledTimes(2);
-  });
-
   it('does not align when switching sync off', async () => {
     const { servicesManager } = makeServices({ hasSync: true });
 
@@ -236,20 +185,71 @@ describe('aligning on enable', () => {
   });
 });
 
-describe('ensureHeatmapImageSliceSync', () => {
-  const withHeatmap = (extra = {}) =>
-    makeServices({ modalities: { v2: 'SC' }, ...extra });
+describe('rollback when the initial alignment fails', () => {
+  // A built-but-unaligned group is the worst outcome: isHeatmapSyncComplete reports it as
+  // done, so the automatic path never retries, while the viewports sit on unrelated slices.
+  it('removes the viewports it added instead of leaving a half-aligned group', async () => {
+    (alignHeatmapSlice as jest.Mock).mockRejectedValueOnce(new Error('no metadata'));
+    const { servicesManager, addViewportToSyncGroup, removeViewportFromSyncGroup } = makeServices();
 
-  it('enables sync once a second viewport shows an AI result', async () => {
-    const { servicesManager, addViewportToSyncGroup } = withHeatmap();
+    await toggleHeatmapImageSliceSync({ servicesManager });
+
+    expect(addViewportToSyncGroup).toHaveBeenCalledTimes(2);
+    expect(removeViewportFromSyncGroup).toHaveBeenCalledTimes(2);
+    expect(removeViewportFromSyncGroup).toHaveBeenCalledWith('v1', 'engine-v1', HEATMAP_SYNC_ID);
+    expect(removeViewportFromSyncGroup).toHaveBeenCalledWith('v2', 'engine-v2', HEATMAP_SYNC_ID);
+  });
+
+  it('rolls back when the active viewport cannot be resolved as a source', async () => {
+    // `missing` is what makes it unresolvable; naming a viewport that is not in the grid is
+    // not enough, since the harness resolves any id it has not been told is missing.
+    const { servicesManager, addViewportToSyncGroup, removeViewportFromSyncGroup } = makeServices({
+      activeViewportId: 'gone',
+      missing: ['gone'],
+    });
+
+    await toggleHeatmapImageSliceSync({ servicesManager });
+
+    expect(addViewportToSyncGroup).toHaveBeenCalledTimes(2);
+    expect(removeViewportFromSyncGroup).toHaveBeenCalledTimes(2);
+  });
+
+  it('only rolls back what it actually added', async () => {
+    (alignHeatmapSlice as jest.Mock).mockRejectedValueOnce(new Error('boom'));
+    // Three viewports with the middle one unresolvable: v1 and v3 get added, v2 never does.
+    // v3's alignment then fails, so the rollback must touch v1 and v3 and leave v2 alone.
+    const { servicesManager, addViewportToSyncGroup, removeViewportFromSyncGroup } = makeServices({
+      viewportIds: ['v1', 'v2', 'v3'],
+      missing: ['v2'],
+    });
+
+    await toggleHeatmapImageSliceSync({ servicesManager });
+
+    expect(addViewportToSyncGroup).toHaveBeenCalledTimes(2);
+    expect(removeViewportFromSyncGroup).toHaveBeenCalledTimes(2);
+    expect(removeViewportFromSyncGroup).toHaveBeenCalledWith('v1', 'engine-v1', HEATMAP_SYNC_ID);
+    expect(removeViewportFromSyncGroup).toHaveBeenCalledWith('v3', 'engine-v3', HEATMAP_SYNC_ID);
+    expect(removeViewportFromSyncGroup).not.toHaveBeenCalledWith(
+      'v2',
+      expect.anything(),
+      expect.anything()
+    );
+  });
+});
+
+describe('ensureHeatmapImageSliceSync', () => {
+  it('enables sync once a second viewport shows a related AI result', async () => {
+    const { servicesManager, addViewportToSyncGroup } = makeServices();
 
     await ensureHeatmapImageSliceSync({ servicesManager });
 
     expect(addViewportToSyncGroup).toHaveBeenCalledTimes(2);
   });
 
-  it('leaves two ordinary series alone', async () => {
-    const { servicesManager, addViewportToSyncGroup } = makeServices();
+  // A modality test would auto-link any incidental SC/SR in the study. This asks the DICOM:
+  // without a reference between the display sets, the viewports are left alone.
+  it('leaves unrelated display sets alone even when one is an SC', async () => {
+    const { servicesManager, addViewportToSyncGroup } = makeServices({ paired: false });
 
     await ensureHeatmapImageSliceSync({ servicesManager });
 
@@ -257,7 +257,7 @@ describe('ensureHeatmapImageSliceSync', () => {
   });
 
   it('waits for a later event while any viewport is not yet renderable', async () => {
-    const { servicesManager, addViewportToSyncGroup } = withHeatmap({ missing: ['v2'] });
+    const { servicesManager, addViewportToSyncGroup } = makeServices({ missing: ['v2'] });
 
     await ensureHeatmapImageSliceSync({ servicesManager });
 
@@ -266,38 +266,19 @@ describe('ensureHeatmapImageSliceSync', () => {
   });
 
   it('does nothing with a single viewport', async () => {
-    const { servicesManager, addViewportToSyncGroup } = withHeatmap({ viewportIds: ['v1'] });
+    const { servicesManager, addViewportToSyncGroup } = makeServices({ viewportIds: ['v1'] });
 
     await ensureHeatmapImageSliceSync({ servicesManager });
 
     expect(addViewportToSyncGroup).not.toHaveBeenCalled();
   });
 
-  it('is a no-op when sync is already on', async () => {
-    const { servicesManager, addViewportToSyncGroup } = withHeatmap({ hasSync: true });
+  it('is a no-op when sync is already complete', async () => {
+    const { servicesManager, addViewportToSyncGroup } = makeServices({ hasSync: true });
 
     await ensureHeatmapImageSliceSync({ servicesManager });
 
     expect(addViewportToSyncGroup).not.toHaveBeenCalled();
-  });
-
-  // Without this the subscription would re-enable sync on the very next grid change and
-  // the toolbar toggle would look broken.
-  it('respects a manual switch-off and stops re-arming sync', async () => {
-    const enabled = makeServices({ modalities: { v2: 'SC' }, hasSync: true });
-
-    await toggleHeatmapImageSliceSync({ servicesManager: enabled.servicesManager });
-    expect(enabled.removeViewportFromSyncGroup).toHaveBeenCalledTimes(2);
-    expect(isHeatmapSyncUserDisabled()).toBe(true);
-
-    const after = withHeatmap();
-    await ensureHeatmapImageSliceSync({ servicesManager: after.servicesManager });
-    expect(after.addViewportToSyncGroup).not.toHaveBeenCalled();
-
-    // ...until the preference is cleared, which onModeEnter does.
-    resetHeatmapSyncPreference();
-    await ensureHeatmapImageSliceSync({ servicesManager: after.servicesManager });
-    expect(after.addViewportToSyncGroup).toHaveBeenCalledTimes(2);
   });
 
   it('reports enabled state from the sync group', () => {
@@ -308,12 +289,53 @@ describe('ensureHeatmapImageSliceSync', () => {
   });
 });
 
+describe('the manual switch-off preference', () => {
+  // Without this the subscription would re-enable sync on the very next grid change and the
+  // toolbar toggle would look broken.
+  it('stops the automatic path re-arming sync, until it is reset', async () => {
+    const { servicesManager, removeViewportFromSyncGroup, addViewportToSyncGroup } = makeServices({
+      hasSync: true,
+    });
+
+    await toggleHeatmapImageSliceSync({ servicesManager });
+    expect(removeViewportFromSyncGroup).toHaveBeenCalledTimes(2);
+    expect(isHeatmapSyncUserDisabled({ servicesManager })).toBe(true);
+
+    await ensureHeatmapImageSliceSync({ servicesManager });
+    expect(addViewportToSyncGroup).not.toHaveBeenCalled();
+
+    resetHeatmapSyncPreference({ servicesManager });
+    expect(isHeatmapSyncUserDisabled({ servicesManager })).toBe(false);
+  });
+
+  // The reason this is a WeakMap on servicesManager rather than a module-level boolean: two
+  // viewer roots in one realm, or a mode re-entered while the previous instance exits, would
+  // otherwise read and clobber each other's preference.
+  it('is scoped per viewer, so one viewer cannot disable another', async () => {
+    const first = makeServices({ hasSync: true });
+    const second = makeServices();
+
+    await toggleHeatmapImageSliceSync({ servicesManager: first.servicesManager });
+    expect(isHeatmapSyncUserDisabled({ servicesManager: first.servicesManager })).toBe(true);
+    expect(isHeatmapSyncUserDisabled({ servicesManager: second.servicesManager })).toBe(false);
+
+    // The second viewer still auto-syncs despite the first having opted out.
+    await ensureHeatmapImageSliceSync({ servicesManager: second.servicesManager });
+    expect(second.addViewportToSyncGroup).toHaveBeenCalledTimes(2);
+  });
+
+  it('starts undisabled for a viewer that has never toggled', () => {
+    const { servicesManager } = makeServices();
+
+    expect(isHeatmapSyncUserDisabled({ servicesManager })).toBe(false);
+  });
+});
+
 describe('half-built sync groups', () => {
   // Reproduces what the browser showed: opening the heatmap in a second viewport recreates
   // the first viewport's cornerstone instance, dropping it from the group. The heatmap
   // reports synced, the series it must follow does not.
-  const halfBuilt = () =>
-    makeServices({ modalities: { v2: 'SC' }, syncedIds: ['v2'] });
+  const halfBuilt = () => makeServices({ syncedIds: ['v2'] });
 
   it('counts as enabled but not complete', () => {
     const { servicesManager } = halfBuilt();
@@ -333,10 +355,7 @@ describe('half-built sync groups', () => {
   });
 
   it('treats a fully built group as complete and leaves it alone', async () => {
-    const { servicesManager, addViewportToSyncGroup } = makeServices({
-      modalities: { v2: 'SC' },
-      syncedIds: ['v1', 'v2'],
-    });
+    const { servicesManager, addViewportToSyncGroup } = makeServices({ syncedIds: ['v1', 'v2'] });
 
     expect(isHeatmapSyncComplete({ servicesManager })).toBe(true);
     await ensureHeatmapImageSliceSync({ servicesManager });
