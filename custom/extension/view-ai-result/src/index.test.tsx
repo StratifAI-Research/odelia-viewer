@@ -48,3 +48,53 @@ describe('view-ai-result toolbar module', () => {
     expect(container.firstChild).toBeNull();
   });
 });
+
+describe('evaluate.heatmapSync', () => {
+  // The Slice Sync button's lit/unlit state. Driven by viewport MEMBERSHIP of the sync group,
+  // which is the thing that actually changes when sync goes on or off.
+  const evaluatorFor = (synchronizerIds: string[]) => {
+    const servicesManager = {
+      services: {
+        syncGroupService: {
+          getSynchronizersForViewport: () => synchronizerIds.map(id => ({ id })),
+        },
+        viewportGridService: {
+          getState: () => ({
+            activeViewportId: 'v1',
+            viewports: new Map([
+              ['v1', { displaySetInstanceUIDs: ['ds1'], viewportOptions: { viewportId: 'v1' } }],
+            ]),
+          }),
+        },
+      },
+    };
+    const entry = extension
+      .getToolbarModule({ servicesManager } as any)
+      .find(m => m.name === 'evaluate.heatmapSync');
+
+    return entry?.evaluate as (props?: unknown) => { isActive: boolean; className: string };
+  };
+
+  it('reports active, and highlights, while the viewport is in the sync group', () => {
+    const result = evaluatorFor(['HEATMAP_IMAGE_SLICE_SYNC'])();
+
+    expect(result.isActive).toBe(true);
+    expect(result.className).toContain('text-primary');
+  });
+
+  // The regression this guards: the old check asked the synchronizer whether it was disabled.
+  // Switching sync off removes the viewports but leaves the synchronizer registered and enabled,
+  // so the button stayed lit after the reader turned sync off.
+  it('reports inactive once the viewport is no longer a member', () => {
+    const result = evaluatorFor(['some-other-synchronizer'])();
+
+    expect(result.isActive).toBe(false);
+    expect(result.className).not.toContain('!text-primary');
+  });
+
+  it('reports inactive when the viewport is in no sync group at all', () => {
+    const result = evaluatorFor([])();
+
+    expect(result.isActive).toBe(false);
+  });
+});

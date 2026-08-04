@@ -14,7 +14,9 @@ import {
   toggleHeatmapImageSliceSync,
   ensureHeatmapImageSliceSync,
   resetHeatmapSyncPreference,
+  isHeatmapSyncEnabled,
 } from './utils/toggleHeatmapImageSliceSync';
+import { utils as uiNextUtils } from '@ohif/ui-next';
 
 export default {
   /**
@@ -115,13 +117,21 @@ export default {
       {
         name: 'evaluate.heatmapSync',
         evaluate: () => {
-          const { syncGroupService } = servicesManager.services;
-          const synchronizer = syncGroupService.getSynchronizer('HEATMAP_IMAGE_SLICE_SYNC');
-          // Use the public API instead of the private `_enabled` field.
-          const isActive = synchronizer && !synchronizer.isDisabled();
+          // Viewport MEMBERSHIP, not the synchronizer's own enabled flag.
+          //
+          // The previous check asked `getSynchronizer(...) && !isDisabled()`. Turning sync off
+          // removes the viewports from the group but leaves the synchronizer registered and not
+          // disabled, so that reported active either way: the button stayed lit after the reader
+          // switched sync off. isHeatmapSyncEnabled asks whether any viewport is actually in the
+          // group, which is what the button is meant to show -- and since sync now arms itself
+          // when the heatmap opens, it correctly reads as ON without anyone pressing it.
+          const isActive = isHeatmapSyncEnabled({ servicesManager });
 
           return {
-            className: isActive ? 'text-primary' : '',
+            isActive,
+            // The shared helper rather than a bare 'text-primary', so this button highlights
+            // exactly like every other toggle in the toolbar (and gets the hover states).
+            className: uiNextUtils.getToggledClassName(isActive),
           };
         },
       },

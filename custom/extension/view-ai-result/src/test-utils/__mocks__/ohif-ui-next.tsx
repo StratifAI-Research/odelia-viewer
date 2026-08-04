@@ -158,3 +158,11 @@ export const useViewportGrid = () => [
   { activeViewportId: 'v1', viewports: new Map() },
   { setActiveViewportId: jest.fn() },
 ];
+
+// Toolbar evaluators style toggled buttons with this, so it has to exist here too. Kept
+// behaviourally faithful (the real one returns '!text-primary' when on) rather than a stub, so a
+// test can assert the on/off distinction.
+export const utils = {
+  getToggledClassName: (isToggled: boolean) =>
+    isToggled ? '!text-primary' : '!text-foreground/80 hover:!bg-muted hover:text-highlight',
+};

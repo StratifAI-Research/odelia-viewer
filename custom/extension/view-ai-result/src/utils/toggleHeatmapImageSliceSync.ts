@@ -34,6 +34,21 @@ const syncableViewports = viewportGridService =>
 
 const viewportIdOf = (gridViewport: any) => gridViewport.viewportOptions?.viewportId;
 
+/**
+ * Re-run the toolbar evaluators so the Slice Sync button reflects the new state.
+ *
+ * Without this the button only catches up on the next unrelated toolbar refresh: sync arms
+ * itself asynchronously after a grid change, by which time the refresh that grid change
+ * triggered has already run and evaluated the old state.
+ */
+const refreshSyncButton = servicesManager => {
+  const { toolbarService, viewportGridService } = servicesManager.services;
+
+  toolbarService?.refreshToolbarState?.({
+    viewportId: viewportGridService?.getState?.()?.activeViewportId,
+  });
+};
+
 const displaySetsOf = (displaySetService, gridViewport: any) =>
   (gridViewport.displaySetInstanceUIDs || [])
     .map(uid => displaySetService?.getDisplaySetByUID?.(uid))
@@ -193,6 +208,8 @@ export async function enableHeatmapImageSliceSync({ servicesManager }): Promise<
     return false;
   }
 
+  refreshSyncButton(servicesManager);
+
   return true;
 }
 
@@ -214,6 +231,8 @@ export function disableHeatmapImageSliceSync({ servicesManager }): void {
       HEATMAP_SYNC_ID
     );
   });
+
+  refreshSyncButton(servicesManager);
 }
 
 /**
