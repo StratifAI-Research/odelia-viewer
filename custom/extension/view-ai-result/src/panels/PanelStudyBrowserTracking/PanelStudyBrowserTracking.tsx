@@ -630,7 +630,11 @@ export default function PanelStudyBrowserTracking({
   // metadata, so they are not pure functions of the values available as deps here —
   // a memo would risk serving stale tab labels/grouping, which is a worse failure
   // than the wasted work. Rebuilding stays cheap; only the DOM sweep was costly.
-  const tabsKey = tabs.map(tab => tab.name).join(' ');
+  // JSON.stringify rather than join(): it needs no separator, so no tab name can
+  // forge a collision. This used a literal NUL as the separator, on the reasoning
+  // that a display string cannot contain one -- true, but it also made the whole
+  // file binary to grep and every other line-oriented tool, for no gain here.
+  const tabsKey = JSON.stringify(tabs.map(tab => tab.name));
 
   // Ensure activeTabName is valid
   useEffect(() => {
