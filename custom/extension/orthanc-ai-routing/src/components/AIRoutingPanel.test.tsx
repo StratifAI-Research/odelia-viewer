@@ -284,3 +284,114 @@ describe('AIRoutingPanel — send & reset', () => {
     expect(sm.services.orthancAIService.stopWorkitemPolling).toHaveBeenCalled();
   });
 });
+
+/**
+ * The gear in the panel header is available on EVERY step, while
+ * `ModelSelectionStep` — which owned the manifest invalidation — is mounted only
+ * on step 1. So switching model from the gear on step 4 kept model A's manifest,
+ * and Send posted model B's `target`/`target_url` with A's
+ * `input_configuration_id` and A's role keys. `ConfirmStep` reads the model name
+ * from `currentEndpoint`, so it correctly displayed B: nothing shown to the user
+ * revealed the mismatch.
+ */
+describe('AIRoutingPanel — changing the model invalidates what hangs off it', () => {
+  const OTHER_ENDPOINT = { id: 'ep-b', name: 'Model B', url: 'http://model-b:8042' };
+
+  /** Walk to step 4 with MANIFEST loaded and its one required input mapped. */
+  const reachConfirmWithMapping = async () => {
+    const sm = await renderPanel({ displaySets: [ds({ SeriesInstanceUID: 's1' })] });
+    act(() => mockProps.model.onManifestLoaded(MANIFEST));
+    act(() => mockProps.model.onNext());
+    act(() => mockProps.mode.onSelectConfig('c1'));
+    act(() => mockProps.mode.onNext());
+    act(() => mockProps.mapping.onSetInputSeries('t1', 's1'));
+    act(() => mockProps.mapping.onNext());
+    expect(screen.getByTestId('step-confirm')).toBeTruthy();
+    return sm;
+  };
+
+  /** Switch the endpoint through the header gear, as a reader would. */
+  const switchModelViaGear = (endpoint: typeof OTHER_ENDPOINT) => {
+    fireEvent.click(screen.getByTitle('Endpoint Settings'));
+    act(() => mockProps.endpointConfig.onEndpointChange(endpoint));
+    fireEvent.click(screen.getByLabelText('Close endpoint settings'));
+  };
+
+  it('returns to model selection instead of leaving the reader on confirm', async () => {
+    await reachConfirmWithMapping();
+
+    switchModelViaGear(OTHER_ENDPOINT);
+
+    expect(screen.getByTestId('step-model')).toBeTruthy();
+    expect(mockProps.model.manifest).toBeNull();
+  });
+
+  it('adopts the new endpoint on the service', async () => {
+    const sm = await reachConfirmWithMapping();
+
+    switchModelViaGear(OTHER_ENDPOINT);
+
+    expect(sm.services.orthancAIService.setCurrentEndpoint).toHaveBeenCalledWith(OTHER_ENDPOINT);
+    expect(sm.services.orthancAIService.clearManifestCache).toHaveBeenCalled();
+  });
+
+  it('cannot send model A’s input_configuration_id to model B', async () => {
+    const sm = await reachConfirmWithMapping();
+
+    switchModelViaGear(OTHER_ENDPOINT);
+
+    // Nothing was sent, and the wizard is back where the manifest is re-read.
+    expect(sm.services.orthancAIService.routeSeriesToAI).not.toHaveBeenCalled();
+    expect(screen.getByTestId('step-model')).toBeTruthy();
+
+    // Walk forward again: with no manifest for B, this is the flat 4-step flow,
+    // and the payload carries no mapping and no configuration id.
+    act(() => mockProps.model.onNext());
+    act(() => mockProps.series.onNext());
+    await act(async () => {
+      await mockProps.confirm.onSend();
+    });
+
+    const call = sm.services.orthancAIService.routeSeriesToAI.mock.calls[0];
+    expect(call[2]).toBeUndefined();
+    expect(call[3]).toBeUndefined();
+  });
+
+  // The manifest hangs off the model — id and target url. Relabelling an endpoint
+  // in the settings dialog changes neither, and resetting for it would discard a
+  // role mapping the reader had already completed.
+  it('keeps the wizard and the mapping when only the display name changed', async () => {
+    const sm = await reachConfirmWithMapping();
+
+    switchModelViaGear({ ...AI_ENDPOINT, name: 'MST (staging label)' });
+
+    expect(screen.getByTestId('step-confirm')).toBeTruthy();
+    expect(mockProps.confirm.inputMappingDescription).toBeTruthy();
+    expect(sm.services.orthancAIService.clearManifestCache).not.toHaveBeenCalled();
+
+    // And the relabelled endpoint is still adopted.
+    expect(sm.services.orthancAIService.setCurrentEndpoint).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'MST (staging label)' })
+    );
+
+    // The send still carries the mapping it was built with.
+    await act(async () => {
+      await mockProps.confirm.onSend();
+    });
+    const call = sm.services.orthancAIService.routeSeriesToAI.mock.calls[0];
+    expect(call[2]).toEqual({ t1: 's1' });
+    expect(call[3]).toBe('c1');
+  });
+
+  it('applies the same invalidation when the change comes from step 1', async () => {
+    const sm = await renderPanel({ displaySets: [ds({ SeriesInstanceUID: 's1' })] });
+    act(() => mockProps.model.onManifestLoaded(MANIFEST));
+    expect(screen.getByText('Step 1 of 5')).toBeTruthy();
+
+    act(() => mockProps.model.onEndpointChange(OTHER_ENDPOINT));
+
+    expect(mockProps.model.manifest).toBeNull();
+    expect(screen.getByText('Step 1 of 4')).toBeTruthy();
+    expect(sm.services.orthancAIService.setCurrentEndpoint).toHaveBeenCalledWith(OTHER_ENDPOINT);
+  });
+});

@@ -272,31 +272,60 @@ describe('OrthancAIService — getModelManifest (+ cache)', () => {
   it('returns data.manifest when present and caches it (no second fetch)', async () => {
     const manifest = { model_id: 'm', model_name: 'M', version: '1', input_configurations: [] };
     fetchMock.mockResolvedValueOnce(mockResponse({ json: { manifest } }));
-    expect(await service.getModelManifest(EP)).toEqual(manifest);
-    expect(await service.getModelManifest(EP)).toEqual(manifest);
+    expect(await service.getModelManifest(EP)).toEqual({ status: 'available', manifest });
+    expect(await service.getModelManifest(EP)).toEqual({ status: 'available', manifest });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('treats a top-level object with model_id as the manifest', async () => {
     const data = { model_id: 'm', model_name: 'M', version: '1', input_configurations: [] };
     fetchMock.mockResolvedValueOnce(mockResponse({ json: data }));
-    expect(await service.getModelManifest(EP)).toEqual(data);
+    expect(await service.getModelManifest(EP)).toEqual({ status: 'available', manifest: data });
   });
 
-  it('returns null on non-ok WITHOUT caching, so a later call retries (OAR-M-manifest)', async () => {
+  // The distinction this whole return type exists for: a model that publishes no
+  // specification is `absent`, an unreachable router is `failed`. Reporting the
+  // second as the first is what let a study be sent with no input_mapping and no
+  // input_configuration_id, so MST assigned the pre/post/subtraction roles itself
+  // and returned a normal-looking result computed on the wrong inputs.
+  it('reports a transport failure as `failed`, NOT as an absent manifest', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 502 }));
+    const result = await service.getModelManifest(EP);
+
+    expect(result.status).toBe('failed');
+    expect((result as { reason: string }).reason).toContain('502');
+  });
+
+  it('names the missing plugin when the router has no /ai-manifest route', async () => {
     fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 404 }));
-    expect(await service.getModelManifest(EP)).toBeNull();
+    const result = await service.getModelManifest(EP);
+
+    expect(result.status).toBe('failed');
+    expect((result as { reason: string }).reason).toMatch(/AI routing plugin/i);
+  });
+
+  it('does not cache a failure, so a later call retries (OAR-M-manifest)', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 404 }));
+    expect((await service.getModelManifest(EP)).status).toBe('failed');
     // A transient failure must not be cached: the next call re-fetches and can
     // recover the real manifest (previously null was frozen until reload).
     const manifest = { model_id: 'm', model_name: 'M', version: '1', input_configurations: [] };
     fetchMock.mockResolvedValueOnce(mockResponse({ json: { manifest } }));
-    expect(await service.getModelManifest(EP)).toEqual(manifest);
+    expect(await service.getModelManifest(EP)).toEqual({ status: 'available', manifest });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('returns null when fetch throws', async () => {
+  it('reports `failed` when fetch throws, carrying the reader-facing reason', async () => {
     fetchMock.mockRejectedValueOnce(new Error('network'));
-    expect(await service.getModelManifest(EP)).toBeNull();
+    const result = await service.getModelManifest(EP);
+
+    expect(result.status).toBe('failed');
+    expect((result as { reason: string }).reason).toBeTruthy();
+  });
+
+  it('reports `failed` when the body is not JSON', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ text: '<html>proxy error</html>' }));
+    expect((await service.getModelManifest(EP)).status).toBe('failed');
   });
 
   it('clearManifestCache forces a refetch', async () => {
@@ -307,9 +336,36 @@ describe('OrthancAIService — getModelManifest (+ cache)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('returns null when manifest key is absent and there is no model_id', async () => {
-    fetchMock.mockResolvedValueOnce(mockResponse({ json: { some_other_key: true } }));
-    expect(await service.getModelManifest(EP)).toBeNull();
+  // A 200 that declares neither a manifest nor a model_id is not an answer to the
+  // question we asked. Filing it as `absent` is what enables the flat send, so an
+  // unreadable body is reported the same way an unreachable router is: blocked,
+  // explained, retryable. `{ manifest: null }` remains the way to say "none".
+  it.each([
+    ['neither a manifest nor a model_id', { some_other_key: true }],
+    ['an error payload', { error: 'upstream failed' }],
+    ['an empty object', {}],
+    ['an array', [{ model_id: 'm' }]],
+    ['a manifest missing input_configurations', { manifest: { model_id: 'm', version: '1' } }],
+    ['an empty manifest object', { manifest: {} }],
+  ])('reports `failed` for a 200 carrying %s', async (_label, body) => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ json: body }));
+    expect((await service.getModelManifest(EP)).status).toBe('failed');
+  });
+
+  it('does not cache an unreadable 200, so a fixed router recovers without a reload', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ json: { error: 'upstream failed' } }));
+    expect((await service.getModelManifest(EP)).status).toBe('failed');
+
+    const manifest = { model_id: 'm', model_name: 'M', version: '1', input_configurations: [] };
+    fetchMock.mockResolvedValueOnce(mockResponse({ json: { manifest } }));
+    expect(await service.getModelManifest(EP)).toEqual({ status: 'available', manifest });
+  });
+
+  it('caches `absent`, which is a decided answer', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ json: { manifest: null } }));
+    expect(await service.getModelManifest(EP)).toEqual({ status: 'absent' });
+    expect(await service.getModelManifest(EP)).toEqual({ status: 'absent' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

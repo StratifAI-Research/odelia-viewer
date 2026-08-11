@@ -52,6 +52,39 @@ export interface ModelManifest {
   input_configurations: InputConfiguration[];
 }
 
+/**
+ * The outcome of asking the router for a model's input specification.
+ *
+ * `absent` and `failed` are deliberately separate cases. They used to be the
+ * same `null`, and the panel could not tell "this model wants no mapping" from
+ * "we never found out" — which is how a study could be sent with no roles
+ * assigned and come back with a plausible, wrong answer. See getModelManifest.
+ */
+export type ManifestLookup =
+  | { status: 'available'; manifest: ModelManifest }
+  | { status: 'absent' }
+  | { status: 'failed'; reason: string };
+
+/**
+ * Whether a value can be used as a manifest without the panel throwing.
+ *
+ * `input_configurations` is the field that matters: ModelSelectionStep and
+ * useInputMapping both iterate it, so a manifest without it is not a manifest
+ * the panel can act on — it is a 200 that has to be reported as a failure rather
+ * than rendered into a crash.
+ */
+function isUsableManifest(value: unknown): value is ModelManifest {
+  const candidate = value as ModelManifest | null;
+
+  return (
+    !!candidate &&
+    typeof candidate === 'object' &&
+    !Array.isArray(candidate) &&
+    typeof candidate.model_id === 'string' &&
+    Array.isArray(candidate.input_configurations)
+  );
+}
+
 export interface InputMapping {
   [roleKey: string]: string; // role key -> SeriesInstanceUID
 }
@@ -289,56 +322,103 @@ class OrthancAIService {
 
   /**
    * Fetch the model input manifest for a given AI endpoint URL.
-   * Returns null when the model does not provide a manifest (fallback to flat selection).
-   * Results are cached per endpoint URL.
+   *
+   * The three outcomes are kept DISTINCT, which is the whole point of the return
+   * type. This used to answer `null` for all of them, and the two that matter
+   * are not interchangeable:
+   *
+   *   - `absent` — the model genuinely publishes no input specification. Flat
+   *     series selection is the correct fallback.
+   *   - `failed` — the manifest could not be fetched: 502, timeout, proxy
+   *     hiccup, unparseable body. We do NOT know what the model wants.
+   *
+   * Collapsing `failed` into `absent` showed the reader "No input specification
+   * available for this model", which is exactly what a model without one shows.
+   * They would then select series and send, and `handleSendToAI` would post a
+   * bare `series_uids` list with no `input_mapping` and no
+   * `input_configuration_id`. MST needs an explicit pre/post/subtraction role
+   * mapping, so the backend assigns roles itself and returns a result that looks
+   * entirely normal but was computed on the wrong inputs. A silent wrong answer
+   * is the worst failure this panel can produce, so a transport failure now has
+   * to be surfaced and has to block the send.
+   *
+   * Only decided answers are cached, per endpoint URL. A transient failure is
+   * never cached, or a single network blip would degrade the model until the
+   * cache is cleared (on endpoint change) or the page is reloaded.
    */
-  async getModelManifest(endpointUrl: string): Promise<ModelManifest | null> {
+  async getModelManifest(endpointUrl: string): Promise<ManifestLookup> {
     if (this.manifestCache.has(endpointUrl)) {
-      return this.manifestCache.get(endpointUrl)!;
+      const cached = this.manifestCache.get(endpointUrl)!;
+      return cached ? { status: 'available', manifest: cached } : { status: 'absent' };
     }
+
+    // `missingRouteMeans` is now worth declaring: with the failure surfaced
+    // rather than swallowed, a 404 here is a real diagnosis to show the reader
+    // ("the AI routing plugin is not enabled") instead of dead configuration.
+    const ctx: RequestContext = {
+      action: 'fetch the model manifest',
+      route: 'GET /ai-manifest',
+      baseUrl: this.orthancUrl,
+      missingRouteMeans: 'plugin-missing',
+    };
 
     try {
       const url = `${this.orthancUrl}/ai-manifest?target_url=${encodeURIComponent(endpointUrl)}`;
-      const response = await this.request(
-        url,
-        { method: 'GET' },
-        {
-          // No `missingRouteMeans`: this caller swallows every failure and
-          // falls back to flat series selection by design, so it never builds
-          // an HTTP message. Declaring one here would be dead configuration.
-          action: 'fetch the model manifest',
-          route: 'GET /ai-manifest',
-          baseUrl: this.orthancUrl,
-        }
-      );
+      const response = await this.request(url, { method: 'GET' }, ctx);
 
       if (!response.ok) {
-        // Do not cache a transient fetch failure: a network blip would otherwise
-        // degrade the model to flat series selection until the cache is cleared
-        // (on endpoint change) or the page is reloaded.
-        console.warn(`Manifest fetch failed (${response.status}), falling back`);
-        return null;
+        return { status: 'failed', reason: await describeHttpFailure(response, ctx) };
       }
 
-      const data = await response.json();
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        return { status: 'failed', reason: describeUnexpectedBody(ctx) };
+      }
 
-      if (data.manifest === null || data.manifest === undefined) {
-        if (data.model_id) {
-          const manifest = data as ModelManifest;
-          this.manifestCache.set(endpointUrl, manifest);
-          return manifest;
-        }
+      // A 200 is not by itself an answer. The body has to actually SAY one of the
+      // two things, and a manifest has to be usable when it claims to be one:
+      // `{ manifest: {} }` used to be accepted and then threw in render at
+      // `manifest.input_configurations.map`, and `{ error: '...' }` used to be
+      // filed as "this model has no input specification" — which is the exact
+      // silent degradation this return type exists to prevent. Anything we cannot
+      // read is `failed`: blocked, explained, and retryable.
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        return { status: 'failed', reason: describeUnexpectedBody(ctx) };
+      }
+
+      const declared = 'manifest' in data ? data.manifest : data.model_id ? data : undefined;
+
+      if (declared === null || (declared === undefined && 'manifest' in data)) {
+        // An explicit "this model publishes no input specification".
         this.manifestCache.set(endpointUrl, null);
-        return null;
+        return { status: 'absent' };
       }
 
-      const manifest = data.manifest as ModelManifest;
-      this.manifestCache.set(endpointUrl, manifest);
-      return manifest;
+      if (declared === undefined) {
+        return {
+          status: 'failed',
+          reason:
+            `Failed to ${ctx.action}: the AI router answered 200 but the body declared ` +
+            `neither a manifest nor a model_id.`,
+        };
+      }
+
+      if (!isUsableManifest(declared)) {
+        return {
+          status: 'failed',
+          reason: `Failed to ${ctx.action}: the manifest is missing required fields.`,
+        };
+      }
+
+      this.manifestCache.set(endpointUrl, declared);
+      return { status: 'available', manifest: declared };
     } catch (error) {
-      // Transient error — do not cache, so a later call can retry.
-      console.warn('Error fetching model manifest:', error);
-      return null;
+      // `request` already turns transport failures into a message written for
+      // the reader; anything else (e.g. a body that is not JSON) is reported as
+      // itself rather than guessed at.
+      return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
     }
   }
 

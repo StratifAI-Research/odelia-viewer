@@ -6,7 +6,7 @@ import { useWizardState } from '../hooks/useWizardState';
 import { useStudySeriesSelection } from '../hooks/useStudySeriesSelection';
 import { useAIRouting } from '../hooks/useAIRouting';
 import { useInputMapping } from '../hooks/useInputMapping';
-import AIEndpointConfig from './AIEndpointConfig';
+import AIEndpointConfig, { type AIEndpoint } from './AIEndpointConfig';
 import { ModelSelectionStep } from './steps/ModelSelectionStep';
 import { SeriesSelectionStep } from './steps/SeriesSelectionStep';
 import { InputModeSelectionStep } from './steps/InputModeSelectionStep';
@@ -121,6 +121,54 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
       }, 1000);
     },
   });
+
+  /**
+   * Everything downstream of the model is invalidated when the model changes.
+   *
+   * This lives in the panel because the endpoint has TWO entry points and they
+   * were not equivalent. `ModelSelectionStep` had its own handler that cleared
+   * the manifest cache and refetched; the gear in the panel header passed
+   * `routing.handleEndpointChange` straight through, which only sets state and
+   * shows a toast. `handleCloseSettings` bumping `settingsKey` did re-sync — but
+   * only via the `key={model-...}` remount, and `renderStep()` mounts
+   * `ModelSelectionStep` on step 1 only, while the gear is available on every
+   * step. So on steps 2-4 the manifest survived the switch, and Send posted
+   * model B's `target`/`target_url` together with model A's
+   * `input_configuration_id` and A's role keys. `ConfirmStep` reads the model
+   * name from `currentEndpoint`, so it displayed B: nothing on screen revealed
+   * the mismatch.
+   *
+   * Returning to step 1 is deliberate. The role mapping is expressed in the
+   * previous model's input keys, so there is nothing to carry forward.
+   *
+   * The SERIES selection is deliberately NOT cleared: it hangs off the study,
+   * not the model, and the reader would have to pick the same series again for
+   * no reason. Study changes reset it, in the effect above.
+   */
+  const handleEndpointChange = useCallback(
+    (endpoint: AIEndpoint) => {
+      const previous = routing.currentEndpoint;
+      // What the manifest, the role mapping and the wizard hang off is the MODEL
+      // — identified by id and target url. A display-name edit changes neither,
+      // and blowing the wizard back to step 1 for one would silently discard a
+      // completed role mapping because someone relabelled an endpoint in the
+      // settings dialog. Adopt the new label, keep the work.
+      const sameModel =
+        !!previous && previous.id === endpoint.id && previous.url === endpoint.url;
+
+      routing.handleEndpointChange(endpoint);
+
+      if (sameModel) {
+        return;
+      }
+
+      orthancAIService.clearManifestCache();
+      setManifest(null);
+      inputMappingHook.reset();
+      wizard.reset();
+    },
+    [routing, orthancAIService, inputMappingHook, wizard]
+  );
 
   useEffect(() => {
     return () => {
@@ -246,9 +294,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
           </div>
           <div className="p-4">
             <AIEndpointConfig
-              onEndpointChange={endpoint => {
-                routing.handleEndpointChange(endpoint);
-              }}
+              onEndpointChange={handleEndpointChange}
               currentEndpoint={routing.currentEndpoint}
             />
           </div>
@@ -265,7 +311,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
             key={`model-${settingsKey}`}
             orthancAIService={orthancAIService}
             currentEndpoint={routing.currentEndpoint}
-            onEndpointChange={routing.handleEndpointChange}
+            onEndpointChange={handleEndpointChange}
             manifest={manifest}
             onManifestLoaded={setManifest}
             onNext={handleModelNext}
