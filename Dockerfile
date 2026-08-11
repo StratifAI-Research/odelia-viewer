@@ -45,16 +45,26 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml preinstall.js ./
 COPY --parents ./extensions/*/package.json ./modes/*/package.json ./platform/*/package.json ./
 COPY --parents ./custom/extension/*/package.json ./custom/mode/*/package.json ./
 
-# --no-frozen-lockfile (unlike CI): .dockerignore excludes platform/docs, so the
-# lockfile's docs importer has no manifest in the build context and a frozen
-# install would fail. pnpm reconciles by dropping it instead.
+# --frozen-lockfile, same as CI. The image is the one thing we ship that nothing
+# else verifies, so a manifest that has drifted from the lockfile has to fail
+# here rather than be silently reconciled into a different dependency tree.
+#
+# This used to be --no-frozen-lockfile, on the grounds that .dockerignore
+# excludes platform/docs while the lockfile still carries a `platform/docs:`
+# importer. That does not hold: pnpm's frozen check compares lockfile importers
+# against the workspace packages it DISCOVERS, and a directory absent from the
+# build context is never discovered, so there is nothing to conflict. Verified
+# against pnpm 11.5.2 by reproducing this layer exactly (lockfile + workspace +
+# preinstall.js + all 36 manifests, platform/docs removed): "Lockfile is up to
+# date, resolution step is skipped", while the same command with one manifest
+# drifted still fails with ERR_PNPM_OUTDATED_LOCKFILE.
 #
 # Optional deps are kept: platform-native binaries (esbuild/rollup/sharp, ...)
 # ship as optionalDependencies and the build needs them. The only download
 # suppressed is the heavy Cypress binary, a test-only dependency the production
 # build never touches.
 ENV CYPRESS_INSTALL_BINARY=0
-RUN pnpm install --no-frozen-lockfile
+RUN pnpm install --frozen-lockfile
 
 # Copy the local directory
 COPY --exclude=**/.venv/** --exclude=pnpm-lock.yaml --exclude=package.json --exclude=Dockerfile . .
