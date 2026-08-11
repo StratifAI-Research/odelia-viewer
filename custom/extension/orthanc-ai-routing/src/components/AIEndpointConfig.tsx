@@ -20,7 +20,12 @@ import {
   DEFAULT_AI_ENDPOINT_NAME,
   DEFAULT_AI_ENDPOINT_URL,
 } from '../constants';
-import { AI_ENDPOINTS_CONFIG_BASE_KEY, reconcileEndpoints } from '../utils/reconcileEndpoints';
+import {
+  AI_ENDPOINTS_CONFIG_BASE_KEY,
+  readConfiguredEndpoints,
+  reconcileEndpoints,
+  sameEndpoint,
+} from '../utils/reconcileEndpoints';
 
 // Interface for AI endpoint configuration
 export interface AIEndpoint {
@@ -101,35 +106,74 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   const onEndpointChangeRef = useRef(onEndpointChange);
   onEndpointChangeRef.current = onEndpointChange;
 
+  /** Set when the mount load could not read the config — see the save effect. */
+  const skipNextPersistRef = useRef(false);
+
   // Load endpoints on mount, merging any change made to the deployment config
   // into what is already stored. See reconcileEndpoints for why this is a
   // three-way merge rather than "whichever side we read first wins".
   useEffect(() => {
     const stored = readEndpoints(AI_ENDPOINTS_STORAGE_KEY) ?? [];
     const base = readEndpoints(AI_ENDPOINTS_CONFIG_BASE_KEY);
-    const config: AIEndpoint[] = (window as any).config?.aiEndpoints || [];
+    // `null` means the deployment has no usable opinion — app-config.js not
+    // applied yet, or `aiEndpoints` malformed. Reconciling against a fabricated
+    // empty list would read as "the deployment removed everything" and delete
+    // the operator's endpoints, so skip the merge and leave the base untouched:
+    // the next load with a good config still needs a truthful base to diff.
+    const config = readConfiguredEndpoints((window as any).config);
 
-    const merged = reconcileEndpoints({ stored, config, base });
+    const merged = config === null ? stored : reconcileEndpoints({ stored, config, base });
     // Nothing stored and nothing configured — fall back to the built-in.
     const loadedEndpoints = merged.length > 0 ? merged : [DEFAULT_ENDPOINT];
 
-    localStorage.setItem(
-      AI_ENDPOINTS_STORAGE_KEY,
-      JSON.stringify(toPersistableEndpoints(loadedEndpoints))
-    );
-    // Record what config said this time, so the next load can tell a config
-    // change apart from a user edit.
-    localStorage.setItem(
-      AI_ENDPOINTS_CONFIG_BASE_KEY,
-      JSON.stringify(toPersistableEndpoints(config))
-    );
+    // When the config is unusable this pass is a pure READ: no storage write, no
+    // base write. Persisting would be actively harmful with empty storage — the
+    // synthesized DEFAULT_ENDPOINT would be written as if it were the user's own
+    // entry, and the next load with a good config would keep it as "user-added"
+    // alongside the real endpoints, permanently. Showing the fallback without
+    // recording it keeps the bad load from leaving a trace.
+    if (config === null) {
+      skipNextPersistRef.current = true;
+    } else {
+      localStorage.setItem(
+        AI_ENDPOINTS_STORAGE_KEY,
+        JSON.stringify(toPersistableEndpoints(loadedEndpoints))
+      );
+      // Record what config said this time, so the next load can tell a config
+      // change apart from a user edit.
+      localStorage.setItem(
+        AI_ENDPOINTS_CONFIG_BASE_KEY,
+        JSON.stringify(toPersistableEndpoints(config))
+      );
+    }
 
     setEndpoints(loadedEndpoints);
     setIsLoading(false);
 
-    // If no current endpoint is selected, select the first one
-    if (!currentEndpointRef.current && loadedEndpoints.length > 0) {
+    // Push the reconciled endpoint at whoever holds the ACTIVE one.
+    //
+    // This used to re-select only when nothing was selected yet, which never
+    // fired: OrthancAIService's constructor runs at preRegistration and puts
+    // `getAIEndpoints()[0]` — the pre-merge, stored copy — into `currentEndpoint`
+    // before this component ever mounts. So editing an endpoint's URL in
+    // app-config.js moved the stored list and the dropdown, while
+    // `POST /send-to-ai` kept posting to the OLD target_url for the rest of the
+    // session, with nothing on screen to show for it. The dropdown matches on
+    // `id`, which does not change, so it looked correctly selected throughout.
+    //
+    // With a single configured endpoint — `custom/config/app-config.js` declares
+    // only `mst-ai` — editing its URL is the ONLY config change that can matter,
+    // so this is precisely the case the three-way merge was added to serve.
+    const selected = currentEndpointRef.current;
+    const reconciledSelection = selected
+      ? loadedEndpoints.find(endpoint => endpoint.id === selected.id)
+      : undefined;
+
+    if (!selected || !reconciledSelection) {
+      // Never selected, or the deployment removed what was selected.
       onEndpointChangeRef.current(loadedEndpoints[0]);
+    } else if (!sameEndpoint(reconciledSelection, selected)) {
+      onEndpointChangeRef.current(reconciledSelection);
     }
     // Mount-only: read the latest currentEndpoint/onEndpointChange via refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -138,12 +182,24 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   // Save endpoints to localStorage whenever they change. This is the single
   // persistence point — mutators below only call setEndpoints and let this run.
   useEffect(() => {
-    if (endpoints.length > 0) {
-      localStorage.setItem(
-        AI_ENDPOINTS_STORAGE_KEY,
-        JSON.stringify(toPersistableEndpoints(endpoints))
-      );
+    if (endpoints.length === 0) {
+      return;
     }
+    // The one value that must NOT be written back: the fallback shown after a
+    // load that could not read the config. Declining the write above is not
+    // enough on its own, because this effect would persist the same list a
+    // moment later and reintroduce exactly what that decision avoids — a
+    // synthesized DEFAULT_ENDPOINT stored as though the user had added it, which
+    // the next good load then preserves forever as "user-added". Consumed once,
+    // so any real edit that follows still persists normally.
+    if (skipNextPersistRef.current) {
+      skipNextPersistRef.current = false;
+      return;
+    }
+    localStorage.setItem(
+      AI_ENDPOINTS_STORAGE_KEY,
+      JSON.stringify(toPersistableEndpoints(endpoints))
+    );
   }, [endpoints]);
 
   const handleOpenForm = (endpoint?: AIEndpoint) => {
