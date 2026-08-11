@@ -124,13 +124,21 @@ describe('imageSliceSyncCallback slice selection', () => {
 
   // 8 -> 22 is the pair measured in the browser: MR slice 8 and heatmap frame 22 are both
   // at z = 29.36.
+  //
+  // BOTH ENDS are pinned (0 -> 30 and 30 -> 0) as well as interior values. The ends are where
+  // an off-by-one in the rank, or a clamp, shows up while every interior pair still looks
+  // right; the midpoint is where a mirror hides. Between them the four interior pairs, the
+  // midpoint case below, and these two endpoints leave no arrangement of
+  // reverse/shift/clamp that satisfies the whole set but the correct mapping.
   it.each([
+    [0, 30],
+    [2, 28],
     [8, 22],
     [12, 18],
     [25, 5],
-    [2, 28],
+    [30, 0],
   ])('drives volume slice %i to the same-z stack frame %i', async (slice, expected) => {
-    const jumpToSlice = await run(makeVolumeSource(slice), makeStackTarget(0));
+    const jumpToSlice = await run(makeVolumeSource(slice), makeStackTarget(15));
 
     expect(jumpToSlice).toHaveBeenCalledWith({ kind: 'stack' }, { imageIndex: expected });
   });
@@ -156,12 +164,11 @@ describe('imageSliceSyncCallback slice selection', () => {
     expect(jumpToSlice).not.toHaveBeenCalled();
   });
 
-  // A volume TARGET would need a slice index, but the spatial search yields a flat imageIds
-  // index -- 155 entries against 31 slices, in the opposite direction. Declining beats
-  // jumping the reader to an unrelated slice.
   // A volume target gets a SLICE index resolved from world position, never the flat imageIds
-  // index. Here the target is showing slice 0 at the LAST ascending position, so its axis
-  // calibrates as descending: a source at ascending rank 3 must become slice 31-1-3 = 27.
+  // index. The rank is taken in PROJECTION order along the target's own view normal, which is
+  // what makes it direction-free -- there is no calibration step and no mirroring constant.
+  // This target's normal is -z, so ascending projection is descending z: a source at
+  // ascending-z rank 3 lands on slice 31-1-3 = 27.
   it('resolves a DYNAMIC volume target to a slice index, not a flat imageIds index', async () => {
     const volumeTarget = {
       ...makeVolumeSource(0),
@@ -177,6 +184,67 @@ describe('imageSliceSyncCallback slice selection', () => {
     // 155 - 3 - 1 = 151 is what upstream's formula would give, and is out of range for 31 slices.
     expect(jumpToSlice).not.toHaveBeenCalledWith(expect.anything(), { imageIndex: 151 });
   });
+
+  // The same end-pinning for the OTHER direction -- scrolling the heatmap to drive the MR.
+  // This one is worth pinning independently: it goes through volumeSliceIndexFor rather than
+  // the flat nearest-position search, so a defect on this side is invisible to the cases
+  // above. (Frame 15 is deliberately absent: it is the midpoint, where a mirror cannot show.)
+  it.each([
+    [0, 30],
+    [3, 27],
+    [22, 8],
+    [30, 0],
+  ])('drives stack frame %i to the same-z volume slice %i', async (frame, expected) => {
+    // Parked on slice 5, which is none of the expected answers: otherwise the
+    // `alreadyAligned` short-circuit would satisfy the case without ever
+    // resolving an index, and the endpoint pair (frame 30 -> slice 0) is exactly
+    // where that happens with a target parked at 0.
+    const volumeTarget = {
+      ...makeVolumeSource(5),
+      getImageIds: jest.fn(() => volumeImageIds),
+      element: { kind: 'volume-dynamic-target' },
+    };
+    const jumpToSlice = await run(makeStackTarget(frame), volumeTarget);
+
+    expect(jumpToSlice).toHaveBeenCalledWith(
+      { kind: 'volume-dynamic-target' },
+      { imageIndex: expected }
+    );
+  });
+
+  /**
+   * The round trip: forward then reverse must be the identity at every slice.
+   *
+   * Deliberately narrow about what this proves. It composes the implementation with itself,
+   * so it establishes that the two directions are INVERSES of each other -- not that either
+   * lands on the right slice. A mutually-inverse but wrong bijection (say, two adjacent
+   * slices swapped in both directions) still round-trips cleanly. Same-position correctness
+   * is what the two explicit tables above pin, at both ends and in both directions; this adds
+   * the one property they cannot express, which is that sync does not walk the viewports
+   * apart as the reader scrolls back and forth.
+   */
+  it.each([0, 1, 8, 15, 22, 29, 30])(
+    'volume slice %i survives a round trip through the heatmap unchanged',
+    async slice => {
+      // Both viewports start where they cannot already be right for any slice in
+      // the table (frames 3 and 5 are outside {30,29,22,15,8,1,0}), so every case
+      // actually resolves an index rather than short-circuiting on alreadyAligned.
+      const toStack = await run(makeVolumeSource(slice), makeStackTarget(3));
+      const [, { imageIndex: frame }] = toStack.mock.calls.at(-1);
+
+      const volumeTarget = {
+        ...makeVolumeSource(5),
+        getImageIds: jest.fn(() => volumeImageIds),
+        element: { kind: 'volume-dynamic-target' },
+      };
+      const backToVolume = await run(makeStackTarget(frame), volumeTarget);
+
+      expect(backToVolume).toHaveBeenCalledWith(
+        { kind: 'volume-dynamic-target' },
+        { imageIndex: slice }
+      );
+    }
+  );
 
   // The case the count heuristic could NOT see: a plain volume reports slices === imageIds, so
   // it used to fall through as a stack and receive the flat index. This one is showing slice 0
