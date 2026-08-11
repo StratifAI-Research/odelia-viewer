@@ -204,8 +204,28 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
 
   const progressStep = manifest ? 5 : 4;
 
+  /**
+   * A model that publishes an input specification but whose role mapping no
+   * longer satisfies it. The mapping can go stale AFTER the reader reaches
+   * Confirm -- InputMappingStep gates its own Next on `isValid`, but display sets
+   * can change underneath and drop a mapped series, and nothing re-checked it at
+   * step 4.
+   */
+  const mappingIncomplete = !!manifest && !inputMappingHook.isValid;
+
   const handleSendToAI = async () => {
     if (!activeStudyUID) {
+      return;
+    }
+
+    // Refuse, rather than fall through to the flat branch below. That `else` is
+    // the correct path for a model that genuinely publishes no specification --
+    // but it was also reached when a manifest EXISTS and its mapping is invalid,
+    // which silently posts a bare series_uids list with no input_mapping and no
+    // input_configuration_id. MST then assigns the pre/post/subtraction roles
+    // itself and returns a normal-looking result computed on the wrong inputs.
+    // Send is disabled in this state too; this is the second line of defence.
+    if (mappingIncomplete) {
       return;
     }
 
@@ -386,6 +406,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
               studyDescription={getStudyDescription()}
               selectedSeriesCount={inputMappingHook.getSelectedSeriesUIDs().length}
               inputMappingDescription={getInputMappingDescription()}
+              mappingIncomplete={mappingIncomplete}
               onSend={handleSendToAI}
               onBack={() => wizard.goToStep(3)}
               error={routing.error}

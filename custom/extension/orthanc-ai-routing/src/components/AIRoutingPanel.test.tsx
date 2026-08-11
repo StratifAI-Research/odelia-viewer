@@ -383,6 +383,40 @@ describe('AIRoutingPanel — changing the model invalidates what hangs off it', 
     expect(call[3]).toBe('c1');
   });
 
+  /**
+   * The second route into the flat send. `handleSendToAI` branches on
+   * `manifest && isValid` and falls through to the bare series_uids payload
+   * otherwise -- which is right for a model that publishes no specification, and
+   * wrong for one that does but whose mapping has gone stale. InputMappingStep
+   * gates its own Next on `isValid`, but display sets can change underneath and
+   * drop a mapped series after the reader has already reached Confirm.
+   */
+  it('refuses to send a mapped model with an incomplete mapping', async () => {
+    const sm = await renderPanel({ displaySets: [ds({ SeriesInstanceUID: 's1' })] });
+    act(() => mockProps.model.onManifestLoaded(MANIFEST));
+    act(() => mockProps.model.onNext());
+    act(() => mockProps.mode.onSelectConfig('c1'));
+    act(() => mockProps.mode.onNext());
+    act(() => mockProps.mapping.onSetInputSeries('t1', 's1'));
+    act(() => mockProps.mapping.onNext());
+    expect(screen.getByTestId('step-confirm')).toBeTruthy();
+
+    // The mapped series goes away underneath the reader, so the mapping that got
+    // them here no longer satisfies the manifest.
+    act(() => mockProps.confirm.onBack());
+    act(() => mockProps.mapping.onSetInputSeries('t1', null));
+    act(() => mockProps.mapping.onNext());
+
+    expect(mockProps.confirm.mappingIncomplete).toBe(true);
+
+    await act(async () => {
+      await mockProps.confirm.onSend();
+    });
+
+    // Nothing sent, rather than a bare series list with no roles assigned.
+    expect(sm.services.orthancAIService.routeSeriesToAI).not.toHaveBeenCalled();
+  });
+
   it('applies the same invalidation when the change comes from step 1', async () => {
     const sm = await renderPanel({ displaySets: [ds({ SeriesInstanceUID: 's1' })] });
     act(() => mockProps.model.onManifestLoaded(MANIFEST));

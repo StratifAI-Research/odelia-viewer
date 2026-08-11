@@ -8,6 +8,12 @@ interface ConfirmStepProps {
   studyDescription: string;
   selectedSeriesCount: number;
   inputMappingDescription?: string | null;
+  /**
+   * Set when this model publishes an input specification but the role mapping no
+   * longer satisfies it. Send is blocked rather than degraded: see the note in
+   * AIRoutingPanel.handleSendToAI.
+   */
+  mappingIncomplete?: boolean;
   onSend: () => void;
   onBack: () => void;
   error?: string | null;
@@ -18,6 +24,7 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({
   studyDescription,
   selectedSeriesCount,
   inputMappingDescription,
+  mappingIncomplete = false,
   onSend,
   onBack,
   error,
@@ -46,12 +53,20 @@ export const ConfirmStep: React.FC<ConfirmStepProps> = ({
             </div>
           </div>
         )}
+
+        {mappingIncomplete && (
+          <ErrorMessage>
+            This model needs each input role assigned to a series, and the mapping is no longer
+            complete. Go back and reassign it — sending now would let the server choose the roles
+            itself.
+          </ErrorMessage>
+        )}
       </div>
 
       <div className="border-input bg-background flex-shrink-0 space-y-2 border-t px-3 py-3">
         <Button
           onClick={onSend}
-          disabled={!currentEndpoint}
+          disabled={!currentEndpoint || mappingIncomplete}
           className="w-full"
         >
           Send to AI
