@@ -1,120 +1,116 @@
 import React from 'react';
-import PropTypes from 'prop-types';
-import { ServicesManager } from '@ohif/core';
-import { MeasurementTable, Dialog, Input, useViewportGrid } from '@ohif/ui';
+import { MeasurementTable, useViewportGrid } from '@ohif/ui-next';
 import ActionButtons from './ActionButtons';
 import CSVImporter from './CSVImporter';
 
 import LabelingTable from '../ui/LabelingTable';
+import LesionAnnotationDialog from './LesionAnnotationDialog';
 import Config from '../utils/config';
+import configJson from '../utils/config.json';
 import { getPanelConfig } from '../utils/panelConfig';
 import { useMeasurementSubscription } from '../hooks/useMeasurementSubscription';
 
 import downloadCSVReport from '../utils/downloadCSVReport';
 import importCSVReport from '../utils/importCSVReport';
 
+const ANNOTATION_DIALOG_ID = 'enter-annotation';
+
+type PanelLesionTableProps = {
+  name: string;
+  servicesManager: AppTypes.ServicesManager;
+  extensionManager: AppTypes.ExtensionManager;
+  /** Passed by the panel module; unused by this panel. */
+  commandsManager?: AppTypes.CommandsManager;
+};
+
 export default function PanelLesionTable({
   name,
   servicesManager,
-  commandsManager,
   extensionManager,
-}) {
-  const [viewportGrid, viewportGridService] = useViewportGrid();
-  const { activeViewportIndex, viewports } = viewportGrid;
-  const { measurementService, uiDialogService, uiNotificationService, displaySetService } = (
-    servicesManager as any
-  ).services;
-  const [displayMeasurements, setDisplayMeasurements] = useMeasurementSubscription(
+}: PanelLesionTableProps) {
+  const [{ activeViewportId }] = useViewportGrid();
+  // AppTypes marks every service optional (a service can be left unregistered),
+  // but both of these are core services the viewer always registers.
+  const { measurementService, uiDialogService } = servicesManager.services as {
+    measurementService: AppTypes.MeasurementService;
+    uiDialogService: AppTypes.UIDialogService;
+  };
+  const displayMeasurements = useMeasurementSubscription(
     measurementService,
     _getMappedMeasurements
   );
 
-  const totalConfig: Config = require('../utils/config.json');
-  const config = getPanelConfig(totalConfig, name);
+  const config = getPanelConfig(configJson as Config, name);
 
-  async function exportReport() {
-    const measurements = measurementService.getMeasurements();
-    downloadCSVReport(measurements);
+  function exportReport() {
+    downloadCSVReport(measurementService.getMeasurements());
   }
 
-  async function clearMeasurements() {
-    measurementService.clearMeasurements();
-  }
-
-  const jumpToImage = ({ uid, isActive }) => {
-    measurementService.jumpToMeasurement(viewportGrid.activeViewportIndex, uid);
-
-    onMeasurementItemClickHandler({ uid, isActive });
+  // Selection lives on the MeasurementService rather than in local state: the
+  // subscription below re-projects from the service on every measurement event,
+  // so a locally-held flag is wiped as soon as anything changes. Only rows whose
+  // state actually differs are written, keeping this to at most two broadcasts.
+  const selectMeasurement = (uid: string) => {
+    measurementService.getMeasurements().forEach(measurement => {
+      const shouldSelect = measurement.uid === uid;
+      if (!!measurement.isSelected !== shouldSelect) {
+        measurementService.setMeasurementSelected(measurement.uid, shouldSelect);
+      }
+    });
   };
 
-  const onMeasurementItemEditHandler = ({ uid, isActive }) => {
-    const measurement = measurementService.getMeasurement(uid);
-    //Todo: why we are jumping to image?
-    // jumpToImage({ id, isActive });
+  const jumpToMeasurement = (uid: string) => {
+    if (activeViewportId) {
+      measurementService.jumpToMeasurement(activeViewportId, uid);
+    }
+    selectMeasurement(uid);
+  };
 
-    // Defaulted so the Enter-key handler can call this with no args without
-    // crashing on `action.id`; Enter then just dismisses.
-    const onSubmitHandler = ({ action }: { action?: any } = {}) => {
-      switch (action?.id) {
-        case 'delete': {
-          measurementService.remove(uid);
-        }
-      }
-      uiDialogService.dismiss({ id: 'enter-annotation' });
+  const editMeasurement = (uid: string) => {
+    const measurement = measurementService.getMeasurement(uid);
+
+    const onLabelChange = (measurementUID: string, label: string, labelValue: string) => {
+      const current = measurementService.getMeasurement(measurementUID);
+      current.label_data[label] = labelValue;
+      current.label = 'Lesion annotated';
+      measurementService.update(measurementUID, current);
     };
 
-    uiDialogService.create({
-      id: 'enter-annotation',
-      centralize: true,
-      isDraggable: false,
-      showOverlay: true,
-      content: Dialog,
+    uiDialogService.show({
+      id: ANNOTATION_DIALOG_ID,
+      title: 'Enter your annotation',
+      shouldCloseOnEsc: true,
+      content: LesionAnnotationDialog,
       contentProps: {
-        title: 'Enter your annotation',
-        noCloseButton: true,
-        body: ({ value, setValue }) => {
-          const onMeasurementItemEditHandler = (uid, label, label_value) => {
-            const measurement = measurementService.getMeasurement(uid);
-            measurement.label_data[label] = label_value;
-
-            measurement.label = 'Lesion annotated';
-            measurementService.update(uid, measurement);
-          };
-
-          const onKeyPressHandler = event => {
-            if (event.key === 'Enter') {
-              onSubmitHandler();
-            }
-          };
-          return (
-            <div className="bg-primary-dark p-4">
-              <LabelingTable
-                title="Lesion annotation"
-                measurement={measurement}
-                config={config}
-                onChange={onMeasurementItemEditHandler}
-              />
-            </div>
-          );
-        },
-        actions: [
-          // temp: swap button types until colors are updated
-          { id: 'delete', text: 'Delete', type: 'cancel' },
-          { id: 'save', text: 'Save', type: 'secondary' },
-        ],
-        onSubmit: onSubmitHandler,
+        onDelete: () => measurementService.remove(uid),
+        children: (
+          <LabelingTable
+            title="Lesion annotation"
+            measurement={measurement}
+            config={config}
+            onChange={onLabelChange}
+          />
+        ),
       },
     });
   };
 
-  const onMeasurementItemClickHandler = ({ uid, isActive }) => {
-    if (!isActive) {
-      const measurements = [...displayMeasurements];
-      const measurement = measurements.find(m => m.uid === uid);
-
-      measurements.forEach(m => (m.isActive = m.uid !== uid ? false : true));
-      measurement.isActive = true;
-      setDisplayMeasurements(measurements);
+  // MeasurementTable emits the same command names the cornerstone extension
+  // registers (see MeasurementTableNested); this panel handles the subset that
+  // applies to ODELIA lesions and ignores the rest.
+  const onAction = (_e: unknown, command: string | string[], uid: string) => {
+    switch (command) {
+      case 'jumpToMeasurement':
+        jumpToMeasurement(uid);
+        break;
+      case 'renameMeasurement':
+        editMeasurement(uid);
+        break;
+      case 'removeMeasurement':
+        measurementService.remove(uid);
+        break;
+      default:
+        break;
     }
   };
 
@@ -122,15 +118,16 @@ export default function PanelLesionTable({
     <>
       <div
         className="ohif-scrollbar overflow-y-auto overflow-x-hidden"
-        data-cy={'measurements-panel'}
+        data-cy="measurements-panel"
       >
         <MeasurementTable
           title={name}
-          servicesManager={servicesManager}
           data={displayMeasurements}
-          onClick={jumpToImage}
-          onEdit={onMeasurementItemEditHandler}
-        />
+          onAction={onAction}
+          isExpanded={true}
+        >
+          <MeasurementTable.Body />
+        </MeasurementTable>
       </div>
       <div className="flex justify-center p-4">
         <CSVImporter
@@ -147,54 +144,35 @@ export default function PanelLesionTable({
   );
 }
 
-PanelLesionTable.propTypes = {
-  servicesManager: PropTypes.instanceOf(ServicesManager).isRequired,
-};
-
 function _getMappedMeasurements(measurementService) {
-  const measurements = measurementService.getMeasurements();
-  const filteredMeasurements = measurements.filter(element => element.toolName !== 'ODELIALabel');
-
-  const mappedMeasurements = filteredMeasurements.map((m, index) =>
-    _mapMeasurementToDisplay(m, index, measurementService.VALUE_TYPES)
-  );
-
-  return mappedMeasurements;
+  return measurementService
+    .getMeasurements()
+    .filter(element => element.toolName !== 'ODELIALabel')
+    .map(_mapMeasurementToDisplay);
 }
 
 /**
- * Map the measurements to the display text.
- * Adds finding and site information to the displayText and/or label,
- * and provides as 'displayText' and 'label', while providing the original
- * values as baseDisplayText and baseLabel
+ * Project a measurement onto the row shape `MeasurementTable` renders.
+ *
+ * The finding/site text is folded into the label (falling back through
+ * finding -> first finding site -> a placeholder) and `displayText` is left
+ * empty on purpose: the site/finding text was computed in the pre-3.13 version
+ * of this mapper and then unconditionally discarded, so keeping it empty
+ * preserves the shipped behavior rather than newly surfacing that text.
  */
-function _mapMeasurementToDisplay(measurement, index, types) {
-  const {
-    displayText: baseDisplayText,
-    uid,
-    label: baseLabel,
-    type,
-    selected,
-    findingSites,
-    finding,
-  } = measurement;
+function _mapMeasurementToDisplay(measurement) {
+  const { label: baseLabel, findingSites, finding } = measurement;
 
   const firstSite = findingSites?.[0];
   const label = baseLabel || finding?.text || firstSite?.text || 'Lesion not annotated';
-  // displayText is intentionally empty: the site/finding text was computed here
-  // and then unconditionally discarded (`displayText = []`), so the computation
-  // was dead code. Preserve the shipped behavior (empty displayText) without the
-  // dead branch. baseDisplayText/finding/findingSites are still returned below.
-  const displayText: any[] = [];
+
+  // `isSelected` deliberately comes through the spread: it is owned by the
+  // MeasurementService (see selectMeasurement). An earlier version read a
+  // non-existent `selected` key and wrote the result over the real value,
+  // which cleared the highlight on every measurement event.
   return {
-    uid,
+    ...measurement,
     label,
-    baseLabel,
-    measurementType: type,
-    displayText,
-    baseDisplayText,
-    isActive: selected,
-    finding,
-    findingSites,
+    displayText: { primary: [], secondary: [] },
   };
 }

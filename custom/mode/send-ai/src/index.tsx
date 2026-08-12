@@ -1,4 +1,5 @@
 import { id } from './id';
+import { registerModeToolbar } from '@ohif/mode-basic';
 import { ModeFactoryParams } from './types';
 import toolbarButtons from './toolbarButtons';
 
@@ -8,8 +9,27 @@ const ohif = {
   leftPanel: 'view-ai-result.panelModule.seriesList',
 };
 
+// AI results arrive as DICOM SR. Without these handlers the stack handler declines the
+// SR (getSopClassHandlerModule skips a non-image instance with no Rows) and
+// DisplaySetService falls back to getDisplaySetsFromUnsupportedSeries, which wraps the
+// SR in an ImageSet. That fallback is actively harmful here:
+//   - the ImageSet has a truthy `.images`, so DicomWebDataSource mints a
+//     `/frames/1` wadors imageId for an object with no pixel data. The study prefetcher
+//     then requests it, Orthanc answers 400, and the rejection surfaces as an
+//     "Something went wrong" toast carrying a bare XMLHttpRequest (no message, no
+//     stack), so the error dialog renders blank.
+//   - it sets `instance: instances[instance.length - 1]`, i.e. `instances[NaN]` ===
+//     undefined, so `displaySet.instance` is lost and extractAIResultData()'s
+//     `displaySet.instance?.ContentSequence` guard silently returns null.
+// A real SR display set has no `.images` and keeps `.instance`, which fixes both.
+const dicomsr = {
+  sopClassHandler: '@ohif/extension-cornerstone-dicom-sr.sopClassHandlerModule.dicom-sr',
+  sopClassHandler3D: '@ohif/extension-cornerstone-dicom-sr.sopClassHandlerModule.dicom-sr-3d',
+};
+
 const viewAIResult = {
   viewport: 'view-ai-result.viewportModule.ai-tracked-viewport',
+  hangingProtocol: 'view-ai-result.hpSinglePrimary',
 };
 
 // Panels from view-ai-result extension
@@ -28,12 +48,26 @@ const orthancAI = {
 const extensionDependencies = {
   '@ohif/extension-default': '^3.0.0',
   '@ohif/extension-cornerstone': '^3.0.0',
+  // Registered on mode entry via Mode.tsx's `loadModules(Object.keys(extensions))`, so
+  // being `default: false` in pluginConfig.json does not keep it out of this mode.
+  '@ohif/extension-cornerstone-dicom-sr': '^3.0.0',
   'orthanc-ai-routing': '^0.0.1',
   'view-ai-result': '^0.0.1',
 };
 
 function modeFactory() {
   return {
+    /**
+     * Unsubscribe handles for subscriptions this mode instance creates, released by its own
+     * onModeExit. Held on the INSTANCE, matching mode-basic's `_unsubscriptions`.
+     *
+     * Neither a module-level variable nor a WeakMap keyed on servicesManager is correct here:
+     * both are shared by every mode instance that has the same key, so entering this mode while
+     * a previous instance is still exiting lets the older onModeExit unsubscribe the NEWER
+     * subscription and leave its own alive. Each instance owning its exact handles is what
+     * makes overlapping lifecycles safe.
+     */
+    _unsubscriptions: [] as Array<() => void>,
     /**
      * Mode ID, which should be unique among modes used by the viewer. This ID
      * is used to identify the mode in the viewer's state.
@@ -51,7 +85,10 @@ function modeFactory() {
      * Runs when the Mode Route is mounted to the DOM. Usually used to initialize
      * Services and other resources.
      */
-    onModeEnter: ({ servicesManager, extensionManager }: ModeFactoryParams) => {
+    // A method, not an arrow function: it has to see the mode instance as `this` to own its
+    // own unsubscribe handles (see _unsubscriptions above). Mode.tsx invokes it as
+    // `mode?.onModeEnter(...)`, so `this` is the instance.
+    onModeEnter({ servicesManager, extensionManager, commandsManager }: ModeFactoryParams) {
       const { measurementService, toolbarService, toolGroupService } = servicesManager.services;
 
       // Clear existing measurements
@@ -62,6 +99,58 @@ function modeFactory() {
       customizationService?.setCustomizations?.({
         'studyBrowser.tabMode': 'study-ai-subtabs',
       });
+
+      // Replace the stock viewport overlay text with the AI summary. Mode
+      // scope, so it is undone when the user leaves this mode.
+      customizationService?.setCustomizations?.([
+        'view-ai-result.customizationModule.aiViewportOverlay',
+      ]);
+
+      // The mode route seeds this mode's `toolbarButtons` / `toolbarSections`
+      // (see below) onto the Mode customization scope before this runs, so
+      // reading them back here picks up anything a `?customization=` module
+      // layered on top.
+      registerModeToolbar(
+        { toolbarService },
+        {
+          toolbarButtons: customizationService.getCustomization('toolbarButtons'),
+          toolbarSections: customizationService.getCustomization('toolbarSections'),
+        }
+      );
+
+      // Append (updateSection appends to an existing section) rather than
+      // restating cornerstone's topRight corner, so upstream's badges keep
+      // working and this mode only adds the heatmap toggle.
+      toolbarService.updateSection(toolbarService.sections.viewportActionMenu.topRight, [
+        'aiHeatmapToggle',
+      ]);
+
+      // Link the viewports as soon as a heatmap opens beside its primary imaging, instead
+      // of waiting for the reader to press the toggle. Subscribed rather than done once
+      // here because the second viewport appears later, when a thumbnail is dragged in.
+      //
+      // Driven through commands rather than importing view-ai-result's helpers: a mode
+      // depends on an extension by module id, and this one is not a package dependency of
+      // send-ai. `ensureHeatmapImageSliceSync` is built for this call site -- it no-ops
+      // unless a second viewport holds an AI result, every viewport is renderable, and sync
+      // is off, so firing it on every grid change is cheap. The toolbar toggle stays
+      // authoritative: switching sync off records that preference and this stops re-arming
+      // it, which is what `resetHeatmapSyncPreference` clears on each entry.
+      const { viewportGridService } = servicesManager.services;
+
+      commandsManager.run('resetHeatmapSyncPreference');
+
+      const { unsubscribe } = viewportGridService.subscribe(
+        viewportGridService.EVENTS.GRID_STATE_CHANGED,
+        () => {
+          Promise.resolve(commandsManager.run('ensureHeatmapImageSliceSync')).catch(
+            (error: unknown) =>
+              console.warn('send-ai: automatic heatmap slice sync failed', error)
+          );
+        }
+      );
+
+      this._unsubscriptions = [...(this._unsubscriptions ?? []), unsubscribe];
 
       // Obtain Cornerstone tool definitions
       const utilityModule = extensionManager.getModuleEntry(
@@ -110,20 +199,9 @@ function modeFactory() {
           err
         );
       }
-
-      // Register toolbar buttons (safe to call multiple times – service de-dupes)
-      toolbarService?.addButtons?.(toolbarButtons);
-
-      // Ensure buttons appear in primary section
-      toolbarService?.createButtonSection?.('primary', [
-        'Zoom',
-        'WindowLevel',
-        'Pan',
-        'Reset',
-        'ImageSliceSync',
-      ]);
     },
-    onModeExit: ({ servicesManager }: ModeFactoryParams) => {
+    // A method for the same reason as onModeEnter: it releases the handles held on `this`.
+    onModeExit({ servicesManager }: ModeFactoryParams) {
       const {
         toolGroupService,
         syncGroupService,
@@ -132,6 +210,13 @@ function modeFactory() {
         uiDialogService,
         uiModalService,
       } = servicesManager.services;
+
+      // Before the services below are destroyed: the grid subscription re-arms slice sync and
+      // must not fire against a torn-down syncGroupService. Releases exactly the handles THIS
+      // instance created, so a mode being re-entered while this one exits cannot have its
+      // subscription cancelled by us.
+      this._unsubscriptions?.forEach(unsubscribe => unsubscribe());
+      this._unsubscriptions = [];
 
       uiDialogService.hideAll();
       uiModalService.hide();
@@ -150,7 +235,7 @@ function modeFactory() {
      * so a bare boolean reads as `undefined` and disables the mode. This mode
      * accepts any study.
      */
-    isValidMode: ({ modalities }) => {
+    isValidMode: () => {
       return { valid: true };
     },
     /**
@@ -168,7 +253,7 @@ function modeFactory() {
     routes: [
       {
         path: 'template',
-        layoutTemplate: ({ location, servicesManager }) => {
+        layoutTemplate: ({ servicesManager }) => {
           return {
             id: ohif.layout,
             props: {
@@ -191,10 +276,54 @@ function modeFactory() {
         },
       },
     ],
+    /**
+     * Toolbar composition. `{ $reference }` markers are expanded by the
+     * customization service at read time, so the standard tool buttons come from
+     * the cornerstone extension's pack and only this mode's own button is
+     * defined locally. Sections not listed here (viewport action menus, ...)
+     * keep upstream's contents.
+     */
+    toolbarButtons: [{ $reference: 'cornerstone.toolbarButtons' }, ...toolbarButtons],
+    toolbarSections: [
+      { $reference: 'cornerstone.toolbarSections' },
+      { primary: ['Zoom', 'WindowLevel', 'Pan', 'Reset', 'HeatmapSliceSync'] },
+    ],
     /** List of extensions that are used by the mode */
     extensions: extensionDependencies,
-    /** SopClassHandlers used by the mode */
-    sopClassHandlers: [ohif.sopClassHandler],
+    /**
+     * HangingProtocol used by the mode -- the same one labeling-mode pins.
+     *
+     * Without this, setActiveProtocolIds() nulls activeProtocolIds ("No active
+     * protocols, setting all to active") and run() falls to ProtocolEngine matching,
+     * where every registered protocol competes and the layout rests on hpSinglePrimary's
+     * weight-100 rule out-scoring the rest. It does win for a single-study MR/SC/SR URL,
+     * but two protocols already outscore it whenever their rules pass:
+     * @ohif/hpCompare (weight 1000, requires a prior study, so any multi-study URL) and
+     * @ohif/hpMammo (150, an MG study). So this is a live exposure, not a guard against
+     * some future protocol.
+     *
+     * Naming it takes run()'s getProtocolById branch, which skips protocol matching
+     * altogether -- also what quietens the "no matching rules - specify
+     * protocolMatchingRules for default/mpr/..." warnings on entry (40 logs down to 8).
+     *
+     * Trade-off, shared with labeling-mode, which has always pinned this: forcing the
+     * protocol also skips its own protocolMatchingRules. A study that fails
+     * `numberOfDisplaySetsWithImages > 0` (SR-only, PDF/video-only) can no longer fall
+     * through to another protocol and hangs a 1x1 EmptyViewport with no explanation.
+     * `allowUnmatchedView: true` does not help -- it governs later drop/replace, not
+     * initial matching. Acceptable here because this mode exists to show one study's
+     * primary imaging alongside its AI result, and a study with no primary imaging has
+     * nothing for it to do.
+     */
+    hangingProtocol: viewAIResult.hangingProtocol,
+    /**
+     * SopClassHandlers used by the mode. Order mirrors mode-basic: the stack handler
+     * first, then SR with 3D ahead of 2D. DisplaySetService runs every handler in turn
+     * and drops the instances each one claims, so the stack handler's position is not
+     * load-bearing here (it declines the SR outright) -- but keeping upstream's relative
+     * order avoids surprises if that changes.
+     */
+    sopClassHandlers: [ohif.sopClassHandler, dicomsr.sopClassHandler3D, dicomsr.sopClassHandler],
   };
 }
 

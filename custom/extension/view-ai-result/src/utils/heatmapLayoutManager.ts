@@ -6,7 +6,7 @@ interface LayoutConfig {
   viewportOptions: any;
   aiResult: AIResult;
   viewportGridService: any;
-  servicesManager: any;
+  servicesManager: AppTypes.ServicesManager;
 }
 
 interface CapturedViewport {

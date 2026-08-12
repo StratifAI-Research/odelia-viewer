@@ -86,19 +86,173 @@ describe('OrthancAIService — getOrthancStudyId', () => {
     fetchMock.mockResolvedValueOnce(
       mockResponse({ json: [{ ID: 'x', Type: 'Series', Path: '' }] })
     );
-    await expect(service.getOrthancStudyId('1.2.3')).rejects.toThrow('No Orthanc Study ID');
+    await expect(service.getOrthancStudyId('1.2.3')).rejects.toThrow(
+      'Orthanc has no study with StudyInstanceUID 1.2.3'
+    );
   });
 
   it('throws with the response body text on non-ok', async () => {
     fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 500, text: 'boom' }));
     await expect(service.getOrthancStudyId('1.2.3')).rejects.toThrow(
-      'Failed to lookup study: boom'
+      'Failed to look up the study in Orthanc (HTTP 500): boom'
     );
   });
 
   it('throws when the lookup response is an empty array', async () => {
     fetchMock.mockResolvedValueOnce(mockResponse({ json: [] }));
-    await expect(service.getOrthancStudyId('1.2.3')).rejects.toThrow('No Orthanc Study ID found');
+    await expect(service.getOrthancStudyId('1.2.3')).rejects.toThrow('Orthanc has no study');
+  });
+
+  // The reported bug: with no Orthanc attached the viewer's own dev server
+  // answers the lookup with an HTML 404 page, and the whole page — doctype,
+  // <head>, <pre>Cannot POST /tools/lookup</pre> — was pasted into the panel.
+  it('reports a misconfigured server instead of echoing an HTML 404 page', async () => {
+    const html =
+      '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
+      '<title>Error</title></head><body><pre>Cannot POST /tools/lookup</pre></body></html>';
+    fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 404, text: html }));
+
+    const error = await service.getOrthancStudyId('1.2.3').catch((e: Error) => e);
+    expect(error).toBeInstanceOf(Error);
+    // Negative control: none of the markup survives into the message.
+    expect((error as Error).message).not.toMatch(/[<>]/);
+    expect((error as Error).message).toBe(
+      'No Orthanc API at http://orthanc:8042: POST /tools/lookup returned 404. ' +
+        'Check that Orthanc is running and that "orthancUrl" in the viewer configuration points at it.'
+    );
+  });
+
+  // A genuine Orthanc 404 carries a JSON body; that detail is worth quoting, so
+  // the "not an Orthanc server" wording must not swallow it.
+  it('quotes an Orthanc JSON error body on a 404 rather than blaming the configuration', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({ ok: false, status: 404, json: { Message: 'Unknown resource' } })
+    );
+    await expect(service.getOrthancStudyId('1.2.3')).rejects.toThrow(
+      'Failed to look up the study in Orthanc (HTTP 404): Unknown resource'
+    );
+  });
+
+  it('reports an unreachable server when fetch rejects with a TypeError', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await expect(service.getOrthancStudyId('1.2.3')).rejects.toThrow(
+      'Cannot reach the Orthanc server at http://orthanc:8042.'
+    );
+  });
+
+  it('reports a non-Orthanc server when a 200 body is not the expected JSON array', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ text: '<html>index</html>' }));
+    await expect(service.getOrthancStudyId('1.2.3')).rejects.toThrow('does not look like an Orthanc server');
+  });
+
+  it('reports a non-Orthanc server when a 200 body is JSON but not an array', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ json: { unexpected: true } }));
+    await expect(service.getOrthancStudyId('1.2.3')).rejects.toThrow('does not look like an Orthanc server');
+  });
+
+  // A proxy can wrap an HTML page inside a JSON error field. The markup filter
+  // must apply to JSON-derived details too, not just to non-JSON bodies.
+  it('skips a JSON error field that contains markup and falls through to the next', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({
+        ok: false,
+        status: 500,
+        json: { message: '<html>proxy failure</html>', error: 'upstream refused' },
+      })
+    );
+    const error = await service.getOrthancStudyId('1.2.3').catch((e: Error) => e);
+    expect((error as Error).message).toBe(
+      'Failed to look up the study in Orthanc (HTTP 500): upstream refused'
+    );
+    expect((error as Error).message).not.toMatch(/[<>]/);
+  });
+
+  it('falls back to the status message when every JSON error field is markup', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({ ok: false, status: 500, json: { message: '<html>nope</html>' } })
+    );
+    const error = await service.getOrthancStudyId('1.2.3').catch((e: Error) => e);
+    expect((error as Error).message).toBe('Failed to look up the study in Orthanc (HTTP 500).');
+  });
+
+  // A cross-realm TypeError (iframe, polyfilled fetch) fails `instanceof`, so
+  // the name is checked too — otherwise the reader gets a bare "Failed to fetch".
+  it('recognises a cross-realm TypeError by name', async () => {
+    const crossRealm = new Error('Failed to fetch');
+    crossRealm.name = 'TypeError';
+    fetchMock.mockRejectedValueOnce(crossRealm);
+    await expect(service.getOrthancStudyId('1.2.3')).rejects.toThrow(
+      'Cannot reach the Orthanc server at http://orthanc:8042.'
+    );
+  });
+
+  it('caps an over-long error detail so one body cannot flood the panel', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({ ok: false, status: 500, json: { message: 'x'.repeat(500) } })
+    );
+    const error = await service.getOrthancStudyId('1.2.3').catch((e: Error) => e);
+    expect((error as Error).message.length).toBeLessThan(300);
+    expect((error as Error).message).toMatch(/…$/);
+  });
+});
+
+// getOrthancStudyId delegates here, so the whole error surface above is shared.
+// These pin the parts only the generic entry point exposes: picking a
+// non-Study resource kind, and answering "not present" with null instead of
+// throwing — the distinction StudyBrowserNested relies on to tell an
+// already-deleted series apart from a failed lookup.
+describe('OrthancAIService — lookupResourceId', () => {
+  let fetchMock: jest.Mock;
+  let service: OrthancAIService;
+
+  beforeEach(() => {
+    installLocalStorageMock();
+    fetchMock = installFetchMock();
+    silenceConsole();
+    service = new OrthancAIService({ configuration: { orthancUrl: 'http://orthanc:8042' } });
+  });
+  afterEach(() => jest.restoreAllMocks());
+
+  it('returns the id of the requested resource type', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({
+        json: [
+          { ID: 'orthanc-99', Type: 'Study', Path: '' },
+          { ID: 'series-1', Type: 'Series', Path: '' },
+        ],
+      })
+    );
+    const id = await service.lookupResourceId('1.2.3', 'Series', 'look up the series');
+    expect(id).toBe('series-1');
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(url).toBe('http://orthanc:8042/tools/lookup');
+    expect(init.body).toBe('1.2.3');
+  });
+
+  it('resolves to null (not a throw) when the type is absent from the results', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({ json: [{ ID: 'orthanc-99', Type: 'Study', Path: '' }] })
+    );
+    await expect(service.lookupResourceId('1.2.3', 'Series', 'look up the series')).resolves.toBeNull();
+  });
+
+  it('resolves to null on an empty result set', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ json: [] }));
+    await expect(service.lookupResourceId('1.2.3', 'Series', 'look up the series')).resolves.toBeNull();
+  });
+
+  it('still throws a reader-facing message on a transport failure', async () => {
+    fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await expect(service.lookupResourceId('1.2.3', 'Series', 'look up the series')).rejects.toThrow(
+      'Cannot reach the Orthanc server at http://orthanc:8042'
+    );
+  });
+
+  it('names the caller-supplied action in an HTTP failure message', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 500, text: 'boom' }));
+    await expect(service.lookupResourceId('1.2.3', 'Series', 'look up the series')).rejects.toThrow(
+      'Failed to look up the series (HTTP 500): boom'
+    );
   });
 });
 
@@ -118,31 +272,60 @@ describe('OrthancAIService — getModelManifest (+ cache)', () => {
   it('returns data.manifest when present and caches it (no second fetch)', async () => {
     const manifest = { model_id: 'm', model_name: 'M', version: '1', input_configurations: [] };
     fetchMock.mockResolvedValueOnce(mockResponse({ json: { manifest } }));
-    expect(await service.getModelManifest(EP)).toEqual(manifest);
-    expect(await service.getModelManifest(EP)).toEqual(manifest);
+    expect(await service.getModelManifest(EP)).toEqual({ status: 'available', manifest });
+    expect(await service.getModelManifest(EP)).toEqual({ status: 'available', manifest });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('treats a top-level object with model_id as the manifest', async () => {
     const data = { model_id: 'm', model_name: 'M', version: '1', input_configurations: [] };
     fetchMock.mockResolvedValueOnce(mockResponse({ json: data }));
-    expect(await service.getModelManifest(EP)).toEqual(data);
+    expect(await service.getModelManifest(EP)).toEqual({ status: 'available', manifest: data });
   });
 
-  it('returns null on non-ok WITHOUT caching, so a later call retries (OAR-M-manifest)', async () => {
+  // The distinction this whole return type exists for: a model that publishes no
+  // specification is `absent`, an unreachable router is `failed`. Reporting the
+  // second as the first is what let a study be sent with no input_mapping and no
+  // input_configuration_id, so MST assigned the pre/post/subtraction roles itself
+  // and returned a normal-looking result computed on the wrong inputs.
+  it('reports a transport failure as `failed`, NOT as an absent manifest', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 502 }));
+    const result = await service.getModelManifest(EP);
+
+    expect(result.status).toBe('failed');
+    expect((result as { reason: string }).reason).toContain('502');
+  });
+
+  it('names the missing plugin when the router has no /ai-manifest route', async () => {
     fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 404 }));
-    expect(await service.getModelManifest(EP)).toBeNull();
+    const result = await service.getModelManifest(EP);
+
+    expect(result.status).toBe('failed');
+    expect((result as { reason: string }).reason).toMatch(/AI routing plugin/i);
+  });
+
+  it('does not cache a failure, so a later call retries (OAR-M-manifest)', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 404 }));
+    expect((await service.getModelManifest(EP)).status).toBe('failed');
     // A transient failure must not be cached: the next call re-fetches and can
     // recover the real manifest (previously null was frozen until reload).
     const manifest = { model_id: 'm', model_name: 'M', version: '1', input_configurations: [] };
     fetchMock.mockResolvedValueOnce(mockResponse({ json: { manifest } }));
-    expect(await service.getModelManifest(EP)).toEqual(manifest);
+    expect(await service.getModelManifest(EP)).toEqual({ status: 'available', manifest });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('returns null when fetch throws', async () => {
+  it('reports `failed` when fetch throws, carrying the reader-facing reason', async () => {
     fetchMock.mockRejectedValueOnce(new Error('network'));
-    expect(await service.getModelManifest(EP)).toBeNull();
+    const result = await service.getModelManifest(EP);
+
+    expect(result.status).toBe('failed');
+    expect((result as { reason: string }).reason).toBeTruthy();
+  });
+
+  it('reports `failed` when the body is not JSON', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ text: '<html>proxy error</html>' }));
+    expect((await service.getModelManifest(EP)).status).toBe('failed');
   });
 
   it('clearManifestCache forces a refetch', async () => {
@@ -153,92 +336,36 @@ describe('OrthancAIService — getModelManifest (+ cache)', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it('returns null when manifest key is absent and there is no model_id', async () => {
-    fetchMock.mockResolvedValueOnce(mockResponse({ json: { some_other_key: true } }));
-    expect(await service.getModelManifest(EP)).toBeNull();
-  });
-});
-
-describe('OrthancAIService — routeStudyToAI', () => {
-  let fetchMock: jest.Mock;
-  let service: OrthancAIService;
-
-  beforeEach(() => {
-    installLocalStorageMock();
-    fetchMock = installFetchMock();
-    silenceConsole();
-    service = new OrthancAIService({ configuration: { orthancUrl: 'http://orthanc:8042' } });
-    service.setCurrentEndpoint(AI_ENDPOINT);
-  });
-  afterEach(() => jest.restoreAllMocks());
-
-  it('looks up the study id then POSTs to /send-to-ai', async () => {
-    fetchMock
-      .mockResolvedValueOnce(
-        mockResponse({ json: [{ ID: 'orthanc-99', Type: 'Study', Path: '' }] })
-      )
-      .mockResolvedValueOnce(
-        mockResponse({ json: { status: 'success', workitem_uid: 'w1', message: 'ok' } })
-      );
-
-    const res = await service.routeStudyToAI('1.2.3');
-    expect(res).toEqual({ status: 'success', workitem_uid: 'w1', message: 'ok' });
-
-    const [sendUrl, sendInit] = fetchMock.mock.calls[1];
-    expect(sendUrl).toBe('http://orthanc:8042/send-to-ai');
-    expect(JSON.parse(sendInit.body)).toEqual({
-      study_id: 'orthanc-99',
-      target: 'test-ai',
-      target_url: AI_ENDPOINT.url,
-    });
+  // A 200 that declares neither a manifest nor a model_id is not an answer to the
+  // question we asked. Filing it as `absent` is what enables the flat send, so an
+  // unreadable body is reported the same way an unreachable router is: blocked,
+  // explained, retryable. `{ manifest: null }` remains the way to say "none".
+  it.each([
+    ['neither a manifest nor a model_id', { some_other_key: true }],
+    ['an error payload', { error: 'upstream failed' }],
+    ['an empty object', {}],
+    ['an array', [{ model_id: 'm' }]],
+    ['a manifest missing input_configurations', { manifest: { model_id: 'm', version: '1' } }],
+    ['an empty manifest object', { manifest: {} }],
+  ])('reports `failed` for a 200 carrying %s', async (_label, body) => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ json: body }));
+    expect((await service.getModelManifest(EP)).status).toBe('failed');
   });
 
-  it('throws when no endpoint is configured', async () => {
-    // Explicit precondition: empty endpoints array → loadCurrentEndpoint leaves it null.
-    localStorage.setItem('aiEndpoints', JSON.stringify([]));
-    const bare = new OrthancAIService({ configuration: {} });
-    expect(bare.getCurrentEndpoint()).toBeNull();
-    await expect(bare.routeStudyToAI('1.2.3')).rejects.toThrow('No AI endpoint configured');
+  it('does not cache an unreadable 200, so a fixed router recovers without a reload', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ json: { error: 'upstream failed' } }));
+    expect((await service.getModelManifest(EP)).status).toBe('failed');
+
+    const manifest = { model_id: 'm', model_name: 'M', version: '1', input_configurations: [] };
+    fetchMock.mockResolvedValueOnce(mockResponse({ json: { manifest } }));
+    expect(await service.getModelManifest(EP)).toEqual({ status: 'available', manifest });
   });
 
-  it('surfaces {message} from a non-ok send response', async () => {
-    fetchMock
-      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
-      .mockResolvedValueOnce(
-        mockResponse({ ok: false, status: 400, json: { message: 'bad input' } })
-      );
-    await expect(service.routeStudyToAI('1.2.3')).rejects.toThrow('bad input');
-  });
-
-  it('maps an AbortError to a timeout message', async () => {
-    fetchMock.mockResolvedValueOnce(
-      mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] })
-    );
-    fetchMock.mockRejectedValueOnce(Object.assign(new Error('aborted'), { name: 'AbortError' }));
-    await expect(service.routeStudyToAI('1.2.3')).rejects.toThrow(
-      'Request timed out after 30 seconds'
-    );
-  });
-
-  it('surfaces {error} from a non-ok send response', async () => {
-    fetchMock
-      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
-      .mockResolvedValueOnce(
-        mockResponse({ ok: false, status: 422, json: { error: 'validation failed' } })
-      );
-    await expect(service.routeStudyToAI('1.2.3')).rejects.toThrow('validation failed');
-  });
-
-  // extractErrorMessage reads the body once as text and tries to JSON.parse it.
-  // A non-JSON body (e.g. an HTML error page) is not surfaced raw — we prefer the
-  // clean status-based message.
-  it('falls back to the status-based message when the error body is not JSON', async () => {
-    fetchMock
-      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
-      .mockResolvedValueOnce(
-        mockResponse({ ok: false, status: 502, text: '<html>Bad Gateway</html>' })
-      );
-    await expect(service.routeStudyToAI('1.2.3')).rejects.toThrow('HTTP error! status: 502');
+  it('caches `absent`, which is a decided answer', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ json: { manifest: null } }));
+    expect(await service.getModelManifest(EP)).toEqual({ status: 'absent' });
+    expect(await service.getModelManifest(EP)).toEqual({ status: 'absent' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -311,6 +438,46 @@ describe('OrthancAIService — routeSeriesToAI', () => {
       'Request timed out after 30 seconds'
     );
   });
+
+  it('surfaces {error} from a non-ok send response', async () => {
+    fetchMock
+      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
+      .mockResolvedValueOnce(
+        mockResponse({ ok: false, status: 422, json: { error: 'validation failed' } })
+      );
+    await expect(service.routeSeriesToAI('1.2.3', ['s1'])).rejects.toThrow('validation failed');
+  });
+
+  // /send-to-ai is the routing plugin's route, not Orthanc's. A 404 there means
+  // the plugin is missing — telling the reader to check `orthancUrl` (which the
+  // successful lookup just proved correct) would send them the wrong way.
+  it('blames the routing plugin, not the configuration, for a 404 on /send-to-ai', async () => {
+    fetchMock
+      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
+      .mockResolvedValueOnce(mockResponse({ ok: false, status: 404, text: '<html>404</html>' }));
+    const error = await service.routeSeriesToAI('1.2.3', ['s1']).catch((e: Error) => e);
+    expect((error as Error).message).toBe(
+      'The Orthanc server at http://orthanc:8042 has no POST /send-to-ai route (HTTP 404). ' +
+        'The AI routing plugin is probably not installed or not enabled.'
+    );
+    expect((error as Error).message).not.toMatch(/orthancUrl/);
+  });
+
+  // The error body is read once as text and JSON.parse is attempted. A non-JSON
+  // body (e.g. an HTML error page) is never surfaced raw — the status-based
+  // message is used instead.
+  it('falls back to the status-based message when the error body is not JSON', async () => {
+    fetchMock
+      .mockResolvedValueOnce(mockResponse({ json: [{ ID: 'o1', Type: 'Study', Path: '' }] }))
+      .mockResolvedValueOnce(
+        mockResponse({ ok: false, status: 502, text: '<html>Bad Gateway</html>' })
+      );
+    const error = await service.routeSeriesToAI('1.2.3', ['s1']).catch((e: Error) => e);
+    expect((error as Error).message).toBe(
+      'Failed to send the study to the AI endpoint (HTTP 502).'
+    );
+    expect((error as Error).message).not.toMatch(/[<>]/);
+  });
 });
 
 describe('OrthancAIService — getWorkitemStatus / parseWorkitemStatus', () => {
@@ -369,13 +536,30 @@ describe('OrthancAIService — getWorkitemStatus / parseWorkitemStatus', () => {
   it('throws on non-ok', async () => {
     fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 404, text: 'missing' }));
     await expect(service.getWorkitemStatus('w1')).rejects.toThrow(
-      'Failed to get workitem status: 404'
+      'Failed to read the AI job status (HTTP 404): missing'
     );
   });
 
-  it('throws on an unparseable body', async () => {
-    fetchMock.mockResolvedValueOnce(mockResponse({ text: 'not json' }));
-    await expect(service.getWorkitemStatus('w1')).rejects.toThrow('Failed to parse workitem JSON');
+  // The raw SyntaxError embeds an excerpt of the body, and this message now
+  // reaches the panel through the lost-contact path, so it must not appear.
+  it('throws a sanitised message on an unparseable body', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ text: '<!DOCTYPE html><body>nope</body>' }));
+    const error = await service.getWorkitemStatus('w1').catch((e: Error) => e);
+    expect((error as Error).message).toBe(
+      'http://orthanc:8042 answered GET /ups-rs/workitems with an unexpected body — ' +
+        'it does not look like an Orthanc server. Check that Orthanc is running and that ' +
+        '"orthancUrl" in the viewer configuration points at it.'
+    );
+    expect((error as Error).message).not.toMatch(/DOCTYPE|SyntaxError/);
+  });
+
+  // A real UPS-RS server returns 404 for a deleted or unknown workitem. That is
+  // not a configuration fault, so it must not be reported as one.
+  it('does not blame the configuration for a 404 on a specific workitem', async () => {
+    fetchMock.mockResolvedValueOnce(mockResponse({ ok: false, status: 404, text: '' }));
+    const error = await service.getWorkitemStatus('w1').catch((e: Error) => e);
+    expect((error as Error).message).toBe('Failed to read the AI job status (HTTP 404).');
+    expect((error as Error).message).not.toMatch(/orthancUrl/);
   });
 
   it('returns UNKNOWN state when the state tag is absent', async () => {
@@ -460,6 +644,50 @@ describe('OrthancAIService — workitem polling', () => {
     service.stopWorkitemPolling();
   });
 
+  // The server going away mid-job used to be invisible: every poll failed
+  // silently and the reader watched a progress bar until the 10-minute cap.
+  it('gives up and reports lost contact after a run of consecutive failures', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Failed to fetch'));
+    const cb = jest.fn();
+    await service.startWorkitemPolling('w1', cb, 500);
+
+    // Four failures in a row is still treated as transient.
+    await jest.advanceTimersByTimeAsync(500 * 4);
+    expect(cb).not.toHaveBeenCalled();
+
+    await jest.advanceTimersByTimeAsync(500); // fifth
+    expect(cb).toHaveBeenCalledTimes(1);
+    const status = cb.mock.calls[0][0];
+    expect(status.state).toBe('CANCELED');
+    expect(status.cancellationReason).toMatch(/Lost contact with the server/);
+    expect(status.cancellationReason).toMatch(/Cannot reach the Orthanc server/);
+
+    // The interval is cleared, so nothing fires afterwards.
+    await jest.advanceTimersByTimeAsync(5000);
+    expect(cb).toHaveBeenCalledTimes(1);
+  });
+
+  // Negative control for the counter: failures separated by a success must not
+  // accumulate into a spurious give-up.
+  it('resets the failure run after a successful poll', async () => {
+    const inProgress = () =>
+      mockResponse({ text: JSON.stringify({ '00741000': { vr: 'CS', Value: ['IN_PROGRESS'] } }) });
+    fetchMock
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockImplementationOnce(async () => inProgress()) // success resets the run
+      .mockRejectedValue(new TypeError('Failed to fetch'));
+    const cb = jest.fn();
+    await service.startWorkitemPolling('w1', cb, 500);
+
+    await jest.advanceTimersByTimeAsync(500 * 8); // 4 fail, 1 ok, 3 fail
+    expect(cb).toHaveBeenCalledTimes(1);
+    expect(cb.mock.calls[0][0]).toMatchObject({ state: 'IN_PROGRESS' });
+    service.stopWorkitemPolling();
+  });
+
   it('stops polling and reports a timeout after the max duration', async () => {
     // Never terminal: always IN_PROGRESS.
     fetchMock.mockResolvedValue(
@@ -474,12 +702,126 @@ describe('OrthancAIService — workitem polling', () => {
 
     const lastCall = cb.mock.calls[cb.mock.calls.length - 1][0];
     expect(lastCall).toMatchObject({ state: 'CANCELED' });
-    expect(lastCall.cancellationReason).toMatch(/timed out/i);
+    // Asserted exactly: a loose /\d+ minutes?/ here passed while the message
+    // actually read "0 minutes", because the duration was rounded from 1000ms.
+    expect(lastCall.cancellationReason).toBe(
+      'AI analysis timed out after 1 second without a result. ' +
+        'The job may still be running on the server.'
+    );
 
     // No further ticks run after the timeout stops the interval.
     const callsAfterTimeout = cb.mock.calls.length;
     await jest.advanceTimersByTimeAsync(2000);
     expect(cb.mock.calls.length).toBe(callsAfterTimeout);
+  });
+
+  // clearInterval only cancels future ticks. A poll already awaiting a response
+  // used to complete and report into a run the caller had stopped — at a 2s
+  // interval with a 30s timeout, up to ~15 of them.
+  it('drops a poll that was still in flight when polling stopped', async () => {
+    let release: (value: Response) => void = () => {};
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>(resolve => {
+          release = resolve;
+        })
+    );
+    const cb = jest.fn();
+    service.startWorkitemPolling('w1', cb, 500);
+
+    await jest.advanceTimersByTimeAsync(500); // tick fires and blocks on fetch
+    expect(cb).not.toHaveBeenCalled();
+
+    service.stopWorkitemPolling();
+    release(
+      mockResponse({ text: JSON.stringify({ '00741000': { vr: 'CS', Value: ['COMPLETED'] } }) })
+    );
+    await jest.advanceTimersByTimeAsync(10);
+
+    expect(cb).not.toHaveBeenCalled();
+  });
+
+  // Same hazard across runs: a straggler from workitem A must not report into
+  // the callback now watching workitem B.
+  it('drops an in-flight poll from a run that has been replaced', async () => {
+    let releaseA: (value: Response) => void = () => {};
+    fetchMock.mockImplementationOnce(
+      () =>
+        new Promise<Response>(resolve => {
+          releaseA = resolve;
+        })
+    );
+    const cbA = jest.fn();
+    const cbB = jest.fn();
+    service.startWorkitemPolling('wA', cbA, 500);
+    await jest.advanceTimersByTimeAsync(500); // A's tick blocks on fetch
+
+    fetchMock.mockResolvedValue(
+      mockResponse({ text: JSON.stringify({ '00741000': { vr: 'CS', Value: ['IN_PROGRESS'] } }) })
+    );
+    service.startWorkitemPolling('wB', cbB, 500);
+
+    releaseA(
+      mockResponse({ text: JSON.stringify({ '00741000': { vr: 'CS', Value: ['COMPLETED'] } }) })
+    );
+    await jest.advanceTimersByTimeAsync(500);
+
+    expect(cbA).not.toHaveBeenCalled();
+    expect(cbB).toHaveBeenCalledTimes(1);
+    expect(cbB.mock.calls[0][0]).toMatchObject({ state: 'IN_PROGRESS' });
+    service.stopWorkitemPolling();
+  });
+
+  // setInterval fires on schedule regardless of whether the previous request
+  // came back. At the panel's 2s interval against a server that can take the
+  // full 30s request timeout, ticks used to pile ~15 requests deep — and the
+  // overlapping replies scrambled the attempt count and the failure counter.
+  it('runs one request at a time instead of piling up overlapping polls', async () => {
+    let release: (value: Response) => void = () => {};
+    fetchMock.mockImplementation(
+      () =>
+        new Promise<Response>(resolve => {
+          release = resolve;
+        })
+    );
+    const cb = jest.fn();
+    service.startWorkitemPolling('w1', cb, 500, 60000);
+
+    await jest.advanceTimersByTimeAsync(500 * 5); // five ticks, first still pending
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    release(
+      mockResponse({ text: JSON.stringify({ '00741000': { vr: 'CS', Value: ['IN_PROGRESS'] } }) })
+    );
+    await jest.advanceTimersByTimeAsync(500); // slot free again, next tick polls
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    service.stopWorkitemPolling();
+  });
+
+  // The terminal-state handler stops polling *after* invoking the callback. If
+  // that callback kicked off a new job, the stop would have killed the run it
+  // had just started.
+  it('does not stop a run that the terminal-state callback itself started', async () => {
+    fetchMock.mockResolvedValueOnce(
+      mockResponse({ text: JSON.stringify({ '00741000': { vr: 'CS', Value: ['COMPLETED'] } }) })
+    );
+    fetchMock.mockResolvedValue(
+      mockResponse({ text: JSON.stringify({ '00741000': { vr: 'CS', Value: ['IN_PROGRESS'] } }) })
+    );
+
+    const cbB = jest.fn();
+    const cbA = jest.fn(() => {
+      service.startWorkitemPolling('wB', cbB, 500);
+    });
+    service.startWorkitemPolling('wA', cbA, 500);
+
+    await jest.advanceTimersByTimeAsync(500); // A completes, its callback starts B
+    expect(cbA).toHaveBeenCalledTimes(1);
+
+    await jest.advanceTimersByTimeAsync(500); // B's first tick must still fire
+    expect(cbB).toHaveBeenCalledTimes(1);
+    expect(cbB.mock.calls[0][0]).toMatchObject({ state: 'IN_PROGRESS' });
+    service.stopWorkitemPolling();
   });
 
   it('a second startWorkitemPolling call cancels the first interval', async () => {

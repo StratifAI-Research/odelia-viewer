@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from '@ohif/ui';
+import { Button } from '@ohif/ui-next';
 import SeriesSelector, { SeriesInfo } from '../SeriesSelector';
 import { SeriesListSkeleton, EmptyState, ErrorState } from '../LoadingStates';
 
@@ -10,7 +10,7 @@ interface SeriesSelectionStepProps {
   onSelectAll: () => void;
   onClearSelection: () => void;
   onNext: () => void;
-  onBack?: () => void; // Optional - kept for compatibility but won't be used
+  onBack?: () => void;
   onRetry?: () => void; // Retry loading series on error
   isLoading?: boolean;
   error?: string | null;
@@ -43,9 +43,9 @@ export const SeriesSelectionStep: React.FC<SeriesSelectionStepProps> = ({
       return (
         <div className="space-y-3">
           <p className="text-muted-foreground text-xs">Loading series from display sets...</p>
-          <div className="bg-secondary-dark text-muted-foreground rounded p-2 text-xs">
+          <div className="bg-muted text-muted-foreground rounded p-2 text-xs">
             <div className="flex items-center space-x-2">
-              <div className="border-primary-light h-4 w-4 animate-spin rounded-full border-2 border-t-transparent"></div>
+              <div className="border-primary h-4 w-4 animate-spin rounded-full border-2 border-t-transparent"></div>
               <span>Waiting for DICOM data...</span>
             </div>
           </div>
@@ -74,7 +74,7 @@ export const SeriesSelectionStep: React.FC<SeriesSelectionStepProps> = ({
           onSelectAll={onSelectAll}
           onClearSelection={onClearSelection}
         />
-        <div className="text-muted-foreground bg-secondary-dark rounded p-2 text-xs">
+        <div className="text-muted-foreground bg-muted rounded p-2 text-xs">
           ℹ️ Only original series shown. AI results excluded.
         </div>
       </div>
@@ -87,7 +87,7 @@ export const SeriesSelectionStep: React.FC<SeriesSelectionStepProps> = ({
         {renderContent()}
       </div>
 
-      <div className="border-secondary-light flex-shrink-0 space-y-2 border-t bg-black px-3 py-3">
+      <div className="border-input bg-background flex-shrink-0 space-y-2 border-t px-3 py-3">
         <Button
           onClick={onNext}
           disabled={selectedSeriesUIDs.size === 0 || isLoading}
@@ -98,7 +98,7 @@ export const SeriesSelectionStep: React.FC<SeriesSelectionStepProps> = ({
         {onBack && (
           <Button
             onClick={onBack}
-            variant="outlined"
+            variant="outline"
             className="w-full"
           >
             &larr; Back

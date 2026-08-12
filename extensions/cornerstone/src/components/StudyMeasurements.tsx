@@ -1,6 +1,5 @@
 import React from 'react';
-import { useActiveViewportDisplaySets, useSystem, utils } from '@ohif/core';
-// import { AccordionContent, AccordionItem, AccordionTrigger } from '@ohif/ui-next';
+import { useActiveViewportDisplaySets, utils } from '@ohif/core';
 
 import { AccordionGroup } from './AccordionGroup';
 import MeasurementsOrAdditionalFindings from './MeasurementsOrAdditionalFindings';
@@ -24,36 +23,38 @@ export const groupByStudy = (items, grouping, childProps) => {
 
   let firstSelected, firstGroup;
 
-  items.forEach(item => {
-    const studyUID = getItemStudyInstanceUID(item);
-    if (!groups.has(studyUID)) {
-      const items = [];
-      const filter = MeasurementFilters.filterAnd(
-        MeasurementFilters.filterMeasurementsByStudyUID(activeStudyUID),
-        grouping.filter
-      );
-      const group = {
-        ...grouping,
-        items,
-        displayMeasurements: items,
-        key: studyUID,
-        isSelected: studyUID === activeStudyUID,
-        StudyInstanceUID: activeStudyUID,
-        filter,
-        measurementFilter: filter,
-      };
-      if (group.isSelected && !firstSelected) {
-        firstSelected = group;
+  items
+    .filter(item => item.displaySetInstanceUID)
+    .forEach(item => {
+      const studyUID = getItemStudyInstanceUID(item);
+      if (!groups.has(studyUID)) {
+        const items = [];
+        const filter = MeasurementFilters.filterAnd(
+          MeasurementFilters.filterMeasurementsByStudyUID(studyUID),
+          grouping.filter
+        );
+        const group = {
+          ...grouping,
+          items,
+          displayMeasurements: items,
+          key: studyUID,
+          isSelected: studyUID === activeStudyUID,
+          StudyInstanceUID: studyUID,
+          filter,
+          measurementFilter: filter,
+        };
+        if (group.isSelected && !firstSelected) {
+          firstSelected = group;
+        }
+        firstGroup ||= group;
+        groups.set(studyUID, group);
       }
-      firstGroup ||= group;
-      groups.set(studyUID, group);
-    }
-    if (!firstSelected && firstGroup) {
-      firstGroup.isSelected = true;
-    }
-    const group = groups.get(studyUID);
-    group.items.push(item);
-  });
+      if (!firstSelected && firstGroup) {
+        firstGroup.isSelected = true;
+      }
+      const group = groups.get(studyUID);
+      group.items.push(item);
+    });
 
   return groups;
 };
@@ -61,8 +62,7 @@ export const groupByStudy = (items, grouping, childProps) => {
 export function StudyMeasurements(props): React.ReactNode {
   const { items, grouping = {}, children } = props;
 
-  const system = useSystem();
-  const activeDisplaySets = useActiveViewportDisplaySets(system);
+  const activeDisplaySets = useActiveViewportDisplaySets();
   const activeStudyUID = activeDisplaySets?.[0]?.StudyInstanceUID;
 
   return (

@@ -24,6 +24,13 @@ export type DisplaySetAndViewportOptions = {
   displaySetOptions: DisplaySetOptions;
 };
 
+export interface ViewportUpdate {
+  viewportId?: string;
+  displaySetInstanceUIDs: string[];
+  viewportOptions?: ViewportOptions;
+  displaySetOptions?: DisplaySetOptions[];
+}
+
 export type DisplayArea = {
   type?: 'SCALE' | 'FIT';
   scale?: number;
@@ -49,7 +56,7 @@ export type SetProtocolOptions = {
    * This is normally transparent to the user of this, but in order to specify
    * specific instances, they can be added like that.
    */
-  displaySetSelectorMap?: Record<string, string>;
+  displaySetSelectorMap?: Record<string, Array<string>>;
 
   /** Used to define the display sets already in view, in order to allow
    * filling empty viewports with other instances.
@@ -293,6 +300,8 @@ export type ProtocolNotifications = {
   // and all viewport data includes a designated display set. This command
   // will run on every stage's initial layout.
   onViewportDataInitialized?: Command[];
+  // This set of commands is executed before the stage change is applied
+  onStageChange?: Command[];
 };
 
 /**

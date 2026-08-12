@@ -4,7 +4,9 @@ import {
   ODELIA_LABELING_SOURCE_VERSION,
 } from './measurementServiceMappings/ODELIALabel';
 import { makeLabelAnnotation } from './measurementServiceMappings/makeLabelAnnotation';
-const config: Config = require('./utils/config.json');
+import configJson from './utils/config.json';
+
+const config = configJson as Config;
 export default function initLabels({ measurementService, extensionManager, StudyInstanceUID }) {
   // getMeasurements() returns an array; destructuring `{ measurements }` off it
   // yielded undefined and defeated the "already inited" guard below, so labels

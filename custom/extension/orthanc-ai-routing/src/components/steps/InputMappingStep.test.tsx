@@ -67,6 +67,99 @@ describe('InputMappingStep', () => {
     expect(onAutoDetect).not.toHaveBeenCalled();
   });
 
+  // Series can be swapped for a different set of the same size while the step
+  // stays mounted (display sets still streaming in). Keying the effect on the
+  // list *length* left the mapping pointing at UIDs that no longer exist, and
+  // `isValid` still reported true — the wizard would have sent dead UIDs.
+  it('re-detects when the series are replaced by a same-sized set the mapping no longer matches', () => {
+    const onAutoDetect = jest.fn();
+    const { rerender } = render(
+      <InputMappingStep
+        {...base}
+        onAutoDetect={onAutoDetect}
+      />
+    );
+    expect(onAutoDetect).not.toHaveBeenCalled();
+
+    const replaced = [
+      series({ SeriesInstanceUID: 's9', SeriesDescription: 'T1 axial', Modality: 'MR' }),
+      series({ SeriesInstanceUID: 's8', SeriesDescription: 'CT scan', Modality: 'CT' }),
+    ];
+    rerender(
+      <InputMappingStep
+        {...base}
+        availableSeries={replaced}
+        onAutoDetect={onAutoDetect}
+      />
+    );
+    expect(onAutoDetect).toHaveBeenCalledWith(config, replaced);
+  });
+
+  // One surviving assignment must not mask the dead one beside it: `isValid`
+  // only checks for non-null, so a partially-stale mapping would still pass.
+  // Only the dead entry is dropped — re-running detection over everything could
+  // overwrite the assignment the reader deliberately made.
+  it('drops only the stale assignment when some of the mapped series survive', () => {
+    const onAutoDetect = jest.fn();
+    const onSetInputSeries = jest.fn();
+    const mapping = { t1: 's1', t2: 's2' };
+    const { rerender } = render(
+      <InputMappingStep
+        {...base}
+        mapping={mapping}
+        onAutoDetect={onAutoDetect}
+        onSetInputSeries={onSetInputSeries}
+      />
+    );
+    expect(onAutoDetect).not.toHaveBeenCalled();
+
+    // s1 survives, s2 is replaced by s8.
+    const partly = [
+      series({ SeriesInstanceUID: 's1', SeriesDescription: 'T1 axial', Modality: 'MR' }),
+      series({ SeriesInstanceUID: 's8', SeriesDescription: 'CT scan', Modality: 'CT' }),
+    ];
+    rerender(
+      <InputMappingStep
+        {...base}
+        mapping={mapping}
+        availableSeries={partly}
+        onAutoDetect={onAutoDetect}
+        onSetInputSeries={onSetInputSeries}
+      />
+    );
+    expect(onSetInputSeries).toHaveBeenCalledWith('t2', null);
+    expect(onSetInputSeries).not.toHaveBeenCalledWith('t1', null);
+    expect(onAutoDetect).not.toHaveBeenCalled();
+  });
+
+  // With no series left there is nothing to detect against, so the assignments
+  // must be cleared rather than left pointing at series that are gone.
+  it('clears the mapping when the series list empties', () => {
+    const onAutoDetect = jest.fn();
+    const onSetInputSeries = jest.fn();
+    const mapping = { t1: 's1', t2: 's2' };
+    const { rerender } = render(
+      <InputMappingStep
+        {...base}
+        mapping={mapping}
+        onAutoDetect={onAutoDetect}
+        onSetInputSeries={onSetInputSeries}
+      />
+    );
+    rerender(
+      <InputMappingStep
+        {...base}
+        mapping={mapping}
+        availableSeries={[]}
+        onAutoDetect={onAutoDetect}
+        onSetInputSeries={onSetInputSeries}
+      />
+    );
+    expect(onSetInputSeries).toHaveBeenCalledWith('t1', null);
+    expect(onSetInputSeries).toHaveBeenCalledWith('t2', null);
+    expect(onAutoDetect).not.toHaveBeenCalled();
+  });
+
   it('renders required markers and a Required hint for unmapped required inputs', () => {
     render(
       <InputMappingStep
@@ -102,7 +195,10 @@ describe('InputMappingStep', () => {
     expect(onSetInputSeries).toHaveBeenCalledWith('t1', 's1');
   });
 
-  it('passes null to onSetInputSeries when the blank option is selected', () => {
+  // A mapping must stay clearable. The ui-next Select is Radix-based and
+  // rejects an empty item value, so "Not assigned" is an explicit sentinel item
+  // rather than the `<option value="">` a native select would use.
+  it('passes null to onSetInputSeries when "Not assigned" is selected', () => {
     const onSetInputSeries = jest.fn();
     render(
       <InputMappingStep
@@ -111,7 +207,11 @@ describe('InputMappingStep', () => {
       />
     );
     const t1Select = screen.getAllByRole('combobox')[0];
-    fireEvent.change(t1Select, { target: { value: '' } });
+    const unassigned = within(t1Select)
+      .getAllByRole('option')
+      .find(o => o.textContent === 'Not assigned') as HTMLOptionElement;
+    expect(unassigned).toBeTruthy();
+    fireEvent.change(t1Select, { target: { value: unassigned.value } });
     expect(onSetInputSeries).toHaveBeenCalledWith('t1', null);
   });
 

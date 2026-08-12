@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from '@ohif/ui';
+import { Button } from '@ohif/ui-next';
 import type { ModelManifest } from '../../services/OrthancAIService';
 
 interface InputModeSelectionStepProps {
@@ -30,8 +30,8 @@ export const InputModeSelectionStep: React.FC<InputModeSelectionStepProps> = ({
                 key={config.id}
                 className={`flex cursor-pointer items-start rounded border p-3 transition-colors ${
                   selectedConfigId === config.id
-                    ? 'border-primary-light bg-primary-dark/20'
-                    : 'border-secondary-light bg-secondary-dark hover:border-secondary-light/60'
+                    ? 'border-primary bg-primary/20'
+                    : 'border-input bg-muted hover:border-primary/60'
                 }`}
               >
                 <input
@@ -40,10 +40,10 @@ export const InputModeSelectionStep: React.FC<InputModeSelectionStepProps> = ({
                   value={config.id}
                   checked={selectedConfigId === config.id}
                   onChange={() => onSelectConfig(config.id)}
-                  className="accent-primary-light mt-0.5 mr-3"
+                  className="accent-primary mt-0.5 mr-3"
                 />
                 <div>
-                  <div className="text-sm text-white">{config.name}</div>
+                  <div className="text-foreground text-sm">{config.name}</div>
                   {config.description && (
                     <div className="text-muted-foreground mt-1 text-xs">{config.description}</div>
                   )}
@@ -57,7 +57,7 @@ export const InputModeSelectionStep: React.FC<InputModeSelectionStepProps> = ({
         </div>
       </div>
 
-      <div className="border-secondary-light flex-shrink-0 space-y-2 border-t bg-black px-3 py-3">
+      <div className="border-input bg-background flex-shrink-0 space-y-2 border-t px-3 py-3">
         <Button
           onClick={onNext}
           disabled={!selectedConfigId}
@@ -67,7 +67,7 @@ export const InputModeSelectionStep: React.FC<InputModeSelectionStepProps> = ({
         </Button>
         <Button
           onClick={onBack}
-          variant="outlined"
+          variant="outline"
           className="w-full"
         >
           &larr; Back

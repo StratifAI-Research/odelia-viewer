@@ -1,7 +1,6 @@
-import { metaData, utilities } from '@cornerstonejs/core';
+import { metaData } from '@cornerstonejs/core';
 
-import OHIF, { DicomMetadataStore } from '@ohif/core';
-import dcmjs from 'dcmjs';
+import OHIF from '@ohif/core';
 import { adaptersSR } from '@cornerstonejs/adapters';
 
 import getFilteredCornerstoneToolState from './utils/getFilteredCornerstoneToolState';
@@ -10,6 +9,15 @@ import hydrateStructuredReport from './utils/hydrateStructuredReport';
 const { MeasurementReport } = adaptersSR.Cornerstone3D;
 const { log } = OHIF;
 
+interface Options {
+  SeriesDescription?: string;
+  SeriesInstanceUID?: string;
+  SeriesNumber?: number;
+  InstanceNumber?: number;
+  SeriesDate?: string;
+  SeriesTime?: string;
+}
+
 /**
  * @param measurementData An array of measurements from the measurements service
  * that you wish to serialize.
@@ -17,18 +25,13 @@ const { log } = OHIF;
  * @param options Naturalized DICOM JSON headers to merge into the displaySet.
  *
  */
-const _generateReport = (measurementData, additionalFindingTypes, options = {}) => {
+const _generateReport = (measurementData, additionalFindingTypes, options: Options = {}) => {
   const filteredToolState = getFilteredCornerstoneToolState(
     measurementData,
     additionalFindingTypes
   );
 
-  const report = MeasurementReport.generateReport(
-    filteredToolState,
-    metaData,
-    utilities.worldToImageCoords,
-    options
-  );
+  const report = MeasurementReport.generateReport(filteredToolState, metaData, options);
 
   const { dataset } = report;
 
@@ -37,12 +40,13 @@ const _generateReport = (measurementData, additionalFindingTypes, options = {}) 
   if (typeof dataset.SpecificCharacterSet === 'undefined') {
     dataset.SpecificCharacterSet = 'ISO_IR 192';
   }
+
   return dataset;
 };
 
 const commandsModule = (props: withAppTypes) => {
-  const { servicesManager, extensionManager } = props;
-  const { customizationService, viewportGridService, displaySetService } = servicesManager.services;
+  const { servicesManager, extensionManager, commandsManager } = props;
+  const { customizationService } = servicesManager.services;
 
   const actions = {
     changeColorMeasurement: ({ uid }) => {
@@ -68,25 +72,8 @@ const commandsModule = (props: withAppTypes) => {
     /**
      *
      * @param measurementData An array of measurements from the measurements service
-     * @param additionalFindingTypes toolTypes that should be stored with labels as Findings
-     * @param options Naturalized DICOM JSON headers to merge into the displaySet.
-     * as opposed to Finding Sites.
      * that you wish to serialize.
-     */
-    downloadReport: ({ measurementData, additionalFindingTypes, options = {} }) => {
-      const srDataset = _generateReport(measurementData, additionalFindingTypes, options);
-      const reportBlob = dcmjs.data.datasetToBlob(srDataset);
-
-      //Create a URL for the binary.
-      const objectUrl = URL.createObjectURL(reportBlob);
-      window.location.assign(objectUrl);
-    },
-
-    /**
-     *
-     * @param measurementData An array of measurements from the measurements service
-     * that you wish to serialize.
-     * @param dataSource The dataSource that you wish to use to persist the data.
+     * @param dataSource The data source name ('download', 'copyToClipboard', or a named data source).
      * @param additionalFindingTypes toolTypes that should be stored with labels as Findings
      * @param options Naturalized DICOM JSON headers to merge into the displaySet.
      * @return The naturalized report
@@ -97,44 +84,44 @@ const commandsModule = (props: withAppTypes) => {
       additionalFindingTypes,
       options = {},
     }) => {
-      // Use the @cornerstonejs adapter for converting to/from DICOM
-      // But it is good enough for now whilst we only have cornerstone as a datasource.
       log.info('[DICOMSR] storeMeasurements');
 
-      if (!dataSource || !dataSource.store || !dataSource.store.dicom) {
-        log.error('[DICOMSR] datasource has no dataSource.store.dicom endpoint!');
+      const storeFn = commandsManager.runCommand('createStoreFunction', {
+        dataSource,
+        defaultFileName: 'dicom-sr.dcm',
+      });
+
+      if (!storeFn) {
+        log.error('[DICOMSR] No valid store for dataSource:', dataSource);
         return Promise.reject({});
       }
 
       try {
-        const naturalizedReport = _generateReport(measurementData, additionalFindingTypes, options);
+        const naturalizedReport = _generateReport(
+          measurementData,
+          additionalFindingTypes,
+          options
+        );
 
-        const { StudyInstanceUID, ContentSequence } = naturalizedReport;
+        const { ContentSequence } = naturalizedReport;
         // The content sequence has 5 or more elements, of which
         // the `[4]` element contains the annotation data, so this is
         // checking that there is some annotation data present.
-        if (!ContentSequence?.[4].ContentSequence?.length) {
+        if (!ContentSequence?.[4]?.ContentSequence?.length) {
           console.log('naturalizedReport missing imaging content', naturalizedReport);
           throw new Error('Invalid report, no content');
         }
+        if (!naturalizedReport.SOPClassUID) {
+          throw new Error('No sop class uid');
+        }
 
         const onBeforeDicomStore = customizationService.getCustomization('onBeforeDicomStore');
-
         let dicomDict;
         if (typeof onBeforeDicomStore === 'function') {
           dicomDict = onBeforeDicomStore({ dicomDict, measurementData, naturalizedReport });
         }
 
-        await dataSource.store.dicom(naturalizedReport, null, dicomDict);
-
-        if (StudyInstanceUID) {
-          dataSource.deleteStudyMetadataPromise(StudyInstanceUID);
-        }
-
-        // The "Mode" route listens for DicomMetadataStore changes
-        // When a new instance is added, it listens and
-        // automatically calls makeDisplaySets
-        DicomMetadataStore.addInstances([naturalizedReport], true);
+        await storeFn(naturalizedReport, { measurementData, dicomDict });
 
         return naturalizedReport;
       } catch (error) {
@@ -148,34 +135,17 @@ const commandsModule = (props: withAppTypes) => {
      * Loads measurements by hydrating and loading the SR for the given display set instance UID
      * and displays it in the active viewport.
      */
-    loadSRMeasurements: ({ displaySetInstanceUID }) => {
-      const { SeriesInstanceUIDs } = hydrateStructuredReport(
+    hydrateStructuredReport: ({ displaySetInstanceUID }) => {
+      return hydrateStructuredReport(
         { servicesManager, extensionManager, commandsManager },
         displaySetInstanceUID
       );
-
-      const displaySets = displaySetService.getDisplaySetsForSeries(SeriesInstanceUIDs[0]);
-      if (displaySets.length) {
-        viewportGridService.setDisplaySetsForViewports([
-          {
-            viewportId: viewportGridService.getActiveViewportId(),
-            displaySetInstanceUIDs: [displaySets[0].displaySetInstanceUID],
-          },
-        ]);
-      }
     },
   };
 
   const definitions = {
-    downloadReport: {
-      commandFn: actions.downloadReport,
-    },
-    storeMeasurements: {
-      commandFn: actions.storeMeasurements,
-    },
-    loadSRMeasurements: {
-      commandFn: actions.loadSRMeasurements,
-    },
+    storeMeasurements: actions.storeMeasurements,
+    hydrateStructuredReport: actions.hydrateStructuredReport,
   };
 
   return {

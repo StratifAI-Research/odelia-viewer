@@ -2,7 +2,11 @@ import { renderHook } from '@testing-library/react';
 import { useAIResult } from './useAIResult';
 
 const mockGetSelectedAIResult = jest.fn();
-const sm = { services: { aiResultsService: { getSelectedAIResult: mockGetSelectedAIResult } } };
+// Only the one service the hook reaches for; the rest of ServicesManager is
+// irrelevant here.
+const sm = {
+  services: { aiResultsService: { getSelectedAIResult: mockGetSelectedAIResult } },
+} as unknown as AppTypes.ServicesManager;
 
 describe('useAIResult', () => {
   beforeEach(() => mockGetSelectedAIResult.mockReset());

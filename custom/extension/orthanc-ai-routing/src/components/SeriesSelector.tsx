@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button } from '@ohif/ui';
+import { Button } from '@ohif/ui-next';
 
 export interface SeriesInfo {
   displaySetInstanceUID: string;
@@ -28,7 +28,7 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
 }) => {
   if (series.length === 0) {
     return (
-      <div className="text-muted-foreground bg-secondary-dark rounded p-3 text-sm">
+      <div className="text-muted-foreground bg-muted rounded p-3 text-sm">
         No series available for this study
       </div>
     );
@@ -49,10 +49,8 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
             <div
               key={seriesItem.SeriesInstanceUID}
               onClick={() => onToggleSeries(seriesItem.SeriesInstanceUID)}
-              className={`border-secondary-light cursor-pointer rounded border p-2 transition-colors ${
-                isSelected
-                  ? 'bg-primary-dark border-primary-light'
-                  : 'hover:bg-secondary-dark bg-black'
+              className={`border-input cursor-pointer rounded border p-2 transition-colors ${
+                isSelected ? 'bg-primary/20 border-primary' : 'hover:bg-muted bg-background'
               } `}
             >
               <div className="flex items-start gap-3">
@@ -60,9 +58,7 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
                 <div className="mt-1 flex-shrink-0">
                   <div
                     className={`flex h-4 w-4 items-center justify-center rounded border-2 ${
-                      isSelected
-                        ? 'border-primary-light bg-primary-light'
-                        : 'border-secondary-light'
+                      isSelected ? 'border-primary bg-primary' : 'border-input'
                     } `}
                   >
                     {isSelected && (
@@ -83,7 +79,7 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
 
                 {/* Series info */}
                 <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-white">
+                  <div className="text-foreground text-sm font-medium">
                     {seriesItem.SeriesDescription || `Series ${seriesItem.SeriesNumber || 'N/A'}`}
                   </div>
                   <div className="text-muted-foreground mt-1 text-xs">
@@ -104,8 +100,8 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
             onSelectAll();
           }}
           className="flex-1"
-          variant="outlined"
-          size="small"
+          variant="outline"
+          size="sm"
         >
           ✓ Select All
         </Button>
@@ -115,15 +111,15 @@ const SeriesSelector: React.FC<SeriesSelectorProps> = ({
             onClearSelection();
           }}
           className="flex-1"
-          variant="outlined"
-          size="small"
+          variant="outline"
+          size="sm"
         >
           Clear
         </Button>
       </div>
 
       {/* Selection summary - compact */}
-      <div className="text-muted-foreground bg-secondary-dark rounded px-2 py-1 text-xs">
+      <div className="text-muted-foreground bg-muted rounded px-2 py-1 text-xs">
         {selectedSeriesUIDs.size} series ({totalInstances} instances)
       </div>
     </div>

@@ -1,7 +1,20 @@
 import React, { useEffect } from 'react';
-import { Button } from '@ohif/ui';
+import {
+  Button,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@ohif/ui-next';
 import type { InputConfiguration } from '../../services/OrthancAIService';
 import type { SeriesInfo } from '../SeriesSelector';
+
+// Radix rejects an empty-string item value (it reserves '' for "no selection"),
+// so clearing a mapping needs an explicit sentinel item rather than the
+// `<option value="">` a native select would use.
+const UNASSIGNED = '__unassigned__';
 
 interface InputMappingStepProps {
   selectedConfig: InputConfiguration;
@@ -24,14 +37,36 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
   onNext,
   onBack,
 }) => {
+  // Identity, not length: the series list can be replaced by a different list
+  // of the same size (display sets still streaming in), which would leave the
+  // mapping pointing at UIDs that no longer exist while `isValid` still reports
+  // true — i.e. the wizard would send dead series UIDs to the AI.
+  const seriesSignature = availableSeries.map(s => s.SeriesInstanceUID).join('|');
+
   useEffect(() => {
-    if (availableSeries.length > 0) {
-      const hasAnyMapping = Object.values(mapping).some(v => v != null);
-      if (!hasAnyMapping) {
-        onAutoDetect(selectedConfig, availableSeries);
-      }
+    const availableUIDs = new Set(availableSeries.map(s => s.SeriesInstanceUID));
+    const assigned = Object.entries(mapping).filter(
+      (entry): entry is [string, string] => entry[1] != null
+    );
+    const stale = assigned.filter(([, uid]) => !availableUIDs.has(uid));
+
+    // Every assignment still resolves — leave the reader's mapping alone.
+    if (stale.length === 0 && assigned.length > 0) {
+      return;
     }
-  }, [selectedConfig.id, availableSeries.length]);
+    // Nothing usable is mapped (fresh step, or the whole set was replaced):
+    // run detection against the series we actually have.
+    if (stale.length === assigned.length && availableSeries.length > 0) {
+      onAutoDetect(selectedConfig, availableSeries);
+      return;
+    }
+    // Some assignments survived. Keep those — `onAutoDetect` would rewrite the
+    // whole mapping and could overwrite a deliberate pick — and drop only the
+    // dead ones, so `isValid` stops accepting series that no longer exist.
+    stale.forEach(([key]) => onSetInputSeries(key, null));
+    // `mapping` is deliberately not a dependency: it is what this effect writes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConfig.id, seriesSignature]);
 
   const formatSeriesOption = (s: SeriesInfo) => {
     const desc = s.SeriesDescription || `Series ${s.SeriesNumber}`;
@@ -41,8 +76,8 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overflow-x-hidden px-3 pt-4 pb-4">
-        <div className="bg-secondary-dark space-y-1 rounded p-3 text-sm">
-          <div className="font-medium text-white">{selectedConfig.name}</div>
+        <div className="bg-muted space-y-1 rounded p-3 text-sm">
+          <div className="text-foreground font-medium">{selectedConfig.name}</div>
           {selectedConfig.description && (
             <div className="text-muted-foreground text-xs">{selectedConfig.description}</div>
           )}
@@ -53,12 +88,13 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
             <label className="text-muted-foreground text-xs font-medium">
               Map Series to Inputs
             </label>
-            <button
+            <Button
+              variant="link"
+              size="sm"
               onClick={() => onAutoDetect(selectedConfig, availableSeries)}
-              className="text-primary-light text-xs hover:underline"
             >
               Auto-detect
-            </button>
+            </Button>
           </div>
 
           <div className="space-y-3">
@@ -70,25 +106,34 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
 
               return (
                 <div key={input.key}>
-                  <label className="mb-1 block text-xs text-white">
+                  <Label className="mb-1 block text-xs">
                     {input.label}
                     {input.required && <span className="ml-1 text-red-400">*</span>}
-                  </label>
-                  <select
-                    value={currentValue}
-                    onChange={e => onSetInputSeries(input.key, e.target.value || null)}
-                    className="bg-secondary-dark border-secondary-light focus:border-primary-light w-full rounded border px-2 py-1.5 text-xs text-white focus:outline-none"
+                  </Label>
+                  <Select
+                    // Map "no mapping" onto the sentinel rather than '': with ''
+                    // Radix shows the placeholder and marks nothing selected, so
+                    // "Not assigned" would never read back as the current choice.
+                    value={currentValue || UNASSIGNED}
+                    onValueChange={value =>
+                      onSetInputSeries(input.key, value === UNASSIGNED ? null : value)
+                    }
                   >
-                    <option value="">-- Select series --</option>
-                    {filteredSeries.map(s => (
-                      <option
-                        key={s.SeriesInstanceUID}
-                        value={s.SeriesInstanceUID}
-                      >
-                        {formatSeriesOption(s)}
-                      </option>
-                    ))}
-                  </select>
+                    <SelectTrigger aria-label={input.label}>
+                      <SelectValue placeholder="Select series…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={UNASSIGNED}>Not assigned</SelectItem>
+                      {filteredSeries.map(s => (
+                        <SelectItem
+                          key={s.SeriesInstanceUID}
+                          value={s.SeriesInstanceUID}
+                        >
+                          {formatSeriesOption(s)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   {input.required && !mapping[input.key] && (
                     <div className="mt-0.5 text-xs text-yellow-400">Required</div>
                   )}
@@ -99,7 +144,7 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
         </div>
       </div>
 
-      <div className="border-secondary-light flex-shrink-0 space-y-2 border-t bg-black px-3 py-3">
+      <div className="border-input bg-background flex-shrink-0 space-y-2 border-t px-3 py-3">
         <Button
           onClick={onNext}
           disabled={!isValid}
@@ -109,7 +154,7 @@ export const InputMappingStep: React.FC<InputMappingStepProps> = ({
         </Button>
         <Button
           onClick={onBack}
-          variant="outlined"
+          variant="outline"
           className="w-full"
         >
           &larr; Back

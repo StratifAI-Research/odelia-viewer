@@ -8,14 +8,19 @@ module.exports = {
   // }),
   presets: [require('../ui/tailwind.config.js'), require('../ui-next/tailwind.config.js')],
   content: [
-    './src/**/*.{jsx,js,ts,tsx, css}',
-    '../../extensions/**/*.{jsx,js,ts,tsx, css}',
-    '../ui/src/**/*.{jsx,js,ts,tsx, css}',
-    '../../modes/**/*.{jsx,js,ts,tsx, css}',
-    './node_modules/@ohif/ui/src/**/*.{js,jsx,ts,tsx, css}',
+    './src/**/*.{jsx,js,ts,tsx,css}',
+    '../../extensions/*/src/**/*.{jsx,js,ts,tsx,css}',
+    '../ui/src/**/*.{jsx,js,ts,tsx,css}',
+    '../ui-next/src/**/*.{jsx,js,ts,tsx,css}',
+    '../../modes/*/src/**/*.{jsx,js,ts,tsx,css}',
+    // ODELIA's out-of-tree extensions and modes (see the `directory` entries in
+    // pluginConfig.json). Without this their class names are purged, and any
+    // utility upstream does not happen to use itself renders as nothing.
+    '../../custom/*/*/src/**/*.{jsx,js,ts,tsx,css}',
+    './node_modules/@ohif/ui/src/**/*.{js,jsx,ts,tsx,css}',
     '../../node_modules/@ohif/ui/src/**/*.{js,jsx,ts,tsx,css}',
     '../../node_modules/@ohif/ui-next/src/**/*.{js,jsx,ts,tsx,css}',
-    '../../node_modules/@ohif/extension-*/src/**/*.{js,jsx,css, ts,tsx}',
+    '../../node_modules/@ohif/extension-*/src/**/*.{js,jsx,ts,tsx,css}',
   ],
   theme: {
     fontFamily: {

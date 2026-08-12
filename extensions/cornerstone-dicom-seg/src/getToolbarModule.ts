@@ -1,13 +1,66 @@
+import { utilities as cstUtils } from '@cornerstonejs/tools';
+import i18n from '@ohif/i18n';
+import { useUIStateStore } from '@ohif/extension-default';
+
+import LogicalContourOperationsOptions from './components/LogicalContourOperationsOptions';
+import SimplifyContourOptions from './components/SimplifyContourOptions';
+import SmoothContoursOptions from './components/SmoothContoursOptions';
+
 export function getToolbarModule({ servicesManager }: withAppTypes) {
   const { segmentationService, toolbarService, toolGroupService } = servicesManager.services;
   return [
     {
-      name: 'evaluate.cornerstone.hasSegmentation',
-      evaluate: ({ viewportId }) => {
-        const segmentations = segmentationService.getSegmentationRepresentations(viewportId);
+      name: 'cornerstone.SimplifyContourOptions',
+      defaultComponent: SimplifyContourOptions,
+    },
+    {
+      name: 'cornerstone.LogicalContourOperationsOptions',
+      defaultComponent: LogicalContourOperationsOptions,
+    },
+    {
+      name: 'cornerstone.SmoothContoursOptions',
+      defaultComponent: SmoothContoursOptions,
+    },
+    {
+      name: 'cornerstone.isActiveSegmentationUtility',
+      evaluate: ({ button }) => {
+        const { uiState } = useUIStateStore.getState();
         return {
-          disabled: !segmentations?.length,
+          isActive: uiState[`activeSegmentationUtility`] === button.id,
         };
+      },
+    },
+    // `evaluate.cornerstone.hasSegmentation` moved to extension-cornerstone's
+    // getToolbarModule, next to the SegmentLabelTool button that consumes it. See the
+    // note there.
+    //
+    // `hasSegmentationOfType` below stays put. It is referenced only from the
+    // `cornerstone.segmentationToolbar*` packs, which a mode has to opt into
+    // explicitly, and a mode wiring up segmentation editing will depend on this
+    // extension anyway. It carries the same latent coupling if a mode ever references
+    // those packs without depending on this extension.
+    {
+      name: 'evaluate.cornerstone.hasSegmentationOfType',
+      evaluate: ({ viewportId, segmentationRepresentationType }) => {
+        const segmentations = segmentationService.getSegmentationRepresentations(viewportId);
+
+        if (!segmentations?.length) {
+          return {
+            disabled: true,
+            disabledText: i18n.t('SegmentationPanel:No segmentations available'),
+          };
+        }
+
+        if (
+          !segmentations.some(segmentation =>
+            Boolean(segmentation.type === segmentationRepresentationType)
+          )
+        ) {
+          return {
+            disabled: true,
+            disabledText: `No ${segmentationRepresentationType} segmentations available`,
+          };
+        }
       },
     },
     {
@@ -21,7 +74,7 @@ export function getToolbarModule({ servicesManager }: withAppTypes) {
         if (!segmentations?.length) {
           return {
             disabled: true,
-            disabledText: disabledText ?? 'No segmentations available',
+            disabledText: disabledText ?? i18n.t('SegmentationPanel:No segmentations available'),
           };
         }
 
@@ -29,7 +82,7 @@ export function getToolbarModule({ servicesManager }: withAppTypes) {
         if (!Object.keys(activeSegmentation.segments).length) {
           return {
             disabled: true,
-            disabledText: 'Add segment to enable this tool',
+            disabledText: i18n.t('SegmentationPanel:Add segment to enable this tool'),
           };
         }
 
@@ -38,14 +91,14 @@ export function getToolbarModule({ servicesManager }: withAppTypes) {
         if (!toolGroup) {
           return {
             disabled: true,
-            disabledText: disabledText ?? 'Not available on the current viewport',
+            disabledText: disabledText ?? i18n.t('SegmentationPanel:Not available on the current viewport'),
           };
         }
 
         if (!toolNames) {
           return {
             disabled: false,
-            // isActive: true,
+            // isActive: false,
           };
         }
 
@@ -54,7 +107,7 @@ export function getToolbarModule({ servicesManager }: withAppTypes) {
         if (!toolGroup.hasTool(toolName) && !toolNames) {
           return {
             disabled: true,
-            disabledText: disabledText ?? 'Not available on the current viewport',
+            disabledText: disabledText ?? i18n.t('SegmentationPanel:Not available on the current viewport'),
           };
         }
 
@@ -66,6 +119,24 @@ export function getToolbarModule({ servicesManager }: withAppTypes) {
           disabled: false,
           isActive: isPrimaryActive,
         };
+      },
+    },
+    {
+      name: 'evaluate.cornerstone.segmentation.synchronizeDrawingRadius',
+      evaluate: ({ button, radiusOptionId }) => {
+        const toolGroupIds = toolGroupService.getToolGroupIds();
+        if (!toolGroupIds?.length) {
+          return;
+        }
+
+        for (const toolGroupId of toolGroupIds) {
+          const brushSize = cstUtils.segmentation.getBrushSizeForToolGroup(toolGroupId);
+
+          if (brushSize) {
+            const option = toolbarService.getOptionById(button, radiusOptionId);
+            option.value = brushSize;
+          }
+        }
       },
     },
   ];

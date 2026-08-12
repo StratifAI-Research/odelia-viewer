@@ -1,10 +1,12 @@
-import { renderHook, act } from '@testing-library/react';
+import { renderHook } from '@testing-library/react';
 import { useMeasurementSubscription } from './useMeasurementSubscription';
 
+// The hook only touches EVENTS/subscribe/unsubscribe, so the double implements
+// just those; the cast keeps the hook's real MeasurementService signature.
 function makeService() {
   const unsubscribe = jest.fn();
   const subscribe = jest.fn((_evt: string, _cb: () => void) => ({ unsubscribe }));
-  return {
+  const service = {
     EVENTS: {
       MEASUREMENT_ADDED: 'added',
       RAW_MEASUREMENT_ADDED: 'addedRaw',
@@ -15,6 +17,7 @@ function makeService() {
     subscribe,
     unsubscribe,
   };
+  return service as unknown as AppTypes.MeasurementService & typeof service;
 }
 
 describe('useMeasurementSubscription', () => {
@@ -23,7 +26,7 @@ describe('useMeasurementSubscription', () => {
     const getMapped = jest.fn(() => [{ uid: 'm1' }]);
     const { result } = renderHook(() => useMeasurementSubscription(service, getMapped));
 
-    expect(result.current[0]).toEqual([{ uid: 'm1' }]);
+    expect(result.current).toEqual([{ uid: 'm1' }]);
     expect(getMapped).toHaveBeenCalledWith(service);
     expect(service.subscribe).toHaveBeenCalledTimes(5);
     const events = service.subscribe.mock.calls.map(c => c[0]);
@@ -35,14 +38,5 @@ describe('useMeasurementSubscription', () => {
     const { unmount } = renderHook(() => useMeasurementSubscription(service, () => []));
     unmount();
     expect(service.unsubscribe).toHaveBeenCalledTimes(5);
-  });
-
-  it('exposes a setter that updates the snapshot', () => {
-    const service = makeService();
-    const { result } = renderHook(() => useMeasurementSubscription(service, () => []));
-    act(() => {
-      result.current[1]([{ uid: 'x' }]);
-    });
-    expect(result.current[0]).toEqual([{ uid: 'x' }]);
   });
 });

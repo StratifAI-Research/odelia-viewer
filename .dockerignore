@@ -12,11 +12,10 @@
 **/build/
 
 # Dependencies
-# NOTE: bun.lock is intentionally NOT ignored — the Dockerfile COPYs it for
-# `bun install --frozen-lockfile`. Ignoring it would break the frozen install.
+# NOTE: pnpm-lock.yaml is intentionally NOT ignored — the Dockerfile COPYs it so
+# the install resolves the same versions as CI. Ignoring it would silently
+# re-resolve every dependency inside the image.
 **/node_modules/
-.bun/
-**/.bun/
 npm-debug.log
 **/node_modules
 **/.cache

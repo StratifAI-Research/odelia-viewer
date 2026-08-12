@@ -17,11 +17,9 @@ export default {
    * (e.g. cornerstone, cornerstoneTools, ...) or registering any services that
    * this extension is providing.
    */
-  preRegistration: ({ servicesManager, commandsManager, configuration = {} }) => {
+  preRegistration: ({ servicesManager }) => {
     const { measurementService } = servicesManager.services;
-    const ODELIAMeasurementSource = initMeasurementService(measurementService);
-
-    // TODO: Hydrate labels
+    initMeasurementService(measurementService);
   },
 
   /**
@@ -30,28 +28,28 @@ export default {
    */
   getPanelModule: ({ servicesManager, commandsManager, extensionManager }): any[] => {
     const wrappedPanelLabeling = name => {
-      return () => {
-        return (
-          <PanelLabeling
-            name={name}
-            commandsManager={commandsManager}
-            servicesManager={servicesManager}
-            extensionManager={extensionManager}
-          />
-        );
-      };
+      // Named so React devtools and the react/display-name rule can identify it.
+      const WrappedPanelLabeling = () => (
+        <PanelLabeling
+          name={name}
+          commandsManager={commandsManager}
+          servicesManager={servicesManager}
+          extensionManager={extensionManager}
+        />
+      );
+      return WrappedPanelLabeling;
     };
     const wrappedPanelLesions = name => {
-      return () => {
-        return (
-          <PanelLesionTable
-            name={name}
-            commandsManager={commandsManager}
-            servicesManager={servicesManager}
-            extensionManager={extensionManager}
-          />
-        );
-      };
+      // Named so React devtools and the react/display-name rule can identify it.
+      const WrappedPanelLesions = () => (
+        <PanelLesionTable
+          name={name}
+          commandsManager={commandsManager}
+          servicesManager={servicesManager}
+          extensionManager={extensionManager}
+        />
+      );
+      return WrappedPanelLesions;
     };
 
     return [
@@ -64,7 +62,9 @@ export default {
       },
       {
         name: 'panelLabelingStudy',
-        iconName: 'list-bullets',
+        // ui-next has no 'list-bullets'; Icons.ByName rendered a literal
+        // "Missing Icon" box in the panel rail for it.
+        iconName: 'icon-list-view',
         iconLabel: 'Study labels',
         label: 'Study labels',
         component: wrappedPanelLabeling('study table'),
@@ -79,7 +79,7 @@ export default {
     ];
   },
 
-  getUtilityModule: ({ servicesManager }) => {
+  getUtilityModule: () => {
     return [
       {
         name: 'initLabels',

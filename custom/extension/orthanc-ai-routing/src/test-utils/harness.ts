@@ -8,9 +8,9 @@
  * Faithful to the real fetch Response body contract: the body stream can be
  * consumed ONCE. Calling json()/text() a second time (in either order) throws,
  * exactly as a browser does. This matters: code that calls response.json() and
- * then response.text() on the same Response (e.g. the error-extraction fallback
- * in OrthancAIService) only "works" against a lax mock — in a real browser the
- * second read throws because json() already consumed (and locked) the stream.
+ * then response.text() on the same Response only "works" against a lax mock —
+ * in a real browser the second read throws because json() already consumed
+ * (and locked) the stream.
  */
 export function mockResponse(opts: {
   ok?: boolean;

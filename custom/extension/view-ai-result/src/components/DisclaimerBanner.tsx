@@ -1,6 +1,9 @@
 import React, { useState, useEffect } from 'react';
+import { Button } from '@ohif/ui-next';
 
 const STORAGE_KEY = 'odeliaDisclaimerHidden';
+const MODEL_LIMITATIONS_URL =
+  'https://github.com/StratifAI-Research/odelia-deployment/blob/main/docs/model_limitations.md';
 
 const DisclaimerBanner: React.FC = () => {
   const [isHidden, setIsHidden] = useState(true);
@@ -21,7 +24,7 @@ const DisclaimerBanner: React.FC = () => {
 
   return (
     <div className="fixed bottom-2 z-50 flex h-[104px] w-full justify-center">
-      <div className="bg-secondary-dark border-primary-dark flex w-[90%] items-center justify-between rounded-lg border-2 pl-[22px] pr-[22px] pt-[10px] pb-[10px] shadow-lg">
+      <div className="bg-muted border-primary/40 flex w-[90%] items-center justify-between rounded-lg border-2 pl-[22px] pr-[22px] pt-[10px] pb-[10px] shadow-lg">
         <div className="flex items-center gap-4">
           <svg
             className="flex-shrink-0"
@@ -161,40 +164,34 @@ const DisclaimerBanner: React.FC = () => {
               points="144.92334 9.25878 150.80231 12.65093 150.80231 11.10991 144.93567 7.72216 139.07196 11.10698 139.07196 12.63793 144.92334 9.25878"
             />
           </svg>
-          <div className="flex flex-col">
-            <div className="text-[19px] text-white">
-              ODELIA Viewer is <span className="text-primary-light">for research use only</span>
+          <div className="text-foreground flex flex-col">
+            <div className="text-[19px]">
+              ODELIA Viewer is <span className="text-highlight">for research use only</span>
             </div>
-            <div className="text-[13px] text-white">
+            <div className="text-[13px]">
               AI model outputs may be inaccurate.{' '}
-              <span
-                className="text-primary-active cursor-pointer"
-                onClick={() =>
-                  window.open(
-                    'https://github.com/StratifAI-Research/odelia-deployment/blob/main/docs/model_limitations.md',
-                    '_blank'
-                  )
-                }
+              <a
+                className="text-primary hover:underline"
+                href={MODEL_LIMITATIONS_URL}
+                target="_blank"
+                rel="noopener noreferrer"
               >
                 See model limitations
-              </span>
+              </a>
             </div>
-            <div className="text-[13px] text-white">
-              <span
-                className="text-primary-active cursor-pointer"
-                onClick={() => window.open('https://odelia.ai/', '_blank')}
+            <div className="text-[13px]">
+              <a
+                className="text-primary hover:underline"
+                href="https://odelia.ai/"
+                target="_blank"
+                rel="noopener noreferrer"
               >
                 Learn more about the ODELIA project
-              </span>
+              </a>
             </div>
           </div>
         </div>
-        <button
-          onClick={handleConfirm}
-          className="bg-primary-main hover:bg-primary-light rounded px-4 py-2 text-sm text-white"
-        >
-          Confirm and Hide
-        </button>
+        <Button onClick={handleConfirm}>Confirm and Hide</Button>
       </div>
     </div>
   );

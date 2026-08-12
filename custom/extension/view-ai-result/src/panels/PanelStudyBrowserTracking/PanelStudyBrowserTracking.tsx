@@ -3,11 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import PropTypes from 'prop-types';
 import { useSystem, utils } from '@ohif/core';
-import { useImageViewer, Dialog, ButtonEnums } from '@ohif/ui';
-import { useViewportGrid } from '@ohif/ui-next';
-import { StudyBrowser } from '@ohif/ui-next';
+import { useImageViewer, useViewportGrid, Separator, StudyBrowser } from '@ohif/ui-next';
 import { StudyBrowserNested } from '../../components/StudyBrowserNested/StudyBrowserNested';
-import { Separator } from '@ohif/ui-next';
 import { PanelStudyBrowserHeader, MoreDropdownMenu } from '@ohif/extension-default';
 import { defaultActionIcons } from './constants';
 import { createAIBrowserTabs } from '../../utils/createAIBrowserTabs';
@@ -60,9 +57,12 @@ type StudyDisplayItem = {
   numInstances: number;
 };
 
-const DIALOG_ID = {
-  UNTRACK_SERIES: 'untrack-series',
-  REJECT_REPORT: 'ds-reject-sr',
+// Shape of a `studyBrowser.viewPresets` entry. Mirrors extension-default's
+// `viewPreset` type, which the extension does not re-export.
+type ViewPreset = {
+  id: string;
+  iconName: string;
+  selected: boolean;
 };
 
 /**
@@ -76,6 +76,9 @@ export default function PanelStudyBrowserTracking({
   dataSource,
 }) {
   const { servicesManager, commandsManager } = useSystem();
+  // AppTypes.Services marks every service optional because a deployment can omit
+  // one; all of these are registered by the extensions this panel's mode depends
+  // on, so narrow once here instead of guarding at ~20 call sites.
   const {
     displaySetService,
     uiDialogService,
@@ -83,23 +86,23 @@ export default function PanelStudyBrowserTracking({
     uiNotificationService,
     studyPrefetcherService,
     customizationService,
-    uiModalService,
     aiResultsService,
-  } = servicesManager.services;
+  } = servicesManager.services as Required<AppTypes.Services>;
 
   const navigate = useNavigate();
-  const studyMode = customizationService.getCustomization('studyBrowser.studyMode');
-  const tabMode = customizationService.getCustomization('studyBrowser.tabMode');
+  const studyMode = customizationService.getCustomization('studyBrowser.studyMode') as string;
+  const tabMode = customizationService.getCustomization('studyBrowser.tabMode') as
+    | string
+    | undefined;
 
-  /*
-
-  */
   const { t } = useTranslation('Common');
 
   // Normally you nest the components so the tree isn't so deep, and the data
   // doesn't have to have such an intense shape. This works well enough for now.
   // Tabs --> Studies --> DisplaySets --> Thumbnails
-  const { StudyInstanceUIDs } = useImageViewer();
+  // ImageViewerContext is created with `createContext(null)` upstream, so the
+  // hook is typed as null; the provider always supplies StudyInstanceUIDs.
+  const { StudyInstanceUIDs } = useImageViewer() as unknown as { StudyInstanceUIDs: string[] };
   const [{ activeViewportId, viewports, isHangingProtocolLayout }, viewportGridService] =
     useViewportGrid();
 
@@ -114,7 +117,7 @@ export default function PanelStudyBrowserTracking({
   const [displaySets, setDisplaySets] = useState<DisplaySet[]>([]);
   const [displaySetsLoadingState, setDisplaySetsLoadingState] = useState({});
   const [thumbnailImageSrcMap, setThumbnailImageSrcMap] = useState({});
-  const [jumpToDisplaySet, setJumpToDisplaySet] = useState(null);
+  const [jumpToDisplaySet, setJumpToDisplaySet] = useState<string | null>(null);
 
   // Track globally-selected AI SR UID published by the AIResultsService
   const [selectedSRUID, setSelectedSRUID] = useState<string | null>(null);
@@ -138,7 +141,6 @@ export default function PanelStudyBrowserTracking({
   // Detect study changes and notify AIResultsService
   useStudyChangeDetector({
     servicesManager,
-    viewportGridService,
     displaySetService,
     activeViewportId,
     viewports,
@@ -221,8 +223,8 @@ export default function PanelStudyBrowserTracking({
     };
   }, [aiResultsService, displaySetService, thumbnailPropsCache]);
 
-  const [viewPresets, setViewPresets] = useState(
-    customizationService.getCustomization('studyBrowser.viewPresets')
+  const [viewPresets, setViewPresets] = useState<ViewPreset[]>(
+    customizationService.getCustomization('studyBrowser.viewPresets') as unknown as ViewPreset[]
   );
 
   const [actionIcons, setActionIcons] = useState(defaultActionIcons);
@@ -257,7 +259,7 @@ export default function PanelStudyBrowserTracking({
       return;
     }
 
-    let updatedViewports = [];
+    let updatedViewports: Array<{ viewportId: string; displaySetInstanceUIDs: string[] }> = [];
     const viewportId = activeViewportId;
     try {
       updatedViewports = hangingProtocolService.getViewportsRequireUpdate(
@@ -316,10 +318,6 @@ export default function PanelStudyBrowserTracking({
           hasUID: !!studyInstanceUID,
         });
       }
-
-      // Local selection state removed – the global service event will update UI
-    } else {
-      // For medical images, we could implement different behavior if needed
     }
   };
 
@@ -419,7 +417,10 @@ export default function PanelStudyBrowserTracking({
   useEffect(() => {
     const { unsubscribe } = studyPrefetcherService.subscribe(
       studyPrefetcherService.EVENTS.DISPLAYSET_LOAD_PROGRESS,
-      updatedDisplaySetLoadingState => {
+      (updatedDisplaySetLoadingState: {
+        displaySetInstanceUID: string;
+        loadingProgress: number;
+      }) => {
         const { displaySetInstanceUID, loadingProgress } = updatedDisplaySetLoadingState;
 
         setDisplaySetsLoadingState(prevState => ({
@@ -523,9 +524,9 @@ export default function PanelStudyBrowserTracking({
     }
 
     // Step 2 – once ready, grab the current display sets that have cornerstone-renderable images
-    let currentDisplaySets = displaySetService.activeDisplaySets;
+    let currentDisplaySets = displaySetService.activeDisplaySets as DisplaySet[];
     currentDisplaySets = currentDisplaySets.filter(
-      ds => !thumbnailNoImageModalities.includes(ds.Modality)
+      ds => !thumbnailNoImageModalities.includes(ds.Modality ?? '')
     );
 
     if (!currentDisplaySets.length) {
@@ -568,7 +569,7 @@ export default function PanelStudyBrowserTracking({
   useEffect(() => {
     const SubscriptionDisplaySetsAdded = displaySetService.subscribe(
       displaySetService.EVENTS.DISPLAY_SETS_ADDED,
-      data => {
+      (data: { displaySetsAdded: DisplaySet[]; options?: { madeInClient?: boolean } }) => {
         if (!hasLoadedViewports) {
           return;
         }
@@ -617,6 +618,24 @@ export default function PanelStudyBrowserTracking({
         )
       : createAIBrowserTabs(StudyInstanceUIDs, studyDisplayList, displaySets, servicesManager);
 
+  // `tabs` is rebuilt on every render, so it is a fresh array identity every time
+  // and useless as an effect dependency — the styling effect below was re-running
+  // on every single render, tearing down and recreating the MutationObserver and
+  // re-running applyAIThumbnailStyles()'s document-wide querySelectorAll sweep
+  // twice, even when the tabs were identical. Key that effect on the tab names
+  // instead, so it runs when the tab set actually changes.
+  //
+  // Deliberately not useMemo(tabs): createAIBrowserTabs/createStudyAIBrowserTabsNested
+  // resolve display sets through displaySetService and read mutable instance
+  // metadata, so they are not pure functions of the values available as deps here —
+  // a memo would risk serving stale tab labels/grouping, which is a worse failure
+  // than the wasted work. Rebuilding stays cheap; only the DOM sweep was costly.
+  // JSON.stringify rather than join(): it needs no separator, so no tab name can
+  // forge a collision. This used a literal NUL as the separator, on the reasoning
+  // that a display string cannot contain one -- true, but it also made the whole
+  // file binary to grep and every other line-oriented tool, for no gain here.
+  const tabsKey = JSON.stringify(tabs.map(tab => tab.name));
+
   // Ensure activeTabName is valid
   useEffect(() => {
     if (!tabs.find(t => t.name === activeTabName) && tabs.length) {
@@ -643,7 +662,11 @@ export default function PanelStudyBrowserTracking({
       // Disconnect the MutationObserver on unmount so its full-subtree sweep stops.
       disconnectObserver();
     };
-  }, [tabs, activeTabName]);
+    // tabsKey, not tabs: see the note above. This body reads neither, so keying on
+    // the tab names costs no exhaustive-deps accuracy. Re-running when the tab set
+    // changes is also what lets setupAIThumbnailObserver() upgrade its observation
+    // root from document.body to the study-browser container once that exists.
+  }, [tabsKey, activeTabName]);
 
   // TODO: Should not fire this on "close"
   function _handleStudyClick(StudyInstanceUID) {
@@ -668,7 +691,6 @@ export default function PanelStudyBrowserTracking({
       const element = document.getElementById(`thumbnail-${displaySetInstanceUID}`);
 
       if (element && typeof element.scrollIntoView === 'function') {
-        // TODO: Any way to support IE here?
         element.scrollIntoView({ behavior: 'smooth' });
 
         setJumpToDisplaySet(null);
@@ -709,7 +731,7 @@ export default function PanelStudyBrowserTracking({
         />
         <Separator
           orientation="horizontal"
-          className="bg-black"
+          className="bg-background"
           thickness="2px"
         />
       </>

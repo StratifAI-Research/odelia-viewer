@@ -124,24 +124,32 @@ const Trigger = ({
 }: TriggerProps) => {
   const { isOpen } = useLayoutSelector();
 
-  // Style constants matching ToolButton
-  const baseClasses = '!rounded-lg inline-flex items-center justify-center';
-  const defaultClasses =
-    'bg-transparent text-foreground/80 hover:bg-background hover:text-highlight';
-  const activeClasses = 'bg-background text-foreground/80';
-  const disabledClasses =
-    'text-common-bright hover:bg-primary-dark hover:text-primary-light opacity-40 cursor-not-allowed';
-  const buttonSizeClass = 'w-10 h-10';
-  const iconSizeClass = 'h-7 w-7';
-
-  const buttonClasses = cn(
-    baseClasses,
-    buttonSizeClass,
-    disabled ? disabledClasses : isOpen ? activeClasses : defaultClasses
-  );
-
   const hasTooltip = tooltip || (disabled && disabledText);
 
+  const button = (
+    <Button
+      className={cn(
+        'inline-flex h-10 w-10 items-center justify-center !rounded-lg',
+        disabled
+          ? 'text-foreground/80 hover:bg-muted hover:text-highlight cursor-not-allowed opacity-40'
+          : isOpen
+            ? 'bg-background text-foreground/80'
+            : 'text-foreground/80 hover:bg-background hover:text-highlight bg-transparent',
+        className
+      )}
+      variant="ghost"
+      size="icon"
+      aria-label={tooltip}
+      disabled={disabled}
+    >
+      <Icons.ByName
+        name="tool-layout"
+        className="h-7 w-7"
+      />
+    </Button>
+  );
+
+  // If user passed children (custom button), just wrap it directly
   if (children) {
     return (
       <PopoverTrigger
@@ -153,36 +161,26 @@ const Trigger = ({
     );
   }
 
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        asChild
-        className={cn(disabled && 'cursor-not-allowed')}
-      >
-        <span data-cy="layout-button">
+  if (!isOpen && hasTooltip) {
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
           <PopoverTrigger asChild>
-            <Button
-              className={buttonClasses}
-              variant="ghost"
-              size="icon"
-              aria-label={tooltip}
-              disabled={disabled}
-            >
-              <Icons.ByName
-                name="tool-layout"
-                className={iconSizeClass}
-              />
-            </Button>
+            <span data-cy="layout-button">{button}</span>
           </PopoverTrigger>
-        </span>
-      </TooltipTrigger>
-      {hasTooltip && (
+        </TooltipTrigger>
         <TooltipContent side="bottom">
           {tooltip && <div>{tooltip}</div>}
           {disabled && disabledText && <div className="text-muted-foreground">{disabledText}</div>}
         </TooltipContent>
-      )}
-    </Tooltip>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <PopoverTrigger asChild>
+      <span data-cy="layout-button">{button}</span>
+    </PopoverTrigger>
   );
 };
 
@@ -322,7 +320,7 @@ const GridSelector = ({ rows = 3, columns = 4, className }: GridSelectorProps) =
       {Array.from(Array(rows * columns).keys()).map(index => (
         <div
           key={index}
-          className={cn('cursor-pointer', isHovered(index) ? 'bg-primary-active' : 'bg-[#04225b]')}
+          className={cn('cursor-pointer', isHovered(index) ? 'bg-primary' : 'bg-accent')}
           data-cy={`Layout-${index % columns}-${Math.floor(index / columns)}`}
           onClick={() => handleSelection(index)}
           onMouseEnter={() => setHoveredIndex(index)}
@@ -334,7 +332,7 @@ const GridSelector = ({ rows = 3, columns = 4, className }: GridSelectorProps) =
 };
 
 const Divider = ({ className }: { className?: string }) => (
-  <div className={cn('h-px bg-black', className)}></div>
+  <div className={cn('h-px bg-background', className)}></div>
 );
 
 const HelpText = ({ children, className }: { children: React.ReactNode; className?: string }) => (

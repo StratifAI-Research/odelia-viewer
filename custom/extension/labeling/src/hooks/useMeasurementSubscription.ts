@@ -1,4 +1,4 @@
-import { useEffect, useState, Dispatch, SetStateAction } from 'react';
+import { useEffect, useState } from 'react';
 import debounce from 'lodash.debounce';
 
 /**
@@ -6,14 +6,18 @@ import debounce from 'lodash.debounce';
  * debounced snapshot of the measurements to display. Shared by PanelLabeling and
  * PanelLesions — their subscription wiring was byte-identical; only the
  * `getMappedMeasurements` projection differs (labels pass-through vs lesion mapping),
- * so it is injected. Returns a `[measurements, setMeasurements]` tuple; the setter lets
- * callers (e.g. PanelLesions' active-row toggle) update the snapshot directly.
+ * so it is injected.
+ *
+ * The snapshot is read-only on purpose. Writing to it locally does not survive:
+ * every measurement event re-projects from the service, discarding anything the
+ * caller set. State that must persist (selection, labels) belongs on the
+ * MeasurementService, which is the source this projects from.
  */
-export function useMeasurementSubscription(
-  measurementService: any,
-  getMappedMeasurements: (service: any) => any[]
-): [any[], Dispatch<SetStateAction<any[]>>] {
-  const [displayMeasurements, setDisplayMeasurements] = useState<any[]>([]);
+export function useMeasurementSubscription<T = any>(
+  measurementService: AppTypes.MeasurementService,
+  getMappedMeasurements: (service: AppTypes.MeasurementService) => T[]
+): T[] {
+  const [displayMeasurements, setDisplayMeasurements] = useState<T[]>([]);
 
   useEffect(() => {
     const debouncedSetDisplayMeasurements = debounce(setDisplayMeasurements, 100);
@@ -45,5 +49,5 @@ export function useMeasurementSubscription(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  return [displayMeasurements, setDisplayMeasurements];
+  return displayMeasurements;
 }

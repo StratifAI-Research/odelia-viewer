@@ -1,5 +1,3 @@
-// `any` for the isolated custom typecheck (@ohif shimmed to any). Swap back to
-// `import type { Panel } from '@ohif/core'` when real platform types are wired.
 import PanelStudyBrowserTracking from './panels/PanelStudyBrowserTracking/PanelStudyBrowserTracking';
 import i18n from 'i18next';
 import React, { useCallback } from 'react';
@@ -8,7 +6,8 @@ import { requestDisplaySetCreationForStudy } from '@ohif/extension-default';
 import getImageSrcFromImageId from './utils/getImageSrcFromImageId';
 import FeedbackPanel from './panels/FeedbackPanel/FeedbackPanel';
 import ChatPanel from './panels/ChatPanel/ChatPanel';
-type Panel = any;
+
+type Panel = AppTypes.PanelModule.Panel;
 
 function _getStudyForPatientUtility(extensionManager) {
   const utilityModule = extensionManager.getModuleEntry(
@@ -27,7 +26,7 @@ function _createGetImageSrcFromImageIdFn(extensionManager) {
   try {
     const { cornerstone } = utilities.exports.getCornerstoneLibraries();
     return getImageSrcFromImageId.bind(null, cornerstone);
-  } catch (ex) {
+  } catch {
     throw new Error('Required command not found');
   }
 }
@@ -57,7 +56,10 @@ function WrappedPanelStudyBrowserTracking() {
   );
 }
 
-function getPanelModule({ commandsManager, extensionManager, servicesManager }): Panel[] {
+// The panel components read the managers from context (useSystem), so the module
+// factory ignores its argument — the parameter is kept because OHIF's extension
+// manager always passes one.
+function getPanelModule(_extensionParams?: Record<string, unknown>): Panel[] {
   return [
     {
       name: 'seriesList',
@@ -68,14 +70,14 @@ function getPanelModule({ commandsManager, extensionManager, servicesManager }):
     },
     {
       name: 'aiFeedback',
-      iconName: 'tab-linear',
+      iconName: 'odelia-ai-feedback',
       iconLabel: 'Feedback',
       label: 'Feedback',
       component: props => <FeedbackPanel {...props} />,
     },
     {
       name: 'aiChat',
-      iconName: 'tab-patient-info',
+      iconName: 'odelia-ai-chat',
       iconLabel: 'AI Chat',
       label: 'AI Chat',
       component: props => <ChatPanel {...props} />,

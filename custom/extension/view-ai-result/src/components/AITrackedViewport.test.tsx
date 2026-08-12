@@ -2,12 +2,13 @@ import React from 'react';
 import { installConsoleErrorFilter } from '../test-utils/harness';
 import { render, screen } from '@testing-library/react';
 import AITrackedViewport, { areEqual } from './AITrackedViewport';
+import { useAIViewportStore } from '../stores/useAIViewportStore';
 import { AISideBySideViewportProps } from '../types';
 
 // Stub cornerstone viewport component: surfaces received props into the DOM.
-let lastViewportProps: any = null;
+let _lastViewportProps: any = null;
 const StubViewport = (props: any) => {
-  lastViewportProps = props;
+  _lastViewportProps = props;
   return (
     <div data-testid="cs-viewport">
       <span data-testid="cs-viewport-id">{props.viewportId}</span>
@@ -20,10 +21,6 @@ const StubViewport = (props: any) => {
 const makeServices = () => ({
   services: {
     viewportGridService: { getState: jest.fn(() => ({ viewports: new Map() })) },
-    viewportActionCornersService: {
-      addComponent: jest.fn(),
-      LOCATIONS: { topRight: 'topRight' },
-    },
     customizationService: { setCustomizations: jest.fn() },
     aiResultsService: {
       subscribe: jest.fn(() => ({ unsubscribe: jest.fn() })),
@@ -48,7 +45,8 @@ installConsoleErrorFilter({ silenceLog: true });
 
 describe('AITrackedViewport', () => {
   beforeEach(() => {
-    lastViewportProps = null;
+    _lastViewportProps = null;
+    useAIViewportStore.setState({ viewports: {} });
   });
 
   it('renders the cornerstone viewport wrapper for a primary viewport', () => {
@@ -104,18 +102,23 @@ describe('AITrackedViewport', () => {
     expect(screen.getByTestId('cs-ds-count').textContent).toBe('2');
   });
 
-  it('clears overlays but never adds a heatmap toggle on a heatmap viewport', () => {
-    const services = makeServices();
-    render(
-      <AITrackedViewport {...baseProps({ viewportId: 'vp-heatmap', servicesManager: services })} />
-    );
-    const addComponent = services.services.viewportActionCornersService.addComponent;
-    // heatmap viewport aggressively clears the AI overlay corner...
-    expect(addComponent).toHaveBeenCalled();
-    const ids = addComponent.mock.calls.map((c: any[]) => c[0].id);
-    expect(ids).toContain('aiOverlay');
-    // ...but never registers the heatmap toggle corner
-    expect(ids).not.toContain('heatmapToggle');
+  it('publishes AI state for a primary viewport so the overlay and corner can render', () => {
+    render(<AITrackedViewport {...baseProps()} />);
+    const state = useAIViewportStore.getState().viewports['vp-primary'];
+    expect(state).toBeDefined();
+    expect(typeof state.onToggleHeatmap).toBe('function');
+  });
+
+  it('publishes no AI state for a heatmap viewport', () => {
+    render(<AITrackedViewport {...baseProps({ viewportId: 'vp-heatmap' })} />);
+    expect(useAIViewportStore.getState().viewports['vp-heatmap']).toBeUndefined();
+  });
+
+  it('drops its published AI state when the viewport unmounts', () => {
+    const { unmount } = render(<AITrackedViewport {...baseProps()} />);
+    expect(useAIViewportStore.getState().viewports['vp-primary']).toBeDefined();
+    unmount();
+    expect(useAIViewportStore.getState().viewports['vp-primary']).toBeUndefined();
   });
 
   it('subscribes to AI result events for a primary viewport', () => {

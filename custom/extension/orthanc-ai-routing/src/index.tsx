@@ -2,6 +2,7 @@ import React from 'react';
 import { id } from './id';
 import OrthancAIService from './services/OrthancAIService';
 import AIRoutingPanel from './components/AIRoutingPanel';
+import { registerIcons } from './icons';
 
 // Add TypeScript declaration for the window.config
 declare global {
@@ -35,7 +36,10 @@ export default {
    * (e.g. cornerstone, cornerstoneTools, ...) or registering any services that
    * this extension is providing.
    */
-  preRegistration: ({ servicesManager, commandsManager, configuration = {} }: any) => {
+  preRegistration: ({ servicesManager }: any) => {
+    // Before any panel renders, so the rail never falls back to "Missing Icon".
+    registerIcons();
+
     // Create a service factory function
     const createOrthancAIService = () => {
       return {
@@ -58,7 +62,7 @@ export default {
   /**
    * PanelModule provides the "Analyze with AI" routing panel rendered in the sidebar.
    */
-  getPanelModule: ({ servicesManager, commandsManager, extensionManager }: any) => {
+  getPanelModule: ({ servicesManager }: any) => {
     const wrappedAIRoutingPanel = () => {
       return <AIRoutingPanel servicesManager={servicesManager} />;
     };
@@ -66,28 +70,11 @@ export default {
     return [
       {
         name: 'ai-routing-panel',
-        iconName: 'clipboard', // Changed to a more relevant icon
+        iconName: 'odelia-ai-model',
         iconLabel: 'AI',
         label: 'Analyze with AI',
         component: wrappedAIRoutingPanel,
       },
     ];
-  },
-
-  /**
-   * CommandsModule exposes the routeToAI command used to send a study to the AI server.
-   */
-  getCommandsModule: ({ servicesManager, commandsManager, extensionManager }: any) => {
-    return {
-      definitions: [
-        {
-          commandName: 'routeToAI',
-          commandFn: ({ orthancAIService }: any, { studyInstanceUID }: any) => {
-            return orthancAIService.routeStudyToAI(studyInstanceUID);
-          },
-          context: { orthancAIService: true },
-        },
-      ],
-    };
   },
 };

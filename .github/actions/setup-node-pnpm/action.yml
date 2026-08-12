@@ -1,0 +1,21 @@
+name: Setup Node + pnpm (pinned)
+description: >
+  Bootstraps the Node major from .node-version and activates the pnpm version
+  pinned in the root package.json's `packageManager` field via corepack. This
+  Node only has to be new enough to run pnpm: `pnpm install` downloads the exact
+  runtime from package.json#devEngines.runtime and runs project scripts with it.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+      with:
+        node-version-file: .node-version
+    # `manage-package-manager-versions=false` in .npmrc keeps pnpm from managing
+    # its own version, so corepack is what pins it — to whatever
+    # package.json#packageManager says.
+    - name: Activate pnpm via corepack
+      shell: bash
+      run: |
+        corepack enable pnpm
+        corepack prepare --activate
+        pnpm --version

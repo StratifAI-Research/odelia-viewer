@@ -7,6 +7,7 @@ import {
   extractAIResultsForStudy,
   hasUsableAIResultData,
 } from './aiResultExtraction';
+import { EventfulService } from './EventfulService';
 
 /**
  * Stateful repository + event bus for AI results.
@@ -17,18 +18,16 @@ import {
  * concerns: the per-study result cache, the selection map, the event bus, and
  * UI notifications.
  */
-export class AIResultsService {
+export class AIResultsService extends EventfulService {
   private cache: Map<string, AIResult[]> = new Map();
   private selectedAIResults: Map<string, string> = new Map(); // studyUID -> displaySetUID
   private uiNotificationService: any;
-  private eventListeners: Map<string, Array<(data: any) => void>> = new Map(); // event -> callbacks
   private currentStudyUID: string | null = null; // Track current active study
   private displaySetService: any = null; // set lazily; used to invalidate the cache when display sets load
 
   // Event constants
   static EVENTS = {
     AI_RESULT_SELECTED: 'AI_RESULT_SELECTED',
-    AI_RESULT_UPDATED: 'AI_RESULT_UPDATED',
     AI_RESULT_CLEARED: 'AI_RESULT_CLEARED',
     STUDY_CHANGED: 'STUDY_CHANGED',
   };
@@ -37,6 +36,7 @@ export class AIResultsService {
   EVENTS = AIResultsService.EVENTS;
 
   constructor(uiNotificationService: any) {
+    super();
     this.uiNotificationService = uiNotificationService;
   }
 
@@ -388,41 +388,16 @@ export class AIResultsService {
     }
   }
 
-  /**
-   * Subscribe to events
-   */
-  subscribe(eventName: string, callback: (data: any) => void): { unsubscribe: () => void } {
-    if (!this.eventListeners.has(eventName)) {
-      this.eventListeners.set(eventName, []);
-    }
-    this.eventListeners.get(eventName)!.push(callback);
+}
 
-    return {
-      unsubscribe: () => {
-        const listeners = this.eventListeners.get(eventName);
-        if (listeners) {
-          const index = listeners.indexOf(callback);
-          if (index > -1) {
-            listeners.splice(index, 1);
-          }
-        }
-      },
-    };
-  }
-
-  /**
-   * Publish events
-   */
-  private publish(eventName: string, data: any): void {
-    const listeners = this.eventListeners.get(eventName);
-    if (listeners) {
-      listeners.forEach(callback => {
-        try {
-          callback(data);
-        } catch (error) {
-          console.error(`Error in event listener for ${eventName}:`, error);
-        }
-      });
+/**
+ * Register this extension's services on OHIF's global service map so consumers
+ * get real types from `servicesManager.services` instead of `any`.
+ */
+declare global {
+  namespace AppTypes {
+    interface Services {
+      aiResultsService?: AIResultsService;
     }
   }
 }

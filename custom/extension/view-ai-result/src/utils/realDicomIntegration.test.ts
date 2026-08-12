@@ -18,13 +18,10 @@ import { TextEncoder, TextDecoder } from 'util';
 import { data } from 'dcmjs';
 
 import { primarySopInstanceUID, findMatchingSRForHeatmap } from './aiResultPairing';
-import { resolveAIGroupIdentity } from './aiTabHelpers';
+import { clearAITabCache, resolveAIGroupIdentity } from './aiTabHelpers';
 import { formatDicomDateTime } from './dicomDateTime';
-import { createAIBrowserTabs, clearDisplaySetCache } from './createAIBrowserTabs';
-import {
-  createStudyAIBrowserTabsNested,
-  clearNestedTabCache,
-} from './createStudyAIBrowserTabsNested';
+import { createAIBrowserTabs } from './createAIBrowserTabs';
+import { createStudyAIBrowserTabsNested } from './createStudyAIBrowserTabsNested';
 
 // dcmjs needs TextEncoder/TextDecoder at call time, which the jsdom test env does
 // not provide. (dcmjs itself uses them only when reading/writing, not on import.)
@@ -46,8 +43,7 @@ const STUDY = '1.2.826.0.1.3680043.8.498.999';
 // throw on real failures, so this only removes noise, never hides errors.
 let logSpy: jest.SpyInstance, warnSpy: jest.SpyInstance, errSpy: jest.SpyInstance;
 beforeEach(() => {
-  clearDisplaySetCache();
-  clearNestedTabCache();
+  clearAITabCache();
   logSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
   warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
   errSpy = jest.spyOn(console, 'error').mockImplementation(() => {});

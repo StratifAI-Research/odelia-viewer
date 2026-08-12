@@ -1,7 +1,17 @@
 import React, { useEffect, useLayoutEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { useSystem } from '@ohif/core';
-import { useImageViewer, useUserAuthentication } from '@ohif/ui';
-import { useViewportGrid } from '@ohif/ui-next';
+import {
+  Button,
+  Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  useImageViewer,
+  useUserAuthentication,
+  useViewportGrid,
+} from '@ohif/ui-next';
 import { useActiveStudyUID } from '../../hooks/useActiveStudyUID';
 import { resultTsFromDisplaySet } from '../../utils/dicomDateTime';
 import { fetchFeedbackStatus, findUserVerdict, submitFeedback } from './feedbackApi';
@@ -36,8 +46,13 @@ const INT_TO_VERDICT: Record<number, 'Agree' | 'Unsure' | 'Disagree'> = {
 const FeedbackPanel: React.FC = () => {
   // Access OHIF services
   const { servicesManager } = useSystem();
-  const { StudyInstanceUIDs } = useImageViewer();
-  const [authState] = useUserAuthentication();
+  // ImageViewerContext is created with `createContext(null)` upstream, so the
+  // hook is typed as null; the provider always supplies StudyInstanceUIDs.
+  const { StudyInstanceUIDs } = useImageViewer() as unknown as { StudyInstanceUIDs: string[] };
+  // UserAuthenticationContext is created with its default STATE object, so the
+  // hook is typed as that object even though the provider supplies a
+  // [state, api] tuple.
+  const [authState] = useUserAuthentication() as unknown as [{ user?: unknown }, unknown];
   const [{ activeViewportId, viewports }] = useViewportGrid();
   const aiResultsService: any = servicesManager.services?.aiResultsService;
   const userAuthenticationService: any = servicesManager.services?.userAuthenticationService;
@@ -87,7 +102,14 @@ const FeedbackPanel: React.FC = () => {
       const firstUID = meta[0].displaySetInstanceUID;
       setSelectedUID(firstUID);
       aiResultsService.setSelectedAIResult?.(activeStudyUID, firstUID, servicesManager);
+      return;
     }
+    // This study has no AI results. Drop the previous study's selection: the
+    // submit payload takes `study_uid` from the *current* study but the model /
+    // version / timestamp from whatever result is still on screen, so a
+    // retained selection would file feedback against a (study, result) pair
+    // that never existed.
+    setSelectedUID('');
   }, [aiResultsService, activeStudyUID, servicesManager]);
 
   // Helper to refresh the currently displayed AI result
@@ -95,23 +117,16 @@ const FeedbackPanel: React.FC = () => {
     if (!aiResultsService || !activeStudyUID) {
       return;
     }
-    const res = aiResultsService.getSelectedAIResult?.(activeStudyUID, servicesManager);
-    if (res) {
-      setCurrentResult(res);
-    }
+    // Clear on an empty response for the same reason as above — the result on
+    // screen must always belong to the study on screen.
+    setCurrentResult(
+      aiResultsService.getSelectedAIResult?.(activeStudyUID, servicesManager) ?? null
+    );
   }, [aiResultsService, activeStudyUID, servicesManager]);
 
-  // Initialize activeStudyUID on mount
-  useEffect(() => {
-    if (!activeStudyUID) {
-      const initialStudyUID = getStudyUIDFromActiveViewport();
-      if (initialStudyUID) {
-        setActiveStudyUID(initialStudyUID);
-      }
-    }
-  }, [activeStudyUID, getStudyUIDFromActiveViewport]);
-
-  // Track viewport changes and update activeStudyUID
+  // Track viewport changes and update activeStudyUID. This also performs the
+  // initial resolve — on mount `activeStudyUID` is null, so the inequality below
+  // is already true — so no separate mount effect is needed.
   useEffect(() => {
     const studyUID = getStudyUIDFromActiveViewport();
     if (studyUID && studyUID !== activeStudyUID) {
@@ -197,7 +212,7 @@ const FeedbackPanel: React.FC = () => {
         } else {
           setLocked(false);
         }
-      } catch (e) {
+      } catch {
         // Aborted requests and network errors are non-fatal; keep the UI functional.
       }
     },
@@ -279,8 +294,7 @@ const FeedbackPanel: React.FC = () => {
   }, [aiMeta, activeStudyUID, aiResultsService, servicesManager, displaySetService, userId]);
 
   // --- Interaction handlers ---
-  const handleDropdownChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const uid = e.target.value;
+  const handleResultSelected = (uid: string) => {
     setSelectedUID(uid);
     if (aiResultsService && activeStudyUID) {
       aiResultsService.setSelectedAIResult(activeStudyUID, uid, servicesManager);
@@ -380,11 +394,13 @@ const FeedbackPanel: React.FC = () => {
         duration: 2000,
       });
     };
+    // UIModalService.show's parameter defaults are all `= null` with no type
+    // annotations, so TS infers `null` for every field of the options object.
     uiModalService?.show({
       title: 'Confirm Edit',
       content: EditConfirmModal,
       contentProps: { onConfirm },
-    });
+    } as unknown as Parameters<AppTypes.UIModalService['show']>[0]);
   }, [servicesManager.services]);
 
   // Utility to format confidence nicely
@@ -398,17 +414,18 @@ const FeedbackPanel: React.FC = () => {
   // --- Render helpers ---
   const renderNoUserPrompt = () => {
     return (
-      <div className="flex h-full flex-col overflow-y-auto bg-black p-3 text-white">
+      <div className="bg-background text-foreground flex h-full flex-col overflow-y-auto p-3">
         <div className="mb-3 text-sm">Please enter your name to provide feedback.</div>
         <div className="mb-3 flex items-center space-x-2">
-          <input
-            className="flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-2 text-sm"
+          <Input
+            // min-w-0: a flex item will not shrink below its intrinsic width by
+            // default, which pushed Save off the edge of this narrow panel.
+            className="min-w-0 flex-1"
             placeholder="Your name"
             value={nameInput}
             onChange={e => setNameInput(e.target.value)}
           />
-          <button
-            className={`rounded px-3 py-2 ${nameInput.trim().length > 0 ? 'bg-primary-main hover:bg-primary-light' : 'cursor-not-allowed bg-gray-700'}`}
+          <Button
             disabled={nameInput.trim().length === 0}
             onClick={() => {
               saveLocalUser(nameInput);
@@ -417,7 +434,7 @@ const FeedbackPanel: React.FC = () => {
             title={nameInput.trim().length === 0 ? 'Enter a valid name' : 'Save name'}
           >
             Save
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -431,10 +448,10 @@ const FeedbackPanel: React.FC = () => {
     return (
       <div
         key={side}
-        className="mb-3 rounded border p-2"
+        className="border-input mb-3 rounded border p-2"
       >
         <div className="mb-1 font-semibold">{side} Breast</div>
-        <div className="mb-2 text-xs text-gray-400">
+        <div className="text-muted-foreground mb-2 text-xs">
           AI Prediction: {aiLabel} {formatConfidence(classification?.confidence)}
         </div>
         <div className="flex space-x-4">
@@ -454,22 +471,18 @@ const FeedbackPanel: React.FC = () => {
                   checked={isChecked}
                   onChange={() => setFeedbackValue(side, opt)}
                   disabled={locked}
-                  style={{
-                    accentColor: locked && isChecked ? '#60a5fa' : undefined,
-                    WebkitAppearance: locked && isChecked ? 'none' : undefined,
-                    appearance: locked && isChecked ? 'none' : undefined,
-                    width: locked && isChecked ? '14px' : undefined,
-                    height: locked && isChecked ? '14px' : undefined,
-                    borderRadius: locked && isChecked ? '50%' : undefined,
-                    border: locked && isChecked ? '2px solid #60a5fa' : undefined,
-                    backgroundColor: locked && isChecked ? '#60a5fa' : undefined,
-                    position: 'relative' as const,
-                    cursor: locked ? 'not-allowed' : 'pointer',
-                  }}
+                  // `accent-highlight` keeps the recorded choice legible once the
+                  // form locks: a disabled radio is dimmed by the browser, and
+                  // the accent is the only thing that still reads as "chosen".
+                  className="accent-highlight"
                 />
                 <span
                   className={`text-sm font-medium ${
-                    locked && isChecked ? 'text-blue-400' : locked ? 'text-gray-500' : 'text-white'
+                    locked && isChecked
+                      ? 'text-highlight'
+                      : locked
+                        ? 'text-muted-foreground'
+                        : 'text-foreground'
                   }`}
                 >
                   {opt}
@@ -483,56 +496,62 @@ const FeedbackPanel: React.FC = () => {
   };
 
   return (
-    <div className="flex h-full flex-col overflow-y-auto bg-black p-3 text-white">
+    <div className="bg-background text-foreground flex h-full flex-col overflow-y-auto p-3">
       {!userId ? (
         renderNoUserPrompt()
       ) : (
         <>
           {/* Dropdown for AI result selection */}
           <div className="mb-2">
-            <select
+            <Select
               value={selectedUID}
-              onChange={handleDropdownChange}
-              className="w-full rounded border border-gray-700 bg-gray-800 px-1 py-1 text-sm"
+              onValueChange={handleResultSelected}
             >
-              {aiMeta.map(m => {
-                const uid = m.displaySetInstanceUID;
-                const mark = hasFeedbackByUID[uid] ? ' ✓' : '';
-                return (
-                  <option
-                    key={uid}
-                    value={uid}
-                  >
-                    {(m.modelName || 'AI Result') + mark}
-                  </option>
-                );
-              })}
-            </select>
+              <SelectTrigger aria-label="AI result">
+                <SelectValue placeholder="Select AI result" />
+              </SelectTrigger>
+              <SelectContent>
+                {aiMeta.map(m => {
+                  const uid = m.displaySetInstanceUID;
+                  const mark = hasFeedbackByUID[uid] ? ' ✓' : '';
+                  return (
+                    <SelectItem
+                      key={uid}
+                      value={uid}
+                    >
+                      {(m.modelName || 'AI Result') + mark}
+                    </SelectItem>
+                  );
+                })}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Navigation buttons */}
           <div className="mb-3 flex items-center justify-between space-x-2">
-            <button
-              className="flex-1 rounded bg-gray-700 px-2 py-1 hover:bg-gray-600"
+            <Button
+              variant="secondary"
+              className="flex-1"
               title="Previous AI Result"
               onClick={() => handlePrevNext(-1)}
             >
               ◀ Prev
-            </button>
-            <button
-              className="flex-1 rounded bg-gray-700 px-2 py-1 hover:bg-gray-600"
+            </Button>
+            <Button
+              variant="secondary"
+              className="flex-1"
               title="Next AI Result"
               onClick={() => handlePrevNext(1)}
             >
               Next ▶
-            </button>
+            </Button>
           </div>
 
           {/* Active Study Indicator */}
           {activeStudyUID && (
-            <div className="mb-3 rounded bg-gray-800 p-2 text-xs">
-              <div className="text-gray-400">Active Study:</div>
-              <div className="break-all font-mono text-gray-300">{activeStudyUID}</div>
+            <div className="bg-muted mb-3 rounded p-2 text-xs">
+              <div className="text-muted-foreground">Active Study:</div>
+              <div className="text-muted-foreground break-all font-mono">{activeStudyUID}</div>
             </div>
           )}
 
@@ -550,7 +569,7 @@ const FeedbackPanel: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="text-sm text-gray-400">No AI result selected.</div>
+            <div className="text-muted-foreground text-sm">No AI result selected.</div>
           )}
 
           {/* Feedback per side */}
@@ -558,14 +577,8 @@ const FeedbackPanel: React.FC = () => {
 
           {/* Submit button and status */}
           <div className="mt-auto space-y-2">
-            <button
-              className={`w-full rounded py-2 ${
-                locked
-                  ? 'cursor-not-allowed bg-gray-700'
-                  : bothSidesChosen && canQueryBackend && !isSubmitting
-                    ? 'bg-primary-main hover:bg-primary-light'
-                    : 'cursor-not-allowed bg-gray-700'
-              }`}
+            <Button
+              className="w-full"
               disabled={locked || !bothSidesChosen || !canQueryBackend || isSubmitting}
               onClick={handleSubmit}
               title={
@@ -579,34 +592,31 @@ const FeedbackPanel: React.FC = () => {
               }
             >
               {locked ? 'Submitted' : isSubmitting ? 'Saving…' : 'Submit Feedback'}
-            </button>
+            </Button>
             {locked ? (
               <div>
-                <button
-                  className={`w-full rounded py-2 ${
-                    isSubmitting
-                      ? 'cursor-not-allowed bg-gray-700'
-                      : 'bg-primary-main hover:bg-primary-light'
-                  }`}
+                <Button
+                  className="w-full"
                   disabled={isSubmitting}
                   onClick={handleStartEdit}
                   title={isSubmitting ? 'Please wait…' : 'Enable editing for this feedback'}
                 >
                   Edit Feedback
-                </button>
+                </Button>
               </div>
             ) : (
-              submitMessage && <div className="text-xs text-gray-300">{submitMessage}</div>
+              submitMessage && <div className="text-muted-foreground text-xs">{submitMessage}</div>
             )}
 
             {/* Footer: Signed in user and Change user */}
-            <div className="border-t border-gray-800 pt-2">
-              <div className="flex items-center justify-between text-xs text-gray-300">
+            <div className="border-input border-t pt-2">
+              <div className="text-muted-foreground flex items-center justify-between text-xs">
                 <div>
                   Signed in as <span className="font-medium">{userId}</span>
                 </div>
-                <button
-                  className="rounded bg-gray-700 px-2 py-1 hover:bg-gray-600"
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => {
                     try {
                       const cfg = (window as any)?.config || {};
@@ -628,7 +638,7 @@ const FeedbackPanel: React.FC = () => {
                   title="Change user"
                 >
                   Change user
-                </button>
+                </Button>
               </div>
             </div>
           </div>

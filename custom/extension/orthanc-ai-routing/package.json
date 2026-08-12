@@ -16,11 +16,10 @@
   ],
   "module": "src/index.tsx",
   "engines": {
-    "node": ">=18",
-    "npm": ">=6"
+    "node": ">=24"
   },
   "scripts": {
-    "lint": "eslint src --ext .ts,.tsx",
+    "lint": "eslint src",
     "format": "prettier --write \"src/**/*.{ts,tsx}\"",
     "test:unit": "jest --config jest.config.js",
     "test:unit:watch": "jest --config jest.config.js --watchAll",
@@ -28,48 +27,18 @@
   },
   "peerDependencies": {
     "@ohif/core": "workspace:*",
-    "@ohif/extension-default": "workspace:*",
     "@ohif/extension-cornerstone": "workspace:*",
+    "@ohif/extension-default": "workspace:*",
+    "@ohif/i18n": "workspace:*",
     "@ohif/ui-next": "workspace:*",
-    "@ohif/i18n": "^1.0.0",
-    "prop-types": "^15.6.2",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-i18next": "^12.2.2",
-    "react-router": "^6.23.1",
-    "react-router-dom": "^6.23.1"
+    "prop-types": "15.8.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "react-i18next": "12.3.1",
+    "react-router": "6.30.3",
+    "react-router-dom": "6.30.3"
   },
   "dependencies": {
-    "@babel/runtime": "^7.20.13",
-    "@ohif/core": "workspace:*",
-    "@ohif/ui": "workspace:*",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
-  },
-  "devDependencies": {
-    "@babel/core": "7.24.7",
-    "@babel/plugin-proposal-class-properties": "^7.16.7",
-    "@babel/plugin-proposal-object-rest-spread": "^7.17.3",
-    "@babel/plugin-proposal-private-methods": "^7.18.6",
-    "@babel/plugin-syntax-dynamic-import": "^7.8.3",
-    "@babel/plugin-transform-arrow-functions": "^7.16.7",
-    "@babel/plugin-transform-regenerator": "^7.16.7",
-    "@babel/plugin-transform-runtime": "7.24.7",
-    "@babel/plugin-transform-typescript": "^7.13.0",
-    "@babel/preset-env": "7.24.7",
-    "@babel/preset-react": "^7.16.7",
-    "@babel/preset-typescript": "^7.13.0",
-    "@babel/plugin-proposal-private-property-in-object": "7.21.11",
-    "babel-eslint": "9.x",
-    "babel-plugin-module-resolver": "^5.0.0",
-    "eslint": "^8.0.0",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "@typescript-eslint/eslint-plugin": "^5.0.0",
-    "@typescript-eslint/parser": "^5.0.0",
-    "eslint-config-prettier": "^8.0.0",
-    "eslint-plugin-react": "^7.0.0",
-    "prettier": "^2.0.0",
-    "typescript": "^4.9.0"
+    "@babel/runtime": "7.29.7"
   }
 }

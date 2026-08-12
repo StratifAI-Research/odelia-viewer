@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import {
+  Button,
+  FooterAction,
   StudyBrowserViewOptions,
   StudyBrowserSort,
   ThumbnailList,
@@ -48,7 +50,7 @@ interface Props {
   onDoubleClickThumbnail: (uid: string) => void;
   onClickUntrack?: (uid: string) => void;
   activeDisplaySetInstanceUIDs: string[];
-  servicesManager: any;
+  servicesManager: AppTypes.ServicesManager;
   commandsManager: any;
   showSettings?: boolean;
   viewPresets?: any[];
@@ -91,7 +93,9 @@ export const StudyBrowserNested: React.FC<Props> = ({
   ) => {
     event.stopPropagation(); // Prevent accordion toggle
 
-    const { displaySetService, uiDialogService, uiNotificationService } = servicesManager.services;
+    // appInit registers all three; AppTypes marks every service optional.
+    const { displaySetService, uiDialogService, uiNotificationService } =
+      servicesManager.services as Required<AppTypes.Services>;
 
     // Resolve from `onClose` (fired on every close path: button, Esc, overlay)
     // rather than the buttons alone, so a dismissal always settles the Promise.
@@ -101,8 +105,11 @@ export const StudyBrowserNested: React.FC<Props> = ({
       uiDialogService.show({
         id: 'delete-ai-result-confirmation',
         title: 'Delete AI Result',
+        // The dialog shell already supplies the surface; this only needs to set
+        // a text colour, because the dialog is portalled onto <body> and would
+        // otherwise inherit the browser's default black.
         content: ({ hide }: any) => (
-          <div className="bg-secondary-dark p-4 text-white">
+          <div className="text-foreground">
             <p className="mb-4">Are you sure you want to delete this AI result?</p>
             <p className="text-muted-foreground mb-4 text-sm">
               <strong>{group.label}</strong>
@@ -111,26 +118,28 @@ export const StudyBrowserNested: React.FC<Props> = ({
               ⚠️ This will permanently delete the AI result from storage. This action cannot be
               undone.
             </p>
-            <div className="flex justify-end gap-2">
-              <button
-                className="bg-secondary-light hover:bg-secondary-main rounded px-4 py-2 text-white"
-                onClick={() => {
-                  decision = false;
-                  hide('delete-ai-result-confirmation');
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                className="rounded bg-red-600 px-4 py-2 text-white hover:bg-red-700"
-                onClick={() => {
-                  decision = true;
-                  hide('delete-ai-result-confirmation');
-                }}
-              >
-                Delete
-              </button>
-            </div>
+            <FooterAction>
+              <FooterAction.Right>
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    decision = false;
+                    hide('delete-ai-result-confirmation');
+                  }}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    decision = true;
+                    hide('delete-ai-result-confirmation');
+                  }}
+                >
+                  Delete
+                </Button>
+              </FooterAction.Right>
+            </FooterAction>
           </div>
         ),
         containerClassName: 'max-w-md',
@@ -153,14 +162,15 @@ export const StudyBrowserNested: React.FC<Props> = ({
     setDeletingGroups(prev => new Set(prev).add(group.key));
 
     try {
-      const { aiResultsService } = servicesManager.services;
+      const { aiResultsService, orthancAIService } = servicesManager.services;
       const removedDisplaySetUIDs: string[] = [];
 
       // Delete from both Orthanc storage and OHIF viewer.
       // Derive the Orthanc series base from app-config (same source as
       // the feedback API) so a deployment path change doesn't silently break
-      // deletion. `/tools/lookup` stays at root — that is where the proxy exposes
-      // Orthanc's lookup endpoint (distinct from the /pacs-mounted series ops).
+      // deletion. The UID→Orthanc-id lookup goes through orthancAIService, which
+      // owns `/tools/lookup` (at the proxy root, distinct from the /pacs-mounted
+      // series ops) together with its timeout and failure messages.
       const orthancSeriesBase = deriveFeedbackApiBase(); // e.g. '/pacs'
       const deleteResults = { viewer: 0, storage: 0, storageFailed: 0 };
 
@@ -182,48 +192,46 @@ export const StudyBrowserNested: React.FC<Props> = ({
           if (realDisplaySet.SeriesInstanceUID) {
             storageOk = false;
             try {
-              // Step 1: Lookup Orthanc internal ID from DICOM SeriesInstanceUID
-              const lookupResponse = await fetch('/tools/lookup', {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain' },
-                body: realDisplaySet.SeriesInstanceUID,
-              });
+              if (!orthancAIService) {
+                // Only the send-ai mode renders this browser, and it depends on
+                // orthanc-ai-routing — so this is a wiring error, not a runtime
+                // state. Count it as a storage failure so the series stays in the
+                // viewer rather than being hidden while it is still on the server.
+                throw new Error(
+                  'orthancAIService is not registered; cannot delete from Orthanc storage.'
+                );
+              }
 
-              if (lookupResponse.ok) {
-                const lookupData = await lookupResponse.json();
-                // lookupData is array of objects: [{ Type: "Series", ID: "orthanc-id", Path: "/series/..." }]
-                const seriesEntry = lookupData.find((item: any) => item.Type === 'Series');
+              // Step 1: Lookup Orthanc internal ID from DICOM SeriesInstanceUID.
+              // Throws (with a reader-facing message) on a transport or non-Orthanc
+              // failure; resolves to null when Orthanc simply has no such series.
+              const seriesId = await orthancAIService.lookupResourceId(
+                realDisplaySet.SeriesInstanceUID,
+                'Series',
+                'look up the AI result series in Orthanc'
+              );
 
-                if (seriesEntry?.ID) {
-                  // Step 2: Delete using Orthanc internal ID (series operations are under /pacs)
-                  const deleteResponse = await fetch(
-                    `${orthancSeriesBase}/series/${seriesEntry.ID}`,
-                    {
-                      method: 'DELETE',
-                    }
-                  );
+              if (seriesId) {
+                // Step 2: Delete using Orthanc internal ID (series operations are under /pacs)
+                const deleteResponse = await fetch(`${orthancSeriesBase}/series/${seriesId}`, {
+                  method: 'DELETE',
+                });
 
-                  if (deleteResponse.ok) {
-                    deleteResults.storage++;
-                    storageOk = true;
-                  } else {
-                    deleteResults.storageFailed++;
-                    console.error(
-                      `Failed to delete from Orthanc: ${deleteResponse.status} ${deleteResponse.statusText}`
-                    );
-                  }
-                } else {
-                  // Not in Orthanc: already absent, so removing it from the viewer
-                  // keeps them in sync (distinct from a lookup/network error).
+                if (deleteResponse.ok) {
+                  deleteResults.storage++;
                   storageOk = true;
-                  console.warn(
-                    `No Orthanc series entry found for ${realDisplaySet.SeriesInstanceUID}; treating as already deleted`
+                } else {
+                  deleteResults.storageFailed++;
+                  console.error(
+                    `Failed to delete from Orthanc: ${deleteResponse.status} ${deleteResponse.statusText}`
                   );
                 }
               } else {
-                deleteResults.storageFailed++;
-                console.error(
-                  `Orthanc lookup failed: ${lookupResponse.status} ${lookupResponse.statusText}`
+                // Not in Orthanc: already absent, so removing it from the viewer
+                // keeps them in sync (distinct from a lookup/network error).
+                storageOk = true;
+                console.warn(
+                  `No Orthanc series entry found for ${realDisplaySet.SeriesInstanceUID}; treating as already deleted`
                 );
               }
             } catch (storageErr) {
@@ -288,7 +296,7 @@ export const StudyBrowserNested: React.FC<Props> = ({
     <div className="ohif-scrollbar invisible-scrollbar bg-bkg-low flex flex-1 flex-col gap-[4px] overflow-auto">
       <div className="flex flex-col gap-[4px]">
         {showSettings && (
-          <div className="w-100 bg-bkg-low flex h-[48px] items-center justify-center gap-[10px] px-[8px] py-[10px]">
+          <div className="bg-bkg-low flex h-[48px] w-full items-center justify-center gap-[10px] px-[8px] py-[10px]">
             <StudyBrowserViewOptions
               tabs={tabs}
               onSelectTab={onClickTab}
@@ -307,14 +315,14 @@ export const StudyBrowserNested: React.FC<Props> = ({
             <div key={study.studyInstanceUid ?? `study-${studyIndex}`}>
               {/* Study Header */}
               <div
-                className={`border-secondary-light hover:bg-secondary-main border-t first:border-0 ${isExpanded ? 'bg-secondary-dark' : 'bg-black'} flex cursor-pointer select-none items-center gap-[6px] px-4 py-2 outline-none`}
+                className={`border-input hover:bg-accent border-t first:border-0 ${isExpanded ? 'bg-muted' : 'bg-background'} flex cursor-pointer select-none items-center gap-[6px] px-4 py-2 outline-none`}
                 onClick={() => onClickStudy(study.studyInstanceUid)}
               >
                 <Icons.ChevronRight
-                  className={`text-white transition-transform ${isExpanded ? 'rotate-90' : ''}`}
+                  className={`text-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`}
                 />
                 <div
-                  className="w-[160px] truncate text-[13px] text-white"
+                  className="text-foreground w-[160px] truncate text-[13px]"
                   title={study.date || 'No Study Date'}
                 >
                   {study.date || 'No Study Date'}
@@ -353,25 +361,24 @@ export const StudyBrowserNested: React.FC<Props> = ({
                         key={group.key}
                       >
                         <AccordionItem value="group">
-                          <AccordionTrigger className="border-secondary-light hover:bg-secondary-main data-[state=open]:bg-secondary-dark flex min-h-[40px] cursor-pointer select-none items-start gap-[6px] border-t bg-black px-4 py-2 text-[13px] outline-none first:border-0">
-                            <span className="mr-1 mt-0.5 text-white">🤖</span>
-                            <span className="flex-1 whitespace-pre-line break-words text-left leading-snug text-white">
+                          <AccordionTrigger className="border-input hover:bg-accent data-[state=open]:bg-muted bg-background flex min-h-[40px] cursor-pointer select-none items-start gap-[6px] border-t px-4 py-2 text-[13px] outline-none first:border-0">
+                            <span className="text-foreground mr-1 mt-0.5">🤖</span>
+                            <span className="text-foreground flex-1 whitespace-pre-line break-words text-left leading-snug">
                               {group.label}
                             </span>
 
                             {/* Delete button */}
-                            <button
-                              className={`ml-auto flex-shrink-0 rounded bg-red-600 p-1.5 text-white transition-colors hover:bg-red-700 ${isDeleting ? 'cursor-not-allowed opacity-50' : ''}`}
+                            <Button
+                              variant="destructive"
+                              size={isDeleting ? 'sm' : 'icon'}
+                              className="ml-auto flex-shrink-0"
                               onClick={e => handleDeleteAIGroup(group, study.studyInstanceUid, e)}
                               disabled={isDeleting}
                               title="Delete AI Result"
+                              aria-label="Delete AI Result"
                             >
-                              {isDeleting ? (
-                                <span className="text-xs">Deleting...</span>
-                              ) : (
-                                <Icons.Trash className="h-4 w-4" />
-                              )}
-                            </button>
+                              {isDeleting ? 'Deleting…' : <Icons.Trash className="h-4 w-4" />}
+                            </Button>
                           </AccordionTrigger>
                           <AccordionContent className="pt-1">
                             <ThumbnailList

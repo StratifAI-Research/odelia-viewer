@@ -22,7 +22,6 @@ export function useAIRouting({
   const [currentEndpoint, setCurrentEndpoint] = useState<AIEndpoint | null>(() =>
     orthancAIService.getCurrentEndpoint()
   );
-  const [workitemUid, setWorkitemUid] = useState<string | null>(null);
   const [progressDescription, setProgressDescription] = useState<string | null>(null);
 
   const handleEndpointChange = (endpoint: AIEndpoint) => {
@@ -131,7 +130,6 @@ export function useAIRouting({
         const receivedWorkitemUid = response.workitem_uid;
 
         if (receivedWorkitemUid) {
-          setWorkitemUid(receivedWorkitemUid);
           setStatus('checking');
           setError(null);
           setProgress(15);
@@ -208,7 +206,6 @@ export function useAIRouting({
     setStatus('idle');
     setProgress(0);
     setError(null);
-    setWorkitemUid(null);
     setProgressDescription(null);
   };
 
@@ -218,7 +215,6 @@ export function useAIRouting({
     error,
     progress,
     currentEndpoint,
-    workitemUid,
     progressDescription,
 
     // Actions

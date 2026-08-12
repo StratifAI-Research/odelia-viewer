@@ -134,8 +134,8 @@ const bindings = [
     isEditable: true,
   },
   {
-    commandName: 'cancelMeasurement',
-    label: 'Cancel Measurement',
+    commandName: 'cancelActiveOperation',
+    label: 'Cancel',
     keys: ['esc'],
   },
   {
@@ -173,23 +173,55 @@ const bindings = [
     keys: ['enter'],
   },
   {
-    commandName: 'rejectPreview',
-    label: 'Reject Preview',
-    keys: ['esc'],
+    commandName: 'undo',
+    label: 'Undo',
+    keys: ['ctrl+z'],
+    isEditable: true,
   },
-  // after we have the ui for undo/redo, we can add these back in
-  // {
-  //   commandName: 'undo',
-  //   label: 'Undo',
-  //   keys: ['ctrl+z'],
-  //   isEditable: true,
-  // },
-  // {
-  //   commandName: 'redo',
-  //   label: 'Redo',
-  //   keys: ['ctrl+y'],
-  //   isEditable: true,
-  // },
+  {
+    commandName: 'redo',
+    label: 'Redo',
+    keys: ['ctrl+y'],
+    isEditable: true,
+  },
+  {
+    commandName: 'interpolateScrollForMarkerLabelmap',
+    label: 'Interpolate Scroll',
+    keys: ['n'],
+    isEditable: true,
+  },
+  {
+    commandName: 'increaseBrushSize',
+    label: 'Increase Brush Size',
+    keys: [']'],
+    isEditable: true,
+  },
+  {
+    commandName: 'decreaseBrushSize',
+    label: 'Decrease Brush Size',
+    keys: ['['],
+    isEditable: true,
+  },
+  {
+    commandName: 'setToolActive',
+    commandOptions: { toolName: 'CircularEraser' },
+    label: 'Eraser',
+    keys: ['e'],
+    isEditable: true,
+  },
+  {
+    commandName: 'setToolActive',
+    commandOptions: { toolName: 'CircularBrush' },
+    label: 'Brush',
+    keys: ['b'],
+    isEditable: true,
+  },
+  {
+    commandName: 'addNewSegment',
+    label: 'Add New Segment',
+    keys: ['a'],
+    isEditable: true,
+  },
 ];
 
 export default bindings;

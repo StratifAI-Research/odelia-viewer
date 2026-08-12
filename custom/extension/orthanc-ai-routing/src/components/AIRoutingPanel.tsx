@@ -1,13 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useImageViewer } from '@ohif/ui';
-import { useViewportGrid } from '@ohif/ui-next';
+import { Button, Icons, useImageViewer, useViewportGrid } from '@ohif/ui-next';
 import OrthancAIService from '../services/OrthancAIService';
 import type { ModelManifest } from '../services/OrthancAIService';
 import { useWizardState } from '../hooks/useWizardState';
 import { useStudySeriesSelection } from '../hooks/useStudySeriesSelection';
 import { useAIRouting } from '../hooks/useAIRouting';
 import { useInputMapping } from '../hooks/useInputMapping';
-import AIEndpointConfig from './AIEndpointConfig';
+import AIEndpointConfig, { type AIEndpoint } from './AIEndpointConfig';
 import { ModelSelectionStep } from './steps/ModelSelectionStep';
 import { SeriesSelectionStep } from './steps/SeriesSelectionStep';
 import { InputModeSelectionStep } from './steps/InputModeSelectionStep';
@@ -41,8 +40,10 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
   // to the study active at mount.
   const dicomStudyUID = orthancAIService.getDicomStudyInstanceUIDFromURL();
 
-  const { StudyInstanceUIDs } = useImageViewer();
-  const [{ activeViewportId, viewports }, viewportGridService] = useViewportGrid();
+  // ImageViewerContext is created with `createContext(null)` upstream, so the
+  // hook is typed as null; the provider always supplies StudyInstanceUIDs.
+  const { StudyInstanceUIDs } = useImageViewer() as unknown as { StudyInstanceUIDs: string[] };
+  const [{ activeViewportId, viewports }] = useViewportGrid();
 
   const wizard = useWizardState(1);
 
@@ -77,15 +78,9 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
     );
   }, [activeViewportId, viewports, displaySetService, StudyInstanceUIDs, dicomStudyUID]);
 
-  useEffect(() => {
-    if (!activeStudyUID) {
-      const initialStudyUID = getStudyUIDFromActiveViewport();
-      if (initialStudyUID) {
-        setActiveStudyUID(initialStudyUID);
-      }
-    }
-  }, [activeStudyUID, getStudyUIDFromActiveViewport]);
-
+  // One effect covers both the initial resolve and every later change: on mount
+  // `activeStudyUID` is null, so the inequality below is already true. A separate
+  // "initialize on mount" effect only added a second render pass.
   useEffect(() => {
     const studyUID = getStudyUIDFromActiveViewport();
     if (studyUID && studyUID !== activeStudyUID) {
@@ -127,6 +122,54 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
     },
   });
 
+  /**
+   * Everything downstream of the model is invalidated when the model changes.
+   *
+   * This lives in the panel because the endpoint has TWO entry points and they
+   * were not equivalent. `ModelSelectionStep` had its own handler that cleared
+   * the manifest cache and refetched; the gear in the panel header passed
+   * `routing.handleEndpointChange` straight through, which only sets state and
+   * shows a toast. `handleCloseSettings` bumping `settingsKey` did re-sync — but
+   * only via the `key={model-...}` remount, and `renderStep()` mounts
+   * `ModelSelectionStep` on step 1 only, while the gear is available on every
+   * step. So on steps 2-4 the manifest survived the switch, and Send posted
+   * model B's `target`/`target_url` together with model A's
+   * `input_configuration_id` and A's role keys. `ConfirmStep` reads the model
+   * name from `currentEndpoint`, so it displayed B: nothing on screen revealed
+   * the mismatch.
+   *
+   * Returning to step 1 is deliberate. The role mapping is expressed in the
+   * previous model's input keys, so there is nothing to carry forward.
+   *
+   * The SERIES selection is deliberately NOT cleared: it hangs off the study,
+   * not the model, and the reader would have to pick the same series again for
+   * no reason. Study changes reset it, in the effect above.
+   */
+  const handleEndpointChange = useCallback(
+    (endpoint: AIEndpoint) => {
+      const previous = routing.currentEndpoint;
+      // What the manifest, the role mapping and the wizard hang off is the MODEL
+      // — identified by id and target url. A display-name edit changes neither,
+      // and blowing the wizard back to step 1 for one would silently discard a
+      // completed role mapping because someone relabelled an endpoint in the
+      // settings dialog. Adopt the new label, keep the work.
+      const sameModel =
+        !!previous && previous.id === endpoint.id && previous.url === endpoint.url;
+
+      routing.handleEndpointChange(endpoint);
+
+      if (sameModel) {
+        return;
+      }
+
+      orthancAIService.clearManifestCache();
+      setManifest(null);
+      inputMappingHook.reset();
+      wizard.reset();
+    },
+    [routing, orthancAIService, inputMappingHook, wizard]
+  );
+
   useEffect(() => {
     return () => {
       orthancAIService.stopWorkitemPolling();
@@ -161,8 +204,28 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
 
   const progressStep = manifest ? 5 : 4;
 
+  /**
+   * A model that publishes an input specification but whose role mapping no
+   * longer satisfies it. The mapping can go stale AFTER the reader reaches
+   * Confirm -- InputMappingStep gates its own Next on `isValid`, but display sets
+   * can change underneath and drop a mapped series, and nothing re-checked it at
+   * step 4.
+   */
+  const mappingIncomplete = !!manifest && !inputMappingHook.isValid;
+
   const handleSendToAI = async () => {
     if (!activeStudyUID) {
+      return;
+    }
+
+    // Refuse, rather than fall through to the flat branch below. That `else` is
+    // the correct path for a model that genuinely publishes no specification --
+    // but it was also reached when a manifest EXISTS and its mapping is invalid,
+    // which silently posts a bare series_uids list with no input_mapping and no
+    // input_configuration_id. MST then assigns the pre/post/subtraction roles
+    // itself and returns a normal-looking result computed on the wrong inputs.
+    // Send is disabled in this state too; this is the second line of defence.
+    if (mappingIncomplete) {
       return;
     }
 
@@ -236,22 +299,22 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
     }
 
     return (
-      <div className="absolute inset-0 z-50 flex flex-col bg-black/80 p-4">
-        <div className="w-full flex-1 overflow-y-auto rounded-lg border border-gray-700 bg-gray-900">
-          <div className="flex items-center justify-between border-b border-gray-700 px-4 py-3">
-            <h3 className="text-sm font-semibold text-white">Endpoint Settings</h3>
-            <button
+      <div className="bg-background/80 absolute inset-0 z-50 flex flex-col p-4">
+        <div className="border-input bg-muted w-full flex-1 overflow-y-auto rounded-lg border">
+          <div className="border-input flex items-center justify-between border-b px-4 py-3">
+            <h3 className="text-foreground text-base font-semibold">Endpoint Settings</h3>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={handleCloseSettings}
-              className="text-gray-400 hover:text-white"
+              aria-label="Close endpoint settings"
             >
-              ✕
-            </button>
+              <Icons.Close className="h-5 w-5" />
+            </Button>
           </div>
           <div className="p-4">
             <AIEndpointConfig
-              onEndpointChange={endpoint => {
-                routing.handleEndpointChange(endpoint);
-              }}
+              onEndpointChange={handleEndpointChange}
               currentEndpoint={routing.currentEndpoint}
             />
           </div>
@@ -268,7 +331,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
             key={`model-${settingsKey}`}
             orthancAIService={orthancAIService}
             currentEndpoint={routing.currentEndpoint}
-            onEndpointChange={routing.handleEndpointChange}
+            onEndpointChange={handleEndpointChange}
             manifest={manifest}
             onManifestLoaded={setManifest}
             onNext={handleModelNext}
@@ -343,6 +406,7 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
               studyDescription={getStudyDescription()}
               selectedSeriesCount={inputMappingHook.getSelectedSeriesUIDs().length}
               inputMappingDescription={getInputMappingDescription()}
+              mappingIncomplete={mappingIncomplete}
               onSend={handleSendToAI}
               onBack={() => wizard.goToStep(3)}
               error={routing.error}
@@ -382,30 +446,22 @@ const AIRoutingPanel: React.FC<AIRoutingPanelProps> = ({ servicesManager }) => {
     <div className="relative flex h-full min-h-0 flex-col">
       {renderSettingsOverlay()}
 
-      <div className="border-secondary-light flex-shrink-0 border-b px-3 py-2">
+      <div className="border-input flex-shrink-0 border-b px-3 py-2">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-white">AI Analysis</h3>
+          <h3 className="text-foreground text-lg font-semibold">AI Analysis</h3>
           <div className="flex items-center gap-3">
             <span className="text-muted-foreground text-xs">
               Step {wizard.currentStep} of {totalSteps}
             </span>
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setIsSettingsOpen(true)}
-              className="text-primary-active rounded p-1.5 hover:bg-gray-700 hover:text-white"
               title="Endpoint Settings"
+              aria-label="Endpoint Settings"
             >
-              <svg
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="h-4 w-4"
-              >
-                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-              </svg>
-            </button>
+              <Icons.GearSettings className="h-5 w-5" />
+            </Button>
           </div>
         </div>
         {!activeStudyUID && (

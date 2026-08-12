@@ -40,9 +40,9 @@ follow from it. (The TypeScript shape is in [`src/utils/config.ts`](src/utils/co
 ## Development
 
 ```sh
-bun run test:unit:ci   # jest (see jest.config.js)
-bun run lint           # eslint src
-bun run format         # prettier
+pnpm run test:unit:ci   # jest (see jest.config.js)
+pnpm run lint           # eslint src
+pnpm run format         # prettier
 ```
 
 ## License

@@ -8,16 +8,25 @@ import PanelStudyBrowserTracking from './PanelStudyBrowserTracking';
 let mockImageViewerReturn: any = { StudyInstanceUIDs: [] };
 let mockViewportGridReturn: any;
 
-jest.mock('@ohif/ui', () => {
-  const actual = jest.requireActual('@ohif/ui');
-  return { ...actual, useImageViewer: () => mockImageViewerReturn };
-});
 jest.mock('@ohif/ui-next', () => {
   const actual = jest.requireActual('@ohif/ui-next');
-  return { ...actual, useViewportGrid: () => mockViewportGridReturn };
+  return {
+    ...actual,
+    useImageViewer: () => mockImageViewerReturn,
+    useViewportGrid: () => mockViewportGridReturn,
+  };
 });
 jest.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (k: string) => k }),
+}));
+
+// Count observer setups / style sweeps so a re-render storm is visible to the test.
+const mockDisconnectObserver = jest.fn();
+const mockSetupAIThumbnailObserver = jest.fn(() => mockDisconnectObserver);
+const mockApplyAIThumbnailStyles = jest.fn();
+jest.mock('../../utils/applyAIThumbnailStyles', () => ({
+  setupAIThumbnailObserver: () => mockSetupAIThumbnailObserver(),
+  applyAIThumbnailStyles: () => mockApplyAIThumbnailStyles(),
 }));
 
 // Mapped display-set thumbnail objects come from displaySetService.activeDisplaySets.
@@ -38,7 +47,11 @@ const srDs = (over: any = {}) => ({
   SeriesDescription: 'AI Report',
   SeriesNumber: 99,
   StudyInstanceUID: 'study-1',
-  numImageFrames: 1,
+  // No numImageFrames: an SR display set has no such field at all -- the real SR handler
+  // never sets one, because a report is not an image. Claiming a frame count here is the
+  // very confusion that caused the /frames/1 bug, and it would also let this fixture pass
+  // hpSinglePrimary's `numImageFrames > 0` rule, whose job is to keep SRs out of the
+  // primary viewport.
   instance: { InstanceCreationDate: '20240315', InstanceCreationTime: '100000' },
   ...over,
 });
@@ -189,7 +202,6 @@ describe('PanelStudyBrowserTracking', () => {
     mockImageViewerReturn = { StudyInstanceUIDs: ['study-1'] };
     const svc = makeServices({ active: [mrDs(), srDs()] });
     await renderPanel(svc);
-    const browser = screen.getByTestId('study-browser');
     await act(async () => {
       fireEvent.click(screen.getByTestId('sb-tab-all'));
     });
@@ -331,5 +343,37 @@ describe('PanelStudyBrowserTracking', () => {
     // Nested variant renders instead of the flat StudyBrowser.
     expect(screen.queryByTestId('study-browser')).toBeNull();
     expect(screen.getByTestId('study-browser-header')).toBeTruthy();
+  });
+
+  // Regression: `tabs` is rebuilt on every render, and the styling effect used it
+  // as a dependency. A fresh array identity per render meant every render tore
+  // down and recreated the MutationObserver and re-ran applyAIThumbnailStyles()'s
+  // document-wide querySelectorAll sweep. The effect is keyed on the tab names now,
+  // so renders that leave the tab set alone must not touch either.
+  it('does not recreate the thumbnail observer on renders that leave the tabs unchanged', async () => {
+    mockImageViewerReturn = { StudyInstanceUIDs: ['study-1'] };
+    const svc = makeServices({ active: [mrDs(), srDs()] });
+    const { rerender, props } = await renderPanel(svc);
+
+    // Mount may legitimately settle over more than one render, so compare against
+    // the post-mount count rather than asserting an absolute number.
+    const setupsAfterMount = mockSetupAIThumbnailObserver.mock.calls.length;
+    const sweepsAfterMount = mockApplyAIThumbnailStyles.mock.calls.length;
+    const disconnectsAfterMount = mockDisconnectObserver.mock.calls.length;
+    expect(setupsAfterMount).toBeGreaterThan(0);
+
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        rerender(
+          <MemoryRouter>
+            <PanelStudyBrowserTracking {...props} />
+          </MemoryRouter>
+        );
+      });
+    }
+
+    expect(mockSetupAIThumbnailObserver.mock.calls.length).toBe(setupsAfterMount);
+    expect(mockApplyAIThumbnailStyles.mock.calls.length).toBe(sweepsAfterMount);
+    expect(mockDisconnectObserver.mock.calls.length).toBe(disconnectsAfterMount);
   });
 });

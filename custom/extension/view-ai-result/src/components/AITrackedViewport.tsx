@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { AISideBySideViewportProps } from '../types';
+import { AIResult, AISideBySideViewportProps } from '../types';
 import { useAIResult } from '../hooks/useAIResult';
 import { useViewportElement } from '../hooks/useViewportElement';
 import { useAIOverlay } from '../hooks/useAIOverlay';
@@ -42,7 +42,7 @@ const AITrackedViewportInner = ({
 
   const [showHeatmap, setShowHeatmap] = useState(false);
   // Selected AI result, tagged with the primary content it belongs to.
-  const [selectedAIResult, setSelectedAIResult] = useState(null);
+  const [selectedAIResult, setSelectedAIResult] = useState<AIResult | null>(null);
   const [selectionKey, setSelectionKey] = useState<string | null>(null);
 
   // Get initial AI result (for default state)
@@ -61,15 +61,6 @@ const AITrackedViewportInner = ({
   const currentAIResult = activeSelectedAIResult || initialAIResult;
 
   const { onElementEnabled, onElementDisabled } = useViewportElement();
-
-  // AI Overlay management - only for primary viewports
-  const overlayConfig = {
-    viewportId,
-    aiResult: currentAIResult,
-    isHeatmapViewport,
-    servicesManager,
-  };
-  const { updateOverlay, setupHeatmapActionCorner } = useAIOverlay(overlayConfig);
 
   // Use appropriate display sets based on viewport type
   const viewportDisplaySets = isHeatmapViewport ? displaySets : primaryDisplaySets;
@@ -131,33 +122,25 @@ const AITrackedViewportInner = ({
     const newShowHeatmap = !showHeatmap;
     setShowHeatmap(newShowHeatmap);
 
-    // Update the action corner toggle button state
-    setupHeatmapActionCorner(
-      currentAIResult,
-      handleHeatmapToggle,
-      newShowHeatmap,
-      currentAIResult.hasHeatmap
-    );
-
     applyHeatmapLayout(newShowHeatmap, currentAIResult);
-  }, [
-    showHeatmap,
-    currentAIResult,
+  }, [showHeatmap, currentAIResult, isHeatmapViewport, applyHeatmapLayout]);
+
+  // The AI summary and the heatmap toggle are rendered by OHIF (a viewport
+  // overlay item and an action-corner button); this publishes the state they
+  // read, keyed by viewport id.
+  useAIOverlay({
+    viewportId,
+    aiResult: currentAIResult,
     isHeatmapViewport,
-    setupHeatmapActionCorner,
-    applyHeatmapLayout,
-  ]);
+    isHeatmapActive: showHeatmap,
+    onToggleHeatmap: handleHeatmapToggle,
+  });
 
   // Handle AI result selection from events
   const handleAIResultSelected = useCallback(
-    (newSelectedAIResult, clickedDisplaySetUID: string) => {
+    (newSelectedAIResult: AIResult | null, clickedDisplaySetUID: string) => {
       setSelectedAIResult(newSelectedAIResult);
       setSelectionKey(primaryDisplaySetKey);
-
-      // Update overlay (only for primary viewports)
-      if (!isHeatmapViewport) {
-        updateOverlay(newSelectedAIResult);
-      }
 
       // Close the heatmap belonging to the outgoing result (currentAIResult).
       if (showHeatmap && !isHeatmapViewport && currentAIResult) {
@@ -174,29 +157,13 @@ const AITrackedViewportInner = ({
           newSelectedAIResult.heatmapDisplaySet?.displaySetInstanceUID === clickedDisplaySetUID &&
           !showHeatmap;
 
-        setupHeatmapActionCorner(
-          newSelectedAIResult,
-          handleHeatmapToggle,
-          shouldAutoOpen,
-          newSelectedAIResult.hasHeatmap
-        );
-
         if (shouldAutoOpen) {
           setShowHeatmap(true);
           applyHeatmapLayout(true, newSelectedAIResult);
         }
       }
     },
-    [
-      isHeatmapViewport,
-      updateOverlay,
-      setupHeatmapActionCorner,
-      handleHeatmapToggle,
-      showHeatmap,
-      currentAIResult,
-      applyHeatmapLayout,
-      primaryDisplaySetKey,
-    ]
+    [isHeatmapViewport, showHeatmap, currentAIResult, applyHeatmapLayout, primaryDisplaySetKey]
   );
 
   // Subscribe to AI result selection events
@@ -211,24 +178,6 @@ const AITrackedViewportInner = ({
   useEffect(() => {
     setShowHeatmap(false);
   }, [primaryDisplaySetKey]);
-
-  // Ensure heatmap toggle action corner is in sync
-  useEffect(() => {
-    if (!isHeatmapViewport && currentAIResult) {
-      setupHeatmapActionCorner(
-        currentAIResult,
-        handleHeatmapToggle,
-        showHeatmap,
-        currentAIResult.hasHeatmap
-      );
-    }
-  }, [
-    currentAIResult,
-    showHeatmap,
-    isHeatmapViewport,
-    setupHeatmapActionCorner,
-    handleHeatmapToggle,
-  ]);
 
   return (
     <div className="relative flex h-full w-full flex-row overflow-hidden">
@@ -248,8 +197,6 @@ const AITrackedViewportInner = ({
         onElementEnabled: composeCallbacks((props as any).onElementEnabled, onElementEnabled),
         onElementDisabled: composeCallbacks((props as any).onElementDisabled, onElementDisabled),
       })}
-
-      {/* Heatmap toggle is now injected via ViewportActionCornersService for better alignment */}
     </div>
   );
 };

@@ -7,12 +7,25 @@ import {
   DialogFooter,
   DialogTitle,
   DialogDescription,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from '@ohif/ui-next';
 import {
   AI_ENDPOINTS_STORAGE_KEY,
   DEFAULT_AI_ENDPOINT_NAME,
   DEFAULT_AI_ENDPOINT_URL,
 } from '../constants';
+import {
+  AI_ENDPOINTS_CONFIG_BASE_KEY,
+  readConfiguredEndpoints,
+  reconcileEndpoints,
+  sameEndpoint,
+} from '../utils/reconcileEndpoints';
 
 // Interface for AI endpoint configuration
 export interface AIEndpoint {
@@ -46,6 +59,25 @@ export type PersistedEndpoint = Pick<AIEndpoint, 'id' | 'name' | 'url'>;
 export const toPersistableEndpoints = (endpoints: AIEndpoint[]): PersistedEndpoint[] =>
   endpoints.map(({ id, name, url }) => ({ id, name, url }));
 
+/**
+ * Read an endpoint array out of localStorage, or null when the key is absent or
+ * unusable. Null and `[]` are distinct for the config base: absent means "never
+ * reconciled", empty means "config declared nothing last time".
+ */
+const readEndpoints = (key: string): AIEndpoint[] | null => {
+  const raw = localStorage.getItem(key);
+  if (raw === null) {
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch (error) {
+    console.error(`Failed to parse ${key} from localStorage:`, error);
+    return null;
+  }
+};
+
 const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   onEndpointChange,
   currentEndpoint,
@@ -74,56 +106,100 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   const onEndpointChangeRef = useRef(onEndpointChange);
   onEndpointChangeRef.current = onEndpointChange;
 
-  // Load endpoints from localStorage or config on component mount (once).
+  /** Set when the mount load could not read the config — see the save effect. */
+  const skipNextPersistRef = useRef(false);
+
+  // Load endpoints on mount, merging any change made to the deployment config
+  // into what is already stored. See reconcileEndpoints for why this is a
+  // three-way merge rather than "whichever side we read first wins".
   useEffect(() => {
-    let loadedEndpoints: AIEndpoint[] = [];
+    const stored = readEndpoints(AI_ENDPOINTS_STORAGE_KEY) ?? [];
+    const base = readEndpoints(AI_ENDPOINTS_CONFIG_BASE_KEY);
+    // `null` means the deployment has no usable opinion — app-config.js not
+    // applied yet, or `aiEndpoints` malformed. Reconciling against a fabricated
+    // empty list would read as "the deployment removed everything" and delete
+    // the operator's endpoints, so skip the merge and leave the base untouched:
+    // the next load with a good config still needs a truthful base to diff.
+    const config = readConfiguredEndpoints((window as any).config);
 
-    // First, check if user has saved endpoints (priority)
-    const savedEndpoints = localStorage.getItem(AI_ENDPOINTS_STORAGE_KEY);
-    if (savedEndpoints) {
-      try {
-        loadedEndpoints = JSON.parse(savedEndpoints);
-      } catch (error) {
-        console.error('Failed to parse saved AI endpoints:', error);
-        loadedEndpoints = [];
-      }
-    }
+    const merged = config === null ? stored : reconcileEndpoints({ stored, config, base });
+    // Nothing stored and nothing configured — fall back to the built-in.
+    const loadedEndpoints = merged.length > 0 ? merged : [DEFAULT_ENDPOINT];
 
-    // If no localStorage data, load from config
-    if (loadedEndpoints.length === 0) {
-      const configEndpoints: AIEndpoint[] = (window as any).config?.aiEndpoints || [];
-      if (configEndpoints.length > 0) {
-        loadedEndpoints = configEndpoints;
-      } else {
-        // If no config either, use default
-        loadedEndpoints = [DEFAULT_ENDPOINT];
-      }
-      // Save to localStorage for future
+    // When the config is unusable this pass is a pure READ: no storage write, no
+    // base write. Persisting would be actively harmful with empty storage — the
+    // synthesized DEFAULT_ENDPOINT would be written as if it were the user's own
+    // entry, and the next load with a good config would keep it as "user-added"
+    // alongside the real endpoints, permanently. Showing the fallback without
+    // recording it keeps the bad load from leaving a trace.
+    if (config === null) {
+      skipNextPersistRef.current = true;
+    } else {
       localStorage.setItem(
         AI_ENDPOINTS_STORAGE_KEY,
         JSON.stringify(toPersistableEndpoints(loadedEndpoints))
+      );
+      // Record what config said this time, so the next load can tell a config
+      // change apart from a user edit.
+      localStorage.setItem(
+        AI_ENDPOINTS_CONFIG_BASE_KEY,
+        JSON.stringify(toPersistableEndpoints(config))
       );
     }
 
     setEndpoints(loadedEndpoints);
     setIsLoading(false);
 
-    // If no current endpoint is selected, select the first one
-    if (!currentEndpointRef.current && loadedEndpoints.length > 0) {
+    // Push the reconciled endpoint at whoever holds the ACTIVE one.
+    //
+    // This used to re-select only when nothing was selected yet, which never
+    // fired: OrthancAIService's constructor runs at preRegistration and puts
+    // `getAIEndpoints()[0]` — the pre-merge, stored copy — into `currentEndpoint`
+    // before this component ever mounts. So editing an endpoint's URL in
+    // app-config.js moved the stored list and the dropdown, while
+    // `POST /send-to-ai` kept posting to the OLD target_url for the rest of the
+    // session, with nothing on screen to show for it. The dropdown matches on
+    // `id`, which does not change, so it looked correctly selected throughout.
+    //
+    // With a single configured endpoint — `custom/config/app-config.js` declares
+    // only `mst-ai` — editing its URL is the ONLY config change that can matter,
+    // so this is precisely the case the three-way merge was added to serve.
+    const selected = currentEndpointRef.current;
+    const reconciledSelection = selected
+      ? loadedEndpoints.find(endpoint => endpoint.id === selected.id)
+      : undefined;
+
+    if (!selected || !reconciledSelection) {
+      // Never selected, or the deployment removed what was selected.
       onEndpointChangeRef.current(loadedEndpoints[0]);
+    } else if (!sameEndpoint(reconciledSelection, selected)) {
+      onEndpointChangeRef.current(reconciledSelection);
     }
     // Mount-only: read the latest currentEndpoint/onEndpointChange via refs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Save endpoints to localStorage whenever they change
+  // Save endpoints to localStorage whenever they change. This is the single
+  // persistence point — mutators below only call setEndpoints and let this run.
   useEffect(() => {
-    if (endpoints.length > 0) {
-      localStorage.setItem(
-        AI_ENDPOINTS_STORAGE_KEY,
-        JSON.stringify(toPersistableEndpoints(endpoints))
-      );
+    if (endpoints.length === 0) {
+      return;
     }
+    // The one value that must NOT be written back: the fallback shown after a
+    // load that could not read the config. Declining the write above is not
+    // enough on its own, because this effect would persist the same list a
+    // moment later and reintroduce exactly what that decision avoids — a
+    // synthesized DEFAULT_ENDPOINT stored as though the user had added it, which
+    // the next good load then preserves forever as "user-added". Consumed once,
+    // so any real edit that follows still persists normally.
+    if (skipNextPersistRef.current) {
+      skipNextPersistRef.current = false;
+      return;
+    }
+    localStorage.setItem(
+      AI_ENDPOINTS_STORAGE_KEY,
+      JSON.stringify(toPersistableEndpoints(endpoints))
+    );
   }, [endpoints]);
 
   const handleOpenForm = (endpoint?: AIEndpoint) => {
@@ -203,25 +279,19 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
   const handleDeleteEndpoint = (endpointId: string) => {
     const updatedEndpoints = endpoints.filter(endpoint => endpoint.id !== endpointId);
 
-    // If no endpoints left, create a new default one
+    // Both branches leave a non-empty list, so the save effect above persists it —
+    // these used to write localStorage again by hand, duplicating that write.
     if (updatedEndpoints.length === 0) {
+      // If no endpoints left, create a new default one
       const defaultEndpoint = { ...DEFAULT_ENDPOINT };
       setEndpoints([defaultEndpoint]);
       onEndpointChange(defaultEndpoint);
-      localStorage.setItem(
-        AI_ENDPOINTS_STORAGE_KEY,
-        JSON.stringify(toPersistableEndpoints([defaultEndpoint]))
-      );
     } else {
       setEndpoints(updatedEndpoints);
       // If we're deleting the current endpoint, select another one
       if (currentEndpoint && currentEndpoint.id === endpointId) {
         onEndpointChange(updatedEndpoints[0]);
       }
-      localStorage.setItem(
-        AI_ENDPOINTS_STORAGE_KEY,
-        JSON.stringify(toPersistableEndpoints(updatedEndpoints))
-      );
     }
 
     handleCloseForm();
@@ -246,29 +316,30 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
         <>
           <div className="mb-2 flex flex-col">
             <div className="mb-2 flex items-center">
-              <select
-                className="flex-grow rounded border p-2"
+              <Select
                 value={currentEndpoint?.id || ''}
-                onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
-                  handleEndpointSelect(e.target.value)
-                }
+                onValueChange={handleEndpointSelect}
                 disabled={isLoading || endpoints.length === 0}
               >
-                <option
-                  value=""
-                  disabled
-                >
-                  {isLoading ? 'Loading...' : 'Select AI endpoint'}
-                </option>
-                {endpoints.map(endpoint => (
-                  <option
-                    key={endpoint.id}
-                    value={endpoint.id}
-                  >
-                    {endpoint.name}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger aria-label="AI endpoint">
+                  <SelectValue placeholder={isLoading ? 'Loading…' : 'Select AI endpoint'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {/* Radix throws on an empty item value; endpoint ids come from
+                      localStorage / window.config, so a malformed entry must not
+                      take the whole panel down with it. */}
+                  {endpoints
+                    .filter(endpoint => endpoint.id)
+                    .map(endpoint => (
+                      <SelectItem
+                        key={endpoint.id}
+                        value={endpoint.id}
+                      >
+                        {endpoint.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
             </div>
             {!compact && (
               <>
@@ -298,37 +369,37 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
           </div>
         </>
       ) : (
-        <div className="rounded border bg-gray-50 p-4">
-          <h4 className="mb-3 text-sm font-medium">
+        <div className="border-input bg-popover rounded border p-3">
+          <h4 className="text-foreground mb-3 text-base font-medium">
             {editingEndpoint ? 'Edit AI Endpoint' : 'Add AI Endpoint'}
           </h4>
 
-          <div className="mb-3">
-            <label className="mb-1 block text-sm font-medium text-gray-700">Name *</label>
-            <input
-              type="text"
+          <div className="mb-3 flex flex-col space-y-1">
+            <Label htmlFor="ai-endpoint-name">Name *</Label>
+            <Input
+              id="ai-endpoint-name"
               value={formData.name}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 setFormData({ ...formData, name: e.target.value })
               }
               placeholder="AI Server Name"
-              className={`w-full rounded border p-2 ${errors.name ? 'border-red-500' : ''}`}
+              className={errors.name ? 'border-red-500' : ''}
             />
-            {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
+            {errors.name && <p className="text-xs text-red-500">{errors.name}</p>}
           </div>
 
-          <div className="mb-3">
-            <label className="mb-1 block text-sm font-medium text-gray-700">URL *</label>
-            <input
-              type="text"
+          <div className="mb-3 flex flex-col space-y-1">
+            <Label htmlFor="ai-endpoint-url">URL *</Label>
+            <Input
+              id="ai-endpoint-url"
               value={formData.url}
               onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
                 setFormData({ ...formData, url: e.target.value })
               }
               placeholder="http://ai-server:8042"
-              className={`w-full rounded border p-2 ${errors.url ? 'border-red-500' : ''}`}
+              className={errors.url ? 'border-red-500' : ''}
             />
-            {errors.url && <p className="mt-1 text-xs text-red-500">{errors.url}</p>}
+            {errors.url && <p className="text-xs text-red-500">{errors.url}</p>}
           </div>
 
           <div className="flex justify-end space-x-2">
@@ -358,15 +429,20 @@ const AIEndpointConfig: React.FC<AIEndpointConfigProps> = ({
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Confirm Delete</DialogTitle>
-                <DialogDescription>
-                  Are you sure you want to delete the endpoint "{editingEndpoint?.name}"? This
-                  action cannot be undone.
+                {/*
+                  DialogDescription carries no colour of its own and the dialog is
+                  portalled onto <body>, which only sets a background — so without
+                  an explicit token it inherits the browser default (black) and is
+                  unreadable on the dark `bg-muted` card.
+                */}
+                <DialogDescription className="text-foreground">
+                  Are you sure you want to delete the endpoint &quot;{editingEndpoint?.name}&quot;?
+                  This action cannot be undone.
                 </DialogDescription>
               </DialogHeader>
               <DialogFooter>
                 <Button
                   onClick={() => setShowDeleteConfirmation(false)}
-                  className="mr-2"
                   variant="secondary"
                 >
                   Cancel

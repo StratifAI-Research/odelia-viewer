@@ -2,11 +2,27 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { useSystem } from '@ohif/core';
-import { useImageViewer } from '@ohif/ui';
-import { useViewportGrid } from '@ohif/ui-next';
+import {
+  Button,
+  Icons,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  useImageViewer,
+  useViewportGrid,
+} from '@ohif/ui-next';
 import { useChatService } from '../../hooks/useChatService';
 import { useActiveStudyUID } from '../../hooks/useActiveStudyUID';
 import { ChatMessage, ChatSeriesInfo } from '../../types/chatTypes';
+
+// ui-next ships no Textarea, so the two multi-line fields borrow the token set
+// its `Input` uses. Kept in one place so they cannot drift apart.
+const TEXTAREA_CLASS =
+  'border-input text-foreground bg-background placeholder:text-muted-foreground focus-visible:ring-ring w-full rounded border px-3 py-2 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 disabled:cursor-not-allowed disabled:opacity-50';
 
 // Configure marked for synchronous rendering
 marked.setOptions({
@@ -50,7 +66,9 @@ const SLICE_STRATEGIES = [
  */
 const ChatPanel: React.FC = () => {
   const { servicesManager } = useSystem();
-  const { StudyInstanceUIDs } = useImageViewer();
+  // ImageViewerContext is created with `createContext(null)` upstream, so the
+  // hook is typed as null; the provider always supplies StudyInstanceUIDs.
+  const { StudyInstanceUIDs } = useImageViewer() as unknown as { StudyInstanceUIDs: string[] };
   const [{ activeViewportId, viewports }] = useViewportGrid();
   const displaySetService = servicesManager?.services?.displaySetService;
 
@@ -319,12 +337,13 @@ const ChatPanel: React.FC = () => {
       return (
         <div className="flex items-center justify-between border-b border-yellow-700 bg-yellow-900/50 px-3 py-2">
           <span className="text-xs text-yellow-300">Disconnected</span>
-          <button
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={connect}
-            className="rounded bg-yellow-700 px-2 py-1 text-xs hover:bg-yellow-600"
           >
             Reconnect
-          </button>
+          </Button>
         </div>
       );
     }
@@ -334,48 +353,50 @@ const ChatPanel: React.FC = () => {
   // Render series context selector
   const renderContextSelector = () => {
     return (
-      <div className="border-b border-gray-700">
+      <div className="border-input border-b">
         <button
           onClick={() => setIsContextExpanded(!isContextExpanded)}
-          className="flex w-full items-center justify-between px-3 py-2 text-sm hover:bg-gray-800"
+          className="hover:bg-accent flex w-full items-center justify-between px-3 py-2 text-sm"
         >
           <span className="flex items-center gap-2">
-            <span className="text-gray-400">Context:</span>
-            <span className="text-white">
+            <span className="text-muted-foreground">Context:</span>
+            <span className="text-foreground">
               {selectedSeriesUIDs.size > 0
                 ? `${selectedSeriesUIDs.size} series selected`
                 : 'No series selected'}
             </span>
           </span>
-          <span className="text-gray-500">{isContextExpanded ? '▲' : '▼'}</span>
+          <span className="text-muted-foreground">{isContextExpanded ? '▲' : '▼'}</span>
         </button>
 
         {isContextExpanded && (
           <div className="px-3 pb-3">
             {activeStudyUID && (
-              <div className="mb-2 break-all text-xs text-gray-500">
+              <div className="text-muted-foreground mb-2 break-all text-xs">
                 Study: {activeStudyUID.slice(0, 30)}...
               </div>
             )}
 
             {availableSeries.length === 0 ? (
-              <div className="text-xs text-gray-500">No series available</div>
+              <div className="text-muted-foreground text-xs">No series available</div>
             ) : (
               <>
                 {/* Action buttons */}
                 <div className="mb-2 flex gap-2">
-                  <button
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={selectAllSeries}
-                    className="rounded bg-gray-700 px-2 py-1 text-xs hover:bg-gray-600"
                   >
                     Select All
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="sm"
                     onClick={clearSeriesSelection}
-                    className="rounded bg-gray-700 px-2 py-1 text-xs hover:bg-gray-600"
                   >
                     Clear
-                  </button>
+                  </Button>
                 </div>
 
                 {/* Series list */}
@@ -386,16 +407,16 @@ const ChatPanel: React.FC = () => {
                       <div
                         key={series.SeriesInstanceUID}
                         onClick={() => toggleSeries(series.SeriesInstanceUID)}
-                        className={`cursor-pointer rounded p-2 text-xs ${isSelected ? 'bg-primary-dark border-primary-light border' : 'bg-gray-800 hover:bg-gray-700'} `}
+                        className={`cursor-pointer rounded p-2 text-xs ${isSelected ? 'bg-primary/20 border-primary border' : 'bg-muted hover:bg-accent'} `}
                       >
                         <div className="flex items-center gap-2">
                           <div
-                            className={`h-3 w-3 flex-shrink-0 rounded border ${isSelected ? 'bg-primary-light border-primary-light' : 'border-gray-600'} `}
+                            className={`h-3 w-3 flex-shrink-0 rounded border ${isSelected ? 'bg-primary border-primary' : 'border-input'} `}
                           >
                             {isSelected && (
                               <svg
                                 viewBox="0 0 24 24"
-                                className="h-3 w-3 text-black"
+                                className="text-primary-foreground h-3 w-3"
                               >
                                 <path
                                   fill="currentColor"
@@ -405,8 +426,10 @@ const ChatPanel: React.FC = () => {
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
-                            <div className="truncate text-white">{series.SeriesDescription}</div>
-                            <div className="text-gray-500">
+                            <div className="text-foreground truncate">
+                              {series.SeriesDescription}
+                            </div>
+                            <div className="text-muted-foreground">
                               {series.Modality} · {series.numImageFrames} frames
                             </div>
                           </div>
@@ -448,11 +471,11 @@ const ChatPanel: React.FC = () => {
         className={`mb-3 ${isUser ? 'flex justify-end' : ''}`}
       >
         <div
-          className={`max-w-[85%] rounded-lg px-3 py-2 ${isUser ? 'bg-primary-dark text-white' : 'bg-gray-800 text-gray-100'} `}
+          className={`max-w-[85%] rounded-lg px-3 py-2 ${isUser ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'} `}
         >
           {/* Series context indicator for user messages */}
           {isUser && message.seriesContext && message.seriesContext.length > 0 && (
-            <div className="text-primary-light mb-1 text-xs">
+            <div className="text-highlight mb-1 text-xs">
               + {message.seriesContext.length} series context
             </div>
           )}
@@ -463,13 +486,13 @@ const ChatPanel: React.FC = () => {
               <button
                 type="button"
                 onClick={() => toggleThinking(message.id)}
-                className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-200"
+                className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-[11px]"
               >
                 <span>{isThinkingExpanded ? 'Hide thinking' : 'Show thinking'}</span>
                 <span>{isThinkingExpanded ? '▲' : '▼'}</span>
               </button>
               {isThinkingExpanded && (
-                <div className="mt-1 max-h-40 overflow-y-auto rounded bg-gray-900/60 px-2 py-1">
+                <div className="bg-background/60 mt-1 max-h-40 overflow-y-auto rounded px-2 py-1">
                   <div className="break-words text-[11px]">
                     <span
                       dangerouslySetInnerHTML={{ __html: renderMarkdown(message.thinking || '') }}
@@ -497,15 +520,15 @@ const ChatPanel: React.FC = () => {
           {message.isStreaming && (
             <div className="mt-1">
               <div className="flex items-center gap-1">
-                <div className="bg-primary-light h-1.5 w-1.5 animate-pulse rounded-full" />
-                <span className="text-xs text-gray-400">
+                <div className="bg-highlight h-1.5 w-1.5 animate-pulse rounded-full" />
+                <span className="text-muted-foreground text-xs">
                   {preprocessingStatus || 'Generating...'}
                 </span>
               </div>
               {preprocessingStatus && preprocessingProgress != null && (
-                <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-gray-700">
+                <div className="bg-secondary mt-1 h-1.5 w-full overflow-hidden rounded-full">
                   <div
-                    className="bg-primary-light h-1.5 rounded-full transition-all duration-300"
+                    className="bg-highlight h-1.5 rounded-full transition-all duration-300"
                     style={{ width: `${Math.round(preprocessingProgress * 100)}%` }}
                   />
                 </div>
@@ -514,7 +537,9 @@ const ChatPanel: React.FC = () => {
           )}
 
           {/* Timestamp */}
-          <div className="mt-1 text-xs text-gray-500">{message.timestamp.toLocaleTimeString()}</div>
+          <div className="text-muted-foreground mt-1 text-xs">
+            {message.timestamp.toLocaleTimeString()}
+          </div>
         </div>
       </div>
     );
@@ -539,17 +564,19 @@ const ChatPanel: React.FC = () => {
     }
 
     return (
-      <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-        <div className="max-h-full w-full max-w-md overflow-y-auto rounded-lg border border-gray-700 bg-gray-900">
+      <div className="bg-background/80 absolute inset-0 z-50 flex items-center justify-center p-4">
+        <div className="border-input bg-muted max-h-full w-full max-w-md overflow-y-auto rounded-lg border">
           {/* Header */}
-          <div className="flex items-center justify-between border-b border-gray-700 px-4 py-3">
-            <h3 className="text-sm font-semibold">Chat Settings</h3>
-            <button
+          <div className="border-input flex items-center justify-between border-b px-4 py-3">
+            <h3 className="text-foreground text-base font-semibold">Chat Settings</h3>
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setIsSettingsOpen(false)}
-              className="text-gray-400 hover:text-white"
+              aria-label="Close chat settings"
             >
-              ✕
-            </button>
+              <Icons.Close className="h-5 w-5" />
+            </Button>
           </div>
 
           {/* Content */}
@@ -562,148 +589,176 @@ const ChatPanel: React.FC = () => {
 
             {/* System Prompt */}
             <div>
-              <label className="mb-1 block text-xs text-gray-400">System Prompt</label>
+              <Label
+                htmlFor="chat-system-prompt"
+                className="mb-1 block text-xs"
+              >
+                System Prompt
+              </Label>
               <textarea
+                id="chat-system-prompt"
                 value={systemPrompt}
                 onChange={e => setSystemPrompt(e.target.value)}
                 rows={4}
-                className="focus:border-primary-light w-full resize-none rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none"
+                className={`${TEXTAREA_CLASS} resize-none`}
                 placeholder="Enter system prompt..."
               />
             </div>
 
             {/* Model */}
             <div>
-              <label className="mb-1 block text-xs text-gray-400">Model</label>
-              <input
+              <Label
+                htmlFor="chat-model"
+                className="mb-1 block text-xs"
+              >
+                Model
+              </Label>
+              <Input
+                id="chat-model"
                 type="text"
                 value={ollamaModel}
                 onChange={e => setOllamaModel(e.target.value)}
-                className="focus:border-primary-light w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none"
                 placeholder="e.g. MedAIBase/MedGemma1.5:4b"
               />
             </div>
 
             {/* Preprocessing Section */}
-            <div className="border-t border-gray-700 pt-4">
-              <h4 className="mb-3 text-xs font-semibold text-gray-300">Preprocessing</h4>
+            <div className="border-input border-t pt-4">
+              <h4 className="text-foreground mb-3 text-xs font-semibold">Preprocessing</h4>
 
               {/* Num Slices */}
               <div className="mb-3">
-                <label className="mb-1 block text-xs text-gray-400">Number of Slices</label>
-                <input
+                <Label
+                  htmlFor="chat-num-slices"
+                  className="mb-1 block text-xs"
+                >
+                  Number of Slices
+                </Label>
+                <Input
+                  id="chat-num-slices"
                   type="number"
                   value={numSlices}
                   onChange={e => setNumSlices(parseInt(e.target.value) || 1)}
                   min={1}
                   max={50}
-                  className="focus:border-primary-light w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none"
                 />
               </div>
 
               {/* Slice Strategy */}
               <div className="mb-3">
-                <label className="mb-1 block text-xs text-gray-400">Slice Strategy</label>
-                <select
+                <Label className="mb-1 block text-xs">Slice Strategy</Label>
+                <Select
                   value={sliceStrategy}
-                  onChange={e => setSliceStrategy(e.target.value)}
-                  className="focus:border-primary-light w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none"
+                  onValueChange={setSliceStrategy}
                 >
-                  {SLICE_STRATEGIES.map(opt => (
-                    <option
-                      key={opt.value}
-                      value={opt.value}
-                    >
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger aria-label="Slice Strategy">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SLICE_STRATEGIES.map(opt => (
+                      <SelectItem
+                        key={opt.value}
+                        value={opt.value}
+                      >
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Central Percentage (only for central strategy) */}
               {sliceStrategy === 'central' && (
                 <div className="mb-3">
-                  <label className="mb-1 block text-xs text-gray-400">
+                  <Label
+                    htmlFor="chat-central-percentage"
+                    className="mb-1 block text-xs"
+                  >
                     Central Percentage ({centralPercentage}%)
-                  </label>
+                  </Label>
                   <input
+                    id="chat-central-percentage"
                     type="range"
                     value={centralPercentage}
                     onChange={e => setCentralPercentage(parseInt(e.target.value))}
                     min={10}
                     max={100}
-                    className="w-full"
+                    className="accent-primary w-full"
                   />
                 </div>
               )}
             </div>
 
             {/* Ollama Options Section */}
-            <div className="border-t border-gray-700 pt-4">
-              <h4 className="mb-3 text-xs font-semibold text-gray-300">Ollama Options</h4>
+            <div className="border-input border-t pt-4">
+              <h4 className="text-foreground mb-3 text-xs font-semibold">Ollama Options</h4>
 
               {/* Think (for thinking models like deepseek-r1) */}
               <div className="mb-3">
-                <label className="mb-1 block text-xs text-gray-400">
-                  Think Mode (for thinking models)
-                </label>
-                <select
+                <Label className="mb-1 block text-xs">Think Mode (for thinking models)</Label>
+                <Select
                   value={ollamaThink === null ? 'default' : ollamaThink ? 'true' : 'false'}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setOllamaThink(val === 'default' ? null : val === 'true');
-                  }}
-                  className="focus:border-primary-light w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none"
+                  onValueChange={val => setOllamaThink(val === 'default' ? null : val === 'true')}
                 >
-                  <option value="default">Default</option>
-                  <option value="true">Enabled</option>
-                  <option value="false">Disabled</option>
-                </select>
+                  <SelectTrigger aria-label="Think Mode">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="default">Default</SelectItem>
+                    <SelectItem value="true">Enabled</SelectItem>
+                    <SelectItem value="false">Disabled</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               {/* Suffix */}
               <div className="mb-3">
-                <label className="mb-1 block text-xs text-gray-400">
+                <Label
+                  htmlFor="chat-suffix"
+                  className="mb-1 block text-xs"
+                >
                   Suffix (text after response)
-                </label>
-                <input
+                </Label>
+                <Input
+                  id="chat-suffix"
                   type="text"
                   value={ollamaSuffix}
                   onChange={e => setOllamaSuffix(e.target.value)}
-                  className="focus:border-primary-light w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none"
                   placeholder="Optional suffix..."
                 />
               </div>
             </div>
 
             {/* Cache Section */}
-            <div className="border-t border-gray-700 pt-4">
-              <h4 className="mb-3 text-xs font-semibold text-gray-300">Cache</h4>
-              <button
+            <div className="border-input border-t pt-4">
+              <h4 className="text-foreground mb-3 text-xs font-semibold">Cache</h4>
+              <Button
+                variant="secondary"
                 onClick={clearCache}
                 disabled={settingsLoading}
-                className="w-full rounded bg-yellow-700 px-3 py-2 text-sm hover:bg-yellow-600 disabled:opacity-50"
+                className="w-full"
               >
                 Clear Image Cache
-              </button>
+              </Button>
             </div>
           </div>
 
           {/* Footer */}
-          <div className="flex gap-2 border-t border-gray-700 px-4 py-3">
-            <button
+          <div className="border-input flex gap-2 border-t px-4 py-3">
+            <Button
+              variant="secondary"
               onClick={() => setIsSettingsOpen(false)}
-              className="flex-1 rounded bg-gray-700 px-3 py-2 text-sm hover:bg-gray-600"
+              className="flex-1"
             >
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
               onClick={saveSettings}
               disabled={settingsLoading}
-              className="bg-primary-main hover:bg-primary-light flex-1 rounded px-3 py-2 text-sm disabled:opacity-50"
+              className="flex-1"
             >
               {settingsLoading ? 'Saving...' : 'Save'}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -711,34 +766,25 @@ const ChatPanel: React.FC = () => {
   };
 
   return (
-    <div className="relative flex h-full min-h-0 flex-col bg-black text-white">
+    <div className="bg-background text-foreground relative flex h-full min-h-0 flex-col">
       {/* Settings Modal */}
       {renderSettingsModal()}
 
       <div className="flex h-full min-h-0 flex-col">
         {/* Header with settings button */}
-        <div className="flex items-center justify-between border-b border-gray-700 px-3 py-2">
-          <span className="text-xs text-gray-400">
+        <div className="border-input flex items-center justify-between border-b px-3 py-2">
+          <span className="text-muted-foreground text-xs">
             {isConnected ? `Session: ${sessionId?.slice(0, 8)}...` : 'Disconnected'}
           </span>
-          <button
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={openSettings}
-            className="rounded p-1.5 text-gray-400 hover:bg-gray-700 hover:text-white"
             title="Settings"
+            aria-label="Settings"
           >
-            {/* Wrench icon */}
-            <svg
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              className="h-4 w-4"
-            >
-              <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
-            </svg>
-          </button>
+            <Icons.GearSettings className="h-5 w-5" />
+          </Button>
         </div>
 
         {/* Connection status */}
@@ -752,7 +798,7 @@ const ChatPanel: React.FC = () => {
           {/* Messages area */}
           <div className="flex-1 overflow-y-auto p-3">
             {messages.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center text-sm text-gray-500">
+              <div className="text-muted-foreground flex h-full flex-col items-center justify-center text-sm">
                 <div className="mb-2">No messages yet</div>
                 <div className="text-center text-xs">
                   Select series above for context, then ask questions about your study.
@@ -770,7 +816,7 @@ const ChatPanel: React.FC = () => {
           {renderError()}
 
           {/* Input area */}
-          <div className="border-t border-gray-700 p-3">
+          <div className="border-input border-t p-3">
             <div className="flex gap-2">
               <textarea
                 ref={inputRef}
@@ -780,35 +826,35 @@ const ChatPanel: React.FC = () => {
                 placeholder={isConnected ? 'Ask about this study...' : 'Connecting...'}
                 disabled={!isConnected}
                 rows={2}
-                className="focus:border-primary-light flex-1 resize-none rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm focus:outline-none disabled:opacity-50"
+                className={`${TEXTAREA_CLASS} flex-1 resize-none`}
               />
               <div className="flex flex-col gap-1">
                 {isStreaming ? (
-                  <button
+                  <Button
+                    variant="destructive"
                     onClick={cancelGeneration}
-                    className="rounded bg-red-700 px-3 py-2 text-sm hover:bg-red-600"
                     title="Cancel"
                   >
                     ■
-                  </button>
+                  </Button>
                 ) : (
-                  <button
+                  <Button
                     onClick={handleSend}
                     disabled={!isConnected || !inputValue.trim()}
-                    className="bg-primary-main hover:bg-primary-light rounded px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                     title="Send"
                   >
                     ▶
-                  </button>
+                  </Button>
                 )}
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={clearHistory}
                   disabled={messages.length === 0}
-                  className="rounded bg-gray-700 px-3 py-1 text-xs hover:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
                   title="Clear history"
                 >
                   Clear
-                </button>
+                </Button>
               </div>
             </div>
           </div>

@@ -9,6 +9,9 @@ import { Button } from '../Button';
 import { Icons } from '../Icons/Icons';
 import { DropdownMenu, DropdownMenuTrigger } from '../DropdownMenu';
 import { Tooltip, TooltipTrigger, TooltipContent } from '../Tooltip/Tooltip';
+import { ScrollArea } from '../../components';
+import { useDynamicMaxHeight } from '../../hooks/useDynamicMaxHeight';
+import { SegmentationLabel } from './SegmentationLabel';
 
 // The Header container component
 const SegmentationExpandedHeader = ({ children }: { children: React.ReactNode }) => {
@@ -17,7 +20,7 @@ const SegmentationExpandedHeader = ({ children }: { children: React.ReactNode })
 
   return (
     <PanelSection.Header
-      className={`border-input border-t-2 bg-transparent pl-1 ${isActive ? 'border-primary' : ''} py-0`}
+      className={`bg-muted my-0 rounded-none border-l-[2px] pl-0 ${isActive ? 'border-primary/70' : 'border-primary/35'}`}
       onClick={e => {
         e.stopPropagation();
         onSegmentationClick(segmentation.segmentationId);
@@ -51,7 +54,11 @@ const SegmentationExpandedDropdownMenu = ({ children }: { children: React.ReactN
 const SegmentationExpandedLabel = () => {
   const { segmentation } = useSegmentationExpanded('SegmentationExpandedLabel');
 
-  return <div className="pl-1.5">{segmentation.label}</div>;
+  return (
+    <div className="pl-1.5">
+      <SegmentationLabel segmentation={segmentation} />
+    </div>
+  );
 };
 
 // Info component - for the info tooltip
@@ -59,7 +66,7 @@ const SegmentationExpandedInfo = () => {
   const { segmentation } = useSegmentationExpanded('SegmentationExpandedInfo');
 
   return (
-    <div className="ml-auto mr-1">
+    <div className="ml-auto mr-2">
       <Tooltip>
         <TooltipTrigger asChild>
           <Button
@@ -79,8 +86,11 @@ const SegmentationExpandedInfo = () => {
 
 // Content component
 const SegmentationExpandedContent = ({ children }: { children: React.ReactNode }) => {
+  const { isActive } = useSegmentationExpanded('SegmentationExpandedContent');
   return (
-    <PanelSection.Content className="py-0">
+    <PanelSection.Content
+      className={`border-l-[2px] py-0 pb-6 pl-[8px] ${isActive ? 'border-primary/70' : 'border-primary/35'}`}
+    >
       <div className="segmentation-expanded-section">{children}</div>
     </PanelSection.Content>
   );
@@ -88,8 +98,10 @@ const SegmentationExpandedContent = ({ children }: { children: React.ReactNode }
 
 // Main compound component
 const SegmentationExpandedRoot = ({ children }) => {
-  const { data, activeSegmentationId, onSegmentationClick, mode } =
+  const { data, activeSegmentationId, onSegmentationClick, mode, segmentationRepresentationTypes } =
     useSegmentationTableContext('SegmentationExpanded');
+
+  const { ref: scrollableContainerRef, maxHeight } = useDynamicMaxHeight(data);
 
   // Check if we should render based on mode
   if (mode !== 'expanded' || !data || data.length === 0) {
@@ -97,27 +109,42 @@ const SegmentationExpandedRoot = ({ children }) => {
   }
 
   return (
-    <div className="space-y-0">
-      {data.map(segmentationInfo => {
-        const isActive = segmentationInfo.segmentation.segmentationId === activeSegmentationId;
+    <ScrollArea
+      className={`bg-background space-y-px`}
+      showArrows={true}
+    >
+      <div
+        ref={scrollableContainerRef}
+        style={{ maxHeight: maxHeight }}
+        className={`space-y-0 pl-0.5`}
+      >
+        {data
+          .filter(
+            segmentationInfo =>
+              !segmentationRepresentationTypes ||
+              segmentationRepresentationTypes.includes(segmentationInfo.representation.type)
+          )
+          .map(segmentationInfo => {
+            const isActive = segmentationInfo.segmentation.segmentationId === activeSegmentationId;
 
-        return (
-          <PanelSection
-            key={segmentationInfo.segmentation.segmentationId}
-            className="mb-0"
-          >
-            <SegmentationExpandedProvider
-              segmentation={segmentationInfo.segmentation}
-              representation={segmentationInfo.representation}
-              isActive={isActive}
-              onSegmentationClick={onSegmentationClick}
-            >
-              {children}
-            </SegmentationExpandedProvider>
-          </PanelSection>
-        );
-      })}
-    </div>
+            return (
+              <PanelSection
+                key={segmentationInfo.segmentation.segmentationId}
+                className=""
+              >
+                <SegmentationExpandedProvider
+                  segmentation={segmentationInfo.segmentation}
+                  representation={segmentationInfo.representation}
+                  isActive={isActive}
+                  onSegmentationClick={onSegmentationClick}
+                >
+                  {children}
+                </SegmentationExpandedProvider>
+              </PanelSection>
+            );
+          })}
+      </div>
+    </ScrollArea>
   );
 };
 

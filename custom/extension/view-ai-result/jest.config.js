@@ -1,4 +1,4 @@
-const base = require('../../../jest.config.base.js');
+const base = require('../../jest.config.base.js');
 const pkg = require('./package');
 
 module.exports = {
@@ -6,9 +6,7 @@ module.exports = {
   displayName: pkg.name,
   coverageProvider: 'v8',
   moduleNameMapper: {
-    ...base.moduleNameMapper,
     '^@ohif/core$': '<rootDir>/src/test-utils/__mocks__/ohif-core.ts',
-    '^@ohif/ui$': '<rootDir>/src/test-utils/__mocks__/ohif-ui.tsx',
     '^@ohif/ui-next$': '<rootDir>/src/test-utils/__mocks__/ohif-ui-next.tsx',
     '^@cornerstonejs/core$': '<rootDir>/src/test-utils/__mocks__/cornerstone-core.ts',
     '^@cornerstonejs/tools$': '<rootDir>/src/test-utils/__mocks__/cornerstone-tools.ts',
@@ -16,6 +14,10 @@ module.exports = {
     '^@ohif/extension-default$': '<rootDir>/src/test-utils/__mocks__/ohif-ext-default.tsx',
     '\\.(jpg|jpeg|png|gif|eot|otf|webp|svg|ttf|woff|woff2|mp4|webm|wav|mp3|m4a|aac|oga)$':
       '<rootDir>/src/__mocks__/fileMock.js',
+    // Inherited last: jest applies the first matching pattern, and the
+    // shared base carries generic '^@cornerstonejs/...' rules that would
+    // otherwise shadow the explicit stubs above.
+    ...base.moduleNameMapper,
   },
   collectCoverageFrom: [
     'src/**/*.{js,jsx,ts,tsx}',

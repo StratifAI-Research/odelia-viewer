@@ -2,7 +2,7 @@ const ODELIA_LABELING_SOURCE_NAME = 'OdeliaLabeleing';
 const ODELIA_LABELING_SOURCE_VERSION = '0.1';
 
 const ODELIALabel = {
-  toAnnotation: measurement => {},
+  toAnnotation: () => {},
 
   /**
    * Maps form annotation event data to measurement service format.
@@ -23,7 +23,7 @@ const ODELIALabel = {
     }
 
     const displayText = getDisplayText(annotation.data);
-    const getReport = () => _getReport(annotation.data, referenceStudyUID);
+    const getReport = () => _getReport(annotation.data);
 
     return {
       uid: annotationUID,
@@ -43,7 +43,7 @@ This function is used to convert the measurement data to a format that is
 suitable for the report generation (e.g. for the csv report). The report
 returns a list of columns and corresponding values.
 */
-function _getReport(data, StudyInstanceUID) {
+function _getReport(data) {
   const columns: Array<string> = [];
   const values: Array<string> = [];
 
@@ -60,7 +60,7 @@ function _getReport(data, StudyInstanceUID) {
   };
 }
 
-function getDisplayText(data) {
+function getDisplayText(_data) {
   return ' ';
 }
 

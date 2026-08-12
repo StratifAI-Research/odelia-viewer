@@ -30,6 +30,11 @@ window.config = {
     maxNumPrefetchRequests: 10,
     order: 'closest',
   },
+  // The custom DisclaimerBanner (view-ai-result) replaces OHIF's own
+  // investigational-use dialog; without this they stack on top of each other.
+  investigationalUseDialog: {
+    option: 'never',
+  },
   defaultDataSourceName: 'dicomweb',
   studyList: {
     defaultSortField: 'StudyDate',
@@ -71,7 +76,12 @@ window.config = {
       },
     }
   ],
-  // Preconfigured AI endpoints
+  // Preconfigured AI endpoints.
+  //
+  // These seed the endpoint list, and changes here reach browsers that already
+  // hold a stored list: `id` is the identity, so an entry edited here is
+  // updated in place, a new entry is added, and one removed here is removed
+  // locally. Endpoints a user added by hand are never touched.
   aiEndpoints: [
     {
       id: 'mst-ai',
@@ -79,6 +89,11 @@ window.config = {
       url: 'http://orthanc-router-mst:8042/dicom-web',
     },
   ],
+  // Chat middleware. Both keys are optional and default to this origin, which
+  // is correct whenever /ws and /chat-api are proxied to the middleware
+  // alongside the viewer. Set them when the middleware is served elsewhere.
+  //   chatMiddleware: { wsUrl: 'wss://example.org/ws/chat/new' },
+  //   chatApiBase: 'https://example.org/chat-api',
   httpErrorHandler: error => {
     console.warn(`HTTP Error Handler (status: ${error.status})`, error);
   },

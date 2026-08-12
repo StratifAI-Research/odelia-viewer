@@ -16,6 +16,7 @@ import {
   CHAT_EVENTS,
   ChatEventType,
 } from '../types/chatTypes';
+import { EventfulService } from './EventfulService';
 
 // Reconnection settings
 const RECONNECT_INITIAL_DELAY = 1000;
@@ -44,12 +45,11 @@ export enum ChatConnectionState {
   CLOSED = 'CLOSED',
 }
 
-export class ChatService {
+export class ChatService extends EventfulService<ChatEventType> {
   private ws: WebSocket | null = null;
   private sessionId: string | null = null;
   private connectPromise: Promise<string> | null = null;
   private wsUrl: string;
-  private eventListeners: Map<string, Array<(data: any) => void>> = new Map();
   private reconnectAttempts = 0;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private state: ChatConnectionState = ChatConnectionState.DISCONNECTED;
@@ -59,6 +59,7 @@ export class ChatService {
   EVENTS = CHAT_EVENTS;
 
   constructor() {
+    super();
     // Try to get WebSocket URL from config, fallback to derived URL
     this.wsUrl = this.getWebSocketUrl();
   }
@@ -86,18 +87,26 @@ export class ChatService {
       console.warn('[ChatService] Error getting config:', e);
     }
 
-    // Derive WebSocket URL from current origin
-    // This works for both development (localhost) and production (proxied through nginx)
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-
-    // In development on localhost, use direct connection to chat-middleware
-    if (window.location.hostname === 'localhost' && window.location.port === '3000') {
+    // Dev-server fallback: `pnpm run dev` serves the viewer on :3000 with the
+    // chat middleware running separately on :5560 and no proxy in between.
+    //
+    // The NODE_ENV guard matters. Webpack replaces it with a literal, so this
+    // branch is eliminated from a production bundle entirely — without it, the
+    // published image would match the host/port check whenever it is run the
+    // way the README documents (`docker run -p 3000:80`) and point chat at a
+    // middleware that is not there. Set `chatMiddleware.wsUrl` in app-config.js
+    // to override in any deployment that is not simply proxying /ws.
+    if (
+      process.env.NODE_ENV !== 'production' &&
+      window.location.hostname === 'localhost' &&
+      window.location.port === '3000'
+    ) {
       return 'ws://localhost:5560/ws/chat/new';
     }
 
-    // In production/proxied environment, use the proxied path
-    return `${protocol}//${host}/ws/chat/new`;
+    // Proxied deployment: same origin as the viewer.
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    return `${protocol}//${window.location.host}/ws/chat/new`;
   }
 
   /**
@@ -370,48 +379,18 @@ export class ChatService {
   }
 
   /**
-   * Subscribe to events
-   */
-  subscribe(eventName: ChatEventType, callback: (data: any) => void): { unsubscribe: () => void } {
-    if (!this.eventListeners.has(eventName)) {
-      this.eventListeners.set(eventName, []);
-    }
-    this.eventListeners.get(eventName)!.push(callback);
-
-    return {
-      unsubscribe: () => {
-        const listeners = this.eventListeners.get(eventName);
-        if (listeners) {
-          const index = listeners.indexOf(callback);
-          if (index > -1) {
-            listeners.splice(index, 1);
-          }
-        }
-      },
-    };
-  }
-
-  /**
-   * Publish events
-   */
-  private publish(eventName: ChatEventType, data: any): void {
-    const listeners = this.eventListeners.get(eventName);
-    if (listeners) {
-      listeners.forEach(callback => {
-        try {
-          callback(data);
-        } catch (e) {
-          console.error(`[ChatService] Error in event listener for ${eventName}:`, e);
-        }
-      });
-    }
-  }
-
-  /**
    * Cleanup - call on unmount
    */
   destroy(): void {
     this.disconnect();
-    this.eventListeners.clear();
+    this.clearListeners();
+  }
+}
+
+declare global {
+  namespace AppTypes {
+    interface Services {
+      chatService?: ChatService;
+    }
   }
 }

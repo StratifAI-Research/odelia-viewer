@@ -77,15 +77,19 @@ Common entrypoint env vars:
 
 ### Prerequisites
 
-- **[Node](https://nodejs.org/) 20.9** — JavaScript runtime (pinned in [`.node-version`](.node-version); `engines` allows ≥18). A version manager such as [nvm](https://github.com/nvm-sh/nvm) or [fnm](https://github.com/Schniz/fnm) makes it easy to match.
-- **[Bun](https://bun.sh/) 1.2.23** — package manager and script runner (pinned via `packageManager` in [`package.json`](package.json)).
+- **[pnpm](https://pnpm.io/) 11 or newer** — install it with pnpm's [standalone script](https://pnpm.io/installation#using-a-standalone-script) or Homebrew; both work without a pre-existing Node.
 - **[Docker](https://www.docker.com/get-started/)** *(optional)* — only needed to build the production image.
+
+Node is **not** a prerequisite. It is declared as `devEngines.runtime` in
+[`package.json`](package.json), so `pnpm install` downloads the pinned version, records its
+resolution in `pnpm-lock.yaml`, and runs every project script with it — no version manager, and no
+mismatch with CI.
 
 ### Setup
 
 ```bash
-bun install        # install & link workspace dependencies (versions pinned in bun.lock)
-bun run dev        # start the dev server (http://localhost:3000)
+pnpm install        # fetch the pinned Node + workspace dependencies
+pnpm run dev        # start the dev server (http://localhost:3000)
 docker build -t stratifai/odelia-viewer:local .  # optional: build docker image
 ```
 
@@ -96,14 +100,14 @@ docker build -t stratifai/odelia-viewer:local .  # optional: build docker image
 Unit tests (Jest):
 
 ```bash
-bun run test:unit     # run all unit tests with coverage
-bun run test-watch    # run in watch mode
+pnpm run test:unit     # run all unit tests with coverage
+pnpm run test-watch    # run in watch mode
 ```
 
-End-to-end tests (Playwright). Fetch the test data once with `bun run test:data`. Then run the full suite:
+End-to-end tests (Playwright). Fetch the test data once with `pnpm run test:data`. Then run the full suite:
 
 ```bash
-bun run test:e2e:ci   # headless
+pnpm run test:e2e:ci   # headless
 ```
 
 Note: Swap in `test:e2e:ui` (interactive), `test:e2e:headed` (visible
@@ -112,7 +116,7 @@ browser), or `test:e2e:debug` (step-through) if needed.
 ## Repository structure
 
 This repository is a fork of the OHIF Viewer (version recorded in [`version.json`](version.json)),
-organized as a monorepo. The OHIF source (`platform/`, `extensions/`, `modes/`, `addOns/`) is kept
+organized as a monorepo. The OHIF source (`platform/`, `extensions/`, `modes/`) is kept
 close to upstream and periodically re-merged; ODELIA's viewer code lives under `custom/`, with
 deployment and test assets alongside:
 
@@ -122,7 +126,6 @@ deployment and test assets alongside:
 ├── platform/      # OHIF core, UI, i18n, app shell + pluginConfig.json  (upstream)
 ├── extensions/    # OHIF extensions (cornerstone, segmentation, …)      (upstream)
 ├── modes/         # OHIF workflow modes                                 (upstream)
-├── addOns/        # OHIF external dependencies                          (upstream)
 ├── deploy/        # config for the reference docker-compose stack
 ├── tests/         # Playwright end-to-end tests
 ├── Dockerfile     # builds the stratifai/odelia-viewer image

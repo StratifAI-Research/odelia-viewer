@@ -31,7 +31,6 @@ export function useStudySeriesSelection({
   const [isLoadingSeries, setIsLoadingSeries] = useState<boolean>(false);
 
   // Error states
-  const [studiesError, setStudiesError] = useState<string | null>(null);
   const [seriesError, setSeriesError] = useState<string | null>(null);
 
   // Track if hook is mounted
@@ -50,7 +49,6 @@ export function useStudySeriesSelection({
     const loadStudies = () => {
       try {
         setIsLoadingStudies(true);
-        setStudiesError(null);
 
         const displaySets = displaySetService.getActiveDisplaySets();
 
@@ -80,10 +78,20 @@ export function useStudySeriesSelection({
             let studyDate = ds.StudyDate || '';
 
             // Try to get from the series' instance metadata (most reliable for imaging series)
-            const studyMetadata = DicomMetadataStore.getStudy(studyUID);
-            if (studyMetadata?.series?.length > 0) {
+            // DicomMetadataStore's internal model is typed as never[], so
+            // getStudy() resolves to `never | undefined`; describe what is read.
+            const studyMetadata = DicomMetadataStore.getStudy(studyUID) as
+              | {
+                  series?: Array<{
+                    Modality?: string;
+                    StudyDate?: string;
+                    instances?: Array<Record<string, any>>;
+                  }>;
+                }
+              | undefined;
+            if ((studyMetadata?.series?.length ?? 0) > 0) {
               // Find the first non-SR/SC series to get the real study description
-              for (const series of studyMetadata.series) {
+              for (const series of studyMetadata!.series!) {
                 const instances = series.instances || [];
                 if (instances.length > 0 && series.Modality !== 'SR' && series.Modality !== 'SC') {
                   const firstInstance = instances[0];
@@ -143,7 +151,6 @@ export function useStudySeriesSelection({
         setIsLoadingStudies(false);
       } catch (error) {
         console.error('Error loading studies:', error);
-        setStudiesError(error instanceof Error ? error.message : 'Failed to load studies');
         setIsLoadingStudies(false);
       }
     };
@@ -363,7 +370,6 @@ export function useStudySeriesSelection({
     isLoadingSeries,
 
     // Error states
-    studiesError,
     seriesError,
 
     // Actions

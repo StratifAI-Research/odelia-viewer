@@ -25,13 +25,30 @@ jobs:
         with:
           fetch-depth: 1
 
-      - uses: ./.github/actions/setup-bun
+      - uses: ./.github/actions/setup-node-pnpm
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Type-check custom/
-        run: bun run typecheck:custom
+        run: pnpm run typecheck:custom
+
+  # Enforcing: a manifest that declares a version an override exists to replace
+  # is what GitHub's dependency graph reads, even though the install is correct.
+  check-overrides:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/setup-node-pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check manifests against pnpm-workspace.yaml overrides
+        run: pnpm run check:overrides
 
   lint-js:
     runs-on: ubuntu-latest
@@ -41,10 +58,10 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - uses: ./.github/actions/setup-bun
+      - uses: ./.github/actions/setup-node-pnpm
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: Prepare outputs dir
         run: mkdir -p outputs
@@ -52,8 +69,7 @@ jobs:
       - name: Run ESLint
         continue-on-error: true
         run: |
-          bun x eslint custom/extension custom/mode \
-            --ext .ts,.tsx,.js \
+          pnpm exec eslint custom/extension custom/mode \
             -f json -o outputs/eslint.json \
             --no-error-on-unmatched-pattern
 

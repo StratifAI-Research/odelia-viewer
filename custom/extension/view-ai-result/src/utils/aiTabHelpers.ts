@@ -46,7 +46,7 @@ export function getRealDisplaySet(thumbnailDisplaySet: any, servicesManager: any
   try {
     result =
       dss.getDisplaySetByUID(thumbnailDisplaySet.displaySetInstanceUID) || thumbnailDisplaySet;
-  } catch (error) {
+  } catch {
     result = thumbnailDisplaySet;
   }
   if (displaySetCache.size >= MAX_DISPLAYSET_CACHE_ENTRIES) {

@@ -1,8 +1,5 @@
-import {
-  createAIBrowserTabs,
-  clearDisplaySetCache,
-  getDisplaySetCacheSize,
-} from './createAIBrowserTabs';
+import { createAIBrowserTabs } from './createAIBrowserTabs';
+import { clearAITabCache, getAITabCacheSize } from './aiTabHelpers';
 
 // A non-AI (original) series thumbnail.
 const originalThumb = (over: any = {}) => ({
@@ -30,7 +27,7 @@ const aiThumb = (over: any = {}) => ({
   ...over,
 });
 
-beforeEach(() => clearDisplaySetCache());
+beforeEach(() => clearAITabCache());
 
 describe('createAIBrowserTabs', () => {
   it('returns no tabs for an empty display-set list', () => {
@@ -175,7 +172,11 @@ describe('createAIBrowserTabs', () => {
       Modality: 'SR',
       displaySetInstanceUID: uid,
       numInstances: 1,
-      instance: { SOPInstanceUID: sop, InstanceCreationDate: '20240101', InstanceCreationTime: time },
+      instance: {
+        SOPInstanceUID: sop,
+        InstanceCreationDate: '20240101',
+        InstanceCreationTime: time,
+      },
     });
     const srA = mkSR('study-1', 'sr-a', 'sop-a', '120001'); // 1s from the SC, same study
     const srB = mkSR('study-2', 'sr-b', 'sop-b', '120000'); // exact SC time, different study
@@ -246,7 +247,7 @@ describe('createAIBrowserTabs', () => {
   });
 });
 
-describe('clearDisplaySetCache / getDisplaySetCacheSize', () => {
+describe('real-display-set cache', () => {
   it('populates and clears the real-display-set cache via the service path', () => {
     const real = aiThumb({ displaySetInstanceUID: 'ai-svc' });
     const servicesManager = {
@@ -255,8 +256,8 @@ describe('clearDisplaySetCache / getDisplaySetCacheSize', () => {
       },
     };
     createAIBrowserTabs(['study-1'], [], [real], servicesManager);
-    expect(getDisplaySetCacheSize()).toBeGreaterThan(0);
-    clearDisplaySetCache();
-    expect(getDisplaySetCacheSize()).toBe(0);
+    expect(getAITabCacheSize()).toBeGreaterThan(0);
+    clearAITabCache();
+    expect(getAITabCacheSize()).toBe(0);
   });
 });

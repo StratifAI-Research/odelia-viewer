@@ -1,5 +1,6 @@
 import React from 'react';
-import { Button } from '@ohif/ui';
+import { Button } from '@ohif/ui-next';
+import { ErrorMessage } from '../LoadingStates';
 
 interface ProgressStepProps {
   status: 'idle' | 'routing' | 'checking';
@@ -64,19 +65,15 @@ export const ProgressStep: React.FC<ProgressStepProps> = ({
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex min-h-0 flex-1 items-center justify-center space-y-4 overflow-y-auto p-4">
         <div className="w-full max-w-md space-y-4">
-          {error && (
-            <div className="rounded border border-red-400 bg-red-100 px-4 py-3 text-red-700">
-              {error}
-            </div>
-          )}
+          {error && <ErrorMessage>{error}</ErrorMessage>}
 
           {!error && (
             <>
               <div className="text-center">
-                <div className="mb-2 text-lg font-medium text-white">{getStatusTitle()}</div>
+                <div className="text-foreground mb-2 text-lg font-medium">{getStatusTitle()}</div>
               </div>
 
-              <div className="border-secondary-light bg-secondary-dark rounded border p-4">
+              <div className="border-input bg-muted rounded border p-4">
                 <ProgressLoadingBar progress={progress} />
                 <div className="text-muted-foreground mt-2 text-right text-xs">{progress}%</div>
               </div>
@@ -91,7 +88,7 @@ export const ProgressStep: React.FC<ProgressStepProps> = ({
         </div>
       </div>
 
-      <div className="border-secondary-light flex-shrink-0 border-t p-4">
+      <div className="border-input flex-shrink-0 border-t p-4">
         {canReset && (
           <Button
             onClick={onReset}

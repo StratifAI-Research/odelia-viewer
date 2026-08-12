@@ -1,32 +1,20 @@
 import React from 'react';
-import PropTypes from 'prop-types';
+import { Button } from '@ohif/ui-next';
 
-import { Button, ButtonGroup } from '@ohif/ui';
+type ActionButtonsProps = {
+  name: string;
+  onClick?: () => void;
+};
 
-function ActionButtons({ onClick, name }) {
+function ActionButtons({ name, onClick = () => {} }: ActionButtonsProps) {
   return (
-    <React.Fragment>
-      <ButtonGroup
-        color="black"
-        size="inherit"
-      >
-        <Button
-          className="px-2 py-2 text-base"
-          onClick={onClick}
-        >
-          {name}
-        </Button>
-      </ButtonGroup>
-    </React.Fragment>
+    <Button
+      className="px-2 py-2 text-base"
+      onClick={onClick}
+    >
+      {name}
+    </Button>
   );
 }
-
-ActionButtons.propTypes = {
-  onClick: PropTypes.func,
-};
-
-ActionButtons.defaultProps = {
-  onClick: () => {},
-};
 
 export default ActionButtons;

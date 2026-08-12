@@ -1,13 +1,7 @@
 // Simple static date cache to prevent refreshing.
-// Bounded so it cannot grow unbounded across a long session, and
-// clearable via `clearStaticDateCache()` on study-lifecycle changes.
+// Bounded (LRU-by-insertion) so it cannot grow unbounded across a long session.
 const staticDateCache = new Map<string, string>();
 const MAX_DATE_CACHE_ENTRIES = 512;
-
-/** Clear the static date cache (call on study unload / display-set reset). */
-export function clearStaticDateCache(): void {
-  staticDateCache.clear();
-}
 
 /**
  * Engine-independent, descending-friendly numeric key for a date string.

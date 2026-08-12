@@ -33,6 +33,11 @@
       "version": "3.0.0"
     },
     {
+      "packageName": "@ohif/extension-dicom-microscopy",
+      "default": false,
+      "version": "3.0.0"
+    },
+    {
       "packageName": "@ohif/extension-dicom-pdf",
       "default": false,
       "version": "3.0.0"
@@ -58,20 +63,20 @@
       "version": "3.0.0"
     },
     {
+      "packageName": "@ohif/extension-ultrasound-pleura-bline",
+      "version": "3.0.0"
+    },
+    {
       "packageName": "orthanc-ai-routing",
-      "version": "0.0.1"
+      "directory": "./custom/extension/orthanc-ai-routing"
     },
     {
       "packageName": "labeling",
-      "version": "0.0.1"
+      "directory": "./custom/extension/labeling"
     },
     {
       "packageName": "view-ai-result",
-      "version": "0.0.1"
-    },
-    {
-      "packageName": "@ohif/extension-dicom-microscopy",
-      "version": "3.10.2"
+      "directory": "./custom/extension/view-ai-result"
     }
   ],
   "modes": [
@@ -80,11 +85,19 @@
       "default": false
     },
     {
+      "packageName": "@ohif/mode-basic",
+      "default": false
+    },
+    {
       "packageName": "@ohif/mode-segmentation",
       "default": false
     },
     {
       "packageName": "@ohif/mode-tmtv",
+      "default": false
+    },
+    {
+      "packageName": "@ohif/mode-microscopy",
       "default": false
     },
     {
@@ -102,12 +115,17 @@
       "version": "3.0.0"
     },
     {
+      "packageName": "@ohif/mode-ultrasound-pleura-bline",
+      "version": "3.0.0",
+      "default": false
+    },
+    {
       "packageName": "send-ai",
-      "version": "0.0.1"
+      "directory": "./custom/mode/send-ai"
     },
     {
       "packageName": "labeling-mode",
-      "version": "0.0.1",
+      "directory": "./custom/mode/labeling-mode",
       "default": false
     }
   ],
@@ -117,9 +135,10 @@
     },
     {
       "packageName": "dicom-microscopy-viewer",
-      "importPath": "/dicom-microscopy-viewer/dicomMicroscopyViewer.min.js",
+      "importPath": "dicom-microscopy-viewer/dicomMicroscopyViewer.min.js",
       "globalName": "dicomMicroscopyViewer",
-      "directory": "./node_modules/dicom-microscopy-viewer/dist/dynamic-import"
+      "directory": "./node_modules/dicom-microscopy-viewer/dist/dynamic-import",
+      "to": "/dicom-microscopy-viewer/"
     }
   ]
 }

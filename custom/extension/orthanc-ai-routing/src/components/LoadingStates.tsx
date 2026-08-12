@@ -1,27 +1,5 @@
 import React from 'react';
-
-// Public loading-state component for the AI routing panel's study list. Kept as
-// exported API for reuse across routing steps.
-export const StudyListSkeleton: React.FC = () => {
-  return (
-    <div className="space-y-2">
-      {[1, 2, 3].map(i => (
-        <div
-          key={i}
-          className="border-secondary-light animate-pulse rounded border bg-black p-3"
-        >
-          <div className="flex items-start gap-3">
-            <div className="bg-secondary-light mt-1 h-4 w-4 rounded-full" />
-            <div className="flex-1 space-y-2">
-              <div className="bg-secondary-light h-4 w-3/4 rounded" />
-              <div className="bg-secondary-light h-3 w-1/2 rounded" />
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  );
-};
+import { Button } from '@ohif/ui-next';
 
 export const SeriesListSkeleton: React.FC = () => {
   return (
@@ -29,13 +7,13 @@ export const SeriesListSkeleton: React.FC = () => {
       {[1, 2, 3, 4].map(i => (
         <div
           key={i}
-          className="border-secondary-light animate-pulse rounded border bg-black p-3"
+          className="border-input bg-background animate-pulse rounded border p-3"
         >
           <div className="flex items-start gap-3">
-            <div className="bg-secondary-light mt-1 h-4 w-4 rounded" />
+            <div className="bg-muted mt-1 h-4 w-4 rounded" />
             <div className="flex-1 space-y-2">
-              <div className="bg-secondary-light h-4 w-2/3 rounded" />
-              <div className="bg-secondary-light h-3 w-1/3 rounded" />
+              <div className="bg-muted h-4 w-2/3 rounded" />
+              <div className="bg-muted h-3 w-1/3 rounded" />
             </div>
           </div>
         </div>
@@ -52,8 +30,27 @@ export const EmptyState: React.FC<{
   return (
     <div className="space-y-3 p-8 text-center">
       <div className="text-4xl">{icon}</div>
-      <div className="text-sm font-medium text-white">{title}</div>
+      <div className="text-foreground text-sm font-medium">{title}</div>
       <div className="text-muted-foreground text-xs">{message}</div>
+    </div>
+  );
+};
+
+/**
+ * Inline error banner for the wizard steps.
+ *
+ * Uses OHIF's destructive tokens rather than a hand-rolled `bg-red-100` /
+ * `text-red-700` pair, which rendered a light-mode alert inside the dark panel.
+ * `break-words` matters: these messages name the configured Orthanc URL, and an
+ * unbroken URL would otherwise overflow the side panel.
+ */
+export const ErrorMessage: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  return (
+    <div
+      role="alert"
+      className="bg-destructive text-destructive-foreground rounded px-3 py-2 text-sm break-words"
+    >
+      {children}
     </div>
   );
 };
@@ -69,12 +66,13 @@ export const ErrorState: React.FC<{
       <div className="text-sm font-medium text-red-500">{title}</div>
       <div className="text-muted-foreground text-xs">{message}</div>
       {onRetry && (
-        <button
+        <Button
           onClick={onRetry}
-          className="bg-secondary-dark hover:bg-secondary-main mt-4 rounded px-4 py-2 text-xs text-white transition-colors"
+          variant="secondary"
+          className="mt-4"
         >
           Try Again
-        </button>
+        </Button>
       )}
     </div>
   );

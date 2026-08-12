@@ -20,15 +20,23 @@ afterEach(() => jest.restoreAllMocks());
 
 describe('AIEndpointConfig — loading', () => {
   it('falls back to the default endpoint and selects it when storage is empty', () => {
-    const onEndpointChange = jest.fn();
-    render(
-      <AIEndpointConfig
-        onEndpointChange={onEndpointChange}
-        currentEndpoint={null}
-      />
-    );
-    expect(onEndpointChange).toHaveBeenCalledWith(expect.objectContaining({ id: DEFAULT_ID }));
-    expect(JSON.parse(localStorage.getItem('aiEndpoints')!)[0].id).toBe(DEFAULT_ID);
+    // A loaded config that declares no endpoints. In production `window.config`
+    // is always set by app-config.js before the app boots, so this — not its
+    // absence — is what "nothing configured" actually looks like.
+    (window as any).config = {};
+    try {
+      const onEndpointChange = jest.fn();
+      render(
+        <AIEndpointConfig
+          onEndpointChange={onEndpointChange}
+          currentEndpoint={null}
+        />
+      );
+      expect(onEndpointChange).toHaveBeenCalledWith(expect.objectContaining({ id: DEFAULT_ID }));
+      expect(JSON.parse(localStorage.getItem('aiEndpoints')!)[0].id).toBe(DEFAULT_ID);
+    } finally {
+      delete (window as any).config;
+    }
   });
 
   it('loads saved endpoints from localStorage', () => {
@@ -67,6 +75,191 @@ describe('AIEndpointConfig — loading', () => {
       );
       expect(onEndpointChange).toHaveBeenCalledWith(epA);
       expect(JSON.parse(localStorage.getItem('aiEndpoints')!)[0].id).toBe('a');
+    } finally {
+      delete (window as any).config;
+    }
+  });
+});
+
+/**
+ * The active endpoint is held by OrthancAIService, which snapshots
+ * `getAIEndpoints()[0]` in its constructor at preRegistration — long before this
+ * component mounts. So the merge landing in storage is not enough: it has to be
+ * pushed at whoever holds the selection, or `POST /send-to-ai` keeps the old
+ * `target_url` for the rest of the session while the dropdown shows the new one.
+ */
+describe('AIEndpointConfig — a config edit reaches the ACTIVE endpoint', () => {
+  const renderWith = (current: AIEndpoint | null) => {
+    const onEndpointChange = jest.fn();
+    render(
+      <AIEndpointConfig
+        onEndpointChange={onEndpointChange}
+        currentEndpoint={current}
+      />
+    );
+    return onEndpointChange;
+  };
+
+  /** A browser that has already reconciled this config once. */
+  const seedReconciled = (endpoints: AIEndpoint[]) => {
+    seed(endpoints);
+    localStorage.setItem('aiEndpoints.configBase', JSON.stringify(endpoints));
+  };
+
+  it('re-selects the endpoint when its URL changed in app-config.js', () => {
+    const movedA = { ...epA, url: 'http://alpha-new:8042' };
+    seedReconciled([epA]);
+    (window as any).config = { aiEndpoints: [movedA] };
+    try {
+      // Same id, so the dropdown looks correctly selected the whole time.
+      expect(renderWith(epA)).toHaveBeenCalledWith(movedA);
+    } finally {
+      delete (window as any).config;
+    }
+  });
+
+  it('re-selects when only the display name changed', () => {
+    const renamedA = { ...epA, name: 'Alpha (staging)' };
+    seedReconciled([epA]);
+    (window as any).config = { aiEndpoints: [renamedA] };
+    try {
+      expect(renderWith(epA)).toHaveBeenCalledWith(renamedA);
+    } finally {
+      delete (window as any).config;
+    }
+  });
+
+  it('does not re-select, or toast, when nothing changed', () => {
+    seedReconciled([epA, epB]);
+    (window as any).config = { aiEndpoints: [epA, epB] };
+    try {
+      expect(renderWith(epA)).not.toHaveBeenCalled();
+    } finally {
+      delete (window as any).config;
+    }
+  });
+
+  it('falls back to the first endpoint when the selected one was removed', () => {
+    seedReconciled([epA, epB]);
+    (window as any).config = { aiEndpoints: [epB] };
+    try {
+      expect(renderWith(epA)).toHaveBeenCalledWith(epB);
+    } finally {
+      delete (window as any).config;
+    }
+  });
+});
+
+/**
+ * `window.config.aiEndpoints` used to be read as `... || []`. An empty list is
+ * MEANINGFUL to the merge — it means the deployment removed its endpoints — so
+ * flattening a malformed value into one deletes real configuration on the
+ * strength of a typo, and lands on the built-in default.
+ */
+describe('AIEndpointConfig — a malformed aiEndpoints does not destroy storage', () => {
+  const badValues: [string, unknown][] = [
+    ['an object instead of an array', { 'mst-ai': { url: 'http://x' } }],
+    ['a string', 'http://alpha:8042'],
+    ['an array of strings', ['http://alpha:8042']],
+    ['entries missing a url', [{ id: 'a', name: 'Alpha' }]],
+    // `name` labels the dropdown and is sent as `target`; without it the payload
+    // carries `target: undefined`, which JSON.stringify drops entirely.
+    ['entries missing a name', [{ id: 'a', url: 'http://alpha:8042' }]],
+    ['entries with an empty id', [{ id: '', name: 'Alpha', url: 'http://alpha:8042' }]],
+    // `[]` is how a deployment says "no endpoints"; null is a mistake, and a
+    // mistake must not be read as an instruction to delete.
+    ['null', null],
+    ['duplicate ids', [epA, { ...epA, url: 'http://alpha-2:8042' }]],
+  ];
+
+  it.each(badValues)('keeps the stored endpoints when aiEndpoints is %s', (_label, value) => {
+    seed([epA, epB]);
+    localStorage.setItem('aiEndpoints.configBase', JSON.stringify([epA, epB]));
+    (window as any).config = { aiEndpoints: value };
+    try {
+      render(
+        <AIEndpointConfig
+          onEndpointChange={jest.fn()}
+          currentEndpoint={epA}
+        />
+      );
+
+      expect(JSON.parse(localStorage.getItem('aiEndpoints')!).map(e => e.id)).toEqual(['a', 'b']);
+      // The base must survive too, so the next load with a good config still has
+      // something truthful to diff against.
+      expect(JSON.parse(localStorage.getItem('aiEndpoints.configBase')!).map(e => e.id)).toEqual([
+        'a',
+        'b',
+      ]);
+    } finally {
+      delete (window as any).config;
+    }
+  });
+
+  /**
+   * With storage EMPTY and the config unreadable, the fallback shown on screen
+   * must not be written back. If it is, the synthesized default is stored as
+   * though the user had added it, and the next load with a good config keeps it
+   * as "user-added" alongside the real endpoints — permanently, from one bad
+   * load.
+   */
+  it('does not persist the fallback it shows when the config is unreadable', () => {
+    (window as any).config = { aiEndpoints: 'not-a-list' };
+    try {
+      render(
+        <AIEndpointConfig
+          onEndpointChange={jest.fn()}
+          currentEndpoint={null}
+        />
+      );
+      expect(localStorage.getItem('aiEndpoints')).toBeNull();
+      expect(localStorage.getItem('aiEndpoints.configBase')).toBeNull();
+    } finally {
+      delete (window as any).config;
+    }
+  });
+
+  it('leaves no trace for a later good load to inherit', () => {
+    // Bad load first...
+    (window as any).config = { aiEndpoints: 'not-a-list' };
+    const { unmount } = render(
+      <AIEndpointConfig
+        onEndpointChange={jest.fn()}
+        currentEndpoint={null}
+      />
+    );
+    unmount();
+
+    // ...then a good one declaring the real endpoint.
+    (window as any).config = { aiEndpoints: [epA] };
+    try {
+      render(
+        <AIEndpointConfig
+          onEndpointChange={jest.fn()}
+          currentEndpoint={null}
+        />
+      );
+      expect(JSON.parse(localStorage.getItem('aiEndpoints')!).map(e => e.id)).toEqual(['a']);
+    } finally {
+      delete (window as any).config;
+    }
+  });
+
+  it('still honours a deployment that genuinely declares no endpoints', () => {
+    seed([epA]);
+    localStorage.setItem('aiEndpoints.configBase', JSON.stringify([epA]));
+    (window as any).config = { orthancUrl: 'http://orthanc' };
+    try {
+      const onEndpointChange = jest.fn();
+      render(
+        <AIEndpointConfig
+          onEndpointChange={onEndpointChange}
+          currentEndpoint={epA}
+        />
+      );
+
+      expect(JSON.parse(localStorage.getItem('aiEndpoints')!)[0].id).toBe(DEFAULT_ID);
+      expect(onEndpointChange).toHaveBeenCalledWith(expect.objectContaining({ id: DEFAULT_ID }));
     } finally {
       delete (window as any).config;
     }

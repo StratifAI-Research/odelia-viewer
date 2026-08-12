@@ -1,5 +1,4 @@
 import React from 'react';
-import PropTypes from 'prop-types';
 import ActionButtons from './ActionButtons';
 import CSVImporter from './CSVImporter';
 import { useTranslation } from 'react-i18next';
@@ -7,40 +6,47 @@ import LabelingTable from '../ui/LabelingTable';
 import downloadCSVReport from '../utils/downloadCSVReport';
 import importCSVReport from '../utils/importCSVReport';
 import Config from '../utils/config';
+import configJson from '../utils/config.json';
 import { getPanelConfig } from '../utils/panelConfig';
 import { useMeasurementSubscription } from '../hooks/useMeasurementSubscription';
+
+type PanelLabelingProps = {
+  name: string;
+  servicesManager: AppTypes.ServicesManager;
+  extensionManager: AppTypes.ExtensionManager;
+  /** Passed by the panel module; unused by this panel. */
+  commandsManager?: AppTypes.CommandsManager;
+};
 
 export default function PanelLabeling({
   name,
   servicesManager,
-  commandsManager,
   extensionManager,
-}) {
-  const { measurementService, uiDialogService } = servicesManager.services;
+}: PanelLabelingProps) {
+  // AppTypes marks every service optional (a service can be left unregistered),
+  // but measurementService is a core service the viewer always registers.
+  const { measurementService } = servicesManager.services as {
+    measurementService: AppTypes.MeasurementService;
+  };
 
-  const totalConfig: Config = require('../utils/config.json');
-  const config = getPanelConfig(totalConfig, name);
+  const config = getPanelConfig(configJson as Config, name);
   const { t } = useTranslation('PanelLabeling');
-  const [displayMeasurements] = useMeasurementSubscription(
+  const displayMeasurements = useMeasurementSubscription(
     measurementService,
     _getMappedMeasurements
   );
 
-  function _getMappedMeasurements(measurementService) {
-    const measurements = measurementService.getMeasurements();
-    const filteredMeasurements = measurements.filter(element => element.toolName === 'ODELIALabel');
-    return filteredMeasurements;
+  function _getMappedMeasurements(service) {
+    return service.getMeasurements().filter(element => element.toolName === 'ODELIALabel');
   }
 
-  async function exportReport() {
-    const measurements = measurementService.getMeasurements();
-
-    downloadCSVReport(measurements);
+  function exportReport() {
+    downloadCSVReport(measurementService.getMeasurements());
   }
 
-  const onMeasurementItemEditHandler = (uid, label, label_value) => {
+  const onMeasurementItemEditHandler = (uid: string, label: string, labelValue: string) => {
     const measurement = measurementService.getMeasurement(uid);
-    measurement.label_data[label] = label_value;
+    measurement.label_data[label] = labelValue;
 
     measurementService.update(uid, measurement);
   };
@@ -50,19 +56,15 @@ export default function PanelLabeling({
       <div className="invisible-scrollbar overflow-y-auto overflow-x-hidden">
         {/* show labeling table */}
         <div className="mt-4">
-          {!!displayMeasurements.length &&
-            displayMeasurements.map((measurement, index) => {
-              return (
-                <LabelingTable
-                  key={measurement.uid ?? `measurement-${index}`}
-                  title={t('Labels')}
-                  measurement={measurement}
-                  config={config}
-                  onClick={() => {}}
-                  onChange={onMeasurementItemEditHandler}
-                />
-              );
-            })}
+          {displayMeasurements.map((measurement, index) => (
+            <LabelingTable
+              key={measurement.uid ?? `measurement-${index}`}
+              title={t('Labels')}
+              measurement={measurement}
+              config={config}
+              onChange={onMeasurementItemEditHandler}
+            />
+          ))}
         </div>
         <div className="flex justify-center p-4">
           <CSVImporter
@@ -79,9 +81,3 @@ export default function PanelLabeling({
     </div>
   );
 }
-
-PanelLabeling.propTypes = {
-  commandsManager: PropTypes.shape({
-    runCommand: PropTypes.func.isRequired,
-  }),
-};

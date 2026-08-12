@@ -6,7 +6,9 @@ import {
 } from '../measurementServiceMappings/ODELIALabel';
 import { utils } from '@ohif/core';
 import { makeLabelAnnotation } from '../measurementServiceMappings/makeLabelAnnotation';
-const config: Config = require('../utils/config.json');
+import configJson from '../utils/config.json';
+
+const config = configJson as Config;
 
 const unusedColumns = [
   'AnnotationType',

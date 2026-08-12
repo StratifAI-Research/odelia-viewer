@@ -1,8 +1,8 @@
-// Placeholder for the isolated custom typecheck (@ohif is shimmed to any; see
-// custom/types/ohif-any.d.ts). `Record<string, any>` rather than `any` so that
-// intersections like `DisplaySet & { SOPInstanceUID: string; ... }` below keep
-// checking their explicit members. Swap back to
-// `import type { DisplaySet } from '@ohif/core'` when real types are wired in.
+// Loose stand-in for `AppTypes.DisplaySet`: the AI code reads fields OHIF's own
+// type does not declare (SR/SC extras attached by the extraction utilities), so
+// adopting the real type is a refactor of its own. `Record<string, any>` rather
+// than `any` keeps intersections like `DisplaySet & { SOPInstanceUID: string }`
+// below checking their explicit members.
 type DisplaySet = Record<string, any>;
 
 export interface Classification {
@@ -56,9 +56,9 @@ export interface AIResult {
 
 export interface AISideBySideViewportProps {
   viewportId: string;
-  servicesManager: any;
-  extensionManager: any;
-  commandsManager: any;
+  servicesManager: AppTypes.ServicesManager;
+  extensionManager: AppTypes.ExtensionManager;
+  commandsManager: AppTypes.CommandsManager;
   displaySets: DisplaySet[];
   viewportOptions?: any;
   onElementEnabled?: (evt: any) => void;

@@ -2,8 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useActiveStudyUID } from './useActiveStudyUID';
 
 interface StudyChangeDetectorConfig {
-  servicesManager: any;
-  viewportGridService: any;
+  servicesManager: AppTypes.ServicesManager;
   displaySetService: any;
   activeViewportId: string | null;
   viewports: Map<string, any>;
@@ -17,7 +16,6 @@ interface StudyChangeDetectorConfig {
 export const useStudyChangeDetector = (config: StudyChangeDetectorConfig): void => {
   const {
     servicesManager,
-    viewportGridService,
     displaySetService,
     activeViewportId,
     viewports,
@@ -35,7 +33,9 @@ export const useStudyChangeDetector = (config: StudyChangeDetectorConfig): void 
     StudyInstanceUIDs,
   });
 
-  // Track viewport changes and detect study changes
+  // Track viewport changes and detect study changes. This also covers the
+  // initial resolve: on mount the ref is null, so the first non-null study UID
+  // already reads as a change. A separate mount effect duplicated that.
   useEffect(() => {
     if (!aiResultsService) {
       return;
@@ -61,17 +61,4 @@ export const useStudyChangeDetector = (config: StudyChangeDetectorConfig): void 
     aiResultsService,
     servicesManager,
   ]);
-
-  // Initialize on mount
-  useEffect(() => {
-    if (!aiResultsService || activeStudyUIDRef.current) {
-      return;
-    }
-
-    const initialStudyUID = getStudyUIDFromActiveViewport();
-    if (initialStudyUID) {
-      activeStudyUIDRef.current = initialStudyUID;
-      aiResultsService.notifyStudyChange(initialStudyUID, servicesManager);
-    }
-  }, [aiResultsService, getStudyUIDFromActiveViewport, servicesManager]);
 };

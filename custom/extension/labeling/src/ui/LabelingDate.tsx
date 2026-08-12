@@ -1,10 +1,14 @@
-import React, { useState, useEffect } from 'react';
-import PropTypes from 'prop-types';
-import classnames from 'classnames';
+import React, { useEffect, useState } from 'react';
 import DatePicker from './DatePicker/DatePicker';
 
-const LabelingDate = ({ id, label, label_value, onChange }) => {
-  const [isHovering, setIsHovering] = useState(false);
+export type LabelingDateProps = {
+  label: string;
+  /** DICOM DA value, e.g. 19921022. */
+  label_value?: string;
+  onChange: (label: string, value: string) => void;
+};
+
+const LabelingDate = ({ label, label_value = '', onChange }: LabelingDateProps) => {
   const [selectedOption, setSelectedOption] = useState(label_value);
 
   // Keep the control in sync when the incoming value changes
@@ -13,56 +17,29 @@ const LabelingDate = ({ id, label, label_value, onChange }) => {
     setSelectedOption(label_value);
   }, [label_value]);
 
-  const onChangeValueHandler = ({ date }) => {
+  const onChangeValueHandler = ({ date }: { date: string }) => {
     setSelectedOption(date);
     onChange(label, date);
   };
 
-  const onMouseEnter = () => setIsHovering(true);
-  const onMouseLeave = () => setIsHovering(false);
-
   return (
     <div
-      className={classnames(
-        'group relative flex cursor-pointer items-stretch border border-transparent bg-black outline-none transition duration-300'
-      )}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-      role="button"
-      tabIndex={0}
-      data-cy={'measurement-item'}
+      className="bg-background group relative flex cursor-pointer items-stretch border border-transparent outline-none transition duration-300"
+      data-cy="measurement-item"
     >
       <div className="relative flex w-full flex-col p-1">
         <div className="mb-1 ml-2 flex items-center">
-          <div className="text-primary-light flex flex-1 items-center text-base">{label}</div>
+          <div className="text-highlight flex flex-1 items-center text-base">{label}</div>
         </div>
         <div className="ml-3 flex items-center">
           <DatePicker
             date={selectedOption}
-            onChange={e => onChangeValueHandler(e)}
+            onChange={onChangeValueHandler}
           />
         </div>
       </div>
     </div>
   );
-};
-
-LabelingDate.propTypes = {
-  id: PropTypes.oneOfType([PropTypes.number.isRequired, PropTypes.string.isRequired]),
-  index: PropTypes.number.isRequired,
-  label: PropTypes.string,
-  label_value: PropTypes.string,
-  isActive: PropTypes.bool,
-  isVisible: PropTypes.bool,
-  onClick: PropTypes.func,
-  onEdit: PropTypes.func,
-  onDelete: PropTypes.func,
-  toggleVisibility: PropTypes.func,
-};
-
-LabelingDate.defaultProps = {
-  isActive: false,
-  label_value: '',
 };
 
 export default LabelingDate;

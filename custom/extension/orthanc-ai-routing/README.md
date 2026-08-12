@@ -13,8 +13,6 @@ and client for it.
 - **PanelModule** — `ai-routing-panel` ("Analyze with AI"), a wizard sidebar
   panel: pick endpoint/model → choose input mode (flat series selection or
   manifest-driven input mapping) → confirm & run → live progress.
-- **CommandsModule** — `routeToAI` (`{ studyInstanceUID }`), a thin command
-  wrapper over `orthancAIService.routeStudyToAI`.
 
 Consumed by the `send-ai` mode.
 
@@ -68,9 +66,9 @@ Requests carry only study/series identifiers and the target — never
 ## Development
 
 ```sh
-bun run test:unit:ci   # jest (see jest.config.js)
-bun run lint           # eslint src
-bun run format         # prettier
+pnpm run test:unit:ci   # jest (see jest.config.js)
+pnpm run lint           # eslint src
+pnpm run format         # prettier
 ```
 
 ## License

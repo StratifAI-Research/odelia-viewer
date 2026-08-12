@@ -2,12 +2,21 @@ import React, { useMemo } from 'react';
 import { id } from './id';
 import AITrackedViewport from './components/AITrackedViewport';
 import DisclaimerBanner from './components/DisclaimerBanner';
+import HeatmapToggleAction from './components/HeatmapToggleAction';
 import getPanelModule from './getPanelModule';
+import getCustomizationModule from './getCustomizationModule';
 import getHangingProtocolModule from './getHangingProtocolModule';
 import { AIResultsService } from './services/AIResultsService';
 import { ChatService } from './services/ChatService';
+import { registerIcons } from './icons';
 import createHeatmapImageSliceSynchronizer from './utils/createHeatmapImageSliceSynchronizer';
-import { toggleHeatmapImageSliceSync } from './utils/toggleHeatmapImageSliceSync';
+import {
+  toggleHeatmapImageSliceSync,
+  ensureHeatmapImageSliceSync,
+  resetHeatmapSyncPreference,
+  isHeatmapSyncEnabled,
+} from './utils/toggleHeatmapImageSliceSync';
+import { utils as uiNextUtils } from '@ohif/ui-next';
 
 export default {
   /**
@@ -21,12 +30,15 @@ export default {
    * (e.g. cornerstone, cornerstoneTools, ...) or registering any services that
    * this extension is providing.
    */
-  preRegistration: ({ servicesManager, commandsManager, configuration = {} }) => {
+  preRegistration: ({ servicesManager }) => {
     // Register atomically and fail fast. A partially-registered extension
     // (e.g. aiResultsService present but the heatmap synchronizer missing) only
     // surfaces much later as confusing "missing behaviour"; rethrow a descriptive
     // startup error instead of swallowing it.
     try {
+      // Before any panel renders, so the rail never falls back to "Missing Icon".
+      registerIcons();
+
       servicesManager.registerService({
         name: 'aiResultsService',
         create: () => new AIResultsService(servicesManager.services?.uiNotificationService),
@@ -61,6 +73,12 @@ export default {
   getPanelModule,
 
   /**
+   * CustomizationModule exposes named customization blocks that a mode can opt
+   * into by reference (see getCustomizationModule for the naming rule).
+   */
+  getCustomizationModule,
+
+  /**
    * ViewportModule should provide a list of viewports that will be available in OHIF
    * for Modes to consume and use in the viewports. Each viewport is defined by
    * {name, component} object. Example of a viewport module is the CornerstoneViewport
@@ -88,18 +106,32 @@ export default {
    * {name, defaultComponent, clickHandler }. Examples include radioGroupIcons and
    * splitButton toolButton that the default extension is providing.
    */
-  getToolbarModule: ({ servicesManager, commandsManager, extensionManager }) => {
+  getToolbarModule: ({ servicesManager }) => {
     return [
+      {
+        // Action-corner entry; a mode opts in by putting `aiHeatmapToggle`
+        // into `viewportActionMenu.topRight`.
+        name: 'viewAIResult.heatmapToggle',
+        defaultComponent: HeatmapToggleAction,
+      },
       {
         name: 'evaluate.heatmapSync',
         evaluate: () => {
-          const { syncGroupService } = servicesManager.services;
-          const synchronizer = syncGroupService.getSynchronizer('HEATMAP_IMAGE_SLICE_SYNC');
-          // Use the public API instead of the private `_enabled` field.
-          const isActive = synchronizer && !synchronizer.isDisabled();
+          // Viewport MEMBERSHIP, not the synchronizer's own enabled flag.
+          //
+          // The previous check asked `getSynchronizer(...) && !isDisabled()`. Turning sync off
+          // removes the viewports from the group but leaves the synchronizer registered and not
+          // disabled, so that reported active either way: the button stayed lit after the reader
+          // switched sync off. isHeatmapSyncEnabled asks whether any viewport is actually in the
+          // group, which is what the button is meant to show -- and since sync now arms itself
+          // when the heatmap opens, it correctly reads as ON without anyone pressing it.
+          const isActive = isHeatmapSyncEnabled({ servicesManager });
 
           return {
-            className: isActive ? 'text-primary-active' : '',
+            isActive,
+            // The shared helper rather than a bare 'text-primary', so this button highlights
+            // exactly like every other toggle in the toolbar (and gets the hover states).
+            className: uiNextUtils.getToggledClassName(isActive),
           };
         },
       },
@@ -113,12 +145,7 @@ export default {
    * a Header, left and right sidebars, and a viewport section in the middle
    * of the viewer.
    */
-  getLayoutTemplateModule: ({
-    servicesManager,
-    commandsManager,
-    extensionManager,
-    hotkeysManager,
-  }) => {
+  getLayoutTemplateModule: ({ extensionManager }) => {
     function OdeliaViewerLayout(props) {
       const DefaultLayout = useMemo(() => {
         const entry = extensionManager.getModuleEntry(
@@ -127,18 +154,12 @@ export default {
         return entry.component;
       }, []);
 
+      // OHIF's own InvestigationalUseDialog would stack on top of the custom
+      // DisclaimerBanner below. It is suppressed the supported way, via
+      // `investigationalUseDialog: { option: 'never' }` in the app config, which
+      // every ODELIA config sets — not by hiding its markup from here.
       return (
         <>
-          {/*
-            Hide the UPSTREAM OHIF InvestigationalUseDialog (its confirm-and-hide
-            button carries data-cy="confirm-and-hide-button", see
-            platform/ui/.../InvestigationalUseDialog.tsx) so it does not stack on
-            top of the custom DisclaimerBanner. app-config.js does not configure
-            `investigationalUseDialog`, so DefaultLayout would otherwise show
-            OHIF's default banner. This selector targets an element rendered by
-            OHIF, not by this package — do not remove it as "dead".
-          */}
-          <style>{`.fixed:has([data-cy="confirm-and-hide-button"]) { display: none !important; }`}</style>
           <DefaultLayout {...props} />
           <DisclaimerBanner />
         </>
@@ -168,24 +189,31 @@ export default {
    * object of functions, definitions is an object of available commands, their
    * options, and defaultContext is the default context for the command to run against.
    */
-  getCommandsModule: ({ servicesManager, commandsManager, extensionManager }) => {
+  getCommandsModule: ({ servicesManager }) => {
     const actions = {
-      resetCrosshairs: () => {
-        // Intentionally empty – crosshairs tool not used in this extension
-      },
-      toggleHeatmapImageSliceSync: () => {
-        toggleHeatmapImageSliceSync({ servicesManager });
-      },
+      // Returned, not awaited-and-dropped: the toolbar does not await commands, but handing
+      // the promise back lets callers (and tests) wait for the initial alignment.
+      toggleHeatmapImageSliceSync: () => toggleHeatmapImageSliceSync({ servicesManager }),
+      // Exposed as commands so a mode can drive the automatic behaviour without importing
+      // this extension's internals -- modes depend on extensions by module id, not package.
+      ensureHeatmapImageSliceSync: () => ensureHeatmapImageSliceSync({ servicesManager }),
+      // Takes servicesManager: the preference is scoped per viewer, not module-global.
+      resetHeatmapSyncPreference: () => resetHeatmapSyncPreference({ servicesManager }),
     };
 
     const definitions = {
-      resetCrosshairs: {
-        commandFn: actions.resetCrosshairs,
+      toggleHeatmapImageSliceSync: {
+        commandFn: actions.toggleHeatmapImageSliceSync,
         storeContexts: [],
         options: {},
       },
-      toggleHeatmapImageSliceSync: {
-        commandFn: actions.toggleHeatmapImageSliceSync,
+      ensureHeatmapImageSliceSync: {
+        commandFn: actions.ensureHeatmapImageSliceSync,
+        storeContexts: [],
+        options: {},
+      },
+      resetHeatmapSyncPreference: {
+        commandFn: actions.resetHeatmapSyncPreference,
         storeContexts: [],
         options: {},
       },
