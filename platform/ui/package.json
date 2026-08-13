@@ -28,7 +28,7 @@
     "react-dom": "18.3.1"
   },
   "dependencies": {
-    "@testing-library/react": "13.4.0",
+    "@testing-library/react": "16.3.2",
     "browser-detect": "0.2.28",
     "classnames": "2.5.1",
     "d3-array": "3",
