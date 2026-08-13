@@ -1,10 +1,12 @@
 version: 2
-enable-beta-ecosystems: true
 
 updates:
   # ---------------------------------------------------------------------------
   # Root npm workspace (the OHIF monorepo).
   # ---------------------------------------------------------------------------
+  # `directory: /` covers all pnpm workspace members. Do NOT give a member its
+  # own entry: the lockfile update is skipped and CI dies at
+  # `pnpm install --frozen-lockfile` (ERR_PNPM_OUTDATED_LOCKFILE).
   - package-ecosystem: npm
     directory: /
     schedule:
@@ -31,45 +33,6 @@ updates:
         dependency-type: development
         update-types:
           - major
-
-  # ---------------------------------------------------------------------------
-  # Custom leaf packages — small, low-risk dev tooling. Group EVERYTHING so each
-  # package emits at most one PR per cycle instead of one PR per dependency.
-  # ---------------------------------------------------------------------------
-  - package-ecosystem: npm
-    directory: /custom/extension/labeling
-    schedule:
-      interval: weekly
-    groups:
-      labeling-extension:
-        patterns:
-          - "*"
-        update-types:
-          - minor
-          - patch
-          - major
-
-  - package-ecosystem: npm
-    directory: /custom/mode/labeling-mode
-    schedule:
-      interval: weekly
-    groups:
-      labeling-mode:
-        patterns:
-          - "*"
-        update-types:
-          - minor
-          - patch
-          - major
-
-  # /platform/docs deps are pinned to match upstream OHIF (platform/docs/package.json).
-  # open-pull-requests-limit: 0 disables version-update PRs while leaving security
-  # advisory PRs enabled — those still open regardless of the limit.
-  - package-ecosystem: npm
-    directory: /platform/docs
-    schedule:
-      interval: monthly
-    open-pull-requests-limit: 0
 
   - package-ecosystem: docker
     directory: /
