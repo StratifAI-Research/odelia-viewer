@@ -124,8 +124,8 @@ console.log(
   `\nDone: ${totalChanges} version(s) updated to ${version} across ${pkgPaths.length} package files.`
 );
 console.log(
-  'This step changes package.json; the following install must not use a frozen Bun lockfile ' +
-    '(OHIF+CS3D combined “version” CI does: `bun install --config=./bunfig.update-lockfile.toml`). ' +
-    'Other installs stay frozen. Locally after this script, use that bun command and/or ' +
-    '`bun run install:update-lockfile` when you intend to commit lockfile updates.\n'
+  'This step changes package.json, so the following install has to be able to rewrite the ' +
+    'lockfile. Locally, plain `pnpm install` does that. In CI, where pnpm freezes the lockfile ' +
+    'by default, pass `pnpm install --no-frozen-lockfile` when you intend to commit lockfile ' +
+    'updates.\n'
 );

@@ -121,9 +121,9 @@ yarn run build
 
 ### Updating Dependencies
 In general you will typically not be updating the various `package.json` files.
-But for the case when you do, you will have to also update the various OHIF lock files
-and as such you will have to do both a `yarn` and `bun` `install` without
-the `--frozen-lockfile` flag.
+But for the case when you do, you will have to also update `pnpm-lock.yaml`, which
+a plain `pnpm install` does for you. (CI installs pass `--frozen-lockfile` and will
+fail if the committed lockfile does not already match.)
 
 :::danger
 Updating the package.json must be done with care so as to avoid incorporating
@@ -134,11 +134,9 @@ Here is what you should do when adding new packages and/or versions prior to
 committing and pushing your code:
 1. Do your due diligence researching the added packages and/or versions for vulnerabilities.
 2. Update the `package.json` files.
-3. Execute `yarn run install:update-lockfile`. This updates both the `yarn.lock` and
-the `bun.lock` files.
-4. Execute `yarn run audit` for a last security check. This runs both `yarn audit` and
-`bun audit`.
-6. Include both the `yarn.lock` and `bun.lock` files as part of your commit.
+3. Execute `pnpm install`. This updates the `pnpm-lock.yaml` file.
+4. Execute `pnpm run audit` for a last security check.
+5. Include the `pnpm-lock.yaml` file as part of your commit.
 
 If any of your research or auditing for vulnerabilities find HIGH risk vulnerabilities
 do NOT commit or push your changes! Low and moderate risk vulnerabilities are acceptable.
