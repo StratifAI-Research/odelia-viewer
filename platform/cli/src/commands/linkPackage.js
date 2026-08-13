@@ -29,8 +29,9 @@ async function linkPackage(packageDir, options, addToConfig, keyword) {
   const resolvedPackageDir = path.resolve(packageDir);
 
   // change directory to the OHIF Platform root and link the local package there.
-  // Linking mutates the lockfile, so disable the workspace's frozen-lockfile
-  // default for this call (pnpm link rejects --no-frozen-lockfile).
+  // Linking mutates the lockfile, so force frozen-lockfile off for this call --
+  // pnpm turns it on by default in CI environments (pnpm link rejects
+  // --no-frozen-lockfile, hence the --config form).
   process.chdir(`${viewerDirectory}/../..`);
 
   let results = await execa('pnpm', ['link', resolvedPackageDir, '--config.frozen-lockfile=false']);

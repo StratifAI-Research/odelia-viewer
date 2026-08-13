@@ -29,7 +29,6 @@
     "dev:dcm4chee": "pnpm --filter @ohif/app run dev:dcm4chee",
     "dev:static": "pnpm --filter @ohif/app run dev:static",
     "orthanc:up": "docker compose -f platform/app/.recipes/Nginx-Orthanc/docker-compose.yml up",
-    "install:update-lockfile": "pnpm install --no-frozen-lockfile",
     "install:frozen": "pnpm install --frozen-lockfile",
     "audit": "pnpm audit",
     "check:overrides": "node .scripts/check-override-drift.mjs",

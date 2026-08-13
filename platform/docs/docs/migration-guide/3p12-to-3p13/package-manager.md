@@ -54,12 +54,21 @@ There is no `preinstall` script anymore.
 A new `.npmrc` at the repository root controls install behavior:
 
 ```ini
-frozen-lockfile=true
+node-linker=hoisted
+strict-peer-dependencies=false
+link-workspace-packages=true
+prefer-workspace-packages=true
+manage-package-manager-versions=false
 ```
 
-CI installs error out if the lockfile would change. To update the lockfile
-locally, use `pnpm install --no-frozen-lockfile` (also exposed as the
-`install:update-lockfile` script).
+Lockfile freezing is deliberately *not* configured here or in
+`pnpm-workspace.yaml`. pnpm already freezes the lockfile by default in CI
+environments, and every CI and Docker install passes `--frozen-lockfile`
+explicitly. Setting it workspace-wide would also freeze
+`pnpm install --lockfile-only`, which is how Dependabot regenerates the
+lockfile — that broke every Dependabot run until it was removed. Locally, plain
+`pnpm install` updates the lockfile; use the `install:frozen` script to
+reproduce CI's behavior.
 
 ## `pnpm-workspace.yaml`
 

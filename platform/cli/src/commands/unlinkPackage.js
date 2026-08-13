@@ -10,8 +10,9 @@ const linkPackage = async (packageName, options, removeFromConfig) => {
   await validatePnpm();
 
   // change directory to the OHIF Platform root, where the package was linked.
-  // Unlinking mutates the lockfile, so disable the workspace's frozen-lockfile
-  // default for this call (pnpm unlink rejects --no-frozen-lockfile).
+  // Unlinking mutates the lockfile, so force frozen-lockfile off for this call --
+  // pnpm turns it on by default in CI environments (pnpm unlink rejects
+  // --no-frozen-lockfile, hence the --config form).
   process.chdir(`${viewerDirectory}/../..`);
 
   const results = await execa('pnpm', ['unlink', packageName, '--config.frozen-lockfile=false']);

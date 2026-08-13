@@ -18,7 +18,13 @@ minimumReleaseAge: 2880
 # bunfig.toml `minimumReleaseAgeExcludes` list (pnpm supports glob patterns).
 minimumReleaseAgeExclude:
   - '@cornerstonejs/*'
-frozenLockfile: true
+
+# NOTE: `frozenLockfile: true` deliberately does NOT belong here. Set workspace-
+# wide it also applies to `pnpm install --lockfile-only`, which is how Dependabot
+# regenerates the lockfile — it made every Dependabot run fail with "can't
+# resolve your JavaScript dependency files". Real installs are still frozen: CI
+# environments default to it, and every CI/Docker call passes --frozen-lockfile
+# explicitly. Use the `install:frozen` script to reproduce that locally.
 
 # Skip the pre-`pnpm run` frozen deps-check; installs set freshness explicitly.
 verifyDepsBeforeRun: false
