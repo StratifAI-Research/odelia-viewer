@@ -51,6 +51,8 @@ export interface WireSliceSelection {
   num_slices?: number;
   slice_strategy?: string;
   central_percentage?: number;
+  /** Fractional crop applied to every slice this selection sends. */
+  roi?: { x: number; y: number; width: number; height: number };
 }
 
 /**
@@ -114,6 +116,20 @@ export interface SnapshotSeries {
   rangeStart?: number;
   rangeEnd?: number;
   sentSliceNumbers?: number[];
+  /**
+   * The chat region this message was cropped to, if any — where it was drawn,
+   * which slice it came from, and how far it was applied. Recorded because a
+   * cropped image answers a different question from a whole slice, and a reader
+   * scrolling back has no other way to tell which they are looking at.
+   */
+  roi?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    sliceNumber: number;
+    scope: 'slice' | 'range';
+  };
 }
 
 /** The slice-selection recipe in force for a message. */

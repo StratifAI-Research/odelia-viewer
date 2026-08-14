@@ -18,6 +18,7 @@ import {
 import { useChatService } from '../../hooks/useChatService';
 import { useActiveStudyUID } from '../../hooks/useActiveStudyUID';
 import { useViewerSlice } from '../../hooks/useViewerSlice';
+import { CapturedRoi, useChatRoiCapture } from '../../hooks/useChatRoiCapture';
 import {
   ChatMessage,
   ChatSeriesInfo,
@@ -57,6 +58,15 @@ import {
   SliceRange,
 } from '../../utils/sliceSelection';
 import SliceRangeSlider from './SliceRangeSlider';
+import {
+  ChatRoi,
+  formatRoiLabel,
+  formatRoiRect,
+  formatRoiScope,
+  RoiScope,
+  slicesForRoi,
+} from '../../utils/chatRoi';
+import { ensureChatRoiTool, removeChatRoi, startDrawingRoi, stopDrawingRoi } from '../../utils/chatRoiTool';
 
 // ui-next ships no Textarea, so the two multi-line fields borrow the token set
 // its `Input` uses. Kept in one place so they cannot drift apart.
@@ -210,6 +220,19 @@ const ChatPanel: React.FC = () => {
   const [sliceStateByDisplaySet, setSliceStateByDisplaySet] = useState<
     Record<string, { range: SliceRange; count: number }>
   >({});
+  // The chat's own region of interest. One at a time: a second rectangle would
+  // raise a question the prompt cannot answer — which region is the question
+  // about? — and the panel would have to guess.
+  const [chatRoi, setChatRoi] = useState<ChatRoi | null>(null);
+  const [roiScope, setRoiScope] = useState<RoiScope>('slice');
+  const [isDrawingRoi, setIsDrawingRoi] = useState(false);
+  const [roiError, setRoiError] = useState<string | null>(null);
+  // The tool that held the primary mouse button before drawing started, so it
+  // can have it back.
+  const displacedToolRef = useRef<string | null>(null);
+  // Held in a ref so the study-tracking effects above can discard a region
+  // without taking a dependency on a callback defined below them.
+  const clearRoiRef = useRef<(() => void) | null>(null);
 
   // Header menus
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
@@ -631,6 +654,7 @@ const ChatPanel: React.FC = () => {
       setPromptStudyUID(studyUID);
       setSelectedDisplaySetUIDs(new Set());
       setSliceStateByDisplaySet({});
+      clearRoiRef.current?.();
       reloadPromptStudy(studyUID);
     }
   }, [
@@ -844,6 +868,7 @@ const ChatPanel: React.FC = () => {
     setPromptStudyUID(viewerStudyUID);
     setSelectedDisplaySetUIDs(new Set());
     setSliceStateByDisplaySet({});
+    clearRoiRef.current?.();
     reloadPromptStudy(viewerStudyUID);
     // Stay pinned while a half-written question is in the composer: the user
     // asked for THIS study, and resuming follow-mode would let the next viewport
@@ -1004,16 +1029,138 @@ const ChatPanel: React.FC = () => {
     [pinContext]
   );
 
+  // --- Chat region of interest ---------------------------------------------
+
+  /** Discard the region, on screen and in the prompt. */
+  const clearRoi = useCallback(() => {
+    setChatRoi(prev => {
+      if (prev) {
+        removeChatRoi(prev.annotationUID);
+      }
+      return null;
+    });
+    setRoiError(null);
+  }, []);
+
+  clearRoiRef.current = clearRoi;
+
+  /** Stop drawing and hand the primary mouse button back. */
+  const endDrawing = useCallback(() => {
+    setIsDrawingRoi(false);
+    stopDrawingRoi(displacedToolRef.current);
+    displacedToolRef.current = null;
+  }, []);
+
+  const beginDrawing = useCallback(() => {
+    // Drawing a region is an investment in the prompt, like typing in it.
+    pinContext();
+    setRoiError(null);
+    // A second rectangle on screen with only one in the prompt would be a lie
+    // about what the message carries.
+    clearRoi();
+    if (!ensureChatRoiTool()) {
+      setRoiError('Region drawing is unavailable in this viewer layout.');
+      return;
+    }
+    displacedToolRef.current = startDrawingRoi();
+    setIsDrawingRoi(true);
+  }, [pinContext, clearRoi]);
+
+  /**
+   * Adopt a finished rectangle.
+   *
+   * The slice it belongs to is resolved through the same SOPInstanceUID scheme
+   * the slice range uses, so a region and a range always speak about slices the
+   * same way. Cornerstone failing to name the instance falls back to the
+   * viewport's own position, which is where the user was drawing.
+   */
+  const adoptRoi = useCallback(
+    (captured: CapturedRoi) => {
+      endDrawing();
+
+      const host = attachedSeries.find(series =>
+        captured.sopInstanceUID
+          ? series.sopInstanceUIDs.includes(captured.sopInstanceUID)
+          : series.displaySetInstanceUID === viewerSlice.displaySetInstanceUID
+      );
+      if (!host) {
+        setRoiError('Attach the series you drew on before adding a region to the prompt.');
+        removeChatRoi(captured.annotationUID);
+        return;
+      }
+
+      const indexInSeries = captured.sopInstanceUID
+        ? host.sopInstanceUIDs.indexOf(captured.sopInstanceUID)
+        : -1;
+      const sliceNumber =
+        indexInSeries >= 0 ? indexInSeries + 1 : (viewerSlice.sliceNumber ?? 1);
+
+      setChatRoi({
+        displaySetInstanceUID: host.displaySetInstanceUID,
+        sliceNumber,
+        rect: captured.rect,
+        annotationUID: captured.annotationUID,
+      });
+      setRoiError(null);
+    },
+    [attachedSeries, viewerSlice, endDrawing]
+  );
+
+  const rejectRoi = useCallback(
+    (reason: string) => {
+      endDrawing();
+      setRoiError(reason);
+    },
+    [endDrawing]
+  );
+
+  useChatRoiCapture({ enabled: isDrawingRoi, onCaptured: adoptRoi, onRejected: rejectRoi });
+
+  // Release the mouse button if the panel unmounts mid-draw, or the viewer is
+  // left with the region tool bound and window/level gone.
+  useEffect(() => () => stopDrawingRoi(displacedToolRef.current), []);
+
+  /** A region belongs to one series; other series are unaffected by it. */
+  const roiForSeries = useCallback(
+    (series: ChatSeriesInfo): ChatRoi | null =>
+      chatRoi && chatRoi.displaySetInstanceUID === series.displaySetInstanceUID ? chatRoi : null,
+    [chatRoi]
+  );
+
+  /**
+   * The slices one series will actually send, region included.
+   *
+   * A region scoped to its own slice overrides the range: the question is about
+   * that region on that slice, and sending the rest of the range as well would
+   * answer a different question.
+   */
+  const effectiveSlicesFor = useCallback(
+    (series: ChatSeriesInfo): number[] => {
+      const { addressable, sampled } = sliceSelectionFor(series);
+      if (!addressable) {
+        return [];
+      }
+      const roi = roiForSeries(series);
+      return roi ? slicesForRoi(roiScope, roi.sliceNumber, sampled) : sampled;
+    },
+    [sliceSelectionFor, roiForSeries, roiScope]
+  );
+
   /** Total images the next message will carry, across every attached series. */
   const totalImagesToSend = useMemo(
     () =>
       attachedSeries.reduce((total, series) => {
-        const { addressable, sampled } = sliceSelectionFor(series);
+        const { addressable } = sliceSelectionFor(series);
         // A series without slice addressing falls back to the configured recipe,
         // which the middleware clamps to the real volume depth.
-        return total + (addressable ? sampled.length : Math.min(numSlices, series.numImageFrames));
+        return (
+          total +
+          (addressable
+            ? effectiveSlicesFor(series).length
+            : Math.min(numSlices, series.numImageFrames))
+        );
       }, 0),
-    [attachedSeries, sliceSelectionFor, numSlices]
+    [attachedSeries, sliceSelectionFor, effectiveSlicesFor, numSlices]
   );
 
   // Handle send message
@@ -1033,7 +1180,12 @@ const ChatPanel: React.FC = () => {
     const sliceSelections: WireSliceSelection[] = [];
 
     attachedSeries.forEach(series => {
-      const { addressable, range, sampled } = sliceSelectionFor(series);
+      const { addressable, range } = sliceSelectionFor(series);
+      const roi = roiForSeries(series);
+      // The region can narrow what a series sends — scoped to its own slice it
+      // replaces the range entirely — so this, not the raw sample, is what goes
+      // out and what the snapshot records.
+      const sent = effectiveSlicesFor(series);
       const entry: SnapshotSeries = {
         displaySetInstanceUID: series.displaySetInstanceUID,
         seriesInstanceUID: series.SeriesInstanceUID,
@@ -1047,19 +1199,23 @@ const ChatPanel: React.FC = () => {
       // selection dropped if anything is missing: sending `null` in place of a
       // SOPInstanceUID would have the middleware reject the whole turn.
       const instanceUIDs = addressable
-        ? sampled.map(n => series.sopInstanceUIDs[n - 1]).filter(Boolean)
+        ? sent.map(n => series.sopInstanceUIDs[n - 1]).filter(Boolean)
         : [];
 
-      if (addressable && range && sampled.length > 0 && instanceUIDs.length === sampled.length) {
+      if (addressable && range && sent.length > 0 && instanceUIDs.length === sent.length) {
         entry.rangeStart = range.start;
         entry.rangeEnd = range.end;
-        entry.sentSliceNumbers = [...sampled];
+        entry.sentSliceNumbers = [...sent];
+        if (roi) {
+          entry.roi = { ...roi.rect, sliceNumber: roi.sliceNumber, scope: roiScope };
+        }
         sliceSelections.push({
           series_uid: series.SeriesInstanceUID,
           sop_instance_uids: instanceUIDs,
           range_start: range.start,
           range_end: range.end,
           total_slices: series.numImageFrames,
+          roi: roi ? { ...roi.rect } : undefined,
         });
       } else {
         // No slice range applies. The recipe travels with the message so the
@@ -1107,6 +1263,9 @@ const ChatPanel: React.FC = () => {
     activeModelTag,
     sliceRecipe,
     sliceSelectionFor,
+    effectiveSlicesFor,
+    roiForSeries,
+    roiScope,
     sendMessage,
   ]);
 
@@ -1129,6 +1288,11 @@ const ChatPanel: React.FC = () => {
   // Toggle series selection
   const toggleSeries = (displaySetUID: string) => {
     pinContext();
+    // A region belongs to a slice of a series. Detaching the series without it
+    // would leave a rectangle on screen that no longer reaches the model.
+    if (chatRoi?.displaySetInstanceUID === displaySetUID) {
+      clearRoi();
+    }
     setSelectedDisplaySetUIDs(prev => {
       const newSet = new Set(prev);
       if (newSet.has(displaySetUID)) {
@@ -1478,6 +1642,7 @@ const ChatPanel: React.FC = () => {
               are not comparable across acquisitions of different depth. */}
           {attachedSeries.map(series => {
             const { addressable, range, count, sampled } = sliceSelectionFor(series);
+            const seriesRoi = roiForSeries(series);
             const onThisSeries =
               viewerSlice.displaySetInstanceUID === series.displaySetInstanceUID;
             return (
@@ -1526,11 +1691,69 @@ const ChatPanel: React.FC = () => {
                     No slices selected — this series will send no images.
                   </div>
                 )}
+
+                {/* The region, and how far it reaches. Directly under the range
+                    it modifies, because scoped to one slice it replaces it. */}
+                {seriesRoi && (
+                  <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
+                    <span className="flex items-center gap-1 rounded border border-amber-500 bg-amber-950/40 px-2 py-0.5 text-amber-200">
+                      <span className="truncate">{formatRoiLabel(seriesRoi.sliceNumber)}</span>
+                      <button
+                        type="button"
+                        onClick={clearRoi}
+                        title="Remove region"
+                        aria-label="Remove region"
+                        className="hover:text-foreground"
+                      >
+                        ×
+                      </button>
+                    </span>
+                    <label className="text-muted-foreground flex items-center gap-1">
+                      Apply to
+                      <select
+                        value={roiScope}
+                        onChange={e => {
+                          pinContext();
+                          setRoiScope(e.target.value as RoiScope);
+                        }}
+                        aria-label="Apply region to"
+                        className="border-input bg-background text-foreground rounded border px-1 py-0.5 text-[11px]"
+                      >
+                        <option value="slice">{formatRoiScope('slice')}</option>
+                        <option value="range">{formatRoiScope('range')}</option>
+                      </select>
+                    </label>
+                  </div>
+                )}
               </div>
             );
           })}
 
-          <div className="mb-1.5 flex flex-wrap gap-1">
+          <div className="mb-1.5 flex flex-wrap items-start gap-1">
+            {/* A chat-specific region tool, not the annotation pen. What is drawn
+                here is a question, not a finding: it never enters the measurement
+                record and renders dashed so it cannot be read as one. */}
+            {attachedSeries.length > 0 &&
+              !chatRoi &&
+              (isDrawingRoi ? (
+                <button
+                  type="button"
+                  onClick={endDrawing}
+                  className="rounded border border-amber-500 px-2 py-0.5 text-[11px] text-amber-200"
+                >
+                  Drag on the image… (cancel)
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={beginDrawing}
+                  title="Draw a region to ask about"
+                  className="border-input hover:bg-accent text-muted-foreground rounded border border-dashed px-2 py-0.5 text-[11px]"
+                >
+                  ▱ Select region
+                </button>
+              ))}
+
             <div
               ref={seriesPickerRef}
               className="relative"
@@ -1578,6 +1801,8 @@ const ChatPanel: React.FC = () => {
               )}
             </div>
           </div>
+
+          {roiError && <div className="mb-1 text-[11px] text-amber-300">{roiError}</div>}
 
           {/* The one number that matters across the whole prompt: how many images
               this message will carry. */}
@@ -1690,6 +1915,14 @@ const ChatPanel: React.FC = () => {
                         // answer against the images rather than trusting a count.
                         <span className="block break-words">
                           {formatSliceList(series.sentSliceNumbers)}
+                        </span>
+                      )}
+                      {series.roi && (
+                        // A cropped image answers a different question from a
+                        // whole slice; scrolling back must show which it was.
+                        <span className="block break-words text-amber-300">
+                          Region from slice {series.roi.sliceNumber} ({formatRoiRect(series.roi)}),
+                          applied to {formatRoiScope(series.roi.scope).toLowerCase()}
                         </span>
                       )}
                     </dd>
