@@ -4,7 +4,12 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSystem } from '@ohif/core';
-import { ChatMessage, CHAT_EVENTS, PromptContextSnapshot } from '../types/chatTypes';
+import {
+  ChatMessage,
+  CHAT_EVENTS,
+  PromptContextSnapshot,
+  WireSliceSelection,
+} from '../types/chatTypes';
 import { ChatService } from '../services/ChatService';
 
 // Generate unique message IDs
@@ -28,7 +33,8 @@ interface UseChatServiceReturn {
     content: string,
     studyUID?: string,
     seriesUIDs?: string[],
-    promptContext?: PromptContextSnapshot
+    promptContext?: PromptContextSnapshot,
+    sliceSelections?: WireSliceSelection[]
   ) => void;
   cancelGeneration: () => void;
   clearHistory: () => void;
@@ -167,7 +173,8 @@ export function useChatService(): UseChatServiceReturn {
       content: string,
       studyUID?: string,
       seriesUIDs?: string[],
-      promptContext?: PromptContextSnapshot
+      promptContext?: PromptContextSnapshot,
+      sliceSelections?: WireSliceSelection[]
     ) => {
       if (!chatService || !content.trim()) {
         return;
@@ -211,8 +218,10 @@ export function useChatService(): UseChatServiceReturn {
       hasReceivedThinkingTokenRef.current = false;
       setIsStreaming(true);
 
-      // Send to service
-      chatService.sendMessage(content.trim(), studyUID, seriesUIDs);
+      // Send to service. The slice selection travels on the wire; the snapshot
+      // above records the same choice for the transcript, so the two are built
+      // from one state read at the call site rather than derived twice.
+      chatService.sendMessage(content.trim(), studyUID, seriesUIDs, sliceSelections);
     },
     [chatService]
   );

@@ -1,5 +1,7 @@
 import {
   buildPromptContextSnapshot,
+  formatSeriesSliceSource,
+  formatSliceList,
   formatSliceRecipe,
   formatSliceStrategy,
   formatSnapshotSummary,
@@ -228,5 +230,98 @@ describe('formatSnapshotSummary', () => {
 
   it('omits the model when its label is empty rather than leaving a dangling separator', () => {
     expect(formatSnapshotSummary(base, '')).toBe('Ax T1 post · 8 images');
+  });
+});
+
+describe('requestedImageCount with named slices', () => {
+  const named = (n: number, frames = 103) => ({
+    seriesInstanceUID: 'se',
+    description: 'Ax T1',
+    modality: 'MR',
+    numFrames: frames,
+    rangeStart: 18,
+    rangeEnd: 62,
+    sentSliceNumbers: Array.from({ length: n }, (_, i) => 18 + i),
+  });
+
+  it('counts the named slices exactly', () => {
+    expect(requestedImageCount([named(12)], 5)).toBe(12);
+  });
+
+  it('ignores the configured count when slices were named', () => {
+    // The named instances ARE the request; num_slices plays no part.
+    expect(requestedImageCount([named(12)], 99)).toBe(12);
+  });
+
+  it('counts a zero-slice request as zero rather than falling back', () => {
+    expect(requestedImageCount([{ ...named(0) }], 5)).toBe(0);
+  });
+
+  it('mixes named and recipe-based series', () => {
+    const recipeSeries = {
+      seriesInstanceUID: 'se2',
+      description: 'Ax T2',
+      modality: 'MR',
+      numFrames: 40,
+    };
+    expect(requestedImageCount([named(12), recipeSeries], 5)).toBe(17);
+  });
+});
+
+describe('formatSliceList', () => {
+  it('lists the slice numbers in full', () => {
+    expect(formatSliceList([18, 22, 26])).toBe('18, 22, 26');
+  });
+
+  it('says so when it truncates, and by how much', () => {
+    // A silently shortened audit list would read as the complete one.
+    const many = Array.from({ length: 30 }, (_, i) => i + 1);
+    expect(formatSliceList(many, 5)).toBe('1, 2, 3, 4, 5, +25 more');
+  });
+
+  it('reports an empty selection as none', () => {
+    expect(formatSliceList([])).toBe('none');
+  });
+});
+
+describe('formatSeriesSliceSource', () => {
+  const recipe = { numSlices: 5, strategy: 'central', centralPercentage: 60 };
+
+  it('states the range and count when the slices were named', () => {
+    const series = {
+      seriesInstanceUID: 'se',
+      description: 'Ax T1',
+      modality: 'MR',
+      numFrames: 103,
+      rangeStart: 18,
+      rangeEnd: 62,
+      sentSliceNumbers: [18, 30, 44, 56, 62],
+    };
+    expect(formatSeriesSliceSource(series, recipe)).toBe('18–62 of 103 · 5 slices');
+  });
+
+  it('does not repeat a single-slice range', () => {
+    const series = {
+      seriesInstanceUID: 'se',
+      description: 'Ax T1',
+      modality: 'MR',
+      numFrames: 103,
+      rangeStart: 27,
+      rangeEnd: 27,
+      sentSliceNumbers: [27],
+    };
+    expect(formatSeriesSliceSource(series, recipe)).toBe('27 of 103 · 1 slice');
+  });
+
+  it('falls back to the recipe when no slices were named', () => {
+    // Worded differently on purpose: a recipe says how slices would be picked,
+    // not which pixels went out.
+    const series = {
+      seriesInstanceUID: 'se',
+      description: 'Ax T1',
+      modality: 'MR',
+      numFrames: 103,
+    };
+    expect(formatSeriesSliceSource(series, recipe)).toBe('5 slices/series · central 60%');
   });
 });

@@ -1,0 +1,63 @@
+/*
+ * Two range inputs share one track so the chat panel can offer a dual-handle
+ * slice range.
+ *
+ * Making the input transparent to the pointer and restoring hits only on its
+ * thumb is what keeps the lower input grabbable where the two overlap —
+ * otherwise the input rendered last would swallow every drag, including drags
+ * aimed at the other handle. Keyboard access is unaffected: pointer-events does
+ * not apply to focus or arrow keys.
+ *
+ * Thumb width is 12px and must stay in step with THUMB_PX in SliceRangeSlider.tsx,
+ * which insets the sampled-slice dots by half a thumb so they line up with the
+ * handles instead of drifting by 6px at the ends of the track.
+ */
+.chat-slice-range {
+  pointer-events: none;
+}
+
+.chat-slice-range:focus-visible {
+  outline: none;
+}
+
+.chat-slice-range::-webkit-slider-runnable-track {
+  background: transparent;
+  height: 12px;
+}
+
+.chat-slice-range::-moz-range-track {
+  background: transparent;
+  height: 12px;
+}
+
+.chat-slice-range::-webkit-slider-thumb {
+  pointer-events: auto;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 1px solid #3a3f99;
+  cursor: ew-resize;
+}
+
+.chat-slice-range::-moz-range-thumb {
+  pointer-events: auto;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  background: #fff;
+  border: 1px solid #3a3f99;
+  cursor: ew-resize;
+}
+
+/* Focus has to be visible on the thumb itself: the input has no track of its
+   own to outline, and these handles decide which slices a clinician sends. */
+.chat-slice-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px #5acce6;
+}
+
+.chat-slice-range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 2px #5acce6;
+}

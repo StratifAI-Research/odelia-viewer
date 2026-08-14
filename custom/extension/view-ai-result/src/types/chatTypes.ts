@@ -26,6 +26,22 @@ export enum ServerMessageType {
 // =============================================================================
 
 /**
+ * Which slices of one series a message sends, as the middleware receives it.
+ *
+ * Slices are named by SOPInstanceUID rather than by index: the viewer sorts a
+ * series by ImagePositionPatient, the middleware rebuilds it with GDCM's own
+ * geometric sort, and an index would mean different pixels on the day the two
+ * disagree. `range_*` is audit metadata — the middleware selects nothing from it.
+ */
+export interface WireSliceSelection {
+  series_uid: string;
+  sop_instance_uids: string[];
+  range_start?: number;
+  range_end?: number;
+  total_slices?: number;
+}
+
+/**
  * Message sent from client to server via WebSocket
  */
 export interface ClientMessage {
@@ -33,6 +49,7 @@ export interface ClientMessage {
   content?: string;
   study_uid?: string;
   series_uids?: string[];
+  slice_selections?: WireSliceSelection[];
 }
 
 /**
@@ -66,6 +83,18 @@ export interface SnapshotSeries {
   description: string;
   modality: string;
   numFrames: number;
+  /**
+   * The 1-based inclusive slice range selected for this series, and the slice
+   * numbers sampled from it — recorded only when the series could be addressed
+   * instance by instance, so their presence is itself the record that the slices
+   * named here are the slices that were sent.
+   *
+   * Absent means the middleware's configured recipe applied instead, which is
+   * why the snapshot renders a strategy in that case and a slice list in this one.
+   */
+  rangeStart?: number;
+  rangeEnd?: number;
+  sentSliceNumbers?: number[];
 }
 
 /** The slice-selection recipe in force for a message. */
@@ -132,6 +161,13 @@ export interface ChatSeriesInfo {
   SeriesNumber: number;
   Modality: string;
   numImageFrames: number;
+  /**
+   * SOPInstanceUIDs in the viewer's own slice order — the addresses a slice range
+   * is expressed in. Empty when the series holds no one-instance-per-slice
+   * mapping (a multi-frame instance), in which case a range cannot be expressed
+   * for it at all and the middleware's configured recipe applies instead.
+   */
+  sopInstanceUIDs: string[];
 }
 
 /**

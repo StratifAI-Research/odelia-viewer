@@ -245,7 +245,10 @@ describe('ChatPanel — following vs pinned', () => {
       expect.objectContaining({
         studyInstanceUID: 'study-1',
         studyLabel: '2026-08-12 · Breast MRI',
-      })
+      }),
+      // These display sets carry no instance list, so no slice range can be
+      // expressed for them and the middleware's recipe applies.
+      []
     );
   });
 
@@ -268,7 +271,7 @@ describe('ChatPanel — following vs pinned', () => {
     await renderPanel();
     fireEvent.click(screen.getByText('+ Add series'));
     fireEvent.click(screen.getByText('Ax T1 post'));
-    expect(screen.getByText(/Sends 5 slices\/series/)).toBeTruthy();
+    expect(screen.getByText(/Sends 5 images in total/)).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText('Remove Ax T1 post'));
     expect(screen.getByText(/No series attached/)).toBeTruthy();

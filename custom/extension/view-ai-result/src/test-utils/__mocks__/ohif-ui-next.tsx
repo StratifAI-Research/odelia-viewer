@@ -154,8 +154,23 @@ export const ToolButton = ({
 // 3.13 moved these context hooks out of @ohif/ui into @ohif/ui-next.
 export const useImageViewer = () => ({ StudyInstanceUIDs: [] as string[] });
 export const useUserAuthentication = () => [{ user: null }, { getAuthorizationHeader: () => ({}) }];
+// Grid state a test can steer. Some panels read the active viewport's display
+// sets (e.g. to tell which series is on screen), so the map has to be settable
+// rather than permanently empty.
+export const __viewportGridState: { activeViewportId: string | null; viewports: Map<string, any> } =
+  { activeViewportId: 'v1', viewports: new Map() };
+
+export const setMockViewportGrid = (
+  state: Partial<{ activeViewportId: string | null; viewports: Map<string, any> }>
+) => Object.assign(__viewportGridState, state);
+
+export const resetMockViewportGrid = () => {
+  __viewportGridState.activeViewportId = 'v1';
+  __viewportGridState.viewports = new Map();
+};
+
 export const useViewportGrid = () => [
-  { activeViewportId: 'v1', viewports: new Map() },
+  __viewportGridState,
   { setActiveViewportId: jest.fn() },
 ];
 

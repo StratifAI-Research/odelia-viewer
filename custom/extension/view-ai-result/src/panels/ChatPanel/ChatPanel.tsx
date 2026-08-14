@@ -17,7 +17,14 @@ import {
 } from '@ohif/ui-next';
 import { useChatService } from '../../hooks/useChatService';
 import { useActiveStudyUID } from '../../hooks/useActiveStudyUID';
-import { ChatMessage, ChatSeriesInfo, ProviderName, SnapshotSeries } from '../../types/chatTypes';
+import { useViewerSlice } from '../../hooks/useViewerSlice';
+import {
+  ChatMessage,
+  ChatSeriesInfo,
+  ProviderName,
+  SnapshotSeries,
+  WireSliceSelection,
+} from '../../types/chatTypes';
 import { shortModelLabel } from '../../utils/modelLabel';
 import { resolveStudyTags } from '../../utils/studyTags';
 import {
@@ -33,11 +40,23 @@ import {
 import ChatHistoryIcon from '../../icons/ChatHistoryIcon';
 import {
   buildPromptContextSnapshot,
+  formatSeriesSliceSource,
+  formatSliceList,
   formatSliceRecipe,
   formatSnapshotSummary,
   formatStudyLabel,
   StudyLabelSource,
 } from '../../utils/promptContext';
+import {
+  canAddressSlices,
+  clampRange,
+  initialRange,
+  MAX_SLICES_PER_SERIES,
+  rangeSize,
+  sampleSliceNumbers,
+  SliceRange,
+} from '../../utils/sliceSelection';
+import SliceRangeSlider from './SliceRangeSlider';
 
 // ui-next ships no Textarea, so the two multi-line fields borrow the token set
 // its `Input` uses. Kept in one place so they cannot drift apart.
@@ -181,6 +200,12 @@ const ChatPanel: React.FC = () => {
   const [selectedSeriesUIDs, setSelectedSeriesUIDs] = useState<Set<string>>(new Set());
   const [contextMode, setContextMode] = useState<ContextMode>('following');
   const [isSeriesPickerOpen, setIsSeriesPickerOpen] = useState(false);
+  // Per-series slice selection, keyed by SeriesInstanceUID. Per-series rather
+  // than one global range because attached series differ in depth: "18-62" means
+  // nothing shared between a 103-slice and a 24-slice acquisition.
+  const [sliceStateBySeries, setSliceStateBySeries] = useState<
+    Record<string, { range: SliceRange; count: number }>
+  >({});
 
   // Header menus
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
@@ -543,13 +568,23 @@ const ChatPanel: React.FC = () => {
       info.StudyDate = tags.StudyDate;
       info.StudyDescription = tags.StudyDescription;
 
-      const series: ChatSeriesInfo[] = studyDisplaySets.map((ds: any) => ({
-        SeriesInstanceUID: ds.SeriesInstanceUID,
-        SeriesDescription: ds.SeriesDescription || `Series ${ds.SeriesNumber || 'N/A'}`,
-        SeriesNumber: ds.SeriesNumber || 0,
-        Modality: ds.Modality || 'Unknown',
-        numImageFrames: ds.numImageFrames || ds.instances?.length || 0,
-      }));
+      const series: ChatSeriesInfo[] = studyDisplaySets.map((ds: any) => {
+        const instances: any[] = ds.images || ds.instances || [];
+        return {
+          SeriesInstanceUID: ds.SeriesInstanceUID,
+          SeriesDescription: ds.SeriesDescription || `Series ${ds.SeriesNumber || 'N/A'}`,
+          SeriesNumber: ds.SeriesNumber || 0,
+          Modality: ds.Modality || 'Unknown',
+          numImageFrames: ds.numImageFrames || instances.length || 0,
+          // Order matters: it is the order the viewer sorted the series into, and
+          // therefore the order the slice numbers on screen refer to. Any instance
+          // missing its UID drops the whole list, because a partial mapping would
+          // silently shift every slice number after the gap.
+          sopInstanceUIDs: instances.every((i: any) => i?.SOPInstanceUID)
+            ? instances.map((i: any) => i.SOPInstanceUID as string)
+            : [],
+        };
+      });
       series.sort((a, b) => a.SeriesNumber - b.SeriesNumber);
 
       return { info, series };
@@ -590,6 +625,7 @@ const ChatPanel: React.FC = () => {
     if (contextMode === 'following' && studyUID !== promptStudyUID) {
       setPromptStudyUID(studyUID);
       setSelectedSeriesUIDs(new Set());
+      setSliceStateBySeries({});
       reloadPromptStudy(studyUID);
     }
   }, [
@@ -802,6 +838,7 @@ const ChatPanel: React.FC = () => {
     }
     setPromptStudyUID(viewerStudyUID);
     setSelectedSeriesUIDs(new Set());
+    setSliceStateBySeries({});
     reloadPromptStudy(viewerStudyUID);
     // Stay pinned while a half-written question is in the composer: the user
     // asked for THIS study, and resuming follow-mode would let the next viewport
@@ -835,6 +872,120 @@ const ChatPanel: React.FC = () => {
     [numSlices, sliceStrategy, centralPercentage]
   );
 
+  // --- Slice range ----------------------------------------------------------
+
+  // Where the viewport is, for the marker on the slider. Read from cornerstone,
+  // not from the selection: the marker shows where the reader is, and must never
+  // be mistaken for what the prompt will send.
+  const viewerSlice = useViewerSlice({ activeViewportId, viewports, servicesManager });
+
+  /**
+   * Seed a slice range for each newly attached series.
+   *
+   * Seeded from the middleware's configured strategy rather than from the whole
+   * volume, so attaching a series and pressing send keeps sampling the band the
+   * service was already sampling. The slider exposes the existing recipe instead
+   * of silently replacing it.
+   *
+   * Only series without state are touched. A later configuration change must not
+   * overwrite a range the user has since set by hand.
+   */
+  useEffect(() => {
+    const addressable = attachedSeries.filter(s =>
+      canAddressSlices(s.sopInstanceUIDs, s.numImageFrames)
+    );
+    const missing = addressable.filter(s => !sliceStateBySeries[s.SeriesInstanceUID]);
+    if (missing.length === 0) {
+      return;
+    }
+    setSliceStateBySeries(prev => {
+      const next = { ...prev };
+      missing.forEach(series => {
+        const total = series.numImageFrames;
+        const range = initialRange(total, sliceStrategy, numSlices, centralPercentage);
+        next[series.SeriesInstanceUID] = {
+          range,
+          count: Math.max(1, Math.min(numSlices, rangeSize(range), MAX_SLICES_PER_SERIES)),
+        };
+      });
+      return next;
+    });
+  }, [attachedSeries, sliceStateBySeries, sliceStrategy, numSlices, centralPercentage]);
+
+  /**
+   * What one series will send: the selected range, the requested count, and the
+   * slices that requesting that count from that range actually yields.
+   *
+   * `sampled` is what the panel reports and what goes on the wire — never the
+   * requested count, which can exceed a narrow range.
+   */
+  const sliceSelectionFor = useCallback(
+    (series: ChatSeriesInfo) => {
+      const addressable = canAddressSlices(series.sopInstanceUIDs, series.numImageFrames);
+      const state = sliceStateBySeries[series.SeriesInstanceUID];
+      if (!addressable || !state) {
+        return { addressable, range: null as SliceRange | null, count: 0, sampled: [] as number[] };
+      }
+      return {
+        addressable,
+        range: state.range,
+        count: state.count,
+        sampled: sampleSliceNumbers(state.range, state.count),
+      };
+    },
+    [sliceStateBySeries]
+  );
+
+  /** Move a series' range. Adjusting the range is an investment in the prompt. */
+  const setSeriesRange = useCallback(
+    (series: ChatSeriesInfo, range: SliceRange) => {
+      pinContext();
+      setSliceStateBySeries(prev => {
+        const current = prev[series.SeriesInstanceUID];
+        const bounded = clampRange(range, series.numImageFrames);
+        // Narrowing the range narrows the count with it. Left alone, the count
+        // would stay above the span and the +/- buttons would appear stuck: they
+        // would change a number the sampler is already ignoring.
+        const count = Math.max(
+          1,
+          Math.min(current?.count ?? 1, rangeSize(bounded), MAX_SLICES_PER_SERIES)
+        );
+        return { ...prev, [series.SeriesInstanceUID]: { range: bounded, count } };
+      });
+    },
+    [pinContext]
+  );
+
+  const setSeriesCount = useCallback(
+    (series: ChatSeriesInfo, count: number) => {
+      pinContext();
+      setSliceStateBySeries(prev => {
+        const current = prev[series.SeriesInstanceUID];
+        if (!current) {
+          return prev;
+        }
+        const bounded = Math.max(
+          1,
+          Math.min(count, rangeSize(current.range), MAX_SLICES_PER_SERIES)
+        );
+        return { ...prev, [series.SeriesInstanceUID]: { ...current, count: bounded } };
+      });
+    },
+    [pinContext]
+  );
+
+  /** Total images the next message will carry, across every attached series. */
+  const totalImagesToSend = useMemo(
+    () =>
+      attachedSeries.reduce((total, series) => {
+        const { addressable, sampled } = sliceSelectionFor(series);
+        // A series without slice addressing falls back to the configured recipe,
+        // which the middleware clamps to the real volume depth.
+        return total + (addressable ? sampled.length : Math.min(numSlices, series.numImageFrames));
+      }, 0),
+    [attachedSeries, sliceSelectionFor, numSlices]
+  );
+
   // Handle send message
   const handleSend = useCallback(() => {
     if (!inputValue.trim() || isStreaming) {
@@ -842,12 +993,40 @@ const ChatPanel: React.FC = () => {
     }
 
     const seriesUIDs = attachedSeries.map(s => s.SeriesInstanceUID);
-    const snapshotSeries: SnapshotSeries[] = attachedSeries.map(s => ({
-      seriesInstanceUID: s.SeriesInstanceUID,
-      description: s.SeriesDescription,
-      modality: s.Modality,
-      numFrames: s.numImageFrames,
-    }));
+
+    // One read of the slice state, feeding both the wire payload and the
+    // snapshot. Deriving them separately is how the two could come to disagree,
+    // and the snapshot's whole value is that it describes what was really sent.
+    const snapshotSeries: SnapshotSeries[] = [];
+    const sliceSelections: WireSliceSelection[] = [];
+
+    attachedSeries.forEach(series => {
+      const { addressable, range, sampled } = sliceSelectionFor(series);
+      const entry: SnapshotSeries = {
+        seriesInstanceUID: series.SeriesInstanceUID,
+        description: series.SeriesDescription,
+        modality: series.Modality,
+        numFrames: series.numImageFrames,
+      };
+
+      if (addressable && range && sampled.length > 0) {
+        entry.rangeStart = range.start;
+        entry.rangeEnd = range.end;
+        entry.sentSliceNumbers = [...sampled];
+        sliceSelections.push({
+          series_uid: series.SeriesInstanceUID,
+          // 1-based slice numbers resolved to the instances at those positions.
+          sop_instance_uids: sampled.map(n => series.sopInstanceUIDs[n - 1]),
+          range_start: range.start,
+          range_end: range.end,
+          total_slices: series.numImageFrames,
+        });
+      }
+      // Otherwise no selection is sent for this series and the middleware's
+      // configured recipe applies, which is what the snapshot then reports.
+
+      snapshotSeries.push(entry);
+    });
 
     // Captured now, from the state in force at this instant. Everything the
     // message claims about its own context comes from here afterwards.
@@ -864,7 +1043,8 @@ const ChatPanel: React.FC = () => {
       inputValue.trim(),
       promptStudyUID || undefined,
       seriesUIDs.length > 0 ? seriesUIDs : undefined,
-      snapshot
+      snapshot,
+      sliceSelections
     );
     setInputValue('');
     inputRef.current?.focus();
@@ -877,6 +1057,7 @@ const ChatPanel: React.FC = () => {
     provider,
     activeModelTag,
     sliceRecipe,
+    sliceSelectionFor,
     sendMessage,
   ]);
 
@@ -1243,27 +1424,63 @@ const ChatPanel: React.FC = () => {
         <>
           <div className="text-foreground mb-1.5 truncate text-xs">{promptStudyLabel}</div>
 
-          <div className="mb-1.5 flex flex-wrap gap-1">
-            {attachedSeries.map(s => (
-              <span
-                key={s.SeriesInstanceUID}
-                className="border-input bg-background text-foreground flex max-w-full items-center gap-1 rounded border px-2 py-0.5 text-[11px]"
+          {/* One block per attached series: the chip that identifies it, then the
+              range control that says what it will send. Per series because ranges
+              are not comparable across acquisitions of different depth. */}
+          {attachedSeries.map(series => {
+            const { addressable, range, count, sampled } = sliceSelectionFor(series);
+            const onThisSeries = viewerSlice.seriesInstanceUID === series.SeriesInstanceUID;
+            return (
+              <div
+                key={series.SeriesInstanceUID}
+                className="mb-1.5"
               >
-                <span className="truncate">
-                  {s.SeriesDescription} · {s.numImageFrames} slices
+                <span className="border-input bg-background text-foreground flex max-w-full items-center gap-1 rounded border px-2 py-0.5 text-[11px]">
+                  <span className="truncate">
+                    {series.SeriesDescription} · {series.numImageFrames} slices
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => toggleSeries(series.SeriesInstanceUID)}
+                    title={`Remove ${series.SeriesDescription}`}
+                    aria-label={`Remove ${series.SeriesDescription}`}
+                    className="text-muted-foreground hover:text-foreground ml-auto"
+                  >
+                    ×
+                  </button>
                 </span>
-                <button
-                  type="button"
-                  onClick={() => toggleSeries(s.SeriesInstanceUID)}
-                  title={`Remove ${s.SeriesDescription}`}
-                  aria-label={`Remove ${s.SeriesDescription}`}
-                  className="text-muted-foreground hover:text-foreground"
-                >
-                  ×
-                </button>
-              </span>
-            ))}
 
+                {addressable && range ? (
+                  <SliceRangeSlider
+                    total={series.numImageFrames}
+                    range={range}
+                    count={count}
+                    // Only when the viewport is showing THIS series. Marking a
+                    // slice number from another acquisition would point at a
+                    // position that means nothing here.
+                    viewerSliceNumber={onThisSeries ? viewerSlice.sliceNumber : null}
+                    seriesLabel={series.SeriesDescription}
+                    onRangeChange={next => setSeriesRange(series, next)}
+                    onCountChange={next => setSeriesCount(series, next)}
+                  />
+                ) : (
+                  // Say which is true rather than hiding the control: the user
+                  // needs to know a range does not apply here, and why.
+                  <div className="text-muted-foreground mt-1 text-[11px]">
+                    Slice range unavailable for this series — sends{' '}
+                    {formatSliceRecipe(sliceRecipe)}.
+                  </div>
+                )}
+                {addressable && sampled.length === 0 && (
+                  <div className="text-[11px] text-amber-300">
+                    No slices selected — this series will send no images.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          <div className="mb-1.5 flex flex-wrap gap-1">
             <div
               ref={seriesPickerRef}
               className="relative"
@@ -1312,12 +1529,12 @@ const ChatPanel: React.FC = () => {
             </div>
           </div>
 
-          {/* What will actually be sent, in the terms the middleware uses. Phase 2
-              replaces this read-only line with a slice-range slider. */}
+          {/* The one number that matters across the whole prompt: how many images
+              this message will carry. */}
           <div className="text-muted-foreground text-[11px]">
             {attachedSeries.length === 0
               ? 'No series attached — the model will answer from the conversation only.'
-              : `Sends ${formatSliceRecipe(sliceRecipe)}`}
+              : `Sends ${totalImagesToSend} image${totalImagesToSend === 1 ? '' : 's'} in total`}
           </div>
         </>
       ) : (
@@ -1367,13 +1584,28 @@ const ChatPanel: React.FC = () => {
             </div>
             {snapshot.series.length > 0 && (
               <>
+                {/* Per series, because each carries its own range. A single
+                    combined line could not say which slices came from where. */}
+                {snapshot.series.map(series => (
+                  <div key={series.seriesInstanceUID}>
+                    <dt className="inline font-semibold">Slices: </dt>
+                    <dd className="inline">
+                      {snapshot.series.length > 1 && `${series.description} — `}
+                      {formatSeriesSliceSource(series, snapshot.sliceRecipe)}
+                      {series.sentSliceNumbers && (
+                        // The individual slice numbers, so a reader can check the
+                        // answer against the images rather than trusting a count.
+                        <span className="block break-words">
+                          {formatSliceList(series.sentSliceNumbers)}
+                        </span>
+                      )}
+                    </dd>
+                  </div>
+                ))}
                 <div>
-                  <dt className="inline font-semibold">Slices: </dt>
-                  <dd className="inline">{formatSliceRecipe(snapshot.sliceRecipe)}</dd>
-                </div>
-                <div>
-                  {/* "requested", not "sent": the middleware clamps to the real
-                      volume depth, so this is a bound, not a measurement. */}
+                  {/* "requested", not "sent": for a recipe-based series the
+                      middleware clamps to the real volume depth, so this is a
+                      bound. Named slices are exact — see promptContext.ts. */}
                   <dt className="inline font-semibold">Images: </dt>
                   <dd className="inline">{snapshot.requestedImageCount} requested</dd>
                 </div>

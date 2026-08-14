@@ -128,7 +128,9 @@ describe('ChatPanel', () => {
       'what is this lesion?',
       undefined,
       undefined,
-      expect.objectContaining({ series: [], provider: 'local', requestedImageCount: 0 })
+      expect.objectContaining({ series: [], provider: 'local', requestedImageCount: 0 }),
+      // No series attached, so no slice selection accompanies the message.
+      []
     );
     expect(textarea.value).toBe('');
   });
@@ -140,7 +142,13 @@ describe('ChatPanel', () => {
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true });
     expect(sendMessage).not.toHaveBeenCalled();
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
-    expect(sendMessage).toHaveBeenCalledWith('hi', undefined, undefined, expect.any(Object));
+    expect(sendMessage).toHaveBeenCalledWith(
+      'hi',
+      undefined,
+      undefined,
+      expect.any(Object),
+      []
+    );
   });
 
   it('disables the send button for empty/whitespace input', async () => {

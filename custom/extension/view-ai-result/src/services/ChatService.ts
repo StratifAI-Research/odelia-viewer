@@ -15,6 +15,7 @@ import {
   ServerMessageType,
   CHAT_EVENTS,
   ChatEventType,
+  WireSliceSelection,
 } from '../types/chatTypes';
 import { EventfulService } from './EventfulService';
 
@@ -369,7 +370,12 @@ export class ChatService extends EventfulService<ChatEventType> {
   /**
    * Send a chat message
    */
-  sendMessage(content: string, studyUID?: string, seriesUIDs?: string[]): void {
+  sendMessage(
+    content: string,
+    studyUID?: string,
+    seriesUIDs?: string[],
+    sliceSelections?: WireSliceSelection[]
+  ): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       this.publish(CHAT_EVENTS.ERROR, { error: 'Not connected' });
       return;
@@ -380,6 +386,9 @@ export class ChatService extends EventfulService<ChatEventType> {
       content,
       study_uid: studyUID,
       series_uids: seriesUIDs,
+      // Omitted rather than sent empty: an absent field and an empty list mean the
+      // same thing to the middleware, and omitting keeps the frame legible.
+      slice_selections: sliceSelections?.length ? sliceSelections : undefined,
     };
 
     this.ws.send(JSON.stringify(message));

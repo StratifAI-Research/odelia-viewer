@@ -11,6 +11,12 @@
  * volume depth (`min(num_slices, total_slices)` in `extract_slices`), so the
  * number actually sent can be lower. Every label this module produces therefore
  * says "requested"; nothing here may claim to report what the model received.
+ *
+ * A series carrying `sentSliceNumbers` is the one exception, and it is not really
+ * one: those slices were named individually by SOPInstanceUID, and the middleware
+ * either honours every one of them or refuses the message. There is no clamping
+ * left to hide, so the count is exact — but the wording stays "requested" so that
+ * one rule holds across the whole module.
  */
 
 import { formatDicomDateTime } from './dicomDateTime';
@@ -109,13 +115,55 @@ export function formatSliceRecipe(recipe: SliceRecipe): string {
  * bound is never understated.
  */
 export function requestedImageCount(series: SnapshotSeries[], numSlices: number): number {
-  if (numSlices <= 0) {
-    return 0;
-  }
   return series.reduce((total, s) => {
+    // Named slices are exact, and independent of the configured count.
+    if (s.sentSliceNumbers) {
+      return total + s.sentSliceNumbers.length;
+    }
+    if (numSlices <= 0) {
+      return total;
+    }
     const frames = s.numFrames > 0 ? s.numFrames : numSlices;
     return total + Math.min(numSlices, frames);
   }, 0);
+}
+
+/**
+ * The slice numbers a series sent, listed: `18, 22, 26, … 62`.
+ *
+ * Listed in full rather than summarised, up to `max`, because this is the audit
+ * record — "12 slices between 18 and 62" does not let a reader check which ones.
+ * Past `max` the list is truncated with an explicit count of what was dropped, so
+ * the reader can always tell that something was.
+ */
+export function formatSliceList(numbers: number[], max = 24): string {
+  if (numbers.length === 0) {
+    return 'none';
+  }
+  if (numbers.length <= max) {
+    return numbers.join(', ');
+  }
+  const shown = numbers.slice(0, max).join(', ');
+  return `${shown}, +${numbers.length - max} more`;
+}
+
+/**
+ * How a series' slices were chosen: `18–62 of 103 · 12 slices` when the slices
+ * were named, or the configured recipe when they could not be.
+ *
+ * The two cases are worded differently on purpose. A range names exactly which
+ * pixels went out; a recipe only says how the service would pick them.
+ */
+export function formatSeriesSliceSource(series: SnapshotSeries, recipe: SliceRecipe): string {
+  if (series.sentSliceNumbers && series.rangeStart != null && series.rangeEnd != null) {
+    const span =
+      series.rangeStart === series.rangeEnd
+        ? `${series.rangeStart}`
+        : `${series.rangeStart}–${series.rangeEnd}`;
+    const plural = series.sentSliceNumbers.length === 1 ? '' : 's';
+    return `${span} of ${series.numFrames}${SEP}${series.sentSliceNumbers.length} slice${plural}`;
+  }
+  return formatSliceRecipe(recipe);
 }
 
 /**

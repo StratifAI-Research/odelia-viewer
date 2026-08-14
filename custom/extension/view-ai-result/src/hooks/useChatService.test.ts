@@ -91,7 +91,9 @@ describe('useChatService', () => {
     const chatService = makeChatService();
     const { result } = setup(chatService);
     act(() => result.current.sendMessage('hello', 's1', ['se1']));
-    expect(chatService.sendMessage).toHaveBeenCalledWith('hello', 's1', ['se1']);
+    // The 4th argument is the slice selection, absent here: the hook forwards
+    // whatever the panel passes rather than inventing one.
+    expect(chatService.sendMessage).toHaveBeenCalledWith('hello', 's1', ['se1'], undefined);
     expect(result.current.messages).toHaveLength(2);
     expect(result.current.messages[0]).toMatchObject({ role: 'user', content: 'hello' });
     expect(result.current.messages[1]).toMatchObject({ role: 'assistant', isStreaming: true });
