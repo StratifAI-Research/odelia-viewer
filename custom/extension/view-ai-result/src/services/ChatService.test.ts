@@ -1,4 +1,4 @@
-import { ChatService, ChatConnectionState } from './ChatService';
+import { ChatService, ChatConnectionState, stripSessionSegment } from './ChatService';
 import { CHAT_EVENTS, ClientMessageType, ServerMessageType } from '../types/chatTypes';
 
 // Minimal fake WebSocket: records sends, exposes handlers, lets tests drive
@@ -145,17 +145,117 @@ describe('ChatService', () => {
     });
   });
 
-  it('honors an explicit wsUrl from window.config', () => {
+  it('honors an explicit wsUrl from window.config, appending the session segment', () => {
+    // The endpoint is /ws/chat/{session_id}, so the override is a BASE. Using it
+    // verbatim could never have matched the route — it only appeared to work
+    // because nothing asserted against a real middleware.
     (window as any).config = { chatMiddleware: { wsUrl: 'ws://custom/ws' } };
     const svc = new ChatService();
     // connect() rejects when the socket closes before the session handshake, and
     // this test tears the socket down deliberately, so swallow it.
     svc.connect().catch(() => {});
     const ws = lastWs();
-    expect(ws.url).toBe('ws://custom/ws');
+    expect(ws.url).toBe('ws://custom/ws/new');
     // Tear the socket down so the 10s connection timeout armed by connect() is
     // cleared (via onclose) instead of leaking as an open handle.
     ws.close();
+  });
+
+  it('strips a trailing session segment from a legacy configured wsUrl', () => {
+    // Deployments configured this back when it was the complete URL; a literal
+    // `new` left in place would make resuming a conversation impossible.
+    (window as any).config = { chatMiddleware: { wsUrl: 'ws://custom/ws/chat/new' } };
+    const svc = new ChatService();
+    svc.connect('sess-1').catch(() => {});
+    const ws = lastWs();
+    expect(ws.url).toBe('ws://custom/ws/chat/sess-1');
+    ws.close();
+  });
+
+  describe('session targeting', () => {
+    it('connects to an explicit session id', async () => {
+      const svc = new ChatService();
+      const p = svc.connect('sess-1');
+      const ws = lastWs();
+      expect(ws.url).toMatch(/\/ws\/chat\/sess-1$/);
+      ws.emitOpen();
+      ws.emitMessage({ type: ServerMessageType.CONNECTED, session_id: 'sess-1' });
+      await expect(p).resolves.toBe('sess-1');
+    });
+
+    it('switchSession tears down the current socket and joins the other thread', async () => {
+      const svc = new ChatService();
+      const first = svc.connect();
+      const ws1 = lastWs();
+      ws1.emitOpen();
+      ws1.emitMessage({ type: ServerMessageType.CONNECTED, session_id: 'sess-a' });
+      await first;
+
+      const second = svc.switchSession('sess-b');
+      const ws2 = lastWs();
+      expect(ws1.closed).not.toBeNull();
+      expect(ws2.url).toMatch(/\/ws\/chat\/sess-b$/);
+      ws2.emitOpen();
+      ws2.emitMessage({ type: ServerMessageType.CONNECTED, session_id: 'sess-b' });
+      await expect(second).resolves.toBe('sess-b');
+      expect(svc.getSessionId()).toBe('sess-b');
+    });
+
+    it('a switched session still reconnects after a drop', async () => {
+      // switchSession() calls disconnect(), which parks the machine in CLOSED to
+      // suppress teardown reconnects. Failing to release that would leave the new
+      // socket permanently un-retried.
+      jest.useFakeTimers();
+      const svc = new ChatService();
+      const first = svc.connect();
+      const ws1 = lastWs();
+      ws1.emitOpen();
+      ws1.emitMessage({ type: ServerMessageType.CONNECTED, session_id: 'sess-a' });
+      await first;
+
+      const second = svc.switchSession('sess-b');
+      const ws2 = lastWs();
+      ws2.emitOpen();
+      ws2.emitMessage({ type: ServerMessageType.CONNECTED, session_id: 'sess-b' });
+      await second;
+
+      const before = FakeWebSocket.instances.length;
+      ws2.emitClose(1006, '', false);
+      jest.advanceTimersByTime(1000);
+      expect(FakeWebSocket.instances.length).toBe(before + 1);
+      expect(lastWs().url).toMatch(/\/ws\/chat\/sess-b$/);
+    });
+
+    it('reuses the open socket when asked for the session it already has', async () => {
+      const svc = new ChatService();
+      const p = svc.connect();
+      const ws = lastWs();
+      ws.emitOpen();
+      ws.emitMessage({ type: ServerMessageType.CONNECTED, session_id: 'sess-a' });
+      await p;
+
+      const count = FakeWebSocket.instances.length;
+      await expect(svc.connect('sess-a')).resolves.toBe('sess-a');
+      expect(FakeWebSocket.instances.length).toBe(count);
+    });
+  });
+
+  describe('stripSessionSegment', () => {
+    it('removes a trailing new/uuid segment', () => {
+      expect(stripSessionSegment('ws://h/ws/chat/new')).toBe('ws://h/ws/chat');
+      expect(stripSessionSegment('ws://h/ws/chat/new/')).toBe('ws://h/ws/chat');
+      expect(stripSessionSegment('ws://h/ws/chat/3f2504e0-4f89-11d3-9a0c-0305e82c3301')).toBe(
+        'ws://h/ws/chat'
+      );
+    });
+
+    it('leaves a base URL alone', () => {
+      expect(stripSessionSegment('ws://h/ws/chat')).toBe('ws://h/ws/chat');
+      // "newsfeed" is not the literal segment `new`.
+      expect(stripSessionSegment('ws://h/newsfeed')).toBe('ws://h/newsfeed');
+      // A non-UUID trailing segment is someone's real path, not a session id.
+      expect(stripSessionSegment('ws://h/ws/chat/v2')).toBe('ws://h/ws/chat/v2');
+    });
   });
 
   it('connect resolves with the session id once CONNECTED arrives', async () => {
@@ -283,6 +383,26 @@ describe('ChatService', () => {
       ws.emitClose(1006, '', false); // unclean -> reconnect scheduled
       jest.advanceTimersByTime(1000); // RECONNECT_INITIAL_DELAY
       expect(FakeWebSocket.instances).toHaveLength(2); // a new socket was created
+    });
+
+    it('reconnects to the SAME session rather than starting an empty one', async () => {
+      // Regression: the URL used to be fixed at /ws/chat/new, so every dropped
+      // socket handed back a fresh, empty server session while the panel kept
+      // showing the old transcript — the model silently lost the conversation
+      // with nothing in the UI to say so.
+      jest.useFakeTimers();
+      const svc = new ChatService();
+      const p = svc.connect();
+      const ws = lastWs();
+      ws.emitOpen();
+      ws.emitMessage({ type: ServerMessageType.CONNECTED, session_id: 'sess-42' });
+      await p;
+      expect(ws.url).toMatch(/\/ws\/chat\/new$/);
+
+      ws.emitClose(1006, '', false);
+      jest.advanceTimersByTime(1000);
+
+      expect(lastWs().url).toMatch(/\/ws\/chat\/sess-42$/);
     });
 
     it('does not reconnect after an intentional disconnect', async () => {

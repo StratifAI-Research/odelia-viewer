@@ -108,8 +108,8 @@ describe('imageSliceSyncCallback slice selection', () => {
     // The capability check the production code prefers. Modelled explicitly rather than left
     // to the count heuristic, because a real StackViewport also implements getNumberOfSlices
     // and the heuristic alone cannot tell a plain volume from a stack.
-    u.viewportIsInVolumeMode = jest.fn(
-      (vp: any) => String(vp?.element?.kind ?? '').startsWith('volume')
+    u.viewportIsInVolumeMode = jest.fn((vp: any) =>
+      String(vp?.element?.kind ?? '').startsWith('volume')
     );
 
     createHeatmapImageSliceSynchronizer('heatmap-sync');
@@ -177,10 +177,7 @@ describe('imageSliceSyncCallback slice selection', () => {
     };
     const jumpToSlice = await run(makeStackTarget(3), volumeTarget);
 
-    expect(jumpToSlice).toHaveBeenCalledWith(
-      { kind: 'volume-dynamic-target' },
-      { imageIndex: 27 }
-    );
+    expect(jumpToSlice).toHaveBeenCalledWith({ kind: 'volume-dynamic-target' }, { imageIndex: 27 });
     // 155 - 3 - 1 = 151 is what upstream's formula would give, and is out of range for 31 slices.
     expect(jumpToSlice).not.toHaveBeenCalledWith(expect.anything(), { imageIndex: 151 });
   });

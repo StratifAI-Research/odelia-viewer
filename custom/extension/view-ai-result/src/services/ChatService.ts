@@ -45,9 +45,31 @@ export enum ChatConnectionState {
   CLOSED = 'CLOSED',
 }
 
+/**
+ * Drop a trailing session segment from a configured WebSocket URL.
+ *
+ * `chatMiddleware.wsUrl` used to be the complete URL, so deployments may have it
+ * set to `…/ws/chat/new`. The session id is now chosen per connect, and that
+ * literal `new` would defeat resuming a conversation, so it is stripped. Only a
+ * segment that plausibly *is* a session id is removed — `new` or a UUID — so an
+ * override pointing at some other path is left intact.
+ */
+export function stripSessionSegment(url: string): string {
+  return url.replace(
+    /\/(new|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/*$/i,
+    ''
+  );
+}
+
 export class ChatService extends EventfulService<ChatEventType> {
   private ws: WebSocket | null = null;
   private sessionId: string | null = null;
+  /**
+   * The session to reconnect to. Distinct from `sessionId`, which is cleared on
+   * close: after a drop we must resume the SAME server session, not start a new
+   * one, or the model silently forgets the conversation still on screen.
+   */
+  private resumeSessionId: string | null = null;
   private connectPromise: Promise<string> | null = null;
   private wsUrl: string;
   private reconnectAttempts = 0;
@@ -74,14 +96,19 @@ export class ChatService extends EventfulService<ChatEventType> {
   }
 
   /**
-   * Get WebSocket URL - derives from current location for proxied deployments
+   * Base WebSocket URL, WITHOUT the trailing session segment.
+   *
+   * The endpoint is `/ws/chat/{session_id}`, and the id is chosen per connect —
+   * `new` for a fresh conversation, an existing id to resume one. A configured
+   * override may still carry a trailing `/new` (or a session id) from when this
+   * was a fixed URL; that segment is stripped so the override keeps working.
    */
   private getWebSocketUrl(): string {
     try {
       const config = (window as any)?.config;
       // Allow explicit override via config
       if (config?.chatMiddleware?.wsUrl) {
-        return config.chatMiddleware.wsUrl;
+        return stripSessionSegment(config.chatMiddleware.wsUrl);
       }
     } catch (e) {
       console.warn('[ChatService] Error getting config:', e);
@@ -101,21 +128,40 @@ export class ChatService extends EventfulService<ChatEventType> {
       window.location.hostname === 'localhost' &&
       window.location.port === '3000'
     ) {
-      return 'ws://localhost:5560/ws/chat/new';
+      return 'ws://localhost:5560/ws/chat';
     }
 
     // Proxied deployment: same origin as the viewer.
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${protocol}//${window.location.host}/ws/chat/new`;
+    return `${protocol}//${window.location.host}/ws/chat`;
+  }
+
+  /** The session id the next socket should target. */
+  private nextSessionTarget(explicit?: string | null): string {
+    if (explicit) {
+      return explicit;
+    }
+    // Resume rather than start over. Without this, an unclean drop reconnects to
+    // `new` and the middleware hands back a fresh, EMPTY session while the panel
+    // still shows the old transcript — the model would silently lose every
+    // earlier turn with nothing in the UI to say so.
+    return this.resumeSessionId ?? 'new';
   }
 
   /**
-   * Connect to WebSocket server
+   * Connect to the WebSocket server.
+   *
+   * @param sessionId Session to join. Omit to resume the current session (or
+   *   start a new one if there is none); pass `'new'` to force a fresh session.
    */
-  connect(): Promise<string> {
-    // Reuse a fully-established connection.
+  connect(sessionId?: string | null): Promise<string> {
+    // Reuse a fully-established connection — unless a *different* session was
+    // asked for, which has to tear the socket down and re-handshake.
     if (this.state === ChatConnectionState.CONNECTED && this.sessionId) {
-      return Promise.resolve(this.sessionId);
+      if (!sessionId || sessionId === this.sessionId) {
+        return Promise.resolve(this.sessionId);
+      }
+      return this.switchSession(sessionId);
     }
     // Reuse an in-flight connection rather than opening a competing socket. A
     // manual "Reconnect" racing a scheduled reconnect (or two callers awaiting
@@ -124,6 +170,12 @@ export class ChatService extends EventfulService<ChatEventType> {
     if (this.connectPromise) {
       return this.connectPromise;
     }
+
+    const target = this.nextSessionTarget(sessionId);
+    // Remember the intent now: if the socket drops mid-handshake, the scheduled
+    // reconnect must aim at the same session rather than fall back to `new`.
+    this.resumeSessionId = target === 'new' ? null : target;
+    const url = `${this.wsUrl}/${target}`;
 
     const promise = new Promise<string>((resolve, reject) => {
       // Detach and close any superseded socket before opening a new one.
@@ -141,7 +193,7 @@ export class ChatService extends EventfulService<ChatEventType> {
       let settled = false;
       let ws: WebSocket;
       try {
-        ws = new WebSocket(this.wsUrl);
+        ws = new WebSocket(url);
       } catch (err) {
         // The WebSocket constructor threw synchronously (e.g. a malformed
         // configured wsUrl). No socket exists, so no onerror/onclose handler
@@ -251,6 +303,9 @@ export class ChatService extends EventfulService<ChatEventType> {
         // The handshake is only complete once we have a session id.
         if (this.sessionId) {
           this.setState(ChatConnectionState.CONNECTED);
+          // The server assigns the id when we ask for `new`; record it so a
+          // later reconnect resumes this conversation.
+          this.resumeSessionId = this.sessionId;
         }
         this.publish(CHAT_EVENTS.CONNECTED, { sessionId: this.sessionId });
         if (resolveConnect && this.sessionId) {
@@ -343,6 +398,21 @@ export class ChatService extends EventfulService<ChatEventType> {
     };
 
     this.ws.send(JSON.stringify(message));
+  }
+
+  /**
+   * Join a different conversation, tearing down the current socket first.
+   *
+   * @param sessionId An existing middleware session, or `'new'` for a fresh one.
+   */
+  switchSession(sessionId: string): Promise<string> {
+    this.disconnect();
+    // disconnect() parks the machine in CLOSED, which exists to suppress
+    // reconnects during teardown. Release it, or connect() would open a socket
+    // whose first drop is silently never retried.
+    this.setState(ChatConnectionState.DISCONNECTED);
+    this.resumeSessionId = sessionId === 'new' ? null : sessionId;
+    return this.connect(sessionId);
   }
 
   /**

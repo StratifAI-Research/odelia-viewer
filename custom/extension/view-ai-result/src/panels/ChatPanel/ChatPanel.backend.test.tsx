@@ -29,6 +29,8 @@ function setHook(over: Partial<typeof hookState> = {}) {
     sendMessage: jest.fn(),
     cancelGeneration: jest.fn(),
     clearHistory: jest.fn(),
+    switchSession: jest.fn().mockResolvedValue('session-abcdef01'),
+    hydrateMessages: jest.fn(),
     disconnect: jest.fn(),
     ...over,
   });
@@ -42,6 +44,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  // Chat threads persist in sessionStorage; clear so cases stay independent.
+  window.sessionStorage.clear();
   setHook();
   withSystem(makeServicesManager());
 });

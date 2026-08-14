@@ -219,7 +219,9 @@ describe('AITrackedViewport areEqual', () => {
   });
 
   it('re-renders when a displaySetInstanceUID changes', () => {
-    expect(areEqual(props(), props({ displaySets: [ds({ displaySetInstanceUID: 'ds-9' })] }))).toBe(false);
+    expect(areEqual(props(), props({ displaySets: [ds({ displaySetInstanceUID: 'ds-9' })] }))).toBe(
+      false
+    );
   });
 
   it('re-renders when Modality changes for the same UID (heatmap detection input)', () => {
@@ -227,11 +229,15 @@ describe('AITrackedViewport areEqual', () => {
   });
 
   it('re-renders when StudyInstanceUID changes for the same UID (AI-result selection input)', () => {
-    expect(areEqual(props(), props({ displaySets: [ds({ StudyInstanceUID: 'study-2' })] }))).toBe(false);
+    expect(areEqual(props(), props({ displaySets: [ds({ StudyInstanceUID: 'study-2' })] }))).toBe(
+      false
+    );
   });
 
   it('re-renders when the image list length changes', () => {
-    expect(areEqual(props(), props({ displaySets: [ds({ images: [{ imageId: 'img-1' }] })] }))).toBe(false);
+    expect(
+      areEqual(props(), props({ displaySets: [ds({ images: [{ imageId: 'img-1' }] })] }))
+    ).toBe(false);
   });
 
   it('re-renders when an imageId changes at the same list length (the OHIF gotcha)', () => {

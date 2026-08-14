@@ -21,6 +21,17 @@ import { ChatMessage, ChatSeriesInfo, ProviderName, SnapshotSeries } from '../..
 import { shortModelLabel } from '../../utils/modelLabel';
 import { resolveStudyTags } from '../../utils/studyTags';
 import {
+  ChatThread,
+  deriveThreadTitle,
+  formatRelativeTime,
+  loadThreads,
+  newThreadId,
+  removeThread,
+  saveThreads,
+  upsertThread,
+} from '../../utils/chatThreads';
+import ChatHistoryIcon from '../../icons/ChatHistoryIcon';
+import {
   buildPromptContextSnapshot,
   formatSliceRecipe,
   formatSnapshotSummary,
@@ -140,10 +151,24 @@ const ChatPanel: React.FC = () => {
     cancelGeneration,
     clearHistory,
     appendEvent,
+    switchSession,
+    hydrateMessages,
   } = useChatService();
 
   // Composer
   const [inputValue, setInputValue] = useState('');
+
+  // --- Chat threads ---------------------------------------------------------
+  // The browser owns the displayed transcript (it carries per-message
+  // provenance the middleware does not store); the middleware owns what the
+  // model remembers, keyed by session id. `serverSessionId` joins the two.
+  const [threads, setThreads] = useState<ChatThread[]>(() => loadThreads());
+  const [activeThreadId, setActiveThreadId] = useState<string>(() => newThreadId());
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  // session id -> number of turns the middleware still holds. Undefined until
+  // looked up; a session absent from the map has been dropped (the store is
+  // in-memory, so a middleware restart clears every session).
+  const [liveSessions, setLiveSessions] = useState<Record<string, number> | null>(null);
 
   // --- Prompt context -------------------------------------------------------
   // `viewerStudyUID` is what the main viewport shows; `promptStudyUID` is what
@@ -212,10 +237,12 @@ const ChatPanel: React.FC = () => {
   const modelMenuRef = useRef<HTMLDivElement>(null);
   const overflowMenuRef = useRef<HTMLDivElement>(null);
   const seriesPickerRef = useRef<HTMLDivElement>(null);
+  const historyMenuRef = useRef<HTMLDivElement>(null);
 
   useDismissOnOutside(modelMenuRef, isModelMenuOpen, () => setIsModelMenuOpen(false));
   useDismissOnOutside(overflowMenuRef, isOverflowMenuOpen, () => setIsOverflowMenuOpen(false));
   useDismissOnOutside(seriesPickerRef, isSeriesPickerOpen, () => setIsSeriesPickerOpen(false));
+  useDismissOnOutside(historyMenuRef, isHistoryOpen, () => setIsHistoryOpen(false));
 
   // The model tag currently in force, and its short header label.
   const activeModelTag = provider === 'cloud' ? cloudModel : ollamaModel;
@@ -599,6 +626,165 @@ const ChatPanel: React.FC = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // --- Chat threads ---------------------------------------------------------
+
+  /**
+   * Persist the active conversation as messages arrive.
+   *
+   * Only once it has content: an untouched panel would otherwise litter the
+   * history with empty "New chat" entries every time it mounts. Streaming
+   * messages are written too, so a reload mid-answer keeps the partial turn
+   * rather than losing the question with it.
+   */
+  useEffect(() => {
+    if (messages.length === 0) {
+      return;
+    }
+    setThreads(prev => {
+      const existing = prev.find(t => t.id === activeThreadId);
+      const next: ChatThread = {
+        id: activeThreadId,
+        title: deriveThreadTitle(messages),
+        createdAt: existing?.createdAt ?? Date.now(),
+        updatedAt: Date.now(),
+        // Keep the last known session if the socket is momentarily down, so a
+        // reconnect blip does not orphan the thread from the model's memory.
+        serverSessionId: sessionId ?? existing?.serverSessionId ?? null,
+        messages,
+      };
+      return saveThreads(upsertThread(prev, next));
+    });
+  }, [messages, sessionId, activeThreadId]);
+
+  /** Ask the middleware which sessions it still holds, and how many turns. */
+  const refreshLiveSessions = useCallback(async () => {
+    try {
+      const res = await fetch(`${getChatApiBase()}/debug/sessions`);
+      if (!res.ok) {
+        throw new Error(String(res.status));
+      }
+      const data = await res.json();
+      const counts: Record<string, number> = {};
+      (Array.isArray(data.sessions) ? data.sessions : []).forEach((s: any) => {
+        if (s?.session_id) {
+          counts[s.session_id] = Number(s.message_count) || 0;
+        }
+      });
+      setLiveSessions(counts);
+    } catch (_) {
+      // Unknown is not the same as "forgotten" — leaving this null keeps the
+      // panel from claiming the model lost a conversation it may still have.
+      setLiveSessions(null);
+    }
+  }, []);
+
+  const openHistory = useCallback(() => {
+    // The fetch is kept OUT of the state updater: updaters must be pure, and
+    // React may invoke one more than once per commit.
+    const willOpen = !isHistoryOpen;
+    setIsHistoryOpen(willOpen);
+    if (willOpen) {
+      refreshLiveSessions();
+    }
+  }, [isHistoryOpen, refreshLiveSessions]);
+
+  /**
+   * Whether the middleware has lost the history behind a thread.
+   *
+   * Sessions live in memory on the middleware, so a restart drops them all.
+   * Reconnecting to a dropped id does not fail — `get_or_create_session` simply
+   * makes a fresh, empty one — so an *empty* server session under a non-empty
+   * transcript is exactly the signal that the model can no longer see the
+   * earlier turns. Returns false while the lookup is unknown.
+   */
+  const isForgottenByServer = useCallback(
+    (thread: ChatThread | undefined): boolean => {
+      if (!thread || !liveSessions) {
+        return false;
+      }
+      const hasExchange = thread.messages.some(m => m.role === 'user');
+      if (!hasExchange) {
+        return false;
+      }
+      // The middleware commits a turn to its history only once generation has
+      // finished, so mid-stream its session legitimately reads as empty.
+      // Warning then would flash "the assistant has forgotten this" over an
+      // answer that is in the middle of being written.
+      if (isStreaming && thread.id === activeThreadId) {
+        return false;
+      }
+      // For the thread that is currently open, the live socket's session is
+      // authoritative: the persisted id trails it by a render while a session is
+      // being established, and reading the stale value raised a false "the model
+      // has forgotten this" on a conversation that had just been answered.
+      const effectiveId =
+        thread.id === activeThreadId
+          ? (sessionId ?? thread.serverSessionId)
+          : thread.serverSessionId;
+      if (!effectiveId) {
+        return true;
+      }
+      // Present but empty still counts as forgotten: rejoining a dropped id does
+      // not fail, the middleware simply creates a fresh, empty session under it.
+      return !liveSessions[effectiveId];
+    },
+    [liveSessions, activeThreadId, sessionId, isStreaming]
+  );
+
+  // Re-check once a generation finishes: the snapshot taken before or during it
+  // predates the middleware committing the turn, so leaving it in place would
+  // keep reporting a session as empty after it stopped being so. Only refreshes
+  // if the panel has looked at all — no request on a deployment where the user
+  // never opens the history.
+  const wasStreamingRef = useRef(false);
+  useEffect(() => {
+    if (wasStreamingRef.current && !isStreaming && liveSessions !== null) {
+      refreshLiveSessions();
+    }
+    wasStreamingRef.current = isStreaming;
+  }, [isStreaming, liveSessions, refreshLiveSessions]);
+
+  const activeThread = threads.find(t => t.id === activeThreadId);
+
+  /** Start a fresh conversation, on both sides. */
+  const startNewChat = useCallback(async () => {
+    setIsHistoryOpen(false);
+    setInputValue('');
+    setActiveThreadId(newThreadId());
+    hydrateMessages([]);
+    await switchSession('new');
+  }, [hydrateMessages, switchSession]);
+
+  /** Reopen a stored conversation and rejoin its middleware session. */
+  const openThread = useCallback(
+    async (thread: ChatThread) => {
+      setIsHistoryOpen(false);
+      if (thread.id === activeThreadId) {
+        return;
+      }
+      setInputValue('');
+      setActiveThreadId(thread.id);
+      hydrateMessages(thread.messages);
+      // A thread with no recorded session (or one the middleware has since
+      // dropped) still opens — the transcript is worth reading — but it gets a
+      // fresh session, and the notice above the composer says the model is
+      // starting from nothing.
+      await switchSession(thread.serverSessionId || 'new');
+      refreshLiveSessions();
+    },
+    [activeThreadId, hydrateMessages, switchSession, refreshLiveSessions]
+  );
+
+  const deleteThread = useCallback(
+    (threadId: string) => {
+      setThreads(prev => saveThreads(removeThread(prev, threadId)));
+      if (threadId === activeThreadId) {
+        startNewChat();
+      }
+    },
+    [activeThreadId, startNewChat]
+  );
+
   /** Pin the context. Called from every action that invests in the prompt. */
   const pinContext = useCallback(() => setContextMode('pinned'), []);
 
@@ -753,10 +939,7 @@ const ChatPanel: React.FC = () => {
   // ---------------------------------------------------------------------------
 
   const renderModelMenu = () => (
-    <div
-      ref={modelMenuRef}
-      className="relative"
-    >
+    <div ref={modelMenuRef}>
       <button
         type="button"
         onClick={() => setIsModelMenuOpen(o => !o)}
@@ -773,7 +956,7 @@ const ChatPanel: React.FC = () => {
       {isModelMenuOpen && (
         <div
           role="listbox"
-          className="border-input bg-muted absolute right-0 z-50 mt-1 max-h-80 w-72 overflow-y-auto rounded border shadow-lg"
+          className="border-input bg-muted absolute right-3 top-full z-50 mt-1 max-h-80 w-[calc(100%-1.5rem)] max-w-[20rem] overflow-y-auto rounded border shadow-lg"
         >
           <div className="text-muted-foreground px-3 pb-1 pt-2 text-[11px] font-semibold uppercase">
             Local
@@ -855,11 +1038,85 @@ const ChatPanel: React.FC = () => {
     </div>
   );
 
+  const renderHistoryMenu = () => (
+    <div ref={historyMenuRef}>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={openHistory}
+        title="Chat history"
+        aria-label="Chat history"
+        aria-haspopup="menu"
+        aria-expanded={isHistoryOpen}
+      >
+        <ChatHistoryIcon className="h-5 w-5" />
+      </Button>
+
+      {isHistoryOpen && (
+        <div
+          role="menu"
+          className="border-input bg-muted absolute right-3 top-full z-50 mt-1 max-h-96 w-[calc(100%-1.5rem)] max-w-[20rem] overflow-y-auto rounded border shadow-lg"
+        >
+          <button
+            type="button"
+            onClick={startNewChat}
+            className="hover:bg-accent text-foreground border-input block w-full border-b px-3 py-2 text-left text-xs"
+          >
+            + New chat
+          </button>
+
+          {threads.length === 0 ? (
+            <div className="text-muted-foreground px-3 py-3 text-xs">
+              No earlier chats. Conversations are kept for this browser tab only.
+            </div>
+          ) : (
+            threads.map(t => {
+              const isActive = t.id === activeThreadId;
+              const forgotten = isForgottenByServer(t);
+              return (
+                <div
+                  key={t.id}
+                  className={`hover:bg-accent flex items-start gap-2 px-3 py-2 ${isActive ? 'bg-primary/10' : ''}`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => openThread(t)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <div className="text-foreground truncate text-xs">{t.title}</div>
+                    <div className="text-muted-foreground text-[11px]">
+                      {formatRelativeTime(t.updatedAt)} · {t.messages.length} message
+                      {t.messages.length === 1 ? '' : 's'}
+                      {isActive ? ' · current' : ''}
+                    </div>
+                    {/* The transcript survives in this tab; the model's memory
+                        does not. Say which one is gone. */}
+                    {forgotten && (
+                      <div className="text-[11px] text-amber-300">
+                        Assistant no longer remembers this
+                      </div>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteThread(t.id)}
+                    title={`Delete ${t.title}`}
+                    aria-label={`Delete ${t.title}`}
+                    className="text-muted-foreground hover:text-foreground flex-shrink-0 text-xs"
+                  >
+                    ×
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+
   const renderOverflowMenu = () => (
-    <div
-      ref={overflowMenuRef}
-      className="relative"
-    >
+    <div ref={overflowMenuRef}>
       <Button
         variant="ghost"
         size="icon"
@@ -871,7 +1128,7 @@ const ChatPanel: React.FC = () => {
       </Button>
 
       {isOverflowMenuOpen && (
-        <div className="border-input bg-muted absolute right-0 z-50 mt-1 w-64 rounded border shadow-lg">
+        <div className="border-input bg-muted absolute right-3 top-full z-50 mt-1 w-[calc(100%-1.5rem)] max-w-[20rem] rounded border shadow-lg">
           <button
             type="button"
             onClick={openSettings}
@@ -883,8 +1140,12 @@ const ChatPanel: React.FC = () => {
           <button
             type="button"
             onClick={() => {
+              // Discard it on both sides: the displayed transcript, its history
+              // entry, and the middleware session backing it. Leaving any one
+              // behind would resurrect the conversation on the next switch.
               clearHistory();
               setIsOverflowMenuOpen(false);
+              deleteThread(activeThreadId);
             }}
             disabled={messages.length === 0}
             title="Clear history"
@@ -903,10 +1164,11 @@ const ChatPanel: React.FC = () => {
   );
 
   const renderHeader = () => (
-    <div className="border-input flex items-center justify-between gap-2 border-b px-3 py-2">
+    <div className="border-input relative flex items-center justify-between gap-2 border-b px-3 py-2">
       <span className="text-foreground truncate text-sm font-semibold">AI Assistant</span>
       <div className="flex flex-shrink-0 items-center gap-1">
         {renderModelMenu()}
+        {renderHistoryMenu()}
         {renderOverflowMenu()}
       </div>
     </div>
@@ -1636,6 +1898,18 @@ const ChatPanel: React.FC = () => {
 
           {/* Error display */}
           {renderError()}
+
+          {/* The transcript is stored in this browser tab, the model's memory on
+              the middleware — and the middleware keeps sessions in RAM only. When
+              the two disagree, say so: an answer given without the earlier turns
+              must not look like one that had them. */}
+          {isForgottenByServer(activeThread) && (
+            <div className="bg-amber-950/40 mx-3 mb-2 rounded border border-amber-600 px-3 py-2 text-[11px] text-amber-200">
+              The assistant no longer has this conversation in memory (the chat service restarted).
+              The messages above are still shown, but the next question will be answered without
+              them.
+            </div>
+          )}
 
           {/* Prompt context sits directly above the composer: it describes what
               the next message will carry, not what past ones did. */}

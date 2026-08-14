@@ -34,6 +34,10 @@ interface UseChatServiceReturn {
   clearHistory: () => void;
   /** Insert a transcript annotation (e.g. a mid-conversation model change). */
   appendEvent: (content: string) => void;
+  /** Join another middleware session (`'new'` for a fresh one). */
+  switchSession: (sessionId: string) => Promise<string | null>;
+  /** Replace the displayed transcript, e.g. when switching chat threads. */
+  hydrateMessages: (messages: ChatMessage[]) => void;
 }
 
 export function useChatService(): UseChatServiceReturn {
@@ -222,6 +226,49 @@ export function useChatService(): UseChatServiceReturn {
     finishStream(msg => ({ ...msg, content: msg.content + ' [cancelled]' }));
   }, [chatService, finishStream]);
 
+  // Join another conversation. The middleware owns what the model remembers
+  // (keyed by session id); the caller owns what is displayed and hydrates it
+  // separately, because the transcript the panel shows carries per-message
+  // provenance the server does not store.
+  const switchSession = useCallback(
+    async (targetSessionId: string) => {
+      if (!chatService) {
+        setError('Chat service not available');
+        return null;
+      }
+      // Whatever was streaming belongs to the conversation being left.
+      chatService.cancelGeneration();
+      resetStreamingRefs();
+      setIsStreaming(false);
+      setPreprocessingStatus(null);
+      setPreprocessingProgress(null);
+      setError(null);
+      try {
+        const id = await chatService.switchSession(targetSessionId);
+        setSessionId(id);
+        setIsConnected(true);
+        return id;
+      } catch (e: any) {
+        setError(e?.message || 'Failed to switch chat');
+        setIsConnected(false);
+        return null;
+      }
+    },
+    [chatService, resetStreamingRefs]
+  );
+
+  // Replace the displayed transcript wholesale (thread switch / restore).
+  const hydrateMessages = useCallback(
+    (next: ChatMessage[]) => {
+      resetStreamingRefs();
+      setIsStreaming(false);
+      setPreprocessingStatus(null);
+      setPreprocessingProgress(null);
+      setMessages(next);
+    },
+    [resetStreamingRefs]
+  );
+
   // Insert a transcript annotation. Purely local: the middleware holds the
   // conversation history and must not be told these are user turns, so this
   // deliberately does NOT call chatService. Its only job is to keep a
@@ -406,5 +453,7 @@ export function useChatService(): UseChatServiceReturn {
     cancelGeneration,
     clearHistory,
     appendEvent,
+    switchSession,
+    hydrateMessages,
   };
 }

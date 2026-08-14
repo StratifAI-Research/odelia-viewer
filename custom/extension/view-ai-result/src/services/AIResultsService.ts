@@ -387,7 +387,6 @@ export class AIResultsService extends EventfulService {
       }
     }
   }
-
 }
 
 /**

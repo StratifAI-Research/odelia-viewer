@@ -26,6 +26,8 @@ const mockHookState: any = {
   cancelGeneration: jest.fn(),
   clearHistory: jest.fn(),
   appendEvent: jest.fn(),
+  switchSession: jest.fn().mockResolvedValue('session-abcdef01'),
+  hydrateMessages: jest.fn(),
   disconnect: jest.fn(),
 };
 jest.mock('../../hooks/useChatService', () => ({ useChatService: () => mockHookState }));
@@ -42,6 +44,8 @@ beforeAll(() => {
 });
 beforeEach(() => {
   jest.clearAllMocks();
+  // Chat threads persist in sessionStorage; clear so cases stay independent.
+  window.sessionStorage.clear();
   mockActiveStudy = 'study-1';
   (global as any).fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
 });
