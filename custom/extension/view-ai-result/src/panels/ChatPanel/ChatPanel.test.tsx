@@ -17,6 +17,7 @@ const sendMessage = jest.fn();
 const cancelGeneration = jest.fn();
 const clearHistory = jest.fn();
 const connect = jest.fn();
+const appendEvent = jest.fn();
 
 function setHook(over: Partial<typeof hookState> = {}) {
   Object.assign(hookState, {
@@ -31,6 +32,7 @@ function setHook(over: Partial<typeof hookState> = {}) {
     sendMessage,
     cancelGeneration,
     clearHistory,
+    appendEvent,
     disconnect: jest.fn(),
     ...over,
   });
@@ -62,121 +64,173 @@ beforeEach(() => {
   jest.clearAllMocks();
   setHook();
   withSystem(makeServicesManager());
+  // The panel reads the debug config on mount to show the active model in the
+  // header, so every render needs a fetch to resolve against.
+  (global as any).fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
 });
 
-describe('ChatPanel', () => {
-  it('renders the empty state when there are no messages', () => {
+/** Mount the panel, flushing the mount-time config load. */
+async function renderPanel() {
+  await act(async () => {
     render(<ChatPanel />);
+  });
+}
+
+/** Open the header's overflow menu, where session/settings/clear now live. */
+function openOverflow() {
+  fireEvent.click(screen.getByTitle('More options'));
+}
+
+const COMPOSER = 'Ask about these images...';
+
+describe('ChatPanel', () => {
+  it('renders the empty state when there are no messages', async () => {
+    await renderPanel();
     expect(screen.getByText('No messages yet')).toBeTruthy();
-    // Connected: header shows a truncated session id, not "Disconnected".
-    expect(screen.getByText(/Session: session-/)).toBeTruthy();
+    expect(screen.getByText('AI Assistant')).toBeTruthy();
   });
 
-  it('renders the disconnected banner with a reconnect button when not connected', () => {
+  it('keeps the session id out of the primary UI, behind the overflow menu', async () => {
+    // Audit detail, not clinical information — it used to consume a permanent
+    // header row for no day-to-day benefit.
+    await renderPanel();
+    expect(screen.queryByText(/Session: /)).toBeNull();
+    openOverflow();
+    expect(screen.getByText(/Session: session-abcdef01/)).toBeTruthy();
+  });
+
+  it('renders the disconnected banner with a reconnect button when not connected', async () => {
     setHook({ isConnected: false });
-    render(<ChatPanel />);
-    // "Disconnected" shows in both the header and the banner.
-    expect(screen.getAllByText('Disconnected').length).toBeGreaterThanOrEqual(1);
-    const reconnect = screen.getByText('Reconnect');
-    fireEvent.click(reconnect);
+    await renderPanel();
+    expect(screen.getByText('Disconnected')).toBeTruthy();
+    fireEvent.click(screen.getByText('Reconnect'));
     expect(connect).toHaveBeenCalledTimes(1);
     // Input is disabled while disconnected.
     const textarea = screen.getByPlaceholderText('Connecting...') as HTMLTextAreaElement;
     expect(textarea.disabled).toBe(true);
   });
 
-  it('sends a typed message: forwards trimmed content to the service and clears the input', () => {
-    render(<ChatPanel />);
-    const textarea = screen.getByPlaceholderText('Ask about this study...') as HTMLTextAreaElement;
+  it('sends a typed message: forwards trimmed content plus a context snapshot', async () => {
+    await renderPanel();
+    const textarea = screen.getByPlaceholderText(COMPOSER) as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: '  what is this lesion?  ' } });
     expect(textarea.value).toBe('  what is this lesion?  ');
     fireEvent.click(screen.getByTitle('Send'));
+
     expect(sendMessage).toHaveBeenCalledTimes(1);
-    // trimmed content, no study/series context resolved in the default harness
-    expect(sendMessage).toHaveBeenCalledWith('what is this lesion?', undefined, undefined);
+    // Trimmed content; no study/series resolved in the default harness. The
+    // fourth argument is the immutable snapshot the message is stamped with.
+    expect(sendMessage).toHaveBeenCalledWith(
+      'what is this lesion?',
+      undefined,
+      undefined,
+      expect.objectContaining({ series: [], provider: 'local', requestedImageCount: 0 })
+    );
     expect(textarea.value).toBe('');
   });
 
-  it('sends on Enter and suppresses send on Shift+Enter', () => {
-    render(<ChatPanel />);
-    const textarea = screen.getByPlaceholderText('Ask about this study...') as HTMLTextAreaElement;
+  it('sends on Enter and suppresses send on Shift+Enter', async () => {
+    await renderPanel();
+    const textarea = screen.getByPlaceholderText(COMPOSER) as HTMLTextAreaElement;
     fireEvent.change(textarea, { target: { value: 'hi' } });
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true });
     expect(sendMessage).not.toHaveBeenCalled();
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
-    expect(sendMessage).toHaveBeenCalledWith('hi', undefined, undefined);
+    expect(sendMessage).toHaveBeenCalledWith('hi', undefined, undefined, expect.any(Object));
   });
 
-  it('disables the send button for empty/whitespace input', () => {
-    render(<ChatPanel />);
+  it('disables the send button for empty/whitespace input', async () => {
+    await renderPanel();
     const send = screen.getByTitle('Send') as HTMLButtonElement;
     expect(send.disabled).toBe(true);
-    const textarea = screen.getByPlaceholderText('Ask about this study...');
+    const textarea = screen.getByPlaceholderText(COMPOSER);
     fireEvent.change(textarea, { target: { value: '   ' } });
     expect((screen.getByTitle('Send') as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(textarea, { target: { value: 'real' } });
     expect((screen.getByTitle('Send') as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('renders a user message and an assistant message with markdown', () => {
+  it('renders a user message and an assistant message with markdown', async () => {
     setHook({
       messages: [
         msg({ id: 'u1', role: 'user', content: 'Hello there' }),
         msg({ id: 'a1', role: 'assistant', content: '**bold** answer' }),
       ],
     });
-    const { container } = render(<ChatPanel />);
+    await renderPanel();
     expect(screen.getByText('Hello there')).toBeTruthy();
     // marked converts **bold** to a <strong> element for assistant content.
-    expect(container.querySelector('strong')?.textContent).toBe('bold');
+    expect(document.querySelector('strong')?.textContent).toBe('bold');
     expect(screen.queryByText('No messages yet')).toBeNull();
+    // Turns are labelled rather than distinguished only by alignment.
+    expect(screen.getByText('You')).toBeTruthy();
+    expect(screen.getByText('AI')).toBeTruthy();
   });
 
-  it('shows the streaming state: cancel button replaces send and streaming status renders', () => {
+  it('renders a transcript event as an annotation, not as a turn', async () => {
+    // A mid-conversation model change has to stay visible in scrollback, but it
+    // is not something a participant said.
+    setHook({
+      messages: [
+        msg({ id: 'a1', role: 'assistant', content: 'first answer' }),
+        msg({ id: 'e1', role: 'event', content: 'Model changed to MiniMax M3' }),
+      ],
+    });
+    await renderPanel();
+    expect(screen.getByText('Model changed to MiniMax M3')).toBeTruthy();
+    // Exactly one "AI" label: the event must not be rendered as an assistant turn.
+    expect(screen.getAllByText('AI')).toHaveLength(1);
+  });
+
+  it('shows the streaming state: cancel button replaces send and streaming status renders', async () => {
     setHook({
       isStreaming: true,
       preprocessingStatus: 'Preprocessing slices',
       preprocessingProgress: 0.5,
       messages: [msg({ id: 's1', role: 'assistant', content: '', isStreaming: true })],
     });
-    render(<ChatPanel />);
-    // Cancel button shown instead of send while streaming.
-    const cancel = screen.getByTitle('Cancel');
-    fireEvent.click(cancel);
+    await renderPanel();
+    fireEvent.click(screen.getByTitle('Cancel'));
     expect(cancelGeneration).toHaveBeenCalledTimes(1);
     expect(screen.queryByTitle('Send')).toBeNull();
     expect(screen.getByText('Preprocessing slices')).toBeTruthy();
   });
 
-  it('does not send while streaming even with non-empty input', () => {
+  it('does not send while streaming even with non-empty input', async () => {
     setHook({ isStreaming: true });
-    render(<ChatPanel />);
-    const textarea = screen.getByPlaceholderText('Ask about this study...');
+    await renderPanel();
+    const textarea = screen.getByPlaceholderText(COMPOSER);
     fireEvent.change(textarea, { target: { value: 'queued?' } });
     // No send button while streaming; pressing Enter must not call sendMessage.
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it('renders the service error banner when error is set', () => {
+  it('renders the service error banner when error is set', async () => {
     setHook({ error: 'Connection lost' });
-    render(<ChatPanel />);
+    await renderPanel();
     expect(screen.getByText('Connection lost')).toBeTruthy();
   });
 
-  it('clears history via the Clear button; disabled when there are no messages', () => {
-    render(<ChatPanel />);
-    const clear = screen.getByTitle('Clear history') as HTMLButtonElement;
-    expect(clear.disabled).toBe(true);
+  it('clears history from the overflow menu; disabled when there are no messages', async () => {
+    await renderPanel();
+    openOverflow();
+    expect((screen.getByTitle('Clear history') as HTMLButtonElement).disabled).toBe(true);
+
     setHook({ messages: [msg({ id: 'a1', content: 'x' })] });
-    render(<ChatPanel />);
+    await renderPanel();
     const clears = screen.getAllByTitle('Clear history') as HTMLButtonElement[];
-    const enabled = clears.find(b => !b.disabled)!;
-    fireEvent.click(enabled);
+    // Two panels are mounted by this point; drive the one that is enabled.
+    fireEvent.click(screen.getAllByTitle('More options')[1]);
+    const enabled = (screen.getAllByTitle('Clear history') as HTMLButtonElement[]).find(
+      b => !b.disabled
+    );
+    expect(clears.length).toBeGreaterThan(0);
+    fireEvent.click(enabled!);
     expect(clearHistory).toHaveBeenCalledTimes(1);
   });
 
-  it('opens the settings modal and loads config from the debug API', async () => {
+  it('opens the settings modal from the overflow menu and loads config', async () => {
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -187,7 +241,8 @@ describe('ChatPanel', () => {
       }),
     });
     (global as any).fetch = fetchMock;
-    render(<ChatPanel />);
+    await renderPanel();
+    openOverflow();
     await act(async () => {
       fireEvent.click(screen.getByTitle('Settings'));
     });
@@ -198,9 +253,23 @@ describe('ChatPanel', () => {
     expect(screen.getByDisplayValue('medgemma') as HTMLInputElement).toBeTruthy();
   });
 
-  it('expands the context selector and reports no series available by default', () => {
-    render(<ChatPanel />);
-    fireEvent.click(screen.getByText('No series selected'));
-    expect(screen.getByText('No series available')).toBeTruthy();
+  it('shows the active model in the header, condensed', async () => {
+    (global as any).fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ model: 'thiagomoraes/medgemma-1.5-4b-it:Q4_K_M' }),
+    });
+    await renderPanel();
+    // The header carries the short name; the full tag is in the dropdown.
+    expect(screen.getByTitle('Model').textContent).toContain('MedGemma 1.5');
+    fireEvent.click(screen.getByTitle('Model'));
+    expect(screen.getByText('thiagomoraes/medgemma-1.5-4b-it:Q4_K_M')).toBeTruthy();
+  });
+
+  it('reports plainly when no study is open in the viewer', async () => {
+    // The default harness resolves no study, so the prompt context has nothing
+    // to attach — it must say so rather than look empty-but-ready.
+    await renderPanel();
+    expect(screen.getByText('Prompt context')).toBeTruthy();
+    expect(screen.getByText('No study open in the viewer.')).toBeTruthy();
   });
 });

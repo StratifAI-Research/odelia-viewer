@@ -49,7 +49,57 @@ export interface ServerMessage {
 // Frontend-specific types
 // =============================================================================
 
-export type ChatRole = 'user' | 'assistant' | 'system';
+/**
+ * `event` is a transcript annotation the panel inserts itself — "Model changed
+ * to MiniMax M3" — rather than anything a participant said. It exists so that a
+ * mid-conversation configuration change stays visible in scrollback: without it,
+ * two answers from different models would be indistinguishable after the fact.
+ */
+export type ChatRole = 'user' | 'assistant' | 'system' | 'event';
+
+/** Which LLM backend the middleware routes chat to. */
+export type ProviderName = 'local' | 'cloud';
+
+/** One series as it was attached to a message. */
+export interface SnapshotSeries {
+  seriesInstanceUID: string;
+  description: string;
+  modality: string;
+  numFrames: number;
+}
+
+/** The slice-selection recipe in force for a message. */
+export interface SliceRecipe {
+  numSlices: number;
+  strategy: string;
+  /** Only meaningful for the `central` strategy. */
+  centralPercentage?: number;
+}
+
+/**
+ * An immutable record of what one message was sent with.
+ *
+ * Captured at send time and never recomputed. This is the panel's core safety
+ * property: the association between a question, the images it was asked about,
+ * and the model that answered must not depend on what the main viewport happens
+ * to display later. A radiologist who opens a different patient and scrolls back
+ * must still see the original context.
+ *
+ * Note `requestedImageCount` is a bound on what was sent, not a report of what
+ * arrived — see `utils/promptContext.ts`.
+ */
+export interface PromptContextSnapshot {
+  studyInstanceUID: string;
+  /** Pre-formatted study label (date · description), resolved at send time. */
+  studyLabel: string;
+  series: SnapshotSeries[];
+  provider: ProviderName;
+  /** The full model tag, verbatim — quantization included, for audit. */
+  model: string;
+  sliceRecipe: SliceRecipe;
+  /** Upper bound on images sent; the middleware may clamp to volume depth. */
+  requestedImageCount: number;
+}
 
 /**
  * A single chat message for display
@@ -63,6 +113,12 @@ export interface ChatMessage {
   thinking?: string;
   /** Series UIDs included as context for this message (user messages only) */
   seriesContext?: string[];
+  /**
+   * Immutable context this message was sent with. Set on the user message and
+   * on the assistant message answering it, so either side of an exchange can be
+   * traced back to its source images without walking the transcript.
+   */
+  promptContext?: PromptContextSnapshot;
   /** Whether this message is still being streamed */
   isStreaming?: boolean;
 }

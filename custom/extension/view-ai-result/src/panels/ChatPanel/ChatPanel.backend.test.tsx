@@ -55,7 +55,8 @@ const BASE_CONFIG = {
 
 /**
  * Route fetch by URL so a test can supply /debug/config and /debug/cloud/models
- * independently.
+ * independently. A route may be a function, which receives (url, init) so a test
+ * can answer differently per HTTP method.
  */
 function routeFetch(routes: Record<string, any>) {
   // `init` is declared so mock.calls entries carry it — the save assertions read
@@ -63,7 +64,7 @@ function routeFetch(routes: Record<string, any>) {
   const fetchMock = jest.fn((url: string, init?: RequestInit) => {
     for (const [suffix, resp] of Object.entries(routes)) {
       if (String(url).includes(suffix)) {
-        return Promise.resolve(typeof resp === 'function' ? resp() : resp);
+        return Promise.resolve(typeof resp === 'function' ? resp(url, init) : resp);
       }
     }
     return Promise.resolve({ ok: false, status: 404, json: async () => ({}) });
@@ -74,8 +75,18 @@ function routeFetch(routes: Record<string, any>) {
 
 const jsonOk = (body: any) => ({ ok: true, status: 200, json: async () => body });
 
+/**
+ * Mount and open the settings modal. The panel reads the debug config on mount
+ * (the header shows the active model at all times), so the render is awaited;
+ * Settings itself now lives behind the header's overflow menu.
+ */
 async function openSettings() {
-  render(<ChatPanel />);
+  await act(async () => {
+    render(<ChatPanel />);
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByTitle('More options'));
+  });
   await act(async () => {
     fireEvent.click(screen.getByTitle('Settings'));
   });
@@ -369,26 +380,21 @@ describe('ChatPanel backend selector', () => {
 
   it('shows the middleware rejection reason when a cloud switch is refused', async () => {
     routeFetch({
-      '/debug/config': (() => {
-        let calls = 0;
-        return () => {
-          calls += 1;
-          // First call is the initial load (GET); the PUT is rejected.
-          if (calls === 1) {
-            return jsonOk({
+      // Routed by method, not call count: the panel loads the config on mount
+      // *and* on opening settings, so counting GETs would be brittle.
+      '/debug/config': (_url: string, init?: RequestInit) =>
+        init?.method === 'PUT'
+          ? {
+              ok: false,
+              status: 403,
+              json: async () => ({ detail: 'The Ollama Cloud backend is disabled.' }),
+            }
+          : jsonOk({
               ...BASE_CONFIG,
               provider: 'local',
               cloud_enabled: true,
               cloud_configured: true,
-            });
-          }
-          return {
-            ok: false,
-            status: 403,
-            json: async () => ({ detail: 'The Ollama Cloud backend is disabled.' }),
-          };
-        };
-      })(),
+            }),
     });
     await openSettings();
 

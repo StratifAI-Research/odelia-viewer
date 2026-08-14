@@ -4,7 +4,7 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSystem } from '@ohif/core';
-import { ChatMessage, CHAT_EVENTS } from '../types/chatTypes';
+import { ChatMessage, CHAT_EVENTS, PromptContextSnapshot } from '../types/chatTypes';
 import { ChatService } from '../services/ChatService';
 
 // Generate unique message IDs
@@ -24,9 +24,16 @@ interface UseChatServiceReturn {
   // Actions
   connect: () => Promise<void>;
   disconnect: () => void;
-  sendMessage: (content: string, studyUID?: string, seriesUIDs?: string[]) => void;
+  sendMessage: (
+    content: string,
+    studyUID?: string,
+    seriesUIDs?: string[],
+    promptContext?: PromptContextSnapshot
+  ) => void;
   cancelGeneration: () => void;
   clearHistory: () => void;
+  /** Insert a transcript annotation (e.g. a mid-conversation model change). */
+  appendEvent: (content: string) => void;
 }
 
 export function useChatService(): UseChatServiceReturn {
@@ -152,7 +159,12 @@ export function useChatService(): UseChatServiceReturn {
 
   // Send a message
   const sendMessage = useCallback(
-    (content: string, studyUID?: string, seriesUIDs?: string[]) => {
+    (
+      content: string,
+      studyUID?: string,
+      seriesUIDs?: string[],
+      promptContext?: PromptContextSnapshot
+    ) => {
       if (!chatService || !content.trim()) {
         return;
       }
@@ -169,10 +181,13 @@ export function useChatService(): UseChatServiceReturn {
         content: content.trim(),
         timestamp: new Date(),
         seriesContext: seriesUIDs,
+        promptContext,
       };
       setMessages(prev => [...prev, userMessage]);
 
-      // Create placeholder for assistant response
+      // Create placeholder for assistant response. It carries the same snapshot
+      // as the question: the answer was produced from exactly that context, so
+      // either side can be traced without walking the transcript.
       const assistantMessageId = generateMessageId();
       const assistantMessage: ChatMessage = {
         id: assistantMessageId,
@@ -180,6 +195,7 @@ export function useChatService(): UseChatServiceReturn {
         content: '',
         timestamp: new Date(),
         isStreaming: true,
+        promptContext,
       };
       setMessages(prev => [...prev, assistantMessage]);
 
@@ -205,6 +221,26 @@ export function useChatService(): UseChatServiceReturn {
     chatService.cancelGeneration();
     finishStream(msg => ({ ...msg, content: msg.content + ' [cancelled]' }));
   }, [chatService, finishStream]);
+
+  // Insert a transcript annotation. Purely local: the middleware holds the
+  // conversation history and must not be told these are user turns, so this
+  // deliberately does NOT call chatService. Its only job is to keep a
+  // configuration change visible in scrollback, so that two answers produced by
+  // different models remain distinguishable after the fact.
+  const appendEvent = useCallback((content: string) => {
+    if (!content.trim()) {
+      return;
+    }
+    setMessages(prev => [
+      ...prev,
+      {
+        id: generateMessageId(),
+        role: 'event',
+        content: content.trim(),
+        timestamp: new Date(),
+      },
+    ]);
+  }, []);
 
   // Clear message history
   const clearHistory = useCallback(() => {
@@ -369,5 +405,6 @@ export function useChatService(): UseChatServiceReturn {
     sendMessage,
     cancelGeneration,
     clearHistory,
+    appendEvent,
   };
 }

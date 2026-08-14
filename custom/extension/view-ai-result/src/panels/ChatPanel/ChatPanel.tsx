@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { useSystem } from '@ohif/core';
@@ -17,7 +17,16 @@ import {
 } from '@ohif/ui-next';
 import { useChatService } from '../../hooks/useChatService';
 import { useActiveStudyUID } from '../../hooks/useActiveStudyUID';
-import { ChatMessage, ChatSeriesInfo } from '../../types/chatTypes';
+import { ChatMessage, ChatSeriesInfo, ProviderName, SnapshotSeries } from '../../types/chatTypes';
+import { shortModelLabel } from '../../utils/modelLabel';
+import { resolveStudyTags } from '../../utils/studyTags';
+import {
+  buildPromptContextSnapshot,
+  formatSliceRecipe,
+  formatSnapshotSummary,
+  formatStudyLabel,
+  StudyLabelSource,
+} from '../../utils/promptContext';
 
 // ui-next ships no Textarea, so the two multi-line fields borrow the token set
 // its `Input` uses. Kept in one place so they cannot drift apart.
@@ -60,9 +69,6 @@ const SLICE_STRATEGIES = [
   { value: 'last_n', label: 'Last N' },
 ];
 
-/** Which LLM backend the middleware routes chat to. */
-type ProviderName = 'local' | 'cloud';
-
 /** A model offered by the cloud backend, as reported by the middleware. */
 interface CloudModelInfo {
   name: string;
@@ -71,8 +77,46 @@ interface CloudModelInfo {
 }
 
 /**
+ * Whether the prompt context tracks the viewport or is held fixed.
+ *
+ * `following` lets an untouched, empty prompt adopt whatever the viewer shows.
+ * `pinned` freezes it. The panel pins automatically as soon as the user invests
+ * anything in the prompt (types, or attaches a series), because from that moment
+ * a silent context change would rewrite the question they are composing.
+ */
+type ContextMode = 'following' | 'pinned';
+
+/** Dismiss a popover on outside click or Escape. */
+function useDismissOnOutside(
+  ref: React.RefObject<HTMLElement>,
+  isOpen: boolean,
+  onDismiss: () => void
+): void {
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    const onPointerDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        onDismiss();
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onDismiss();
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [ref, isOpen, onDismiss]);
+}
+
+/**
  * ChatPanel - AI Chat panel for discussing studies
- * MVP with basic chat UI and series context selection
  */
 const ChatPanel: React.FC = () => {
   const { servicesManager } = useSystem();
@@ -95,14 +139,31 @@ const ChatPanel: React.FC = () => {
     sendMessage,
     cancelGeneration,
     clearHistory,
+    appendEvent,
   } = useChatService();
 
-  // Local state
+  // Composer
   const [inputValue, setInputValue] = useState('');
-  const [activeStudyUID, setActiveStudyUID] = useState<string | null>(null);
+
+  // --- Prompt context -------------------------------------------------------
+  // `viewerStudyUID` is what the main viewport shows; `promptStudyUID` is what
+  // the next message will actually be sent with. They are deliberately separate
+  // so the two can diverge and the user can be told about it.
+  const [viewerStudyUID, setViewerStudyUID] = useState<string | null>(null);
+  const [promptStudyUID, setPromptStudyUID] = useState<string | null>(null);
+  const [promptStudyInfo, setPromptStudyInfo] = useState<StudyLabelSource | null>(null);
   const [availableSeries, setAvailableSeries] = useState<ChatSeriesInfo[]>([]);
   const [selectedSeriesUIDs, setSelectedSeriesUIDs] = useState<Set<string>>(new Set());
-  const [isContextExpanded, setIsContextExpanded] = useState(false);
+  const [contextMode, setContextMode] = useState<ContextMode>('following');
+  const [isSeriesPickerOpen, setIsSeriesPickerOpen] = useState(false);
+
+  // Header menus
+  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
+  const [isOverflowMenuOpen, setIsOverflowMenuOpen] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
+
+  // Per-message snapshot expansion
+  const [expandedSnapshotIds, setExpandedSnapshotIds] = useState<Set<string>>(new Set());
 
   // Settings modal state
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -148,6 +209,37 @@ const ChatPanel: React.FC = () => {
   // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const modelMenuRef = useRef<HTMLDivElement>(null);
+  const overflowMenuRef = useRef<HTMLDivElement>(null);
+  const seriesPickerRef = useRef<HTMLDivElement>(null);
+
+  useDismissOnOutside(modelMenuRef, isModelMenuOpen, () => setIsModelMenuOpen(false));
+  useDismissOnOutside(overflowMenuRef, isOverflowMenuOpen, () => setIsOverflowMenuOpen(false));
+  useDismissOnOutside(seriesPickerRef, isSeriesPickerOpen, () => setIsSeriesPickerOpen(false));
+
+  // The model tag currently in force, and its short header label.
+  const activeModelTag = provider === 'cloud' ? cloudModel : ollamaModel;
+  const activeModelLabel = shortModelLabel(activeModelTag);
+
+  // Apply the debug-config payload to local state. Shared by the mount load and
+  // the settings modal so the two cannot drift.
+  const applyConfigPayload = useCallback((data: any) => {
+    setSystemPrompt(data.system_prompt || '');
+    setOllamaModel(data.model || '');
+    setNumSlices(data.preprocessing?.num_slices || 5);
+    setSliceStrategy(data.preprocessing?.slice_strategy || 'central');
+    setCentralPercentage(data.preprocessing?.central_percentage || 60);
+    // Ollama options
+    setOllamaThink(data.ollama_options?.think ?? null);
+    setOllamaSuffix(data.ollama_options?.suffix || '');
+    // Backend provider. Fields are absent on a middleware predating the cloud
+    // backend, so every one falls back to "local / unavailable".
+    setProvider(data.provider === 'cloud' ? 'cloud' : 'local');
+    setCloudEnabled(Boolean(data.cloud_enabled));
+    setCloudConfigured(Boolean(data.cloud_configured));
+    setCloudUrl(data.cloud_url || '');
+    setCloudModel(data.cloud_model || '');
+  }, []);
 
   // Load settings from debug API
   const loadSettings = useCallback(async () => {
@@ -158,28 +250,19 @@ const ChatPanel: React.FC = () => {
       if (!res.ok) {
         throw new Error(`Failed to load: ${res.status}`);
       }
-      const data = await res.json();
-      setSystemPrompt(data.system_prompt || '');
-      setOllamaModel(data.model || '');
-      setNumSlices(data.preprocessing?.num_slices || 5);
-      setSliceStrategy(data.preprocessing?.slice_strategy || 'central');
-      setCentralPercentage(data.preprocessing?.central_percentage || 60);
-      // Ollama options
-      setOllamaThink(data.ollama_options?.think ?? null);
-      setOllamaSuffix(data.ollama_options?.suffix || '');
-      // Backend provider. Fields are absent on a middleware predating the cloud
-      // backend, so every one falls back to "local / unavailable".
-      setProvider(data.provider === 'cloud' ? 'cloud' : 'local');
-      setCloudEnabled(Boolean(data.cloud_enabled));
-      setCloudConfigured(Boolean(data.cloud_configured));
-      setCloudUrl(data.cloud_url || '');
-      setCloudModel(data.cloud_model || '');
+      applyConfigPayload(await res.json());
     } catch (e: any) {
       setSettingsError(e.message || 'Failed to load settings');
     } finally {
       setSettingsLoading(false);
     }
-  }, []);
+  }, [applyConfigPayload]);
+
+  // The header shows the active model at all times, so the config has to be read
+  // on mount rather than only when the settings modal opens.
+  useEffect(() => {
+    loadSettings();
+  }, [loadSettings]);
 
   // Fetch the cloud model list. The middleware queries the cloud host with its
   // own key, so the key never reaches the browser.
@@ -270,6 +353,63 @@ const ChatPanel: React.FC = () => {
     cloudModel,
   ]);
 
+  /**
+   * Switch model from the header. Writes straight through to the middleware —
+   * there is no Save step here — and records the change in the transcript so a
+   * later reader can tell which model produced which answer.
+   *
+   * `preprocessing` is deliberately omitted from the payload: sending it would
+   * trip the middleware's auto-clear of the image cache, forcing every attached
+   * series to be re-fetched and re-preprocessed just because a model changed.
+   */
+  const applyModelSelection = useCallback(
+    async (nextProvider: ProviderName, nextModel: string) => {
+      if (nextProvider === provider && nextModel === activeModelTag) {
+        setIsModelMenuOpen(false);
+        return;
+      }
+      setModelError(null);
+      try {
+        const res = await fetch(`${getChatApiBase()}/debug/config`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            nextProvider === 'cloud'
+              ? { provider: 'cloud', cloud_model: nextModel }
+              : { provider: 'local', model: nextModel }
+          ),
+        });
+        if (!res.ok) {
+          let detail = `Failed to switch model: ${res.status}`;
+          try {
+            const body = await res.json();
+            if (body?.detail) {
+              detail = body.detail;
+            }
+          } catch (_) {
+            // response had no JSON body; keep the status-based message
+          }
+          throw new Error(detail);
+        }
+        setProvider(nextProvider);
+        if (nextProvider === 'cloud') {
+          setCloudModel(nextModel);
+        } else {
+          setOllamaModel(nextModel);
+        }
+        setIsModelMenuOpen(false);
+        // Only annotate an in-progress conversation: on an empty transcript the
+        // header already states the model, so an event would be noise.
+        if (messages.length > 0) {
+          appendEvent(`Model changed to ${shortModelLabel(nextModel) || nextModel}`);
+        }
+      } catch (e: any) {
+        setModelError(e.message || 'Failed to switch model');
+      }
+    },
+    [provider, activeModelTag, messages.length, appendEvent]
+  );
+
   // Clear image cache
   const clearCache = useCallback(async () => {
     setSettingsLoading(true);
@@ -292,8 +432,9 @@ const ChatPanel: React.FC = () => {
     }
   }, [servicesManager]);
 
-  // Open settings modal and load current config
+  // Open settings modal and refresh current config
   const openSettings = useCallback(() => {
+    setIsOverflowMenuOpen(false);
     setIsSettingsOpen(true);
     loadSettings();
   }, [loadSettings]);
@@ -318,17 +459,18 @@ const ChatPanel: React.FC = () => {
   // toggle's label does not change as it is ticked.
   const textOnlyCount = cloudModels.filter(m => !m.supports_vision).length;
 
-  // Populate the cloud model list once the cloud backend is actually selected.
-  // Not fetched on mount: it costs an /api/tags plus one /api/show per model
-  // upstream, which is wasted on the far more common local-only deployment.
-  // `cloudModelsError` is in the guard so a failed fetch does not retry forever;
-  // the Refresh button is the way back.
+  const cloudUsable = cloudEnabled && cloudConfigured;
+
+  // Populate the cloud model list when the cloud backend is reachable and a
+  // surface that lists models is open. Not fetched on mount: it costs an
+  // /api/tags plus one /api/show per model upstream, which is wasted on the far
+  // more common local-only deployment. `cloudModelsError` is in the guard so a
+  // failed fetch does not retry forever; Refresh is the way back.
   useEffect(() => {
+    const wantsList = isModelMenuOpen || (isSettingsOpen && provider === 'cloud');
     if (
-      isSettingsOpen &&
-      provider === 'cloud' &&
-      cloudEnabled &&
-      cloudConfigured &&
+      wantsList &&
+      cloudUsable &&
       cloudModels.length === 0 &&
       !cloudModelsLoading &&
       !cloudModelsError
@@ -336,10 +478,10 @@ const ChatPanel: React.FC = () => {
       loadCloudModels();
     }
   }, [
+    isModelMenuOpen,
     isSettingsOpen,
     provider,
-    cloudEnabled,
-    cloudConfigured,
+    cloudUsable,
     cloudModels.length,
     cloudModelsLoading,
     cloudModelsError,
@@ -354,56 +496,89 @@ const ChatPanel: React.FC = () => {
     StudyInstanceUIDs,
   });
 
-  // Load series for active study
-  const loadSeriesForStudy = useCallback(
-    (studyUID: string) => {
+  /** Study-level metadata plus selectable series, read from the display sets. */
+  const collectStudy = useCallback(
+    (studyUID: string): { info: StudyLabelSource; series: ChatSeriesInfo[] } => {
+      const info: StudyLabelSource = { StudyInstanceUID: studyUID };
       if (!displaySetService) {
-        return;
+        return { info, series: [] };
       }
 
-      const displaySets = displaySetService.getActiveDisplaySets();
-      const studyDisplaySets = displaySets.filter(
+      const displaySets = displaySetService.getActiveDisplaySets() || [];
+      // `any[]`: OHIF's DisplaySet type omits the study-level tags (StudyDate,
+      // StudyDescription) that are present on the runtime objects.
+      const studyDisplaySets: any[] = displaySets.filter(
         (ds: any) =>
           ds.StudyInstanceUID === studyUID && ds.Modality !== 'SR' && ds.Modality !== 'SC'
       );
 
-      const seriesInfo: ChatSeriesInfo[] = studyDisplaySets.map((ds: any) => ({
+      const tags = resolveStudyTags(studyUID, studyDisplaySets);
+      info.StudyDate = tags.StudyDate;
+      info.StudyDescription = tags.StudyDescription;
+
+      const series: ChatSeriesInfo[] = studyDisplaySets.map((ds: any) => ({
         SeriesInstanceUID: ds.SeriesInstanceUID,
         SeriesDescription: ds.SeriesDescription || `Series ${ds.SeriesNumber || 'N/A'}`,
         SeriesNumber: ds.SeriesNumber || 0,
         Modality: ds.Modality || 'Unknown',
         numImageFrames: ds.numImageFrames || ds.instances?.length || 0,
       }));
+      series.sort((a, b) => a.SeriesNumber - b.SeriesNumber);
 
-      // Sort by series number
-      seriesInfo.sort((a, b) => a.SeriesNumber - b.SeriesNumber);
-
-      setAvailableSeries(seriesInfo);
+      return { info, series };
     },
     [displaySetService]
   );
 
-  // Track active study
+  /** Refresh the series list + study metadata for whatever the prompt targets. */
+  const reloadPromptStudy = useCallback(
+    (studyUID: string) => {
+      const { info, series } = collectStudy(studyUID);
+      setPromptStudyInfo(info);
+      setAvailableSeries(series);
+    },
+    [collectStudy]
+  );
+
+  // Sync from the viewport grid, which is an external system with no subscription
+  // API here — hence reading it in an effect.
+  //
+  // Tracking the viewer and adopting its study are done in ONE effect on purpose:
+  // splitting them would publish `viewerStudyUID` in an intermediate render where
+  // the prompt has not caught up yet, so the divergence banner would flash for a
+  // frame on every ordinary study change while following.
+  //
+  // `contextMode` is a dependency so that un-pinning re-runs this and adopts
+  // whatever the viewer has since moved to.
   useEffect(() => {
     const studyUID = getStudyUIDFromActiveViewport();
-    if (studyUID && studyUID !== activeStudyUID) {
-      setActiveStudyUID(studyUID);
-      loadSeriesForStudy(studyUID);
-      // Clear selection when study changes
+    if (!studyUID) {
+      return;
+    }
+    if (studyUID !== viewerStudyUID) {
+      setViewerStudyUID(studyUID);
+    }
+    // Once pinned, a viewport change leaves the prompt alone and surfaces the
+    // divergence banner instead of silently retargeting the question.
+    if (contextMode === 'following' && studyUID !== promptStudyUID) {
+      setPromptStudyUID(studyUID);
       setSelectedSeriesUIDs(new Set());
+      reloadPromptStudy(studyUID);
     }
   }, [
     activeViewportId,
     viewports,
     getStudyUIDFromActiveViewport,
-    activeStudyUID,
-    loadSeriesForStudy,
+    viewerStudyUID,
+    contextMode,
+    promptStudyUID,
+    reloadPromptStudy,
   ]);
 
-  // Refresh the series context list when display sets arrive/change for the
-  // active study (the study-tracking effect above only reloads on study-UID change).
+  // Refresh the prompt's series when display sets arrive/change (the effect above
+  // only fires on a study-UID change, and series hydrate asynchronously).
   useEffect(() => {
-    if (!activeStudyUID || !displaySetService?.subscribe || !displaySetService?.EVENTS) {
+    if (!promptStudyUID || !displaySetService?.subscribe || !displaySetService?.EVENTS) {
       return;
     }
     const events = [
@@ -414,15 +589,65 @@ const ChatPanel: React.FC = () => {
       return;
     }
     const subscriptions = events.map(evt =>
-      displaySetService.subscribe(evt, () => loadSeriesForStudy(activeStudyUID))
+      displaySetService.subscribe(evt, () => reloadPromptStudy(promptStudyUID))
     );
     return () => subscriptions.forEach(sub => sub?.unsubscribe?.());
-  }, [displaySetService, activeStudyUID, loadSeriesForStudy]);
+  }, [displaySetService, promptStudyUID, reloadPromptStudy]);
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  /** Pin the context. Called from every action that invests in the prompt. */
+  const pinContext = useCallback(() => setContextMode('pinned'), []);
+
+  /** The viewer moved to a different study than the one the prompt will send. */
+  const viewerHasDiverged =
+    contextMode === 'pinned' &&
+    !!viewerStudyUID &&
+    !!promptStudyUID &&
+    viewerStudyUID !== promptStudyUID;
+
+  /** Re-target the prompt at whatever the viewport currently shows. */
+  const adoptViewerStudy = useCallback(() => {
+    if (!viewerStudyUID) {
+      return;
+    }
+    setPromptStudyUID(viewerStudyUID);
+    setSelectedSeriesUIDs(new Set());
+    reloadPromptStudy(viewerStudyUID);
+    // Stay pinned while a half-written question is in the composer: the user
+    // asked for THIS study, and resuming follow-mode would let the next viewport
+    // change move the context out from under them again.
+    if (!inputValue.trim()) {
+      setContextMode('following');
+    }
+  }, [viewerStudyUID, reloadPromptStudy, inputValue]);
+
+  // Series attached to the next message, in display order.
+  const attachedSeries = useMemo(
+    () => availableSeries.filter(s => selectedSeriesUIDs.has(s.SeriesInstanceUID)),
+    [availableSeries, selectedSeriesUIDs]
+  );
+
+  const promptStudyLabel = formatStudyLabel(promptStudyInfo);
+  const viewerStudyLabel = useMemo(
+    () =>
+      viewerHasDiverged && viewerStudyUID
+        ? formatStudyLabel(collectStudy(viewerStudyUID).info)
+        : '',
+    [viewerHasDiverged, viewerStudyUID, collectStudy]
+  );
+
+  const sliceRecipe = useMemo(
+    () => ({
+      numSlices,
+      strategy: sliceStrategy,
+      centralPercentage: sliceStrategy === 'central' ? centralPercentage : undefined,
+    }),
+    [numSlices, sliceStrategy, centralPercentage]
+  );
 
   // Handle send message
   const handleSend = useCallback(() => {
@@ -430,11 +655,44 @@ const ChatPanel: React.FC = () => {
       return;
     }
 
-    const seriesUIDs = selectedSeriesUIDs.size > 0 ? Array.from(selectedSeriesUIDs) : undefined;
-    sendMessage(inputValue.trim(), activeStudyUID || undefined, seriesUIDs);
+    const seriesUIDs = attachedSeries.map(s => s.SeriesInstanceUID);
+    const snapshotSeries: SnapshotSeries[] = attachedSeries.map(s => ({
+      seriesInstanceUID: s.SeriesInstanceUID,
+      description: s.SeriesDescription,
+      modality: s.Modality,
+      numFrames: s.numImageFrames,
+    }));
+
+    // Captured now, from the state in force at this instant. Everything the
+    // message claims about its own context comes from here afterwards.
+    const snapshot = buildPromptContextSnapshot({
+      studyInstanceUID: promptStudyUID || '',
+      study: promptStudyInfo,
+      series: snapshotSeries,
+      provider,
+      model: activeModelTag,
+      sliceRecipe,
+    });
+
+    sendMessage(
+      inputValue.trim(),
+      promptStudyUID || undefined,
+      seriesUIDs.length > 0 ? seriesUIDs : undefined,
+      snapshot
+    );
     setInputValue('');
     inputRef.current?.focus();
-  }, [inputValue, isStreaming, activeStudyUID, selectedSeriesUIDs, sendMessage]);
+  }, [
+    inputValue,
+    isStreaming,
+    attachedSeries,
+    promptStudyUID,
+    promptStudyInfo,
+    provider,
+    activeModelTag,
+    sliceRecipe,
+    sendMessage,
+  ]);
 
   // Handle key press
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -444,8 +702,17 @@ const ChatPanel: React.FC = () => {
     }
   };
 
+  // Typing invests in the prompt, so the context stops following the viewer.
+  const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setInputValue(e.target.value);
+    if (e.target.value.trim()) {
+      pinContext();
+    }
+  };
+
   // Toggle series selection
   const toggleSeries = (seriesUID: string) => {
+    pinContext();
     setSelectedSeriesUIDs(prev => {
       const newSet = new Set(prev);
       if (newSet.has(seriesUID)) {
@@ -457,14 +724,193 @@ const ChatPanel: React.FC = () => {
     });
   };
 
-  // Select/clear all series
-  const selectAllSeries = () => {
-    setSelectedSeriesUIDs(new Set(availableSeries.map(s => s.SeriesInstanceUID)));
+  const toggleSnapshot = (messageId: string) => {
+    setExpandedSnapshotIds(prev => {
+      const next = new Set(prev);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
   };
 
-  const clearSeriesSelection = () => {
-    setSelectedSeriesUIDs(new Set());
+  const toggleThinking = (messageId: string) => {
+    setExpandedThinkingIds(prev => {
+      const next = new Set(prev);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
   };
+
+  // ---------------------------------------------------------------------------
+  // Header
+  // ---------------------------------------------------------------------------
+
+  const renderModelMenu = () => (
+    <div
+      ref={modelMenuRef}
+      className="relative"
+    >
+      <button
+        type="button"
+        onClick={() => setIsModelMenuOpen(o => !o)}
+        title="Model"
+        aria-label="Model"
+        aria-haspopup="listbox"
+        aria-expanded={isModelMenuOpen}
+        className="border-input hover:bg-accent text-foreground flex max-w-[9rem] items-center gap-1 rounded border px-2 py-1 text-xs"
+      >
+        <span className="truncate">{activeModelLabel || 'No model'}</span>
+        <span className="text-muted-foreground">▾</span>
+      </button>
+
+      {isModelMenuOpen && (
+        <div
+          role="listbox"
+          className="border-input bg-muted absolute right-0 z-50 mt-1 max-h-80 w-72 overflow-y-auto rounded border shadow-lg"
+        >
+          <div className="text-muted-foreground px-3 pb-1 pt-2 text-[11px] font-semibold uppercase">
+            Local
+          </div>
+          {ollamaModel ? (
+            <button
+              type="button"
+              role="option"
+              aria-selected={provider === 'local'}
+              onClick={() => applyModelSelection('local', ollamaModel)}
+              className="hover:bg-accent block w-full px-3 py-2 text-left"
+            >
+              <div className="text-foreground truncate text-xs">{ollamaModel}</div>
+              <div className="text-muted-foreground text-[11px]">
+                Self-hosted{provider === 'local' ? ' · in use' : ''}
+              </div>
+            </button>
+          ) : (
+            <div className="text-muted-foreground px-3 py-2 text-xs">No local model configured</div>
+          )}
+
+          <div className="text-muted-foreground border-input mt-1 border-t px-3 pb-1 pt-2 text-[11px] font-semibold uppercase">
+            Ollama Cloud
+          </div>
+          {!cloudEnabled ? (
+            <div className="text-muted-foreground px-3 py-2 text-[11px]">
+              Disabled on this deployment (<code>ALLOW_CLOUD_BACKEND</code>).
+            </div>
+          ) : !cloudConfigured ? (
+            <div className="text-muted-foreground px-3 py-2 text-[11px]">
+              No API key configured (<code>OLLAMA_API_KEY</code>).
+            </div>
+          ) : cloudModelsLoading ? (
+            <div className="text-muted-foreground px-3 py-2 text-xs">Loading models…</div>
+          ) : cloudModelsError ? (
+            <div className="px-3 py-2 text-[11px] text-red-300">{cloudModelsError}</div>
+          ) : (
+            <>
+              {/* Sending a study off-site is the one thing a user must not
+                  discover after the fact. */}
+              <div className="px-3 pb-1 text-[11px] text-amber-300">
+                Uploads slices to {cloudUrl || 'the cloud provider'}.
+              </div>
+              {visibleCloudModels.map(m => (
+                <button
+                  key={m.name}
+                  type="button"
+                  role="option"
+                  aria-selected={provider === 'cloud' && cloudModel === m.name}
+                  onClick={() => applyModelSelection('cloud', m.name)}
+                  className="hover:bg-accent block w-full px-3 py-2 text-left"
+                >
+                  <div className="text-foreground truncate text-xs">{m.name}</div>
+                  <div className="text-muted-foreground text-[11px]">
+                    {cloudCapabilitiesKnown
+                      ? m.supports_vision
+                        ? 'Vision'
+                        : 'Text only — cannot see the images'
+                      : 'Capabilities unknown'}
+                    {provider === 'cloud' && cloudModel === m.name ? ' · in use' : ''}
+                  </div>
+                </button>
+              ))}
+              {visionOnlyPossible && textOnlyCount > 0 && (
+                <label className="text-muted-foreground border-input flex items-center gap-2 border-t px-3 py-2 text-[11px]">
+                  <input
+                    type="checkbox"
+                    checked={showTextOnlyModels}
+                    onChange={e => setShowTextOnlyModels(e.target.checked)}
+                    className="accent-primary"
+                  />
+                  Show {textOnlyCount} text-only model{textOnlyCount === 1 ? '' : 's'}
+                </label>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderOverflowMenu = () => (
+    <div
+      ref={overflowMenuRef}
+      className="relative"
+    >
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setIsOverflowMenuOpen(o => !o)}
+        title="More options"
+        aria-label="More options"
+      >
+        <span className="text-lg leading-none">⋯</span>
+      </Button>
+
+      {isOverflowMenuOpen && (
+        <div className="border-input bg-muted absolute right-0 z-50 mt-1 w-64 rounded border shadow-lg">
+          <button
+            type="button"
+            onClick={openSettings}
+            title="Settings"
+            className="hover:bg-accent text-foreground block w-full px-3 py-2 text-left text-xs"
+          >
+            Settings…
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              clearHistory();
+              setIsOverflowMenuOpen(false);
+            }}
+            disabled={messages.length === 0}
+            title="Clear history"
+            className="hover:bg-accent text-foreground block w-full px-3 py-2 text-left text-xs disabled:opacity-50"
+          >
+            Clear conversation
+          </button>
+          {/* Debug/audit detail, not clinical information — it used to occupy a
+              permanent header row for no day-to-day benefit. */}
+          <div className="border-input text-muted-foreground break-all border-t px-3 py-2 text-[11px]">
+            {isConnected && sessionId ? `Session: ${sessionId}` : 'Disconnected'}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+
+  const renderHeader = () => (
+    <div className="border-input flex items-center justify-between gap-2 border-b px-3 py-2">
+      <span className="text-foreground truncate text-sm font-semibold">AI Assistant</span>
+      <div className="flex flex-shrink-0 items-center gap-1">
+        {renderModelMenu()}
+        {renderOverflowMenu()}
+      </div>
+    </div>
+  );
 
   // Render connection status
   const renderConnectionStatus = () => {
@@ -485,116 +931,223 @@ const ChatPanel: React.FC = () => {
     return null;
   };
 
-  // Render series context selector
-  const renderContextSelector = () => {
-    return (
-      <div className="border-input border-b">
+  // ---------------------------------------------------------------------------
+  // Prompt context
+  // ---------------------------------------------------------------------------
+
+  const renderPromptContext = () => (
+    <div className="border-input border-t px-3 py-2">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-muted-foreground text-[11px] font-semibold uppercase tracking-wide">
+          Prompt context
+        </span>
         <button
-          onClick={() => setIsContextExpanded(!isContextExpanded)}
-          className="hover:bg-accent flex w-full items-center justify-between px-3 py-2 text-sm"
+          type="button"
+          onClick={() => setContextMode(m => (m === 'following' ? 'pinned' : 'following'))}
+          title={
+            contextMode === 'following'
+              ? 'Context follows the active viewport. Click to pin it.'
+              : 'Context is pinned. Click to follow the active viewport again.'
+          }
+          className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-[11px]"
         >
-          <span className="flex items-center gap-2">
-            <span className="text-muted-foreground">Context:</span>
-            <span className="text-foreground">
-              {selectedSeriesUIDs.size > 0
-                ? `${selectedSeriesUIDs.size} series selected`
-                : 'No series selected'}
-            </span>
-          </span>
-          <span className="text-muted-foreground">{isContextExpanded ? '▲' : '▼'}</span>
+          <span
+            aria-hidden="true"
+            className={`h-1.5 w-1.5 rounded-full ${contextMode === 'following' ? 'bg-highlight' : 'bg-muted-foreground'}`}
+          />
+          {contextMode === 'following' ? 'Following viewer' : 'Pinned'}
+        </button>
+      </div>
+
+      {/* The prompt and the viewport point at different studies. Say which one
+          will actually be sent, and offer the one-click correction. */}
+      {viewerHasDiverged && (
+        <div className="bg-amber-950/40 mb-2 rounded border border-amber-600 px-2 py-1.5 text-[11px] text-amber-200">
+          <div>
+            Viewer moved to <strong>{viewerStudyLabel}</strong> — this prompt still uses{' '}
+            <strong>{promptStudyLabel}</strong>.
+          </div>
+          <button
+            type="button"
+            onClick={adoptViewerStudy}
+            className="mt-1 underline hover:no-underline"
+          >
+            Use current viewer
+          </button>
+        </div>
+      )}
+
+      {promptStudyUID ? (
+        <>
+          <div className="text-foreground mb-1.5 truncate text-xs">{promptStudyLabel}</div>
+
+          <div className="mb-1.5 flex flex-wrap gap-1">
+            {attachedSeries.map(s => (
+              <span
+                key={s.SeriesInstanceUID}
+                className="border-input bg-background text-foreground flex max-w-full items-center gap-1 rounded border px-2 py-0.5 text-[11px]"
+              >
+                <span className="truncate">
+                  {s.SeriesDescription} · {s.numImageFrames} slices
+                </span>
+                <button
+                  type="button"
+                  onClick={() => toggleSeries(s.SeriesInstanceUID)}
+                  title={`Remove ${s.SeriesDescription}`}
+                  aria-label={`Remove ${s.SeriesDescription}`}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+
+            <div
+              ref={seriesPickerRef}
+              className="relative"
+            >
+              <button
+                type="button"
+                onClick={() => setIsSeriesPickerOpen(o => !o)}
+                className="border-input hover:bg-accent text-muted-foreground rounded border border-dashed px-2 py-0.5 text-[11px]"
+              >
+                + Add series
+              </button>
+              {isSeriesPickerOpen && (
+                <div className="border-input bg-muted absolute bottom-full left-0 z-50 mb-1 max-h-48 w-64 overflow-y-auto rounded border shadow-lg">
+                  {availableSeries.length === 0 ? (
+                    <div className="text-muted-foreground px-3 py-2 text-xs">
+                      No series available
+                    </div>
+                  ) : (
+                    availableSeries.map(s => {
+                      const isSelected = selectedSeriesUIDs.has(s.SeriesInstanceUID);
+                      return (
+                        <button
+                          key={s.SeriesInstanceUID}
+                          type="button"
+                          onClick={() => toggleSeries(s.SeriesInstanceUID)}
+                          className="hover:bg-accent flex w-full items-start gap-2 px-3 py-2 text-left"
+                        >
+                          <span
+                            aria-hidden="true"
+                            className={`mt-0.5 h-3 w-3 flex-shrink-0 rounded border ${isSelected ? 'bg-primary border-primary' : 'border-input'}`}
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="text-foreground block truncate text-xs">
+                              {s.SeriesDescription}
+                            </span>
+                            <span className="text-muted-foreground block text-[11px]">
+                              {s.Modality} · {s.numImageFrames} slices
+                            </span>
+                          </span>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* What will actually be sent, in the terms the middleware uses. Phase 2
+              replaces this read-only line with a slice-range slider. */}
+          <div className="text-muted-foreground text-[11px]">
+            {attachedSeries.length === 0
+              ? 'No series attached — the model will answer from the conversation only.'
+              : `Sends ${formatSliceRecipe(sliceRecipe)}`}
+          </div>
+        </>
+      ) : (
+        <div className="text-muted-foreground text-xs">No study open in the viewer.</div>
+      )}
+    </div>
+  );
+
+  // ---------------------------------------------------------------------------
+  // Messages
+  // ---------------------------------------------------------------------------
+
+  /** The immutable record of what a message was sent with. */
+  const renderSnapshot = (message: ChatMessage) => {
+    const snapshot = message.promptContext;
+    if (!snapshot) {
+      return null;
+    }
+    const isExpanded = expandedSnapshotIds.has(message.id);
+    const summary = formatSnapshotSummary(snapshot, shortModelLabel(snapshot.model));
+
+    return (
+      <div className="mt-1.5">
+        <button
+          type="button"
+          onClick={() => toggleSnapshot(message.id)}
+          title="What this message was sent with"
+          className="text-muted-foreground hover:text-foreground flex w-full items-center gap-1 text-left text-[11px]"
+        >
+          <span className="truncate">{summary}</span>
+          <span aria-hidden="true">{isExpanded ? '▲' : '▼'}</span>
         </button>
 
-        {isContextExpanded && (
-          <div className="px-3 pb-3">
-            {activeStudyUID && (
-              <div className="text-muted-foreground mb-2 break-all text-xs">
-                Study: {activeStudyUID.slice(0, 30)}...
-              </div>
-            )}
-
-            {availableSeries.length === 0 ? (
-              <div className="text-muted-foreground text-xs">No series available</div>
-            ) : (
+        {isExpanded && (
+          <dl className="border-input text-muted-foreground mt-1 space-y-0.5 border-l pl-2 text-[11px]">
+            <div>
+              <dt className="inline font-semibold">Study: </dt>
+              <dd className="inline">{snapshot.studyLabel}</dd>
+            </div>
+            <div>
+              <dt className="inline font-semibold">Series: </dt>
+              <dd className="inline">
+                {snapshot.series.length > 0
+                  ? snapshot.series.map(s => s.description).join(', ')
+                  : 'none'}
+              </dd>
+            </div>
+            {snapshot.series.length > 0 && (
               <>
-                {/* Action buttons */}
-                <div className="mb-2 flex gap-2">
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={selectAllSeries}
-                  >
-                    Select All
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={clearSeriesSelection}
-                  >
-                    Clear
-                  </Button>
+                <div>
+                  <dt className="inline font-semibold">Slices: </dt>
+                  <dd className="inline">{formatSliceRecipe(snapshot.sliceRecipe)}</dd>
                 </div>
-
-                {/* Series list */}
-                <div className="max-h-32 space-y-1 overflow-y-auto">
-                  {availableSeries.map(series => {
-                    const isSelected = selectedSeriesUIDs.has(series.SeriesInstanceUID);
-                    return (
-                      <div
-                        key={series.SeriesInstanceUID}
-                        onClick={() => toggleSeries(series.SeriesInstanceUID)}
-                        className={`cursor-pointer rounded p-2 text-xs ${isSelected ? 'bg-primary/20 border-primary border' : 'bg-muted hover:bg-accent'} `}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`h-3 w-3 flex-shrink-0 rounded border ${isSelected ? 'bg-primary border-primary' : 'border-input'} `}
-                          >
-                            {isSelected && (
-                              <svg
-                                viewBox="0 0 24 24"
-                                className="text-primary-foreground h-3 w-3"
-                              >
-                                <path
-                                  fill="currentColor"
-                                  d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"
-                                />
-                              </svg>
-                            )}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-foreground truncate">
-                              {series.SeriesDescription}
-                            </div>
-                            <div className="text-muted-foreground">
-                              {series.Modality} · {series.numImageFrames} frames
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                <div>
+                  {/* "requested", not "sent": the middleware clamps to the real
+                      volume depth, so this is a bound, not a measurement. */}
+                  <dt className="inline font-semibold">Images: </dt>
+                  <dd className="inline">{snapshot.requestedImageCount} requested</dd>
                 </div>
               </>
             )}
-          </div>
+            <div>
+              <dt className="inline font-semibold">Model: </dt>
+              {/* Full tag, quantization included — the display name is not enough
+                  to identify what ran. */}
+              <dd className="inline break-all">
+                {snapshot.model || 'unknown'} ({snapshot.provider})
+              </dd>
+            </div>
+          </dl>
         )}
       </div>
     );
   };
 
-  const toggleThinking = (messageId: string) => {
-    setExpandedThinkingIds(prev => {
-      const next = new Set(prev);
-      if (next.has(messageId)) {
-        next.delete(messageId);
-      } else {
-        next.add(messageId);
-      }
-      return next;
-    });
-  };
-
   // Render a single message
   const renderMessage = (message: ChatMessage) => {
+    // Transcript annotations (model changes) are not turns — render them as a
+    // quiet rule so they read as metadata, not as something anyone said.
+    if (message.role === 'event') {
+      return (
+        <div
+          key={message.id}
+          className="my-3 flex items-center gap-2"
+        >
+          <span className="bg-input h-px flex-1" />
+          <span className="text-muted-foreground text-[11px]">{message.content}</span>
+          <span className="bg-input h-px flex-1" />
+        </div>
+      );
+    }
+
     const isUser = message.role === 'user';
     const isAssistant = message.role === 'assistant';
     const hasThinking = isAssistant && !!message.thinking;
@@ -603,18 +1156,18 @@ const ChatPanel: React.FC = () => {
     return (
       <div
         key={message.id}
-        className={`mb-3 ${isUser ? 'flex justify-end' : ''}`}
+        className="mb-4"
       >
-        <div
-          className={`max-w-[85%] rounded-lg px-3 py-2 ${isUser ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'} `}
-        >
-          {/* Series context indicator for user messages */}
-          {isUser && message.seriesContext && message.seriesContext.length > 0 && (
-            <div className="text-highlight mb-1 text-xs">
-              + {message.seriesContext.length} series context
-            </div>
-          )}
+        <div className="mb-1 flex items-baseline justify-between gap-2">
+          <span className="text-foreground text-xs font-semibold">{isUser ? 'You' : 'AI'}</span>
+          <span className="text-muted-foreground text-[11px]">
+            {message.timestamp.toLocaleTimeString()}
+          </span>
+        </div>
 
+        <div
+          className={`rounded px-3 py-2 ${isUser ? 'bg-primary/15 border-primary/40 border' : 'bg-muted'}`}
+        >
           {/* Assistant thinking (collapsible) */}
           {hasThinking && (
             <div className="mb-2 text-xs">
@@ -639,7 +1192,7 @@ const ChatPanel: React.FC = () => {
           )}
 
           {/* Message content */}
-          <div className="break-words text-sm">
+          <div className="text-foreground break-words text-sm">
             {isAssistant ? (
               <span
                 dangerouslySetInnerHTML={{
@@ -671,10 +1224,7 @@ const ChatPanel: React.FC = () => {
             </div>
           )}
 
-          {/* Timestamp */}
-          <div className="text-muted-foreground mt-1 text-xs">
-            {message.timestamp.toLocaleTimeString()}
-          </div>
+          {renderSnapshot(message)}
         </div>
       </div>
     );
@@ -773,7 +1323,7 @@ const ChatPanel: React.FC = () => {
                 <>
                   {/* The single most important thing a user needs to know before
                       sending a study to a hosted model. */}
-                  <div className="mb-3 rounded border border-amber-600 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+                  <div className="bg-amber-950/40 mb-3 rounded border border-amber-600 px-3 py-2 text-xs text-amber-200">
                     <strong>Images leave this network.</strong> The selected DICOM slices are
                     uploaded to {cloudUrl || 'the cloud provider'} for analysis. Do not use this
                     with patient data unless your institution permits it.
@@ -874,8 +1424,8 @@ const ChatPanel: React.FC = () => {
                       )
                     ) : (
                       <p className="text-muted-foreground mt-1 text-xs">
-                        This host did not report model capabilities, so vision support is unknown.
-                        A model that cannot accept images will fail when you send a message.
+                        This host did not report model capabilities, so vision support is unknown. A
+                        model that cannot accept images will fail when you send a message.
                       </p>
                     )}
                   </div>
@@ -1054,29 +1604,18 @@ const ChatPanel: React.FC = () => {
       {renderSettingsModal()}
 
       <div className="flex h-full min-h-0 flex-col">
-        {/* Header with settings button */}
-        <div className="border-input flex items-center justify-between border-b px-3 py-2">
-          <span className="text-muted-foreground text-xs">
-            {isConnected ? `Session: ${sessionId?.slice(0, 8)}...` : 'Disconnected'}
-          </span>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={openSettings}
-            title="Settings"
-            aria-label="Settings"
-          >
-            <Icons.GearSettings className="h-5 w-5" />
-          </Button>
-        </div>
+        {renderHeader()}
+
+        {modelError && (
+          <div className="border-b border-red-700 bg-red-900/50 px-3 py-2 text-xs text-red-300">
+            {modelError}
+          </div>
+        )}
 
         {/* Connection status */}
         {renderConnectionStatus()}
 
-        {/* Context selector */}
-        {renderContextSelector()}
-
-        {/* Scrollable messages + fixed input */}
+        {/* Scrollable messages + fixed context/input */}
         <div className="flex min-h-0 flex-1 flex-col">
           {/* Messages area */}
           <div className="flex-1 overflow-y-auto p-3">
@@ -1084,7 +1623,7 @@ const ChatPanel: React.FC = () => {
               <div className="text-muted-foreground flex h-full flex-col items-center justify-center text-sm">
                 <div className="mb-2">No messages yet</div>
                 <div className="text-center text-xs">
-                  Select series above for context, then ask questions about your study.
+                  Attach series below, then ask questions about your study.
                 </div>
               </div>
             ) : (
@@ -1098,48 +1637,44 @@ const ChatPanel: React.FC = () => {
           {/* Error display */}
           {renderError()}
 
+          {/* Prompt context sits directly above the composer: it describes what
+              the next message will carry, not what past ones did. */}
+          {renderPromptContext()}
+
           {/* Input area */}
           <div className="border-input border-t p-3">
             <div className="flex gap-2">
               <textarea
                 ref={inputRef}
                 value={inputValue}
-                onChange={e => setInputValue(e.target.value)}
+                onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                placeholder={isConnected ? 'Ask about this study...' : 'Connecting...'}
+                placeholder={isConnected ? 'Ask about these images...' : 'Connecting...'}
                 disabled={!isConnected}
                 rows={2}
                 className={`${TEXTAREA_CLASS} flex-1 resize-none`}
               />
-              <div className="flex flex-col gap-1">
-                {isStreaming ? (
-                  <Button
-                    variant="destructive"
-                    onClick={cancelGeneration}
-                    title="Cancel"
-                  >
-                    ■
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={handleSend}
-                    disabled={!isConnected || !inputValue.trim()}
-                    title="Send"
-                  >
-                    ▶
-                  </Button>
-                )}
+              {isStreaming ? (
                 <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={clearHistory}
-                  disabled={messages.length === 0}
-                  title="Clear history"
+                  variant="destructive"
+                  onClick={cancelGeneration}
+                  title="Cancel"
                 >
-                  Clear
+                  ■
                 </Button>
-              </div>
+              ) : (
+                <Button
+                  onClick={handleSend}
+                  disabled={!isConnected || !inputValue.trim()}
+                  title="Send"
+                >
+                  ➤
+                </Button>
+              )}
             </div>
+            <p className="text-muted-foreground mt-1.5 text-center text-[11px]">
+              AI responses are experimental and not a substitute for professional judgment.
+            </p>
           </div>
         </div>
       </div>
