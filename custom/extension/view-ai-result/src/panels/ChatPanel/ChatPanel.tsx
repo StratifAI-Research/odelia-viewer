@@ -131,6 +131,12 @@ const ChatPanel: React.FC = () => {
   const [cloudModelsLoading, setCloudModelsLoading] = useState(false);
   const [cloudModelsError, setCloudModelsError] = useState<string | null>(null);
   const [cloudCapabilitiesKnown, setCloudCapabilitiesKnown] = useState(true);
+  // Text-only models are hidden by default: this chat sends DICOM slices as
+  // images, so a model without vision cannot see the study at all, and most of
+  // the cloud catalogue is text-only. Kept behind a toggle rather than dropped
+  // outright, because a text-only model is still a legitimate choice for asking
+  // about conversation history alone, and because capability data can be absent.
+  const [showTextOnlyModels, setShowTextOnlyModels] = useState(false);
 
   // Ollama options state
   const [ollamaThink, setOllamaThink] = useState<boolean | null>(null);
@@ -296,6 +302,21 @@ const ChatPanel: React.FC = () => {
   // Undefined for a free-text entry, which is why the "no vision" warning below
   // is only shown for a model we actually have capability data for.
   const selectedCloudModelInfo = cloudModels.find(m => m.name === cloudModel);
+
+  // Vision-capable models first and, by default, only those.
+  //
+  // Filtering is skipped when the host reported no capabilities at all, since
+  // every model would then look text-only and the list would come up empty.
+  // The currently-selected model is always kept visible so the dropdown can
+  // still display what is actually in effect.
+  const visionOnlyPossible = cloudCapabilitiesKnown;
+  const visibleCloudModels =
+    showTextOnlyModels || !visionOnlyPossible
+      ? cloudModels
+      : cloudModels.filter(m => m.supports_vision || m.name === cloudModel);
+  // Counted from the full catalogue, not from what is hidden right now, so the
+  // toggle's label does not change as it is ticked.
+  const textOnlyCount = cloudModels.filter(m => !m.supports_vision).length;
 
   // Populate the cloud model list once the cloud backend is actually selected.
   // Not fetched on mount: it costs an /api/tags plus one /api/show per model
@@ -794,13 +815,13 @@ const ChatPanel: React.FC = () => {
                           <SelectValue placeholder="Select a model" />
                         </SelectTrigger>
                         <SelectContent>
-                          {cloudModels.map(m => (
+                          {visibleCloudModels.map(m => (
                             <SelectItem
                               key={m.name}
                               value={m.name}
                             >
                               {m.name}
-                              {m.supports_vision ? ' — vision' : ''}
+                              {m.supports_vision ? ' — vision' : ' — text only'}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -815,6 +836,23 @@ const ChatPanel: React.FC = () => {
                         onChange={e => setCloudModel(e.target.value)}
                         placeholder="e.g. qwen3.5"
                       />
+                    )}
+
+                    {/* Text-only models are hidden by default rather than merely
+                        flagged: alphabetically the catalogue leads with several
+                        that cannot see the study, so an unfiltered list offers an
+                        unusable model first. */}
+                    {visionOnlyPossible && textOnlyCount > 0 && (
+                      <label className="text-muted-foreground mt-2 flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={showTextOnlyModels}
+                          onChange={e => setShowTextOnlyModels(e.target.checked)}
+                          className="accent-primary"
+                        />
+                        Show {textOnlyCount} text-only model
+                        {textOnlyCount === 1 ? '' : 's'} (cannot see the images)
+                      </label>
                     )}
 
                     {/* This chat sends images, and many cloud models are text-only,

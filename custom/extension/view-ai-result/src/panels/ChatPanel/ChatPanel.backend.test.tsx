@@ -113,6 +113,100 @@ describe('ChatPanel backend selector', () => {
     expect(listCalls).toHaveLength(0);
   });
 
+  it('hides text-only models by default and offers a toggle to reveal them', async () => {
+    // The catalogue is alphabetical, so an unfiltered list leads with models that
+    // cannot see the study (e.g. deepseek-*). Vision-capable only, by default.
+    routeFetch({
+      '/debug/config': jsonOk({
+        ...BASE_CONFIG,
+        provider: 'cloud',
+        cloud_enabled: true,
+        cloud_configured: true,
+        cloud_model: '',
+      }),
+      '/cloud/models': jsonOk({
+        capabilities_reported: true,
+        models: [
+          { name: 'deepseek-v4-flash:0731', capabilities: ['completion'], supports_vision: false },
+          { name: 'glm-5.2', capabilities: ['completion'], supports_vision: false },
+          { name: 'qwen3.5:397b', capabilities: ['completion', 'vision'], supports_vision: true },
+        ],
+      }),
+    });
+    await openSettings();
+
+    // The toggle names how many are hidden.
+    const toggle = screen.getByRole('checkbox');
+    expect(screen.getByText(/Show 2 text-only models/)).toBeTruthy();
+
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText(/Cloud model/i));
+    });
+    // Only the vision model is offered.
+    expect(screen.queryByText(/deepseek-v4-flash:0731/)).toBeNull();
+    expect(screen.getByText(/qwen3\.5:397b — vision/)).toBeTruthy();
+
+    // Ticking the toggle reveals the rest, labelled as text only.
+    await act(async () => {
+      fireEvent.click(toggle);
+    });
+    expect(screen.getByText(/deepseek-v4-flash:0731 — text only/)).toBeTruthy();
+  });
+
+  it('keeps an already-selected text-only model visible', async () => {
+    // Otherwise the dropdown could not display the setting actually in effect.
+    routeFetch({
+      '/debug/config': jsonOk({
+        ...BASE_CONFIG,
+        provider: 'cloud',
+        cloud_enabled: true,
+        cloud_configured: true,
+        cloud_model: 'glm-5.2',
+      }),
+      '/cloud/models': jsonOk({
+        capabilities_reported: true,
+        models: [
+          { name: 'glm-5.2', capabilities: ['completion'], supports_vision: false },
+          { name: 'qwen3.5:397b', capabilities: ['completion', 'vision'], supports_vision: true },
+        ],
+      }),
+    });
+    await openSettings();
+
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText(/Cloud model/i));
+    });
+    expect(screen.getByText(/glm-5\.2 — text only/)).toBeTruthy();
+  });
+
+  it('does not filter when the host reported no capabilities', async () => {
+    // Every model would look text-only and the list would come up empty.
+    routeFetch({
+      '/debug/config': jsonOk({
+        ...BASE_CONFIG,
+        provider: 'cloud',
+        cloud_enabled: true,
+        cloud_configured: true,
+      }),
+      '/cloud/models': jsonOk({
+        capabilities_reported: false,
+        models: [
+          { name: 'unknown-a:1b', capabilities: [], supports_vision: false },
+          { name: 'unknown-b:1b', capabilities: [], supports_vision: false },
+        ],
+      }),
+    });
+    await openSettings();
+
+    // No filter toggle, since filtering would be meaningless.
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText(/Cloud model/i));
+    });
+    expect(screen.getByText(/unknown-a:1b/)).toBeTruthy();
+    expect(screen.getByText(/unknown-b:1b/)).toBeTruthy();
+  });
+
   it('warns that images leave the network and lists models with vision flags', async () => {
     routeFetch({
       '/debug/config': jsonOk({
