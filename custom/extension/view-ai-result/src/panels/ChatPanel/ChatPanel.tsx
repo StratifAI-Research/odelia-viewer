@@ -60,6 +60,16 @@ const SLICE_STRATEGIES = [
   { value: 'last_n', label: 'Last N' },
 ];
 
+/** Which LLM backend the middleware routes chat to. */
+type ProviderName = 'local' | 'cloud';
+
+/** A model offered by the cloud backend, as reported by the middleware. */
+interface CloudModelInfo {
+  name: string;
+  capabilities: string[];
+  supports_vision: boolean;
+}
+
 /**
  * ChatPanel - AI Chat panel for discussing studies
  * MVP with basic chat UI and series context selection
@@ -106,6 +116,22 @@ const ChatPanel: React.FC = () => {
   // Model state
   const [ollamaModel, setOllamaModel] = useState('');
 
+  // Backend provider state.
+  //
+  // `cloudEnabled` mirrors the operator gate (ALLOW_CLOUD_BACKEND) and
+  // `cloudConfigured` reports whether the middleware holds an API key. The key
+  // itself is never sent to the browser — it lives only on the middleware — so
+  // there is deliberately no key field here.
+  const [provider, setProvider] = useState<ProviderName>('local');
+  const [cloudEnabled, setCloudEnabled] = useState(false);
+  const [cloudConfigured, setCloudConfigured] = useState(false);
+  const [cloudUrl, setCloudUrl] = useState('');
+  const [cloudModel, setCloudModel] = useState('');
+  const [cloudModels, setCloudModels] = useState<CloudModelInfo[]>([]);
+  const [cloudModelsLoading, setCloudModelsLoading] = useState(false);
+  const [cloudModelsError, setCloudModelsError] = useState<string | null>(null);
+  const [cloudCapabilitiesKnown, setCloudCapabilitiesKnown] = useState(true);
+
   // Ollama options state
   const [ollamaThink, setOllamaThink] = useState<boolean | null>(null);
   const [ollamaSuffix, setOllamaSuffix] = useState('');
@@ -135,10 +161,49 @@ const ChatPanel: React.FC = () => {
       // Ollama options
       setOllamaThink(data.ollama_options?.think ?? null);
       setOllamaSuffix(data.ollama_options?.suffix || '');
+      // Backend provider. Fields are absent on a middleware predating the cloud
+      // backend, so every one falls back to "local / unavailable".
+      setProvider(data.provider === 'cloud' ? 'cloud' : 'local');
+      setCloudEnabled(Boolean(data.cloud_enabled));
+      setCloudConfigured(Boolean(data.cloud_configured));
+      setCloudUrl(data.cloud_url || '');
+      setCloudModel(data.cloud_model || '');
     } catch (e: any) {
       setSettingsError(e.message || 'Failed to load settings');
     } finally {
       setSettingsLoading(false);
+    }
+  }, []);
+
+  // Fetch the cloud model list. The middleware queries the cloud host with its
+  // own key, so the key never reaches the browser.
+  const loadCloudModels = useCallback(async () => {
+    setCloudModelsLoading(true);
+    setCloudModelsError(null);
+    try {
+      const res = await fetch(`${getChatApiBase()}/debug/cloud/models`);
+      if (!res.ok) {
+        // The middleware returns a specific reason (gate off, key rejected);
+        // surfacing it beats a generic failure the user cannot act on.
+        let detail = `Failed to list models: ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.detail) {
+            detail = body.detail;
+          }
+        } catch (_) {
+          // response had no JSON body; keep the status-based message
+        }
+        throw new Error(detail);
+      }
+      const data = await res.json();
+      setCloudModels(Array.isArray(data.models) ? data.models : []);
+      setCloudCapabilitiesKnown(data.capabilities_reported !== false);
+    } catch (e: any) {
+      setCloudModels([]);
+      setCloudModelsError(e.message || 'Failed to list models');
+    } finally {
+      setCloudModelsLoading(false);
     }
   }, []);
 
@@ -162,10 +227,24 @@ const ChatPanel: React.FC = () => {
             think: ollamaThink,
             suffix: ollamaSuffix || null,
           },
+          provider,
+          cloud_model: cloudModel || undefined,
         }),
       });
       if (!res.ok) {
-        throw new Error(`Failed to save: ${res.status}`);
+        // The middleware rejects an unusable cloud selection with a specific
+        // reason (gate off, no key, no model chosen) — show it rather than a bare
+        // status, since each has a different fix.
+        let detail = `Failed to save: ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.detail) {
+            detail = body.detail;
+          }
+        } catch (_) {
+          // response had no JSON body; keep the status-based message
+        }
+        throw new Error(detail);
       }
       setIsSettingsOpen(false);
     } catch (e: any) {
@@ -181,6 +260,8 @@ const ChatPanel: React.FC = () => {
     centralPercentage,
     ollamaThink,
     ollamaSuffix,
+    provider,
+    cloudModel,
   ]);
 
   // Clear image cache
@@ -210,6 +291,39 @@ const ChatPanel: React.FC = () => {
     setIsSettingsOpen(true);
     loadSettings();
   }, [loadSettings]);
+
+  // Capability record for the selected cloud model, when the list is available.
+  // Undefined for a free-text entry, which is why the "no vision" warning below
+  // is only shown for a model we actually have capability data for.
+  const selectedCloudModelInfo = cloudModels.find(m => m.name === cloudModel);
+
+  // Populate the cloud model list once the cloud backend is actually selected.
+  // Not fetched on mount: it costs an /api/tags plus one /api/show per model
+  // upstream, which is wasted on the far more common local-only deployment.
+  // `cloudModelsError` is in the guard so a failed fetch does not retry forever;
+  // the Refresh button is the way back.
+  useEffect(() => {
+    if (
+      isSettingsOpen &&
+      provider === 'cloud' &&
+      cloudEnabled &&
+      cloudConfigured &&
+      cloudModels.length === 0 &&
+      !cloudModelsLoading &&
+      !cloudModelsError
+    ) {
+      loadCloudModels();
+    }
+  }, [
+    isSettingsOpen,
+    provider,
+    cloudEnabled,
+    cloudConfigured,
+    cloudModels.length,
+    cloudModelsLoading,
+    cloudModelsError,
+    loadCloudModels,
+  ]);
 
   // Get active study UID from viewport
   const getStudyUIDFromActiveViewport = useActiveStudyUID({
@@ -605,13 +719,133 @@ const ChatPanel: React.FC = () => {
               />
             </div>
 
-            {/* Model */}
+            {/* Backend */}
+            <div className="border-input border-t pt-4">
+              <h4 className="text-foreground mb-3 text-xs font-semibold">Backend</h4>
+
+              <div className="mb-3">
+                <Label className="mb-1 block text-xs">Provider</Label>
+                <Select
+                  value={provider}
+                  onValueChange={value => setProvider(value as ProviderName)}
+                >
+                  <SelectTrigger aria-label="Backend provider">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="local">Local (self-hosted)</SelectItem>
+                    {/* Only offered when the operator enabled ALLOW_CLOUD_BACKEND;
+                        the middleware rejects the switch regardless, this just
+                        avoids presenting a choice that cannot succeed. */}
+                    {cloudEnabled && <SelectItem value="cloud">Ollama Cloud</SelectItem>}
+                  </SelectContent>
+                </Select>
+                {!cloudEnabled && (
+                  <p className="text-muted-foreground mt-1 text-xs">
+                    Ollama Cloud is disabled on this deployment. An operator must set{' '}
+                    <code>ALLOW_CLOUD_BACKEND=1</code> on the chat-middleware service.
+                  </p>
+                )}
+              </div>
+
+              {provider === 'cloud' && (
+                <>
+                  {/* The single most important thing a user needs to know before
+                      sending a study to a hosted model. */}
+                  <div className="mb-3 rounded border border-amber-600 bg-amber-950/40 px-3 py-2 text-xs text-amber-200">
+                    <strong>Images leave this network.</strong> The selected DICOM slices are
+                    uploaded to {cloudUrl || 'the cloud provider'} for analysis. Do not use this
+                    with patient data unless your institution permits it.
+                  </div>
+
+                  {!cloudConfigured && (
+                    <div className="mb-3 rounded border border-red-700 bg-red-900/50 px-3 py-2 text-xs text-red-300">
+                      No API key is configured on the chat-middleware service. An operator must set{' '}
+                      <code>OLLAMA_API_KEY</code>.
+                    </div>
+                  )}
+
+                  <div className="mb-3">
+                    <div className="mb-1 flex items-center justify-between">
+                      <Label className="block text-xs">Cloud Model</Label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={loadCloudModels}
+                        disabled={cloudModelsLoading || !cloudConfigured}
+                        aria-label="Refresh cloud model list"
+                      >
+                        {cloudModelsLoading ? 'Loading…' : 'Refresh'}
+                      </Button>
+                    </div>
+
+                    {cloudModelsError && (
+                      <div className="mb-2 rounded border border-red-700 bg-red-900/50 px-3 py-2 text-xs text-red-300">
+                        {cloudModelsError}
+                      </div>
+                    )}
+
+                    {cloudModels.length > 0 ? (
+                      <Select
+                        value={cloudModel}
+                        onValueChange={setCloudModel}
+                      >
+                        <SelectTrigger aria-label="Cloud model">
+                          <SelectValue placeholder="Select a model" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {cloudModels.map(m => (
+                            <SelectItem
+                              key={m.name}
+                              value={m.name}
+                            >
+                              {m.name}
+                              {m.supports_vision ? ' — vision' : ''}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      // Free-text fallback so a model is still selectable when the
+                      // listing fails or the host returns nothing.
+                      <Input
+                        id="chat-cloud-model"
+                        type="text"
+                        value={cloudModel}
+                        onChange={e => setCloudModel(e.target.value)}
+                        placeholder="e.g. qwen3.5"
+                      />
+                    )}
+
+                    {/* This chat sends images, and many cloud models are text-only,
+                        so flag a text-only pick rather than letting it fail opaquely. */}
+                    {cloudCapabilitiesKnown ? (
+                      selectedCloudModelInfo &&
+                      !selectedCloudModelInfo.supports_vision && (
+                        <p className="mt-1 text-xs text-amber-300">
+                          This model has no vision capability. The chat sends DICOM slices as
+                          images, so it will not be able to see the study — pick a model marked
+                          “vision”.
+                        </p>
+                      )
+                    ) : (
+                      <p className="text-muted-foreground mt-1 text-xs">
+                        This host did not report model capabilities, so vision support is unknown.
+                        A model that cannot accept images will fail when you send a message.
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Local model */}
             <div>
               <Label
                 htmlFor="chat-model"
                 className="mb-1 block text-xs"
               >
-                Model
+                Local Model
               </Label>
               <Input
                 id="chat-model"
@@ -620,6 +854,11 @@ const ChatPanel: React.FC = () => {
                 onChange={e => setOllamaModel(e.target.value)}
                 placeholder="e.g. MedAIBase/MedGemma1.5:4b"
               />
+              {provider === 'cloud' && (
+                <p className="text-muted-foreground mt-1 text-xs">
+                  Not in use while the cloud backend is selected.
+                </p>
+              )}
             </div>
 
             {/* Preprocessing Section */}
