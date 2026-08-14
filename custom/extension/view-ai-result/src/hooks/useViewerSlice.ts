@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Enums, eventTarget } from '@cornerstonejs/core';
 
-/** Which series the active viewport shows, and which slice of it. */
+/** Which images the active viewport shows, and which slice of them. */
 export interface ViewerSlice {
-  seriesInstanceUID: string | null;
+  /**
+   * OHIF's identity for the displayed images, not the SeriesInstanceUID: a series
+   * can be split across several display sets, and only one of them is on screen.
+   */
+  displaySetInstanceUID: string | null;
   /** 1-based, matching the slice numbers the panel displays. Null if unknown. */
   sliceNumber: number | null;
 }
 
-const NO_SLICE: ViewerSlice = { seriesInstanceUID: null, sliceNumber: null };
+const NO_SLICE: ViewerSlice = { displaySetInstanceUID: null, sliceNumber: null };
 
 interface ViewerSliceConfig {
   activeViewportId: string | null;
@@ -43,32 +47,28 @@ export function useViewerSlice({
     }
 
     const cornerstoneViewportService = servicesManager?.services?.cornerstoneViewportService;
-    const displaySetService = servicesManager?.services?.displaySetService;
     const viewport = cornerstoneViewportService?.getCornerstoneViewport?.(activeViewportId);
     if (!viewport?.getCurrentImageIdIndex) {
       return NO_SLICE;
     }
 
-    // The series the viewport is showing. Taken from the grid's display set
-    // rather than by parsing the imageId, which is loader-specific.
-    const displaySetUID = viewports?.get(activeViewportId)?.displaySetInstanceUIDs?.[0];
-    const displaySet = displaySetUID
-      ? displaySetService?.getDisplaySetByUID?.(displaySetUID)
-      : undefined;
-    const seriesInstanceUID = displaySet?.SeriesInstanceUID ?? null;
+    // What the viewport is showing, taken from the grid rather than by parsing
+    // the imageId, which is loader-specific.
+    const displaySetInstanceUID =
+      viewports?.get(activeViewportId)?.displaySetInstanceUIDs?.[0] ?? null;
 
     let index: number;
     try {
       index = viewport.getCurrentImageIdIndex();
     } catch (_) {
       // A viewport mid-teardown throws rather than returning a stale index.
-      return { seriesInstanceUID, sliceNumber: null };
+      return { displaySetInstanceUID, sliceNumber: null };
     }
 
     if (!Number.isFinite(index) || index < 0) {
-      return { seriesInstanceUID, sliceNumber: null };
+      return { displaySetInstanceUID, sliceNumber: null };
     }
-    return { seriesInstanceUID, sliceNumber: index + 1 };
+    return { displaySetInstanceUID, sliceNumber: index + 1 };
   }, [activeViewportId, viewports, servicesManager]);
 
   useEffect(() => {
@@ -77,7 +77,8 @@ export function useViewerSlice({
       // Compared field by field: this fires on every scroll step, and a fresh
       // object identity each time would re-render the whole panel per slice.
       setSlice(prev =>
-        prev.seriesInstanceUID === next.seriesInstanceUID && prev.sliceNumber === next.sliceNumber
+        prev.displaySetInstanceUID === next.displaySetInstanceUID &&
+        prev.sliceNumber === next.sliceNumber
           ? prev
           : next
       );

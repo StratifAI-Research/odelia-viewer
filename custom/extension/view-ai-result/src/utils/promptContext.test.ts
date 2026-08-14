@@ -11,7 +11,8 @@ import {
 import type { SnapshotSeries } from '../types/chatTypes';
 
 const series = (over: Partial<SnapshotSeries> = {}): SnapshotSeries => ({
-  seriesInstanceUID: 'se-1',
+  displaySetInstanceUID: 'ds',
+    seriesInstanceUID: 'se-1',
   description: 'Ax T1 post',
   modality: 'MR',
   numFrames: 103,
@@ -110,10 +111,18 @@ describe('requestedImageCount', () => {
     expect(requestedImageCount([series({ numFrames: 103 }), series({ numFrames: 2 })], 5)).toBe(7);
   });
 
-  it('never understates the bound when a frame count is unknown', () => {
-    // A series reporting 0 frames contributes the full request, not zero — the
-    // value is an upper bound and must not read lower than what may be sent.
-    expect(requestedImageCount([series({ numFrames: 0 })], 5)).toBe(5);
+  it('counts a series that reports no frames as no images', () => {
+    // It has nothing to send, and the composer's own tally already says "0
+    // images". The snapshot claiming 5 would contradict the panel that produced it.
+    expect(requestedImageCount([series({ numFrames: 0 })], 5)).toBe(0);
+  });
+
+  it('never understates the bound when the frame count is unusable', () => {
+    // Absent or nonsensical is not the same as zero: the depth is unknown, so the
+    // upper bound must not read lower than what may actually be sent.
+    expect(requestedImageCount([series({ numFrames: undefined as any })], 5)).toBe(5);
+    expect(requestedImageCount([series({ numFrames: NaN })], 5)).toBe(5);
+    expect(requestedImageCount([series({ numFrames: -3 })], 5)).toBe(5);
   });
 
   it('is zero for no series or a non-positive request', () => {
@@ -158,7 +167,8 @@ describe('buildPromptContextSnapshot', () => {
     const snap = buildPromptContextSnapshot({ ...input, series: live });
 
     live[0].description = 'Something else entirely';
-    live.push(series({ seriesInstanceUID: 'se-2' }));
+    live.push(series({ displaySetInstanceUID: 'ds',
+    seriesInstanceUID: 'se-2' }));
 
     expect(snap.series).toHaveLength(1);
     expect(snap.series[0].description).toBe('Ax T1 post');
@@ -195,7 +205,8 @@ describe('formatSnapshotSummary', () => {
   it('counts series instead of naming them when several are attached', () => {
     const snap = buildPromptContextSnapshot({
       studyInstanceUID: 'study-1',
-      series: [series(), series({ seriesInstanceUID: 'se-2', description: 'Ax T2' })],
+      series: [series(), series({ displaySetInstanceUID: 'ds',
+    seriesInstanceUID: 'se-2', description: 'Ax T2' })],
       provider: 'local',
       model: 'medgemma',
       sliceRecipe: { numSlices: 5, strategy: 'uniform' },
@@ -235,6 +246,7 @@ describe('formatSnapshotSummary', () => {
 
 describe('requestedImageCount with named slices', () => {
   const named = (n: number, frames = 103) => ({
+    displaySetInstanceUID: 'ds',
     seriesInstanceUID: 'se',
     description: 'Ax T1',
     modality: 'MR',
@@ -259,7 +271,8 @@ describe('requestedImageCount with named slices', () => {
 
   it('mixes named and recipe-based series', () => {
     const recipeSeries = {
-      seriesInstanceUID: 'se2',
+      displaySetInstanceUID: 'ds',
+    seriesInstanceUID: 'se2',
       description: 'Ax T2',
       modality: 'MR',
       numFrames: 40,
@@ -289,7 +302,8 @@ describe('formatSeriesSliceSource', () => {
 
   it('states the range and count when the slices were named', () => {
     const series = {
-      seriesInstanceUID: 'se',
+      displaySetInstanceUID: 'ds',
+    seriesInstanceUID: 'se',
       description: 'Ax T1',
       modality: 'MR',
       numFrames: 103,
@@ -302,7 +316,8 @@ describe('formatSeriesSliceSource', () => {
 
   it('does not repeat a single-slice range', () => {
     const series = {
-      seriesInstanceUID: 'se',
+      displaySetInstanceUID: 'ds',
+    seriesInstanceUID: 'se',
       description: 'Ax T1',
       modality: 'MR',
       numFrames: 103,
@@ -317,7 +332,8 @@ describe('formatSeriesSliceSource', () => {
     // Worded differently on purpose: a recipe says how slices would be picked,
     // not which pixels went out.
     const series = {
-      seriesInstanceUID: 'se',
+      displaySetInstanceUID: 'ds',
+    seriesInstanceUID: 'se',
       description: 'Ax T1',
       modality: 'MR',
       numFrames: 103,

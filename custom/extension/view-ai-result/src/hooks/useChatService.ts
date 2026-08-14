@@ -61,6 +61,11 @@ export function useChatService(): UseChatServiceReturn {
 
   // Ref to track current streaming message
   const currentStreamingMessageRef = useRef<string | null>(null);
+  // The question the streaming answer belongs to. Both carry the same provenance
+  // snapshot, so a failed turn has to be marked on both or the transcript shows
+  // one half claiming images an answer came from and the other half saying the
+  // answer never happened.
+  const currentUserMessageRef = useRef<string | null>(null);
   const streamingContentRef = useRef<string>('');
   const streamingThinkingRef = useRef<string>('');
   const rawStreamingRef = useRef<string>('');
@@ -186,8 +191,10 @@ export function useChatService(): UseChatServiceReturn {
       setPreprocessingProgress(null);
 
       // Add user message to history
+      const userMessageId = generateMessageId();
+      currentUserMessageRef.current = userMessageId;
       const userMessage: ChatMessage = {
-        id: generateMessageId(),
+        id: userMessageId,
         role: 'user',
         content: content.trim(),
         timestamp: new Date(),
@@ -412,10 +419,21 @@ export function useChatService(): UseChatServiceReturn {
         setPreprocessingStatus(null);
         setPreprocessingProgress(null);
         // Finalize the placeholder, backfilling error text only if nothing streamed.
+        // A turn that produced nothing is flagged, so its provenance is not read
+        // as a record of images an answer actually came from: preprocessing may
+        // have failed before a single one was sent.
+        const producedNothing = !streamingContentRef.current;
         finishStream(msg => ({
           ...msg,
           content: msg.content || `Error: ${data.error}`,
+          deliveryFailed: producedNothing ? true : msg.deliveryFailed,
         }));
+        if (producedNothing) {
+          const questionId = currentUserMessageRef.current;
+          setMessages(prev =>
+            prev.map(msg => (msg.id === questionId ? { ...msg, deliveryFailed: true } : msg))
+          );
+        }
       })
     );
 

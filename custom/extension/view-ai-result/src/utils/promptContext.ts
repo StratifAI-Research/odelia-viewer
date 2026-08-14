@@ -110,9 +110,12 @@ export function formatSliceRecipe(recipe: SliceRecipe): string {
  * Per series the middleware takes `min(num_slices, volume_depth)`. The viewer's
  * `numImageFrames` is the best available proxy for that depth, so this is exact
  * for an ordinary 3D series and an over-estimate only where the two disagree
- * (a 4D series, or frames the middleware's volume reader merges). A series
- * reporting no frame count contributes the full request rather than zero, so the
- * bound is never understated.
+ * (a 4D series, or frames the middleware's volume reader merges).
+ *
+ * A series *reporting* zero frames contributes zero, not the full request: it has
+ * no images to send, and the composer's own tally says so before the message goes
+ * out. Only an unusable frame count — absent, negative, not a number — falls back
+ * to the full request, so a genuinely unknown depth is still never understated.
  */
 export function requestedImageCount(series: SnapshotSeries[], numSlices: number): number {
   return series.reduce((total, s) => {
@@ -123,7 +126,8 @@ export function requestedImageCount(series: SnapshotSeries[], numSlices: number)
     if (numSlices <= 0) {
       return total;
     }
-    const frames = s.numFrames > 0 ? s.numFrames : numSlices;
+    const knownDepth = Number.isFinite(s.numFrames) && s.numFrames >= 0;
+    const frames = knownDepth ? s.numFrames : numSlices;
     return total + Math.min(numSlices, frames);
   }, 0);
 }

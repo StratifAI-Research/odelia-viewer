@@ -247,8 +247,16 @@ describe('ChatPanel — following vs pinned', () => {
         studyLabel: '2026-08-12 · Breast MRI',
       }),
       // These display sets carry no instance list, so no slice range can be
-      // expressed for them and the middleware's recipe applies.
-      []
+      // expressed for them. A selection still travels, carrying the recipe the
+      // panel is showing so the middleware cannot apply a different one.
+      [
+        expect.objectContaining({
+          series_uid: 'se-1',
+          sop_instance_uids: [],
+          num_slices: 5,
+          slice_strategy: 'central',
+        }),
+      ]
     );
   });
 

@@ -53,6 +53,7 @@ beforeEach(() => {
   (eventTarget as any).reset();
   resetMockViewportGrid();
   (global as any).fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+  mockHookState.messages = [];
 });
 
 /** `count` instances whose UIDs encode their position, so order is checkable. */
@@ -75,13 +76,18 @@ const ADDRESSABLE = [
 ];
 
 function makeDisplaySetService(displaySets: any[]) {
+  const handlers: Record<string, Array<() => void>> = {};
   return {
     EVENTS: { DISPLAY_SETS_ADDED: 'added', DISPLAY_SETS_CHANGED: 'changed' },
     getActiveDisplaySets: jest.fn(() => displaySets),
     getDisplaySetByUID: jest.fn((uid: string) =>
       displaySets.find(ds => ds.displaySetInstanceUID === uid)
     ),
-    subscribe: jest.fn(() => ({ unsubscribe: jest.fn() })),
+    subscribe: jest.fn((evt: string, cb: () => void) => {
+      (handlers[evt] ||= []).push(cb);
+      return { unsubscribe: jest.fn() };
+    }),
+    emit: (evt: string) => (handlers[evt] || []).forEach(cb => cb()),
   };
 }
 
@@ -307,14 +313,21 @@ describe('ChatPanel — slice range', () => {
       expect(screen.queryByLabelText('First slice of Ax T1 post')).toBeNull();
     });
 
-    it('sends no slice selection, leaving the configured recipe in force', async () => {
+    it('names no instances, and carries the recipe the panel is showing', async () => {
+      // The middleware's runtime config is global and mutable; sending the recipe
+      // with the message is what keeps the snapshot's claim true when another
+      // browser changes that config mid-compose.
       await renderPanel(MULTIFRAME);
       attachSeries();
       fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
         target: { value: 'q' },
       });
       fireEvent.click(screen.getByTitle('Send'));
-      expect(sendMessage.mock.calls[0][4]).toEqual([]);
+      const selection = sendMessage.mock.calls[0][4][0];
+      expect(selection.sop_instance_uids).toEqual([]);
+      expect(selection.num_slices).toBe(5);
+      expect(selection.slice_strategy).toBe('central');
+      expect(selection.central_percentage).toBe(60);
     });
 
     it('records no slice numbers in the snapshot either', async () => {
@@ -418,5 +431,171 @@ describe('ChatPanel — slice range', () => {
       attachSeries();
       expect(screen.queryByTitle(/Viewer is on slice/)).toBeNull();
     });
+  });
+});
+
+describe('ChatPanel — provenance under change and failure', () => {
+  it('clamps a range when its series turns out to be shorter', async () => {
+    // Display sets hydrate progressively and can be replaced in place. A range
+    // set against 20 slices on a series that becomes 8 would otherwise address
+    // instances past the end of the list.
+    const shrinking = [{ ...ADDRESSABLE[0] }];
+    const dss = makeDisplaySetService(shrinking);
+    withSystem(makeServicesManager({ services: { displaySetService: dss } }));
+    await act(async () => {
+      render(<ChatPanel />);
+    });
+    attachSeries();
+    expect(screen.getByText('Range 5–16 of 20')).toBeTruthy();
+
+    // The same display set is replaced in place with fewer instances, as a
+    // progressive load or a re-hydration does.
+    shrinking[0].numImageFrames = 8;
+    shrinking[0].images = instances(8);
+    await act(async () => {
+      dss.emit('changed');
+    });
+
+    expect(screen.getByText(/Range .* of 8/)).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+      target: { value: 'q' },
+    });
+    fireEvent.click(screen.getByTitle('Send'));
+    const uids = sendMessage.mock.calls[0][4][0].sop_instance_uids;
+    // Every named instance exists: no nulls reach the wire.
+    expect(uids.every((u: unknown) => typeof u === 'string')).toBe(true);
+    expect(uids.length).toBeGreaterThan(0);
+  });
+
+  it('treats two display sets of one series as separate attachments', async () => {
+    // OHIF splits some series into a display set per instance. Keying on the
+    // series UID would attach and detach both as one.
+    const split = [
+      { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-a', SeriesDescription: 'CC' },
+      { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-b', SeriesDescription: 'MLO' },
+    ];
+    await renderPanel(split);
+    fireEvent.click(screen.getByText('+ Add series'));
+    fireEvent.click(screen.getByText('CC'));
+    fireEvent.click(screen.getByLabelText('First slice of CC'));
+
+    // Only CC attached; MLO is still on offer rather than attached alongside it.
+    expect(screen.queryByLabelText('First slice of MLO')).toBeNull();
+  });
+
+  it('sends one selection per display set, both naming their own series', async () => {
+    const split = [
+      { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-a', SeriesDescription: 'CC' },
+      { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-b', SeriesDescription: 'MLO' },
+    ];
+    await renderPanel(split);
+    fireEvent.click(screen.getByText('+ Add series'));
+    fireEvent.click(screen.getByText('CC'));
+    fireEvent.click(screen.getByText('MLO'));
+    fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+      target: { value: 'q' },
+    });
+    fireEvent.click(screen.getByTitle('Send'));
+
+    const [, , seriesUIDs, snapshot, selections] = sendMessage.mock.calls[0];
+    // The series is retrieved once; both display sets contribute their slices.
+    expect(seriesUIDs).toEqual(['se-1']);
+    expect(selections).toHaveLength(2);
+    expect(snapshot.series).toHaveLength(2);
+  });
+
+  it('marks a message whose turn produced no answer', async () => {
+    // Otherwise the slice list reads as a record of images an answer came from,
+    // when preprocessing may have failed before one was ever sent.
+    mockHookState.messages = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: 'q',
+        timestamp: new Date(),
+        deliveryFailed: true,
+        promptContext: {
+          studyInstanceUID: 'study-1',
+          studyLabel: 'Breast MRI',
+          series: [],
+          provider: 'local',
+          model: 'm',
+          sliceRecipe: { numSlices: 5, strategy: 'central' },
+          requestedImageCount: 0,
+        },
+      },
+    ];
+    await renderPanel();
+    expect(screen.getByText('Requested, but no answer was produced')).toBeTruthy();
+    mockHookState.messages = [];
+  });
+
+  it('discloses images from earlier turns that the model can still see', async () => {
+    // The middleware replays history verbatim, images included, so an answer to
+    // question 2 is looking at question 1's slices too.
+    const snapshot = (n: number) => ({
+      studyInstanceUID: 'study-1',
+      studyLabel: 'Breast MRI',
+      series: [
+        {
+          displaySetInstanceUID: 'ds-1',
+          seriesInstanceUID: 'se-1',
+          description: 'Ax T1 post',
+          modality: 'MR',
+          numFrames: 20,
+          sentSliceNumbers: Array.from({ length: n }, (_, i) => i + 1),
+        },
+      ],
+      provider: 'local',
+      model: 'm',
+      sliceRecipe: { numSlices: n, strategy: 'central' },
+      requestedImageCount: n,
+    });
+    mockHookState.messages = [
+      { id: 'u1', role: 'user', content: 'first', timestamp: new Date(), promptContext: snapshot(3) },
+      { id: 'a1', role: 'assistant', content: 'a', timestamp: new Date(), promptContext: snapshot(3) },
+      { id: 'u2', role: 'user', content: 'second', timestamp: new Date(), promptContext: snapshot(2) },
+    ];
+    await renderPanel();
+
+    const footers = screen.getAllByTitle('What this message was sent with');
+    await act(async () => {
+      fireEvent.click(footers[footers.length - 1]);
+    });
+    expect(screen.getByText(/3 images from earlier messages/)).toBeTruthy();
+    mockHookState.messages = [];
+  });
+
+  it('does not count a failed turn as still in context', async () => {
+    // The middleware commits a turn to history only once it answers, so nothing
+    // was retained from a turn that produced nothing.
+    const snapshot = {
+      studyInstanceUID: 'study-1',
+      studyLabel: 'Breast MRI',
+      series: [],
+      provider: 'local',
+      model: 'm',
+      sliceRecipe: { numSlices: 3, strategy: 'central' },
+      requestedImageCount: 3,
+    };
+    mockHookState.messages = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: 'first',
+        timestamp: new Date(),
+        deliveryFailed: true,
+        promptContext: snapshot,
+      },
+      { id: 'u2', role: 'user', content: 'second', timestamp: new Date(), promptContext: snapshot },
+    ];
+    await renderPanel();
+
+    const footers = screen.getAllByTitle('What this message was sent with');
+    await act(async () => {
+      fireEvent.click(footers[footers.length - 1]);
+    });
+    expect(screen.queryByText(/images from earlier messages/)).toBeNull();
+    mockHookState.messages = [];
   });
 });

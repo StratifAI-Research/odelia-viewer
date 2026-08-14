@@ -197,13 +197,17 @@ const ChatPanel: React.FC = () => {
   const [promptStudyUID, setPromptStudyUID] = useState<string | null>(null);
   const [promptStudyInfo, setPromptStudyInfo] = useState<StudyLabelSource | null>(null);
   const [availableSeries, setAvailableSeries] = useState<ChatSeriesInfo[]>([]);
-  const [selectedSeriesUIDs, setSelectedSeriesUIDs] = useState<Set<string>>(new Set());
+  // Keyed by displaySetInstanceUID, not SeriesInstanceUID: OHIF splits some
+  // series into several display sets (one per instance for mammography and other
+  // single-image modalities), and keying on the series would make two distinct
+  // images attach and detach as one.
+  const [selectedDisplaySetUIDs, setSelectedDisplaySetUIDs] = useState<Set<string>>(new Set());
   const [contextMode, setContextMode] = useState<ContextMode>('following');
   const [isSeriesPickerOpen, setIsSeriesPickerOpen] = useState(false);
   // Per-series slice selection, keyed by SeriesInstanceUID. Per-series rather
   // than one global range because attached series differ in depth: "18-62" means
   // nothing shared between a 103-slice and a 24-slice acquisition.
-  const [sliceStateBySeries, setSliceStateBySeries] = useState<
+  const [sliceStateByDisplaySet, setSliceStateByDisplaySet] = useState<
     Record<string, { range: SliceRange; count: number }>
   >({});
 
@@ -571,6 +575,7 @@ const ChatPanel: React.FC = () => {
       const series: ChatSeriesInfo[] = studyDisplaySets.map((ds: any) => {
         const instances: any[] = ds.images || ds.instances || [];
         return {
+          displaySetInstanceUID: ds.displaySetInstanceUID,
           SeriesInstanceUID: ds.SeriesInstanceUID,
           SeriesDescription: ds.SeriesDescription || `Series ${ds.SeriesNumber || 'N/A'}`,
           SeriesNumber: ds.SeriesNumber || 0,
@@ -624,8 +629,8 @@ const ChatPanel: React.FC = () => {
     // divergence banner instead of silently retargeting the question.
     if (contextMode === 'following' && studyUID !== promptStudyUID) {
       setPromptStudyUID(studyUID);
-      setSelectedSeriesUIDs(new Set());
-      setSliceStateBySeries({});
+      setSelectedDisplaySetUIDs(new Set());
+      setSliceStateByDisplaySet({});
       reloadPromptStudy(studyUID);
     }
   }, [
@@ -837,8 +842,8 @@ const ChatPanel: React.FC = () => {
       return;
     }
     setPromptStudyUID(viewerStudyUID);
-    setSelectedSeriesUIDs(new Set());
-    setSliceStateBySeries({});
+    setSelectedDisplaySetUIDs(new Set());
+    setSliceStateByDisplaySet({});
     reloadPromptStudy(viewerStudyUID);
     // Stay pinned while a half-written question is in the composer: the user
     // asked for THIS study, and resuming follow-mode would let the next viewport
@@ -850,8 +855,8 @@ const ChatPanel: React.FC = () => {
 
   // Series attached to the next message, in display order.
   const attachedSeries = useMemo(
-    () => availableSeries.filter(s => selectedSeriesUIDs.has(s.SeriesInstanceUID)),
-    [availableSeries, selectedSeriesUIDs]
+    () => availableSeries.filter(s => selectedDisplaySetUIDs.has(s.displaySetInstanceUID)),
+    [availableSeries, selectedDisplaySetUIDs]
   );
 
   const promptStudyLabel = formatStudyLabel(promptStudyInfo);
@@ -880,41 +885,65 @@ const ChatPanel: React.FC = () => {
   const viewerSlice = useViewerSlice({ activeViewportId, viewports, servicesManager });
 
   /**
-   * Seed a slice range for each newly attached series.
+   * Keep a slice range in step with each attached series.
    *
-   * Seeded from the middleware's configured strategy rather than from the whole
-   * volume, so attaching a series and pressing send keeps sampling the band the
-   * service was already sampling. The slider exposes the existing recipe instead
-   * of silently replacing it.
+   * Seeds a range from the middleware's configured strategy when one is missing,
+   * so attaching a series and pressing send keeps sampling the band the service
+   * was already sampling — the slider exposes the existing recipe rather than
+   * silently replacing it.
    *
-   * Only series without state are touched. A later configuration change must not
-   * overwrite a range the user has since set by hand.
+   * Also RE-CLAMPS a range whose series has changed depth underneath it. Display
+   * sets hydrate progressively and can be replaced in place, so a range set
+   * against 100 slices can find itself on a 60-slice series; left alone it would
+   * address instances past the end of the list.
+   *
+   * A range the user set is otherwise left alone — a later configuration change
+   * must not overwrite it.
    */
   useEffect(() => {
     const addressable = attachedSeries.filter(s =>
       canAddressSlices(s.sopInstanceUIDs, s.numImageFrames)
     );
-    const missing = addressable.filter(s => !sliceStateBySeries[s.SeriesInstanceUID]);
-    if (missing.length === 0) {
+    const stale = addressable.filter(series => {
+      const state = sliceStateByDisplaySet[series.displaySetInstanceUID];
+      if (!state) {
+        return true;
+      }
+      const bounded = clampRange(state.range, series.numImageFrames);
+      return bounded.start !== state.range.start || bounded.end !== state.range.end;
+    });
+    if (stale.length === 0) {
       return;
     }
-    setSliceStateBySeries(prev => {
+    setSliceStateByDisplaySet(prev => {
       const next = { ...prev };
-      missing.forEach(series => {
+      stale.forEach(series => {
         const total = series.numImageFrames;
-        const range = initialRange(total, sliceStrategy, numSlices, centralPercentage);
-        next[series.SeriesInstanceUID] = {
+        const existing = prev[series.displaySetInstanceUID];
+        // An existing range is clamped, not discarded: the user chose it, and the
+        // nearest valid range is closer to their intent than a reset.
+        const range = existing
+          ? clampRange(existing.range, total)
+          : initialRange(total, sliceStrategy, numSlices, centralPercentage);
+        next[series.displaySetInstanceUID] = {
           range,
-          count: Math.max(1, Math.min(numSlices, rangeSize(range), MAX_SLICES_PER_SERIES)),
+          count: Math.max(
+            1,
+            Math.min(existing?.count ?? numSlices, rangeSize(range), MAX_SLICES_PER_SERIES)
+          ),
         };
       });
       return next;
     });
-  }, [attachedSeries, sliceStateBySeries, sliceStrategy, numSlices, centralPercentage]);
+  }, [attachedSeries, sliceStateByDisplaySet, sliceStrategy, numSlices, centralPercentage]);
 
   /**
    * What one series will send: the selected range, the requested count, and the
    * slices that requesting that count from that range actually yields.
+   *
+   * The range is clamped against the series' CURRENT depth on every read, so a
+   * series that shrank between compose and send can never yield a slice number
+   * with no instance behind it.
    *
    * `sampled` is what the panel reports and what goes on the wire — never the
    * requested count, which can exceed a narrow range.
@@ -922,26 +951,27 @@ const ChatPanel: React.FC = () => {
   const sliceSelectionFor = useCallback(
     (series: ChatSeriesInfo) => {
       const addressable = canAddressSlices(series.sopInstanceUIDs, series.numImageFrames);
-      const state = sliceStateBySeries[series.SeriesInstanceUID];
+      const state = sliceStateByDisplaySet[series.displaySetInstanceUID];
       if (!addressable || !state) {
         return { addressable, range: null as SliceRange | null, count: 0, sampled: [] as number[] };
       }
+      const range = clampRange(state.range, series.sopInstanceUIDs.length);
       return {
         addressable,
-        range: state.range,
+        range,
         count: state.count,
-        sampled: sampleSliceNumbers(state.range, state.count),
+        sampled: sampleSliceNumbers(range, state.count),
       };
     },
-    [sliceStateBySeries]
+    [sliceStateByDisplaySet]
   );
 
   /** Move a series' range. Adjusting the range is an investment in the prompt. */
   const setSeriesRange = useCallback(
     (series: ChatSeriesInfo, range: SliceRange) => {
       pinContext();
-      setSliceStateBySeries(prev => {
-        const current = prev[series.SeriesInstanceUID];
+      setSliceStateByDisplaySet(prev => {
+        const current = prev[series.displaySetInstanceUID];
         const bounded = clampRange(range, series.numImageFrames);
         // Narrowing the range narrows the count with it. Left alone, the count
         // would stay above the span and the +/- buttons would appear stuck: they
@@ -950,7 +980,7 @@ const ChatPanel: React.FC = () => {
           1,
           Math.min(current?.count ?? 1, rangeSize(bounded), MAX_SLICES_PER_SERIES)
         );
-        return { ...prev, [series.SeriesInstanceUID]: { range: bounded, count } };
+        return { ...prev, [series.displaySetInstanceUID]: { range: bounded, count } };
       });
     },
     [pinContext]
@@ -959,8 +989,8 @@ const ChatPanel: React.FC = () => {
   const setSeriesCount = useCallback(
     (series: ChatSeriesInfo, count: number) => {
       pinContext();
-      setSliceStateBySeries(prev => {
-        const current = prev[series.SeriesInstanceUID];
+      setSliceStateByDisplaySet(prev => {
+        const current = prev[series.displaySetInstanceUID];
         if (!current) {
           return prev;
         }
@@ -968,7 +998,7 @@ const ChatPanel: React.FC = () => {
           1,
           Math.min(count, rangeSize(current.range), MAX_SLICES_PER_SERIES)
         );
-        return { ...prev, [series.SeriesInstanceUID]: { ...current, count: bounded } };
+        return { ...prev, [series.displaySetInstanceUID]: { ...current, count: bounded } };
       });
     },
     [pinContext]
@@ -992,7 +1022,9 @@ const ChatPanel: React.FC = () => {
       return;
     }
 
-    const seriesUIDs = attachedSeries.map(s => s.SeriesInstanceUID);
+    // Series UIDs are what the middleware retrieves by, and two display sets can
+    // share one, so the list is de-duplicated while keeping display order.
+    const seriesUIDs = [...new Set(attachedSeries.map(s => s.SeriesInstanceUID))];
 
     // One read of the slice state, feeding both the wire payload and the
     // snapshot. Deriving them separately is how the two could come to disagree,
@@ -1003,27 +1035,44 @@ const ChatPanel: React.FC = () => {
     attachedSeries.forEach(series => {
       const { addressable, range, sampled } = sliceSelectionFor(series);
       const entry: SnapshotSeries = {
+        displaySetInstanceUID: series.displaySetInstanceUID,
         seriesInstanceUID: series.SeriesInstanceUID,
         description: series.SeriesDescription,
         modality: series.Modality,
         numFrames: series.numImageFrames,
       };
 
-      if (addressable && range && sampled.length > 0) {
+      // `sliceSelectionFor` clamps against the current instance list, so every
+      // sampled number has an instance behind it. Filtered anyway, and the
+      // selection dropped if anything is missing: sending `null` in place of a
+      // SOPInstanceUID would have the middleware reject the whole turn.
+      const instanceUIDs = addressable
+        ? sampled.map(n => series.sopInstanceUIDs[n - 1]).filter(Boolean)
+        : [];
+
+      if (addressable && range && sampled.length > 0 && instanceUIDs.length === sampled.length) {
         entry.rangeStart = range.start;
         entry.rangeEnd = range.end;
         entry.sentSliceNumbers = [...sampled];
         sliceSelections.push({
           series_uid: series.SeriesInstanceUID,
-          // 1-based slice numbers resolved to the instances at those positions.
-          sop_instance_uids: sampled.map(n => series.sopInstanceUIDs[n - 1]),
+          sop_instance_uids: instanceUIDs,
           range_start: range.start,
           range_end: range.end,
           total_slices: series.numImageFrames,
         });
+      } else {
+        // No slice range applies. The recipe travels with the message so the
+        // middleware uses the one this panel is showing, rather than whatever its
+        // global config happens to hold when the turn runs.
+        sliceSelections.push({
+          series_uid: series.SeriesInstanceUID,
+          sop_instance_uids: [],
+          num_slices: sliceRecipe.numSlices,
+          slice_strategy: sliceRecipe.strategy,
+          central_percentage: sliceRecipe.centralPercentage,
+        });
       }
-      // Otherwise no selection is sent for this series and the middleware's
-      // configured recipe applies, which is what the snapshot then reports.
 
       snapshotSeries.push(entry);
     });
@@ -1078,14 +1127,14 @@ const ChatPanel: React.FC = () => {
   };
 
   // Toggle series selection
-  const toggleSeries = (seriesUID: string) => {
+  const toggleSeries = (displaySetUID: string) => {
     pinContext();
-    setSelectedSeriesUIDs(prev => {
+    setSelectedDisplaySetUIDs(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(seriesUID)) {
-        newSet.delete(seriesUID);
+      if (newSet.has(displaySetUID)) {
+        newSet.delete(displaySetUID);
       } else {
-        newSet.add(seriesUID);
+        newSet.add(displaySetUID);
       }
       return newSet;
     });
@@ -1429,10 +1478,11 @@ const ChatPanel: React.FC = () => {
               are not comparable across acquisitions of different depth. */}
           {attachedSeries.map(series => {
             const { addressable, range, count, sampled } = sliceSelectionFor(series);
-            const onThisSeries = viewerSlice.seriesInstanceUID === series.SeriesInstanceUID;
+            const onThisSeries =
+              viewerSlice.displaySetInstanceUID === series.displaySetInstanceUID;
             return (
               <div
-                key={series.SeriesInstanceUID}
+                key={series.displaySetInstanceUID}
                 className="mb-1.5"
               >
                 <span className="border-input bg-background text-foreground flex max-w-full items-center gap-1 rounded border px-2 py-0.5 text-[11px]">
@@ -1441,7 +1491,7 @@ const ChatPanel: React.FC = () => {
                   </span>
                   <button
                     type="button"
-                    onClick={() => toggleSeries(series.SeriesInstanceUID)}
+                    onClick={() => toggleSeries(series.displaySetInstanceUID)}
                     title={`Remove ${series.SeriesDescription}`}
                     aria-label={`Remove ${series.SeriesDescription}`}
                     className="text-muted-foreground hover:text-foreground ml-auto"
@@ -1500,12 +1550,12 @@ const ChatPanel: React.FC = () => {
                     </div>
                   ) : (
                     availableSeries.map(s => {
-                      const isSelected = selectedSeriesUIDs.has(s.SeriesInstanceUID);
+                      const isSelected = selectedDisplaySetUIDs.has(s.displaySetInstanceUID);
                       return (
                         <button
-                          key={s.SeriesInstanceUID}
+                          key={s.displaySetInstanceUID}
                           type="button"
-                          onClick={() => toggleSeries(s.SeriesInstanceUID)}
+                          onClick={() => toggleSeries(s.displaySetInstanceUID)}
                           className="hover:bg-accent flex w-full items-start gap-2 px-3 py-2 text-left"
                         >
                           <span
@@ -1547,6 +1597,41 @@ const ChatPanel: React.FC = () => {
   // Messages
   // ---------------------------------------------------------------------------
 
+  /**
+   * Images from earlier turns that the model can still see, per message.
+   *
+   * The middleware replays conversation history verbatim, and a stored user turn
+   * carries its slice images. So the model answering question 3 is looking at
+   * question 1's and 2's images as well — which a footer saying "5 images" would
+   * otherwise flatly contradict.
+   *
+   * Turns that failed are excluded: the middleware commits a turn to history only
+   * after it generates an answer, so nothing was retained from those.
+   */
+  const carriedImagesByMessage = useMemo(() => {
+    const carried = new Map<string, number>();
+    let running = 0;
+    messages.forEach(message => {
+      if (message.role !== 'user') {
+        return;
+      }
+      carried.set(message.id, running);
+      if (!message.deliveryFailed) {
+        running += message.promptContext?.requestedImageCount ?? 0;
+      }
+    });
+    // The assistant message answering a question shares its carried count.
+    messages.forEach((message, index) => {
+      if (message.role === 'assistant' && index > 0) {
+        const question = messages[index - 1];
+        if (question?.role === 'user' && carried.has(question.id)) {
+          carried.set(message.id, carried.get(question.id) as number);
+        }
+      }
+    });
+    return carried;
+  }, [messages]);
+
   /** The immutable record of what a message was sent with. */
   const renderSnapshot = (message: ChatMessage) => {
     const snapshot = message.promptContext;
@@ -1554,6 +1639,7 @@ const ChatPanel: React.FC = () => {
       return null;
     }
     const isExpanded = expandedSnapshotIds.has(message.id);
+    const carriedImages = carriedImagesByMessage.get(message.id) ?? 0;
     const summary = formatSnapshotSummary(snapshot, shortModelLabel(snapshot.model));
 
     return (
@@ -1567,6 +1653,13 @@ const ChatPanel: React.FC = () => {
           <span className="truncate">{summary}</span>
           <span aria-hidden="true">{isExpanded ? '▲' : '▼'}</span>
         </button>
+
+        {/* The snapshot describes a request, and this request produced no answer.
+            Without saying so, the slice list reads as a record of images an answer
+            was actually derived from. */}
+        {message.deliveryFailed && (
+          <div className="text-[11px] text-amber-300">Requested, but no answer was produced</div>
+        )}
 
         {isExpanded && (
           <dl className="border-input text-muted-foreground mt-1 space-y-0.5 border-l pl-2 text-[11px]">
@@ -1587,7 +1680,7 @@ const ChatPanel: React.FC = () => {
                 {/* Per series, because each carries its own range. A single
                     combined line could not say which slices came from where. */}
                 {snapshot.series.map(series => (
-                  <div key={series.seriesInstanceUID}>
+                  <div key={series.displaySetInstanceUID || series.seriesInstanceUID}>
                     <dt className="inline font-semibold">Slices: </dt>
                     <dd className="inline">
                       {snapshot.series.length > 1 && `${series.description} — `}
@@ -1610,6 +1703,15 @@ const ChatPanel: React.FC = () => {
                   <dd className="inline">{snapshot.requestedImageCount} requested</dd>
                 </div>
               </>
+            )}
+            {carriedImages > 0 && (
+              // The model is not looking only at this message's images.
+              <div>
+                <dt className="inline font-semibold">Also in context: </dt>
+                <dd className="inline">
+                  {carriedImages} image{carriedImages === 1 ? '' : 's'} from earlier messages
+                </dd>
+              </div>
             )}
             <div>
               <dt className="inline font-semibold">Model: </dt>

@@ -39,6 +39,18 @@ export interface WireSliceSelection {
   range_start?: number;
   range_end?: number;
   total_slices?: number;
+  /**
+   * The recipe to apply when this series cannot be addressed instance by
+   * instance. Sent with the message so the middleware uses the recipe the panel
+   * is displaying: its runtime config is global and mutable, so another browser
+   * changing it between compose and send would otherwise rewrite this request
+   * and leave the snapshot describing something that never happened.
+   *
+   * Ignored by the middleware when `sop_instance_uids` is non-empty.
+   */
+  num_slices?: number;
+  slice_strategy?: string;
+  central_percentage?: number;
 }
 
 /**
@@ -79,6 +91,13 @@ export type ProviderName = 'local' | 'cloud';
 
 /** One series as it was attached to a message. */
 export interface SnapshotSeries {
+  /**
+   * OHIF's identity for the attached images. Distinct from the series UID
+   * because OHIF splits some series into several display sets (one per instance
+   * for mammography and other single-image modalities), and two of them can
+   * legitimately appear in one message.
+   */
+  displaySetInstanceUID: string;
   seriesInstanceUID: string;
   description: string;
   modality: string;
@@ -150,12 +169,23 @@ export interface ChatMessage {
   promptContext?: PromptContextSnapshot;
   /** Whether this message is still being streamed */
   isStreaming?: boolean;
+  /**
+   * The turn ended in an error with nothing generated.
+   *
+   * The snapshot still describes the request faithfully, but a reader must not
+   * take it as a record of an answer that was produced from those images —
+   * possibly nothing was ever sent. Rendered next to the provenance for exactly
+   * that reason.
+   */
+  deliveryFailed?: boolean;
 }
 
 /**
  * Series info for context selection (simplified from SeriesSelector)
  */
 export interface ChatSeriesInfo {
+  /** OHIF's identity for this set of images; the panel keys its state on it. */
+  displaySetInstanceUID: string;
   SeriesInstanceUID: string;
   SeriesDescription: string;
   SeriesNumber: number;

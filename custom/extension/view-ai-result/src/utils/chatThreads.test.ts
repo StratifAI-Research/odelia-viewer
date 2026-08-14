@@ -167,7 +167,13 @@ describe('persistence round-trip', () => {
       studyInstanceUID: 'study-1',
       studyLabel: '2026-08-12 · Breast MRI',
       series: [
-        { seriesInstanceUID: 'se-1', description: 'Ax T1 post', modality: 'MR', numFrames: 103 },
+        {
+          displaySetInstanceUID: 'ds-1',
+          seriesInstanceUID: 'se-1',
+          description: 'Ax T1 post',
+          modality: 'MR',
+          numFrames: 103,
+        },
       ],
       provider: 'cloud' as const,
       model: 'gemma4:31b',
