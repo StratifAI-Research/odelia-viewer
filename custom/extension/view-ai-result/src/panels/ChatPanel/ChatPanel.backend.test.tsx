@@ -153,6 +153,39 @@ describe('ChatPanel backend selector', () => {
     expect(screen.getByText(/deepseek-v4-flash:0731 — text only/)).toBeTruthy();
   });
 
+  it('labels each cloud model with a single combined string', async () => {
+    // Guards the fix for a blank selection box. ui-next's SelectItem only wraps
+    // children in SelectPrimitive.ItemText when `typeof children === 'string'`
+    // (Select.tsx), and Radix renders the trigger's SelectValue from ItemText —
+    // so passing the name and the "— vision" suffix as two JSX children left the
+    // closed trigger empty after a selection.
+    //
+    // Radix's trigger is not rendered by jsdom, so the trigger itself is verified
+    // in a browser rather than here; what this pins is that each option's label is
+    // one contiguous string, which is the condition ItemText wrapping depends on.
+    routeFetch({
+      '/debug/config': jsonOk({
+        ...BASE_CONFIG,
+        provider: 'cloud',
+        cloud_enabled: true,
+        cloud_configured: true,
+        cloud_model: '',
+      }),
+      '/cloud/models': jsonOk({
+        capabilities_reported: true,
+        models: [
+          { name: 'qwen3.5:397b', capabilities: ['completion', 'vision'], supports_vision: true },
+        ],
+      }),
+    });
+    await openSettings();
+
+    // A single text node holding the whole label, not the name split from its suffix.
+    const option = screen.getByText('qwen3.5:397b — vision');
+    expect(option).toBeTruthy();
+    expect(option.textContent).toBe('qwen3.5:397b — vision');
+  });
+
   it('keeps an already-selected text-only model visible', async () => {
     // Otherwise the dropdown could not display the setting actually in effect.
     routeFetch({

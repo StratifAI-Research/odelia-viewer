@@ -815,13 +815,19 @@ const ChatPanel: React.FC = () => {
                           <SelectValue placeholder="Select a model" />
                         </SelectTrigger>
                         <SelectContent>
+                          {/* The label must be ONE string child, not JSX with an
+                              interpolated suffix. ui-next's SelectItem only wraps
+                              children in SelectPrimitive.ItemText when
+                              `typeof children === 'string'`, and Radix renders the
+                              trigger's SelectValue from ItemText — so any other
+                              child shape leaves the closed trigger blank after a
+                              selection. */}
                           {visibleCloudModels.map(m => (
                             <SelectItem
                               key={m.name}
                               value={m.name}
                             >
-                              {m.name}
-                              {m.supports_vision ? ' — vision' : ' — text only'}
+                              {`${m.name}${m.supports_vision ? ' — vision' : ' — text only'}`}
                             </SelectItem>
                           ))}
                         </SelectContent>
