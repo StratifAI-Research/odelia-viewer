@@ -169,10 +169,7 @@ export const resetMockViewportGrid = () => {
   __viewportGridState.viewports = new Map();
 };
 
-export const useViewportGrid = () => [
-  __viewportGridState,
-  { setActiveViewportId: jest.fn() },
-];
+export const useViewportGrid = () => [__viewportGridState, { setActiveViewportId: jest.fn() }];
 
 // Toolbar evaluators style toggled buttons with this, so it has to exist here too. Kept
 // behaviourally faithful (the real one returns '!text-primary' when on) rather than a stub, so a

@@ -66,7 +66,12 @@ import {
   RoiScope,
   slicesForRoi,
 } from '../../utils/chatRoi';
-import { ensureChatRoiTool, removeChatRoi, startDrawingRoi, stopDrawingRoi } from '../../utils/chatRoiTool';
+import {
+  ensureChatRoiTool,
+  removeChatRoi,
+  startDrawingRoi,
+  stopDrawingRoi,
+} from '../../utils/chatRoiTool';
 
 // ui-next ships no Textarea, so the two multi-line fields borrow the token set
 // its `Input` uses. Kept in one place so they cannot drift apart.
@@ -233,6 +238,7 @@ const ChatPanel: React.FC = () => {
   // Held in a ref so the study-tracking effects above can discard a region
   // without taking a dependency on a callback defined below them.
   const clearRoiRef = useRef<(() => void) | null>(null);
+  const endDrawingRef = useRef<(() => void) | null>(null);
 
   // Header menus
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
@@ -654,6 +660,7 @@ const ChatPanel: React.FC = () => {
       setPromptStudyUID(studyUID);
       setSelectedDisplaySetUIDs(new Set());
       setSliceStateByDisplaySet({});
+      endDrawingRef.current?.();
       clearRoiRef.current?.();
       reloadPromptStudy(studyUID);
     }
@@ -868,6 +875,7 @@ const ChatPanel: React.FC = () => {
     setPromptStudyUID(viewerStudyUID);
     setSelectedDisplaySetUIDs(new Set());
     setSliceStateByDisplaySet({});
+    endDrawingRef.current?.();
     clearRoiRef.current?.();
     reloadPromptStudy(viewerStudyUID);
     // Stay pinned while a half-written question is in the composer: the user
@@ -1051,6 +1059,12 @@ const ChatPanel: React.FC = () => {
     displacedToolRef.current = null;
   }, []);
 
+  // Held in a ref for the same reason as `clearRoi`: the study-tracking effects
+  // are defined above this and must be able to abandon a half-drawn region
+  // without depending on a callback declared below them. Leaving drawing active
+  // would strand the primary mouse button on the region tool.
+  endDrawingRef.current = endDrawing;
+
   const beginDrawing = useCallback(() => {
     // Drawing a region is an investment in the prompt, like typing in it.
     pinContext();
@@ -1092,8 +1106,7 @@ const ChatPanel: React.FC = () => {
       const indexInSeries = captured.sopInstanceUID
         ? host.sopInstanceUIDs.indexOf(captured.sopInstanceUID)
         : -1;
-      const sliceNumber =
-        indexInSeries >= 0 ? indexInSeries + 1 : (viewerSlice.sliceNumber ?? 1);
+      const sliceNumber = indexInSeries >= 0 ? indexInSeries + 1 : (viewerSlice.sliceNumber ?? 1);
 
       setChatRoi({
         displaySetInstanceUID: host.displaySetInstanceUID,
@@ -1107,18 +1120,61 @@ const ChatPanel: React.FC = () => {
   );
 
   const rejectRoi = useCallback(
-    (reason: string) => {
+    (reason: string, annotationUID: string | null) => {
       endDrawing();
+      // The rectangle exists on the image even though the panel refused it;
+      // leaving it would be an orphan the user cannot remove from the chat.
+      if (annotationUID) {
+        removeChatRoi(annotationUID);
+      }
       setRoiError(reason);
     },
     [endDrawing]
   );
 
-  useChatRoiCapture({ enabled: isDrawingRoi, onCaptured: adoptRoi, onRejected: rejectRoi });
+  /** The region was reshaped on the image; the prompt has to follow it. */
+  const updateRoi = useCallback((captured: CapturedRoi) => {
+    setChatRoi(prev =>
+      prev && prev.annotationUID === captured.annotationUID
+        ? { ...prev, rect: captured.rect }
+        : prev
+    );
+  }, []);
 
-  // Release the mouse button if the panel unmounts mid-draw, or the viewer is
-  // left with the region tool bound and window/level gone.
-  useEffect(() => () => stopDrawingRoi(displacedToolRef.current), []);
+  /**
+   * The region disappeared from the image without the panel doing it.
+   *
+   * A chat region is stored as an unmapped measurement (see `chatRoiTool.ts`), so
+   * a clinical "clear measurements" deletes it. Dropping it here is what stops the
+   * next message being cropped to a rectangle that is no longer on screen.
+   */
+  const forgetRoi = useCallback(() => {
+    setChatRoi(null);
+    setRoiError('The region was removed from the image, so it is no longer attached.');
+  }, []);
+
+  useChatRoiCapture({
+    isDrawing: isDrawingRoi,
+    trackedAnnotationUID: chatRoi?.annotationUID ?? null,
+    onCaptured: adoptRoi,
+    onUpdated: updateRoi,
+    onRemoved: forgetRoi,
+    onRejected: rejectRoi,
+  });
+
+  // On unmount: release the mouse button, and take the rectangle with it. A
+  // region left on the image after the panel is gone belongs to nothing.
+  const chatRoiRef = useRef<ChatRoi | null>(null);
+  chatRoiRef.current = chatRoi;
+  useEffect(
+    () => () => {
+      stopDrawingRoi(displacedToolRef.current);
+      if (chatRoiRef.current) {
+        removeChatRoi(chatRoiRef.current.annotationUID);
+      }
+    },
+    []
+  );
 
   /** A region belongs to one series; other series are unaffected by it. */
   const roiForSeries = useCallback(
@@ -1221,12 +1277,23 @@ const ChatPanel: React.FC = () => {
         // No slice range applies. The recipe travels with the message so the
         // middleware uses the one this panel is showing, rather than whatever its
         // global config happens to hold when the turn runs.
+        //
+        // The region still travels: the middleware crops whatever slices it ends
+        // up sending, however it chose them. Dropping it here would leave a
+        // region on screen and in the chip that never reached the model — which
+        // is precisely the silent disagreement the snapshot exists to prevent.
+        // It cannot be confined to one slice without addressing, so it covers
+        // every slice sent, and the panel says so.
+        if (roi) {
+          entry.roi = { ...roi.rect, sliceNumber: roi.sliceNumber, scope: 'range' };
+        }
         sliceSelections.push({
           series_uid: series.SeriesInstanceUID,
           sop_instance_uids: [],
           num_slices: sliceRecipe.numSlices,
           slice_strategy: sliceRecipe.strategy,
           central_percentage: sliceRecipe.centralPercentage,
+          roi: roi ? { ...roi.rect } : undefined,
         });
       }
 
@@ -1292,6 +1359,12 @@ const ChatPanel: React.FC = () => {
     // would leave a rectangle on screen that no longer reaches the model.
     if (chatRoi?.displaySetInstanceUID === displaySetUID) {
       clearRoi();
+    }
+    // And a half-drawn region has to be abandoned: the cancel control is only
+    // shown while a series is attached, so detaching the last one would leave
+    // the primary mouse button on the region tool with no way back.
+    if (isDrawingRoi) {
+      endDrawing();
     }
     setSelectedDisplaySetUIDs(prev => {
       const newSet = new Set(prev);
@@ -1643,8 +1716,7 @@ const ChatPanel: React.FC = () => {
           {attachedSeries.map(series => {
             const { addressable, range, count, sampled } = sliceSelectionFor(series);
             const seriesRoi = roiForSeries(series);
-            const onThisSeries =
-              viewerSlice.displaySetInstanceUID === series.displaySetInstanceUID;
+            const onThisSeries = viewerSlice.displaySetInstanceUID === series.displaySetInstanceUID;
             return (
               <div
                 key={series.displaySetInstanceUID}
@@ -1682,8 +1754,8 @@ const ChatPanel: React.FC = () => {
                   // Say which is true rather than hiding the control: the user
                   // needs to know a range does not apply here, and why.
                   <div className="text-muted-foreground mt-1 text-[11px]">
-                    Slice range unavailable for this series — sends{' '}
-                    {formatSliceRecipe(sliceRecipe)}.
+                    Slice range unavailable for this series — sends {formatSliceRecipe(sliceRecipe)}
+                    .
                   </div>
                 )}
                 {addressable && sampled.length === 0 && (
@@ -1696,7 +1768,7 @@ const ChatPanel: React.FC = () => {
                     it modifies, because scoped to one slice it replaces it. */}
                 {seriesRoi && (
                   <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
-                    <span className="flex items-center gap-1 rounded border border-amber-500 bg-amber-950/40 px-2 py-0.5 text-amber-200">
+                    <span className="bg-amber-950/40 flex items-center gap-1 rounded border border-amber-500 px-2 py-0.5 text-amber-200">
                       <span className="truncate">{formatRoiLabel(seriesRoi.sliceNumber)}</span>
                       <button
                         type="button"
@@ -1708,21 +1780,28 @@ const ChatPanel: React.FC = () => {
                         ×
                       </button>
                     </span>
-                    <label className="text-muted-foreground flex items-center gap-1">
-                      Apply to
-                      <select
-                        value={roiScope}
-                        onChange={e => {
-                          pinContext();
-                          setRoiScope(e.target.value as RoiScope);
-                        }}
-                        aria-label="Apply region to"
-                        className="border-input bg-background text-foreground rounded border px-1 py-0.5 text-[11px]"
-                      >
-                        <option value="slice">{formatRoiScope('slice')}</option>
-                        <option value="range">{formatRoiScope('range')}</option>
-                      </select>
-                    </label>
+                    {addressable ? (
+                      <label className="text-muted-foreground flex items-center gap-1">
+                        Apply to
+                        <select
+                          value={roiScope}
+                          onChange={e => {
+                            pinContext();
+                            setRoiScope(e.target.value as RoiScope);
+                          }}
+                          aria-label="Apply region to"
+                          className="border-input bg-background text-foreground rounded border px-1 py-0.5 text-[11px]"
+                        >
+                          <option value="slice">{formatRoiScope('slice')}</option>
+                          <option value="range">{formatRoiScope('range')}</option>
+                        </select>
+                      </label>
+                    ) : (
+                      // Confining a region to one slice needs slice addressing,
+                      // which this series does not offer. Offering the choice
+                      // anyway would be offering something that does nothing.
+                      <span className="text-muted-foreground">Applies to every slice sent</span>
+                    )}
                   </div>
                 )}
               </div>
@@ -1733,8 +1812,7 @@ const ChatPanel: React.FC = () => {
             {/* A chat-specific region tool, not the annotation pen. What is drawn
                 here is a question, not a finding: it never enters the measurement
                 record and renders dashed so it cannot be read as one. */}
-            {attachedSeries.length > 0 &&
-              !chatRoi &&
+            {(isDrawingRoi || (attachedSeries.length > 0 && !chatRoi)) &&
               (isDrawingRoi ? (
                 <button
                   type="button"

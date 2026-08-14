@@ -34,20 +34,20 @@
  */
 
 /* Prevent thumbnail overlap issues */
-[data-cy="study-browser-thumbnail-no-image"] {
+[data-cy='study-browser-thumbnail-no-image'] {
   position: relative !important;
   overflow: hidden !important;
   z-index: 1 !important;
 }
 
 /* Ensure list-style thumbnails have proper containment */
-.ohif-scrollbar [data-cy="study-browser-thumbnail-no-image"] {
+.ohif-scrollbar [data-cy='study-browser-thumbnail-no-image'] {
   margin-bottom: 4px !important;
   clear: both !important;
 }
 
 /* Prevent any absolute positioning issues */
-[data-cy="study-browser-thumbnail-no-image"] * {
+[data-cy='study-browser-thumbnail-no-image'] * {
   position: relative !important;
 }
 
@@ -100,7 +100,9 @@
 }
 
 /* Compact font for AI overlay text inside viewport */
-#aiOverlay, #aiOverlay .overlay-item, #aiOverlay .overlay-item * {
+#aiOverlay,
+#aiOverlay .overlay-item,
+#aiOverlay .overlay-item * {
   font-size: 11px !important;
   line-height: 1.25 !important;
 }

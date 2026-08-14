@@ -144,3 +144,22 @@ describe('removeChatRoi', () => {
     expect(() => removeChatRoi('annot-1')).not.toThrow();
   });
 });
+
+describe('chat ROI styling', () => {
+  it('sets a selected variant for every colour it sets', () => {
+    // Cornerstone resolves a style by appending the annotation's state, and a
+    // freshly drawn annotation is selected. A missing Selected variant falls back
+    // to cornerstone's default green — the colour of a selected measurement.
+    __setToolGroup('default', modeToolGroup());
+    ensureChatRoiTool();
+    const styles = (annotation.config.style.setToolGroupToolStyles as jest.Mock).mock.calls[0][1][
+      CHAT_ROI_TOOL_NAME
+    ];
+    Object.keys(styles)
+      .filter(key => /Color$/.test(key) || key === 'color')
+      .forEach(key => {
+        const base = key === 'color' ? 'color' : key;
+        expect(styles[`${base}Selected`]).toBeTruthy();
+      });
+  });
+});

@@ -12,7 +12,7 @@ import type { SnapshotSeries } from '../types/chatTypes';
 
 const series = (over: Partial<SnapshotSeries> = {}): SnapshotSeries => ({
   displaySetInstanceUID: 'ds',
-    seriesInstanceUID: 'se-1',
+  seriesInstanceUID: 'se-1',
   description: 'Ax T1 post',
   modality: 'MR',
   numFrames: 103,
@@ -167,8 +167,7 @@ describe('buildPromptContextSnapshot', () => {
     const snap = buildPromptContextSnapshot({ ...input, series: live });
 
     live[0].description = 'Something else entirely';
-    live.push(series({ displaySetInstanceUID: 'ds',
-    seriesInstanceUID: 'se-2' }));
+    live.push(series({ displaySetInstanceUID: 'ds', seriesInstanceUID: 'se-2' }));
 
     expect(snap.series).toHaveLength(1);
     expect(snap.series[0].description).toBe('Ax T1 post');
@@ -205,8 +204,10 @@ describe('formatSnapshotSummary', () => {
   it('counts series instead of naming them when several are attached', () => {
     const snap = buildPromptContextSnapshot({
       studyInstanceUID: 'study-1',
-      series: [series(), series({ displaySetInstanceUID: 'ds',
-    seriesInstanceUID: 'se-2', description: 'Ax T2' })],
+      series: [
+        series(),
+        series({ displaySetInstanceUID: 'ds', seriesInstanceUID: 'se-2', description: 'Ax T2' }),
+      ],
       provider: 'local',
       model: 'medgemma',
       sliceRecipe: { numSlices: 5, strategy: 'uniform' },
@@ -272,7 +273,7 @@ describe('requestedImageCount with named slices', () => {
   it('mixes named and recipe-based series', () => {
     const recipeSeries = {
       displaySetInstanceUID: 'ds',
-    seriesInstanceUID: 'se2',
+      seriesInstanceUID: 'se2',
       description: 'Ax T2',
       modality: 'MR',
       numFrames: 40,
@@ -303,7 +304,7 @@ describe('formatSeriesSliceSource', () => {
   it('states the range and count when the slices were named', () => {
     const series = {
       displaySetInstanceUID: 'ds',
-    seriesInstanceUID: 'se',
+      seriesInstanceUID: 'se',
       description: 'Ax T1',
       modality: 'MR',
       numFrames: 103,
@@ -317,7 +318,7 @@ describe('formatSeriesSliceSource', () => {
   it('does not repeat a single-slice range', () => {
     const series = {
       displaySetInstanceUID: 'ds',
-    seriesInstanceUID: 'se',
+      seriesInstanceUID: 'se',
       description: 'Ax T1',
       modality: 'MR',
       numFrames: 103,
@@ -333,7 +334,7 @@ describe('formatSeriesSliceSource', () => {
     // not which pixels went out.
     const series = {
       displaySetInstanceUID: 'ds',
-    seriesInstanceUID: 'se',
+      seriesInstanceUID: 'se',
       description: 'Ax T1',
       modality: 'MR',
       numFrames: 103,

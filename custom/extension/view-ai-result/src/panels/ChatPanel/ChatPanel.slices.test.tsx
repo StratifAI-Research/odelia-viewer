@@ -552,9 +552,27 @@ describe('ChatPanel — provenance under change and failure', () => {
       requestedImageCount: n,
     });
     mockHookState.messages = [
-      { id: 'u1', role: 'user', content: 'first', timestamp: new Date(), promptContext: snapshot(3) },
-      { id: 'a1', role: 'assistant', content: 'a', timestamp: new Date(), promptContext: snapshot(3) },
-      { id: 'u2', role: 'user', content: 'second', timestamp: new Date(), promptContext: snapshot(2) },
+      {
+        id: 'u1',
+        role: 'user',
+        content: 'first',
+        timestamp: new Date(),
+        promptContext: snapshot(3),
+      },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'a',
+        timestamp: new Date(),
+        promptContext: snapshot(3),
+      },
+      {
+        id: 'u2',
+        role: 'user',
+        content: 'second',
+        timestamp: new Date(),
+        promptContext: snapshot(2),
+      },
     ];
     await renderPanel();
 

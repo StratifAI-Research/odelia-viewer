@@ -4,16 +4,23 @@
  *
  * The panel needs a region a radiologist can draw on the image, but a region
  * drawn to ask a question is not a clinical annotation and must not be mistaken
- * for one. This registers a tool under its own name, `ChatROI`, which gets three
+ * for one. This registers a tool under its own name, `ChatROI`, which gets two
  * things from being separate:
  *
- *   - OHIF's measurement service maps annotations to measurements by tool name.
- *     An unknown name has no mapping, so a chat region never enters the
- *     measurement panel, never gets tracked, and is never exported to an SR.
- *   - It renders dashed and labelled "Chat ROI", so nothing on screen reads as a
- *     saved measurement or as an AI overlay.
+ *   - It renders dashed and labelled "Chat ROI", in amber rather than the green
+ *     of a selected measurement, so nothing on screen reads as a saved finding or
+ *     as an AI overlay.
  *   - Clearing chat regions cannot touch the reader's own annotations, because
  *     they are different tools with different annotation records.
+ *
+ * What a distinct name does NOT buy is exclusion from OHIF's measurement service.
+ * The bridge in `extensions/cornerstone/src/initMeasurementService.ts` forwards
+ * every annotation it sees, and `MeasurementService.addUnmappedMeasurement`
+ * deliberately keeps the ones it has no mapping for. So a chat region does appear
+ * in `getMeasurements()`, and a clinical "clear measurements" will delete its
+ * annotation. That is survivable but must not be silent: the panel watches for
+ * its region disappearing (see `useChatRoiCapture`) and drops it, rather than
+ * cropping the next message to a rectangle no longer on screen.
  *
  * Everything here is imperative and talks to cornerstone's global state, which is
  * why the geometry lives in `chatRoi.ts` instead.
@@ -51,16 +58,35 @@ class ChatRoiTool extends RectangleROITool {
   }
 }
 
-/** Dashed and amber: deliberately unlike the solid styling of a measurement. */
+/**
+ * Dashed and amber: deliberately unlike the solid styling of a measurement.
+ *
+ * Every colour needs its Highlighted and Selected variants too. Cornerstone
+ * resolves a style by appending the annotation's state to the property name, and
+ * a freshly drawn annotation is *selected* — so leaving those out leaves the
+ * label and its link line at cornerstone's default selected green, which is
+ * exactly the colour a selected measurement wears. The whole point of styling
+ * this tool is that it cannot be mistaken for one.
+ */
+const AMBER = 'rgb(251, 191, 36)';
+const AMBER_BRIGHT = 'rgb(253, 224, 71)';
+
 const CHAT_ROI_STYLES = {
   [CHAT_ROI_TOOL_NAME]: {
-    color: 'rgb(251, 191, 36)',
-    colorHighlighted: 'rgb(253, 224, 71)',
-    colorSelected: 'rgb(253, 224, 71)',
+    color: AMBER,
+    colorHighlighted: AMBER_BRIGHT,
+    colorSelected: AMBER_BRIGHT,
+    colorLocked: AMBER,
     lineDash: '4,3',
     lineWidth: '2',
     textBoxFontSize: '12px',
-    textBoxColor: 'rgb(251, 191, 36)',
+    textBoxColor: AMBER,
+    textBoxColorHighlighted: AMBER_BRIGHT,
+    textBoxColorSelected: AMBER_BRIGHT,
+    textBoxLinkLineColor: AMBER,
+    textBoxLinkLineColorHighlighted: AMBER_BRIGHT,
+    textBoxLinkLineColorSelected: AMBER_BRIGHT,
+    textBoxLinkLineDash: '2,2',
   },
 };
 
@@ -99,7 +125,10 @@ export function ensureChatRoiTool(toolGroupId = 'default'): boolean {
   registerToolOnce();
 
   try {
-    if (!toolGroup.hasTool?.(CHAT_ROI_TOOL_NAME) && !toolGroup._toolInstances?.[CHAT_ROI_TOOL_NAME]) {
+    if (
+      !toolGroup.hasTool?.(CHAT_ROI_TOOL_NAME) &&
+      !toolGroup._toolInstances?.[CHAT_ROI_TOOL_NAME]
+    ) {
       toolGroup.addTool(CHAT_ROI_TOOL_NAME);
     }
     toolGroup.setToolPassive(CHAT_ROI_TOOL_NAME);
@@ -134,6 +163,10 @@ export function startDrawingRoi(toolGroupId = 'default'): string | null {
     });
   } catch (error) {
     console.warn('Chat ROI tool could not be activated:', error);
+    // The displaced tool has already been made passive by this point, so
+    // returning here would leave the viewer with no primary tool at all — the
+    // reader would silently lose window/level for the rest of the session.
+    restorePrimary(toolGroup, previous);
     return null;
   }
   return previous;
@@ -145,15 +178,27 @@ export function stopDrawingRoi(previousTool: string | null, toolGroupId = 'defau
   if (!toolGroup) {
     return;
   }
+  // Separate try blocks: if releasing the region tool throws, the previous tool
+  // must still get its button back. Sharing one block skipped the restore.
   try {
     toolGroup.setToolPassive(CHAT_ROI_TOOL_NAME);
-    if (previousTool) {
-      toolGroup.setToolActive(previousTool, {
-        bindings: [{ mouseButton: ToolEnums.MouseBindings.Primary }],
-      });
-    }
   } catch (error) {
     console.warn('Chat ROI tool could not be deactivated:', error);
+  }
+  restorePrimary(toolGroup, previousTool);
+}
+
+/** Give a tool the primary mouse button back, tolerating a refusal. */
+function restorePrimary(toolGroup: any, toolName: string | null): void {
+  if (!toolName) {
+    return;
+  }
+  try {
+    toolGroup.setToolActive(toolName, {
+      bindings: [{ mouseButton: ToolEnums.MouseBindings.Primary }],
+    });
+  } catch (error) {
+    console.warn(`${toolName} could not be restored to the primary button:`, error);
   }
 }
 

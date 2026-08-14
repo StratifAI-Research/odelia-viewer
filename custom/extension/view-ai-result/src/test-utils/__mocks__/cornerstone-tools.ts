@@ -21,7 +21,11 @@ export const addTool = jest.fn();
 export const Enums = {
   MouseBindings: { Primary: 1, Auxiliary: 4, Secondary: 2 },
   ToolModes: { Active: 'Active', Passive: 'Passive', Enabled: 'Enabled', Disabled: 'Disabled' },
-  Events: { ANNOTATION_COMPLETED: 'ANNOTATION_COMPLETED' },
+  Events: {
+    ANNOTATION_COMPLETED: 'ANNOTATION_COMPLETED',
+    ANNOTATION_MODIFIED: 'ANNOTATION_MODIFIED',
+    ANNOTATION_REMOVED: 'ANNOTATION_REMOVED',
+  },
 };
 
 export const annotation = {

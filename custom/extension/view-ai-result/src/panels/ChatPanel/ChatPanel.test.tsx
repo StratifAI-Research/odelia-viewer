@@ -142,13 +142,7 @@ describe('ChatPanel', () => {
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: true });
     expect(sendMessage).not.toHaveBeenCalled();
     fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
-    expect(sendMessage).toHaveBeenCalledWith(
-      'hi',
-      undefined,
-      undefined,
-      expect.any(Object),
-      []
-    );
+    expect(sendMessage).toHaveBeenCalledWith('hi', undefined, undefined, expect.any(Object), []);
   });
 
   it('disables the send button for empty/whitespace input', async () => {

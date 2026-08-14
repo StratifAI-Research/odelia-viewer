@@ -1,6 +1,10 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
-import { eventTarget, __resetMetaData, __setMetaData } from '../../test-utils/__mocks__/cornerstone-core';
+import {
+  eventTarget,
+  __resetMetaData,
+  __setMetaData,
+} from '../../test-utils/__mocks__/cornerstone-core';
 import {
   __resetToolGroups,
   __setToolGroup,
@@ -310,5 +314,169 @@ describe('ChatPanel — chat region of interest', () => {
       expect(selection.roi).toBeUndefined();
       expect(selection.sop_instance_uids).toHaveLength(5);
     });
+  });
+});
+
+describe('ChatPanel — a region on a series without slice addressing', () => {
+  const MULTIFRAME = [{ ...SERIES[0], numImageFrames: 40, images: instances(1) }];
+
+  beforeEach(() => {
+    // One enhanced instance covering 40 frames: the panel cannot name a slice.
+    __setMetaData('generalImageModule', IMAGE_ID, { sopInstanceUID: '1.2.840.SE1.1' });
+  });
+
+  it('still sends the region, cropping whatever the recipe picks', async () => {
+    // Dropping it would leave a region on screen and in the chip that never
+    // reached the model.
+    await renderPanel(MULTIFRAME);
+    attachSeries();
+    startDrawing();
+    await completeRectangle();
+    fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+      target: { value: 'q' },
+    });
+    fireEvent.click(screen.getByTitle('Send'));
+
+    const selection = sendMessage.mock.calls[0][4][0];
+    expect(selection.sop_instance_uids).toEqual([]);
+    expect(selection.roi).toEqual({ x: 0.25, y: 0.1, width: 0.5, height: 0.4 });
+  });
+
+  it('says the region covers every slice sent, rather than offering a scope', async () => {
+    // Confining it to one slice needs addressing this series does not offer.
+    await renderPanel(MULTIFRAME);
+    attachSeries();
+    startDrawing();
+    await completeRectangle();
+    expect(screen.getByText('Applies to every slice sent')).toBeTruthy();
+    expect(screen.queryByLabelText('Apply region to')).toBeNull();
+  });
+
+  it('records that wider scope in the snapshot', async () => {
+    await renderPanel(MULTIFRAME);
+    attachSeries();
+    startDrawing();
+    await completeRectangle();
+    fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+      target: { value: 'q' },
+    });
+    fireEvent.click(screen.getByTitle('Send'));
+    expect(sendMessage.mock.calls[0][3].series[0].roi.scope).toBe('range');
+  });
+});
+
+describe('ChatPanel — a region that changes after it is drawn', () => {
+  const modify = async (points: number[][], uid = 'annot-1') => {
+    await act(async () => {
+      (eventTarget as any).dispatch('ANNOTATION_MODIFIED', {
+        annotation: {
+          annotationUID: uid,
+          metadata: { toolName: 'ChatROI', referencedImageId: IMAGE_ID },
+          data: { handles: { points } },
+        },
+      });
+    });
+  };
+
+  const send = () => {
+    fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+      target: { value: 'q' },
+    });
+    fireEvent.click(screen.getByTitle('Send'));
+  };
+
+  it('follows the rectangle when it is resized', async () => {
+    // A passive cornerstone tool stays editable, so without this the overlay
+    // would show one rectangle while the message carried another.
+    await renderPanel();
+    attachSeries();
+    startDrawing();
+    await completeRectangle();
+    await modify([
+      [0, 0],
+      [200, 250],
+    ]);
+    send();
+    expect(sendMessage.mock.calls[0][4][0].roi).toEqual({
+      x: 0,
+      y: 0,
+      width: 0.5,
+      height: 0.5,
+    });
+  });
+
+  it('ignores edits to a rectangle it is not tracking', async () => {
+    await renderPanel();
+    attachSeries();
+    startDrawing();
+    await completeRectangle();
+    await modify(
+      [
+        [0, 0],
+        [200, 250],
+      ],
+      'some-other-annotation'
+    );
+    send();
+    expect(sendMessage.mock.calls[0][4][0].roi).toEqual({
+      x: 0.25,
+      y: 0.1,
+      width: 0.5,
+      height: 0.4,
+    });
+  });
+
+  it('keeps the last good rectangle through a mid-edit sliver', async () => {
+    await renderPanel();
+    attachSeries();
+    startDrawing();
+    await completeRectangle();
+    await modify([
+      [100, 100],
+      [101, 101],
+    ]);
+    send();
+    expect(sendMessage.mock.calls[0][4][0].roi.width).toBe(0.5);
+  });
+
+  it('drops the region when something else removes it from the image', async () => {
+    // A chat region is stored as an unmapped measurement, so a clinical
+    // "clear measurements" deletes it. Cropping the next message to a rectangle
+    // no longer on screen is exactly the silent disagreement to avoid.
+    await renderPanel();
+    attachSeries();
+    startDrawing();
+    await completeRectangle();
+    await act(async () => {
+      (eventTarget as any).dispatch('ANNOTATION_REMOVED', {
+        annotation: { annotationUID: 'annot-1', metadata: { toolName: 'ChatROI' } },
+      });
+    });
+    expect(screen.queryByText(/ROI · slice/)).toBeNull();
+    expect(screen.getByText(/no longer attached/)).toBeTruthy();
+    send();
+    expect(sendMessage.mock.calls[0][4][0].roi).toBeUndefined();
+  });
+
+  it('removes the rectangle it refused', async () => {
+    // Otherwise a rejected sliver stays on the image with no way to clear it
+    // from the chat.
+    await renderPanel();
+    attachSeries();
+    startDrawing();
+    await completeRectangle([
+      [100, 100],
+      [101, 101],
+    ]);
+    expect(annotation.state.removeAnnotation).toHaveBeenCalledWith('annot-1');
+  });
+
+  it('keeps the cancel control reachable after the last series is detached', async () => {
+    // Otherwise the primary mouse button stays on the region tool with no way back.
+    await renderPanel();
+    attachSeries();
+    startDrawing();
+    fireEvent.click(screen.getByLabelText('Remove Ax T1 post'));
+    expect(screen.queryByText(/Drag on the image/)).toBeNull();
   });
 });

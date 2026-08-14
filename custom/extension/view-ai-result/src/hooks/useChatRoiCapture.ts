@@ -4,7 +4,7 @@ import { Enums as ToolEnums } from '@cornerstonejs/tools';
 import { RoiRect, toFractionalRect } from '../utils/chatRoi';
 import { CHAT_ROI_TOOL_NAME } from '../utils/chatRoiTool';
 
-/** A region the user just finished drawing, in terms the panel can resolve. */
+/** A region the user just drew or reshaped, in terms the panel can resolve. */
 export interface CapturedRoi {
   /** The instance the region was drawn on, if cornerstone could name it. */
   sopInstanceUID: string | null;
@@ -13,52 +13,61 @@ export interface CapturedRoi {
 }
 
 interface ChatRoiCaptureConfig {
-  /** Only listen while the panel is actually asking for a region. */
-  enabled: boolean;
+  /** Accept NEW rectangles only while the panel is asking for one. */
+  isDrawing: boolean;
+  /** The region the panel currently holds, watched for edits and deletion. */
+  trackedAnnotationUID: string | null;
   onCaptured: (roi: CapturedRoi) => void;
-  /** Called when a drag produced nothing usable, so the panel can say why. */
-  onRejected?: (reason: string) => void;
+  /** The tracked region was reshaped or moved on the image. */
+  onUpdated: (roi: CapturedRoi) => void;
+  /** The tracked region disappeared from the image (someone else removed it). */
+  onRemoved: () => void;
+  /** A drag produced nothing usable; the UID is passed so it can be cleaned up. */
+  onRejected: (reason: string, annotationUID: string | null) => void;
 }
 
 /**
- * Turn a finished chat-ROI rectangle into a fractional crop.
+ * Keep the panel's region in step with the rectangle on the image.
  *
- * Subscribed on cornerstone's event target rather than polled: the rectangle only
- * exists once the drag ends, and that is exactly what ANNOTATION_COMPLETED
- * reports.
+ * Three events matter, and leaving any of them out breaks the panel's central
+ * promise that what it says is what gets sent:
  *
- * The instance is identified from cornerstone's own metadata, not by parsing the
- * imageId — imageId formats belong to the image loader, and the panel addresses
- * slices by SOPInstanceUID everywhere else, so this keeps one scheme throughout.
+ *   - COMPLETED: a new rectangle. Accepted only while the panel asked for one.
+ *   - MODIFIED: the rectangle was moved or resized. A cornerstone tool left
+ *     passive stays editable, so without this the overlay would show one
+ *     rectangle while the message carried another.
+ *   - REMOVED: the rectangle is gone. It need not be the panel that removed it —
+ *     "clear measurements" reaches it too (see `chatRoiTool.ts`) — and cropping
+ *     the next message to a region no longer on screen is exactly the silent
+ *     disagreement to avoid.
+ *
+ * The instance is identified from cornerstone's own metadata rather than by
+ * parsing the imageId: imageId formats belong to the image loader, and the panel
+ * addresses slices by SOPInstanceUID everywhere else.
  */
 export function useChatRoiCapture({
-  enabled,
+  isDrawing,
+  trackedAnnotationUID,
   onCaptured,
+  onUpdated,
+  onRemoved,
   onRejected,
 }: ChatRoiCaptureConfig): void {
   useEffect(() => {
-    if (!enabled || !eventTarget?.addEventListener) {
+    if (!eventTarget?.addEventListener) {
       return;
     }
-    const completedEvent = ToolEnums?.Events?.ANNOTATION_COMPLETED;
-    if (!completedEvent) {
+    const events = ToolEnums?.Events;
+    if (!events?.ANNOTATION_COMPLETED) {
       return;
     }
 
-    const onCompleted = (evt: any) => {
-      const drawn = evt?.detail?.annotation;
-      // Other tools finish their annotations on the same event; only ours is a
-      // chat region, and touching another tool's annotation would be a bug with
-      // clinical consequences.
-      if (drawn?.metadata?.toolName !== CHAT_ROI_TOOL_NAME) {
-        return;
-      }
-
+    /** Fractional rectangle for a chat-ROI annotation, or a reason it is not one. */
+    const measure = (drawn: any): CapturedRoi | string => {
       const imageId = drawn?.metadata?.referencedImageId;
       const worldPoints = drawn?.data?.handles?.points;
       if (!imageId || !Array.isArray(worldPoints) || worldPoints.length === 0) {
-        onRejected?.('The region could not be located on the image.');
-        return;
+        return 'The region could not be located on the image.';
       }
 
       const plane = metaData.get('imagePlaneModule', imageId) as any;
@@ -67,29 +76,81 @@ export function useChatRoiCapture({
 
       let imagePoints: number[][];
       try {
-        imagePoints = worldPoints.map((p: number[]) => csUtils.worldToImageCoords(imageId, p as never) as number[]);
+        imagePoints = worldPoints.map(
+          (p: number[]) => csUtils.worldToImageCoords(imageId, p as never) as number[]
+        );
       } catch (_) {
-        onRejected?.('The region could not be mapped onto the image.');
-        return;
+        return 'The region could not be mapped onto the image.';
       }
 
       const rect = toFractionalRect(imagePoints, columns, rows);
       if (!rect) {
         // Most often a click rather than a drag. Saying so beats a region that
         // silently crops to a few pixels of nothing.
-        onRejected?.('Drag to draw a region — a click is too small to send.');
-        return;
+        return 'Drag to draw a region — a click is too small to send.';
       }
 
       const general = metaData.get('generalImageModule', imageId) as any;
-      onCaptured({
+      return {
         sopInstanceUID: general?.sopInstanceUID ?? null,
         rect,
         annotationUID: drawn.annotationUID,
-      });
+      };
     };
 
-    eventTarget.addEventListener(completedEvent, onCompleted);
-    return () => eventTarget.removeEventListener(completedEvent, onCompleted);
-  }, [enabled, onCaptured, onRejected]);
+    /** Only ever act on our own tool: another tool's annotation is not ours to read. */
+    const isChatRoi = (drawn: any) => drawn?.metadata?.toolName === CHAT_ROI_TOOL_NAME;
+
+    const onCompleted = (evt: any) => {
+      const drawn = evt?.detail?.annotation;
+      if (!isChatRoi(drawn) || !isDrawing) {
+        return;
+      }
+      const result = measure(drawn);
+      if (typeof result === 'string') {
+        onRejected(result, drawn?.annotationUID ?? null);
+        return;
+      }
+      onCaptured(result);
+    };
+
+    const onModified = (evt: any) => {
+      const drawn = evt?.detail?.annotation;
+      if (!isChatRoi(drawn) || drawn?.annotationUID !== trackedAnnotationUID) {
+        return;
+      }
+      const result = measure(drawn);
+      // A mid-edit rectangle can momentarily be too small to be usable. Keeping
+      // the last good one beats dropping the region under the user's cursor.
+      if (typeof result !== 'string') {
+        onUpdated(result);
+      }
+    };
+
+    const onAnnotationRemoved = (evt: any) => {
+      const drawn = evt?.detail?.annotation;
+      const removedUID = drawn?.annotationUID ?? evt?.detail?.annotationUID;
+      if (!trackedAnnotationUID || removedUID !== trackedAnnotationUID) {
+        return;
+      }
+      onRemoved();
+    };
+
+    eventTarget.addEventListener(events.ANNOTATION_COMPLETED, onCompleted);
+    if (events.ANNOTATION_MODIFIED) {
+      eventTarget.addEventListener(events.ANNOTATION_MODIFIED, onModified);
+    }
+    if (events.ANNOTATION_REMOVED) {
+      eventTarget.addEventListener(events.ANNOTATION_REMOVED, onAnnotationRemoved);
+    }
+    return () => {
+      eventTarget.removeEventListener(events.ANNOTATION_COMPLETED, onCompleted);
+      if (events.ANNOTATION_MODIFIED) {
+        eventTarget.removeEventListener(events.ANNOTATION_MODIFIED, onModified);
+      }
+      if (events.ANNOTATION_REMOVED) {
+        eventTarget.removeEventListener(events.ANNOTATION_REMOVED, onAnnotationRemoved);
+      }
+    };
+  }, [isDrawing, trackedAnnotationUID, onCaptured, onUpdated, onRemoved, onRejected]);
 }
