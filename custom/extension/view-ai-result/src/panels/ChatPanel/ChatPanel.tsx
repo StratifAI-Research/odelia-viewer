@@ -2917,9 +2917,6 @@ const ChatPanel: React.FC = () => {
                 </Button>
               )}
             </div>
-            <p className="text-muted-foreground mt-1.5 text-center text-[11px]">
-              AI responses are experimental and not a substitute for professional judgment.
-            </p>
           </div>
         </div>
       </div>
