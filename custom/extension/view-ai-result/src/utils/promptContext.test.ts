@@ -32,12 +32,39 @@ describe('formatStudyLabel', () => {
     expect(formatStudyLabel({ StudyDescription: 'Breast MRI' })).toBe('Breast MRI');
   });
 
-  it('falls back to the UID tail when there is no date or description', () => {
+  it('falls back to the accession before the UID, on anonymised data', () => {
+    // The real UKA study: no (0008,0020) and no (0008,1030) on any instance,
+    // with the cohort identifier left in (0008,0050). "Accession UKA_1" is a
+    // label a reader can act on; "Study …5106477" is not.
+    expect(
+      formatStudyLabel({
+        StudyInstanceUID: '1.3.46.670589.16.2.2.10.75.20.10.20100804.123124.5106477',
+        AccessionNumber: 'UKA_1',
+      })
+    ).toBe('Accession UKA_1');
+  });
+
+  it('prefers a real date or description over the accession', () => {
+    // The accession is a fallback, not an addition: a study that knows its date
+    // gains nothing from an accession number beside it.
+    expect(formatStudyLabel({ StudyDate: '20260812', AccessionNumber: 'UKA_1' })).toBe(
+      '2026-08-12'
+    );
+    expect(formatStudyLabel({ StudyDescription: 'Breast MRI', AccessionNumber: 'UKA_1' })).toBe(
+      'Breast MRI'
+    );
+  });
+
+  it('falls back to the UID tail when there is no date, description or accession', () => {
     // The tail, not the head: DICOM UIDs share long org prefixes, so only the
     // last segment distinguishes two studies.
     expect(formatStudyLabel({ StudyInstanceUID: '1.2.840.113619.2.55.12345678' })).toBe(
       'Study …12345678'
     );
+    // A blank accession must not shadow the UID with a bare "Accession".
+    expect(
+      formatStudyLabel({ StudyInstanceUID: '1.2.840.113619.2.55.12345678', AccessionNumber: '  ' })
+    ).toBe('Study …12345678');
   });
 
   it('never returns an empty label, so a chip is never blank', () => {

@@ -1,5 +1,6 @@
 /**
- * Resolve study-level DICOM tags (StudyDate, StudyDescription) for a study.
+ * Resolve study-level DICOM tags (StudyDate, StudyDescription, AccessionNumber)
+ * for a study.
  *
  * These are not reliably present on OHIF display sets — an Orthanc/DICOMweb
  * study loaded through WADO frequently yields display sets with neither — so the
@@ -7,8 +8,15 @@
  * point of labelling the study at all: a patient commonly has several studies and
  * the date is what distinguishes them.
  *
- * The lookup walks three sources, cheapest first, and stops as soon as both tags
- * are known:
+ * AccessionNumber is resolved for the same reason, as a last resort. Anonymised
+ * research data routinely arrives with StudyDate and StudyDescription stripped
+ * and the accession left in place as the cohort identifier — the UKA breast MRI
+ * set is exactly this, with no (0008,0020) or (0008,1030) on any instance and
+ * `UKA_1` in (0008,0050). "Accession UKA_1" is a label a reader can act on;
+ * "Study …5106477" is not.
+ *
+ * The lookup walks three sources, cheapest first, and stops as soon as every tag
+ * is known:
  *
  *   1. the display sets themselves,
  *   2. the first instance carried by a display set,
@@ -17,6 +25,8 @@
  * SR and SC series are excluded by the caller (and again in step 3), because a
  * derived AI report carries its own description and would otherwise overwrite the
  * real study's — the same contamination `useStudySeriesSelection` guards against.
+ * `orthanc/router/server.py` no longer fabricates those tags, but archives still
+ * hold objects written before that fix, so the guard stays.
  */
 
 import { DicomMetadataStore } from '@ohif/core';
@@ -24,6 +34,7 @@ import { DicomMetadataStore } from '@ohif/core';
 export interface StudyTags {
   StudyDate?: string;
   StudyDescription?: string;
+  AccessionNumber?: string;
 }
 
 /** Treat blank/whitespace tags as absent so they cannot mask a later source. */
@@ -39,10 +50,12 @@ function clean(value?: unknown): string | undefined {
 interface StoredStudy {
   StudyDate?: string;
   StudyDescription?: string;
+  AccessionNumber?: string;
   series?: Array<{
     Modality?: string;
     StudyDate?: string;
     StudyDescription?: string;
+    AccessionNumber?: string;
     instances?: Array<Record<string, unknown>>;
   }>;
 }
@@ -50,13 +63,19 @@ interface StoredStudy {
 export function resolveStudyTags(studyUID: string, imagingDisplaySets: any[] = []): StudyTags {
   let date: string | undefined;
   let description: string | undefined;
+  let accession: string | undefined;
+
+  // Date and description are what the label is built from; the accession is only
+  // a fallback, so finding it is never on its own a reason to stop looking.
+  const enough = () => Boolean(date && description);
 
   // 1. The display sets themselves.
   for (const ds of imagingDisplaySets) {
     date = date ?? clean(ds?.StudyDate);
     description = description ?? clean(ds?.StudyDescription);
-    if (date && description) {
-      return { StudyDate: date, StudyDescription: description };
+    accession = accession ?? clean(ds?.AccessionNumber);
+    if (enough() && accession) {
+      return { StudyDate: date, StudyDescription: description, AccessionNumber: accession };
     }
   }
 
@@ -68,8 +87,9 @@ export function resolveStudyTags(studyUID: string, imagingDisplaySets: any[] = [
     }
     date = date ?? clean(instance.StudyDate);
     description = description ?? clean(instance.StudyDescription);
-    if (date && description) {
-      return { StudyDate: date, StudyDescription: description };
+    accession = accession ?? clean(instance.AccessionNumber);
+    if (enough() && accession) {
+      return { StudyDate: date, StudyDescription: description, AccessionNumber: accession };
     }
   }
 
@@ -82,25 +102,27 @@ export function resolveStudyTags(studyUID: string, imagingDisplaySets: any[] = [
     stored = undefined;
   }
   if (!stored) {
-    return { StudyDate: date, StudyDescription: description };
+    return { StudyDate: date, StudyDescription: description, AccessionNumber: accession };
   }
 
-  // Imaging series only. A derived object carries *fabricated* study-level tags:
-  // the heatmap router sets `StudyDescription = "AI Attention Heatmap
-  // Visualization"` on the SC it writes, and the report writer sets "AI
-  // Classification Report" on its SR. Neither describes the study.
+  // Imaging series only. A derived object written before `orthanc/router/
+  // server.py` was fixed carries *fabricated* study-level tags: the heatmap
+  // builder set `StudyDescription = "AI Attention Heatmap Visualization"` on its
+  // SC, and the report builder set "AI Classification Report" on its SR. Neither
+  // describes the study, and archives still hold objects from that era.
   const imagingSeries = (stored.series ?? []).filter(
     s => s?.Modality !== 'SR' && s?.Modality !== 'SC'
   );
 
   for (const series of imagingSeries) {
-    if (date && description) {
+    if (enough() && accession) {
       break;
     }
     const instance = series?.instances?.[0];
     date = date ?? clean(instance?.StudyDate) ?? clean(series?.StudyDate);
     description =
       description ?? clean(instance?.StudyDescription) ?? clean(series?.StudyDescription);
+    accession = accession ?? clean(instance?.AccessionNumber) ?? clean(series?.AccessionNumber);
   }
 
   // The store's own study-level tags are an aggregate OHIF fills from whichever
@@ -110,7 +132,8 @@ export function resolveStudyTags(studyUID: string, imagingDisplaySets: any[] = [
   if (imagingSeries.length === 0) {
     date = date ?? clean(stored.StudyDate);
     description = description ?? clean(stored.StudyDescription);
+    accession = accession ?? clean(stored.AccessionNumber);
   }
 
-  return { StudyDate: date, StudyDescription: description };
+  return { StudyDate: date, StudyDescription: description, AccessionNumber: accession };
 }

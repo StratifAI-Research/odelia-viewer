@@ -600,6 +600,7 @@ const ChatPanel: React.FC = () => {
       const tags = resolveStudyTags(studyUID, studyDisplaySets);
       info.StudyDate = tags.StudyDate;
       info.StudyDescription = tags.StudyDescription;
+      info.AccessionNumber = tags.AccessionNumber;
 
       const series: ChatSeriesInfo[] = studyDisplaySets.map((ds: any) => {
         const instances: any[] = ds.images || ds.instances || [];

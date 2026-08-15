@@ -140,6 +140,29 @@ describe('ChatPanel — display-set context refresh', () => {
   });
 });
 
+describe('ChatPanel — study label on anonymised data', () => {
+  it('labels a study with no date or description by its accession', async () => {
+    // Shaped like the real UKA study as Orthanc holds it: one MR series, no
+    // (0008,0020), no (0008,1030), and the cohort identifier in (0008,0050).
+    // Before the accession fallback this rendered "Study …5106477", which tells
+    // a reader nothing about which study the panel is answering from.
+    mockActiveStudy = 'study-uka';
+    await renderPanel([
+      {
+        StudyInstanceUID: 'study-uka',
+        AccessionNumber: 'UKA_1',
+        SeriesInstanceUID: 'se-uka',
+        SeriesDescription: 'NCI-dyn DEV',
+        SeriesNumber: 401,
+        Modality: 'MR',
+        numImageFrames: 155,
+      },
+    ]);
+    expect(screen.getByText('Accession UKA_1')).toBeTruthy();
+    expect(screen.queryByText(/Study …/)).toBeNull();
+  });
+});
+
 describe('ChatPanel — following vs pinned', () => {
   it('follows the viewer while the prompt is untouched', async () => {
     const { rerender } = await renderPanel();

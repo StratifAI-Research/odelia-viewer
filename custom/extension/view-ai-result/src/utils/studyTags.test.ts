@@ -66,12 +66,13 @@ describe('resolveStudyTags', () => {
   });
 
   it('does not inherit the study aggregate when it was polluted by a derived series', () => {
-    // Reproduces the real UKA_1 study: the only imaging series carries no study
-    // description, while the heatmap router stamps
-    // `StudyDescription = "AI Attention Heatmap Visualization"` onto the SC it
-    // writes (orthanc/router/server.py). OHIF aggregates that to study level, so
-    // trusting the aggregate would label the patient's MRI with the name of an
-    // AI artefact. Correct answer here is "nothing known".
+    // Reproduces the real UKA_1 study as it looked before the router was fixed:
+    // the only imaging series carries no study description, while the heatmap
+    // builder stamped `StudyDescription = "AI Attention Heatmap Visualization"`
+    // onto the SC it wrote (orthanc/router/server.py). OHIF aggregates that to
+    // study level, so trusting the aggregate would label the patient's MRI with
+    // the name of an AI artefact. Correct answer here is "nothing known".
+    // The router no longer writes it, but archives still hold objects that do.
     setStore({
       'study-1': {
         StudyDescription: 'AI Attention Heatmap Visualization',
@@ -172,5 +173,73 @@ describe('resolveStudyTags', () => {
 
   it('tolerates malformed display-set entries', () => {
     expect(() => resolveStudyTags('study-1', [null, undefined, {}] as any)).not.toThrow();
+  });
+
+  describe('AccessionNumber', () => {
+    it('resolves it from the same three sources', () => {
+      expect(resolveStudyTags('study-1', [{ AccessionNumber: 'UKA_1' }]).AccessionNumber).toBe(
+        'UKA_1'
+      );
+      expect(
+        resolveStudyTags('study-1', [{ instances: [{ AccessionNumber: 'UKA_2' }] }]).AccessionNumber
+      ).toBe('UKA_2');
+      setStore({
+        'study-1': { series: [{ Modality: 'MR', instances: [{ AccessionNumber: 'UKA_3' }] }] },
+      });
+      expect(resolveStudyTags('study-1').AccessionNumber).toBe('UKA_3');
+    });
+
+    it('keeps looking for it after date and description are already known', () => {
+      // The early return has to be conditional on the accession too, or a display
+      // set that happens to carry both other tags would end the search first.
+      const tags = resolveStudyTags('study-1', [
+        { StudyDate: '20260812', StudyDescription: 'Breast MRI' },
+        { AccessionNumber: 'UKA_1' },
+      ]);
+      expect(tags.AccessionNumber).toBe('UKA_1');
+    });
+
+    it('resolves the real UKA study to its accession alone', () => {
+      // Exactly what Orthanc holds: one MR series, no study date, no study
+      // description, the cohort identifier in AccessionNumber.
+      setStore({
+        'study-1': {
+          series: [
+            {
+              Modality: 'MR',
+              instances: [{ SeriesDescription: 'NCI-dyn DEV', AccessionNumber: 'UKA_1' }],
+            },
+          ],
+        },
+      });
+      expect(resolveStudyTags('study-1')).toEqual({
+        StudyDate: undefined,
+        StudyDescription: undefined,
+        AccessionNumber: 'UKA_1',
+      });
+    });
+
+    it('treats a blank accession as absent', () => {
+      setStore({
+        'study-1': { series: [{ Modality: 'MR', instances: [{ AccessionNumber: 'UKA_1' }] }] },
+      });
+      expect(resolveStudyTags('study-1', [{ AccessionNumber: '   ' }]).AccessionNumber).toBe(
+        'UKA_1'
+      );
+    });
+
+    it('ignores SR and SC series here too', () => {
+      // Derived objects share the study UID, so anything study-level on them is
+      // the study's or nothing — never the derived object's own.
+      setStore({
+        'study-1': {
+          series: [
+            { Modality: 'SR', instances: [{ AccessionNumber: 'AI_REPORT' }] },
+            { Modality: 'MR', instances: [{ AccessionNumber: 'UKA_1' }] },
+          ],
+        },
+      });
+      expect(resolveStudyTags('study-1').AccessionNumber).toBe('UKA_1');
+    });
   });
 });

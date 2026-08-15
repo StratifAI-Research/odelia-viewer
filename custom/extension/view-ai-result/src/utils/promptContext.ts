@@ -30,6 +30,7 @@ export interface StudyLabelSource {
   StudyInstanceUID?: string;
   StudyDate?: string;
   StudyDescription?: string;
+  AccessionNumber?: string;
 }
 
 /**
@@ -38,8 +39,14 @@ export interface StudyLabelSource {
  * The date leads because a patient commonly has several studies and the date is
  * what distinguishes them — the user's explicit requirement that a study
  * identifier plus series description appear, rather than a bare "Series 4".
- * Falls back through description → shortened UID → a fixed string, so this never
- * returns empty and a chip is never blank.
+ * Falls back through description → accession → shortened UID → a fixed string,
+ * so this never returns empty and a chip is never blank.
+ *
+ * The accession step is there because anonymised research data routinely arrives
+ * with the date and description stripped and the accession left in place as the
+ * cohort identifier: the UKA breast MRI set carries no (0008,0020) or (0008,1030)
+ * on any instance and `UKA_1` in (0008,0050). It is prefixed rather than shown
+ * bare so it cannot be misread as a study description.
  */
 export function formatStudyLabel(study?: StudyLabelSource | null): string {
   if (!study) {
@@ -58,6 +65,10 @@ export function formatStudyLabel(study?: StudyLabelSource | null): string {
   }
   if (description) {
     return description;
+  }
+  const accession = study.AccessionNumber?.trim();
+  if (accession) {
+    return `Accession ${accession}`;
   }
   const uid = study.StudyInstanceUID?.trim();
   if (uid) {
