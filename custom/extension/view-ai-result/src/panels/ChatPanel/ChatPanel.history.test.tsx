@@ -301,8 +301,12 @@ describe('ChatPanel — chat history switcher', () => {
     });
   });
 
-  it('clearing the conversation discards it from history too', async () => {
-    // Leaving the entry behind would resurrect the conversation on the next switch.
+  it('deleting the open conversation discards its session too', async () => {
+    // Deleting from the history list is now the only way to throw a conversation
+    // away — the separate "Clear conversation" menu item is gone — so it has to
+    // do the whole job: the stored thread, the displayed transcript, and the
+    // middleware session behind it. Leaving any one would resurrect the
+    // conversation on the next switch.
     setHook({
       messages: [{ id: 'u1', role: 'user', content: 'Throwaway', timestamp: new Date() }],
     });
@@ -310,10 +314,10 @@ describe('ChatPanel — chat history switcher', () => {
     expect(JSON.parse(window.sessionStorage.getItem(STORAGE_KEY)!)).toHaveLength(1);
 
     await act(async () => {
-      fireEvent.click(screen.getByTitle('More options'));
+      fireEvent.click(screen.getByTitle('Chat history'));
     });
     await act(async () => {
-      fireEvent.click(screen.getByTitle('Clear history'));
+      fireEvent.click(screen.getByLabelText(/^Delete /));
     });
 
     expect(clearHistory).toHaveBeenCalled();

@@ -46,6 +46,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   // Chat threads persist in sessionStorage; clear so cases stay independent.
   window.sessionStorage.clear();
+  window.localStorage.clear();
   setHook();
   withSystem(makeServicesManager());
 });
@@ -82,17 +83,24 @@ const jsonOk = (body: any) => ({ ok: true, status: 200, json: async () => body }
 /**
  * Mount and open the settings modal. The panel reads the debug config on mount
  * (the header shows the active model at all times), so the render is awaited;
- * Settings itself now lives behind the header's overflow menu.
+ * Settings opens straight from the header's gear.
  */
 async function openSettings() {
   await act(async () => {
     render(<ChatPanel />);
   });
   await act(async () => {
-    fireEvent.click(screen.getByTitle('More options'));
+    fireEvent.click(screen.getByTitle('Settings'));
+  });
+}
+
+/** Open the header's model menu, which is where a model is actually chosen. */
+async function openModelMenu() {
+  await act(async () => {
+    render(<ChatPanel />);
   });
   await act(async () => {
-    fireEvent.click(screen.getByTitle('Settings'));
+    fireEvent.click(screen.getByLabelText('Model'));
   });
 }
 
@@ -103,9 +111,7 @@ describe('ChatPanel backend selector', () => {
     });
     await openSettings();
 
-    expect(screen.getByText(/Ollama Cloud is disabled on this deployment/)).toBeTruthy();
-    // No egress warning while local is the only option.
-    expect(screen.queryByText(/Images leave this network/)).toBeNull();
+    expect(screen.getByText(/ALLOW_CLOUD_BACKEND/)).toBeTruthy();
   });
 
   it('treats a middleware with no provider fields as local-only', async () => {
@@ -114,13 +120,20 @@ describe('ChatPanel backend selector', () => {
     routeFetch({ '/debug/config': jsonOk(BASE_CONFIG) });
     await openSettings();
 
-    expect(screen.getByText(/Ollama Cloud is disabled on this deployment/)).toBeTruthy();
+    expect(screen.getByText(/ALLOW_CLOUD_BACKEND/)).toBeTruthy();
   });
 
-  it('does not fetch the cloud model list while the provider is local', async () => {
-    // The listing costs an /api/tags plus one /api/show per model upstream.
+  it('does not fetch the cloud model list when the backend is unusable', async () => {
+    // The listing costs an /api/tags plus one /api/show per model upstream, and
+    // cannot succeed without the gate and a key. Settings lists both catalogues
+    // now, so "local is selected" is no longer the reason to skip it.
     const fetchMock = routeFetch({
-      '/debug/config': jsonOk({ ...BASE_CONFIG, provider: 'local', cloud_enabled: true }),
+      '/debug/config': jsonOk({
+        ...BASE_CONFIG,
+        provider: 'local',
+        cloud_enabled: true,
+        cloud_configured: false,
+      }),
     });
     await openSettings();
 
@@ -150,59 +163,21 @@ describe('ChatPanel backend selector', () => {
     });
     await openSettings();
 
-    // The toggle names how many are hidden.
-    const toggle = screen.getByRole('checkbox');
-    expect(screen.getByText(/Show 2 text-only models/)).toBeTruthy();
+    // Only the vision model is listed, and the toggle names how many are hidden.
+    expect(screen.getByText('qwen3.5:397b')).toBeTruthy();
+    expect(screen.queryByText('deepseek-v4-flash:0731')).toBeNull();
+    const toggle = screen.getByLabelText(/Show 2 text-only models/);
+    expect(toggle).toBeTruthy();
 
-    await act(async () => {
-      fireEvent.click(screen.getByLabelText(/Cloud model/i));
-    });
-    // Only the vision model is offered.
-    expect(screen.queryByText(/deepseek-v4-flash:0731/)).toBeNull();
-    expect(screen.getByText(/qwen3\.5:397b — vision/)).toBeTruthy();
-
-    // Ticking the toggle reveals the rest, labelled as text only.
     await act(async () => {
       fireEvent.click(toggle);
     });
-    expect(screen.getByText(/deepseek-v4-flash:0731 — text only/)).toBeTruthy();
+    expect(screen.getByText('deepseek-v4-flash:0731')).toBeTruthy();
+    expect(screen.getAllByText(/Text only — cannot see images/).length).toBeGreaterThan(0);
   });
 
-  it('labels each cloud model with a single combined string', async () => {
-    // Guards the fix for a blank selection box. ui-next's SelectItem only wraps
-    // children in SelectPrimitive.ItemText when `typeof children === 'string'`
-    // (Select.tsx), and Radix renders the trigger's SelectValue from ItemText —
-    // so passing the name and the "— vision" suffix as two JSX children left the
-    // closed trigger empty after a selection.
-    //
-    // Radix's trigger is not rendered by jsdom, so the trigger itself is verified
-    // in a browser rather than here; what this pins is that each option's label is
-    // one contiguous string, which is the condition ItemText wrapping depends on.
-    routeFetch({
-      '/debug/config': jsonOk({
-        ...BASE_CONFIG,
-        provider: 'cloud',
-        cloud_enabled: true,
-        cloud_configured: true,
-        cloud_model: '',
-      }),
-      '/cloud/models': jsonOk({
-        capabilities_reported: true,
-        models: [
-          { name: 'qwen3.5:397b', capabilities: ['completion', 'vision'], supports_vision: true },
-        ],
-      }),
-    });
-    await openSettings();
-
-    // A single text node holding the whole label, not the name split from its suffix.
-    const option = screen.getByText('qwen3.5:397b — vision');
-    expect(option).toBeTruthy();
-    expect(option.textContent).toBe('qwen3.5:397b — vision');
-  });
-
-  it('keeps an already-selected text-only model visible', async () => {
-    // Otherwise the dropdown could not display the setting actually in effect.
+  it('keeps a model that is in use visible even when text-only', async () => {
+    // Otherwise the settings list could not show the model actually in effect.
     routeFetch({
       '/debug/config': jsonOk({
         ...BASE_CONFIG,
@@ -221,10 +196,7 @@ describe('ChatPanel backend selector', () => {
     });
     await openSettings();
 
-    await act(async () => {
-      fireEvent.click(screen.getByLabelText(/Cloud model/i));
-    });
-    expect(screen.getByText(/glm-5\.2 — text only/)).toBeTruthy();
+    expect(screen.getByText('glm-5.2')).toBeTruthy();
   });
 
   it('does not filter when the host reported no capabilities', async () => {
@@ -247,15 +219,13 @@ describe('ChatPanel backend selector', () => {
     await openSettings();
 
     // No filter toggle, since filtering would be meaningless.
-    expect(screen.queryByRole('checkbox')).toBeNull();
-    await act(async () => {
-      fireEvent.click(screen.getByLabelText(/Cloud model/i));
-    });
-    expect(screen.getByText(/unknown-a:1b/)).toBeTruthy();
-    expect(screen.getByText(/unknown-b:1b/)).toBeTruthy();
+    expect(screen.queryByLabelText(/text-only model/)).toBeNull();
+    expect(screen.getByText('unknown-a:1b')).toBeTruthy();
+    expect(screen.getByText('unknown-b:1b')).toBeTruthy();
+    expect(screen.getAllByText(/Capabilities unknown/).length).toBe(2);
   });
 
-  it('warns that images leave the network and lists models with vision flags', async () => {
+  it('names the host that answers, without warning about it', async () => {
     routeFetch({
       '/debug/config': jsonOk({
         ...BASE_CONFIG,
@@ -275,14 +245,21 @@ describe('ChatPanel backend selector', () => {
     });
     await openSettings();
 
-    expect(screen.getByText(/Images leave this network/)).toBeTruthy();
+    // The host is named, as provenance — not as a warning. Enabling the cloud
+    // backend is an operator decision; the reader needs to know which host
+    // answers, not to be told their institution may not allow what it set up.
     expect(screen.getByText(/https:\/\/ollama\.com/)).toBeTruthy();
-    // The vision-capable model is marked as such in the picker.
-    expect(screen.getByText(/seeing:1b — vision/)).toBeTruthy();
+    expect(screen.queryByText(/Images leave this network/)).toBeNull();
+    expect(screen.queryByText(/unless your institution permits/)).toBeNull();
+    // Vision capability is still stated per model.
+    expect(screen.getByText('seeing:1b')).toBeTruthy();
+    expect(screen.getAllByText(/Vision/).length).toBeGreaterThan(0);
   });
 
-  it('warns when the selected cloud model cannot accept images', async () => {
+  it('says which models cannot accept images', async () => {
     // The chat sends DICOM slices, so a text-only pick silently blinds the model.
+    // Now stated per model rather than as a warning about one selection, because
+    // the panel offers a list to tick rather than a single choice.
     routeFetch({
       '/debug/config': jsonOk({
         ...BASE_CONFIG,
@@ -298,7 +275,7 @@ describe('ChatPanel backend selector', () => {
     });
     await openSettings();
 
-    expect(screen.getByText(/no vision capability/)).toBeTruthy();
+    expect(screen.getByText(/Text only — cannot see images/)).toBeTruthy();
   });
 
   it('does not claim a model is text-only when the host reported no capabilities', async () => {
@@ -317,8 +294,10 @@ describe('ChatPanel backend selector', () => {
     });
     await openSettings();
 
-    expect(screen.getByText(/vision support is unknown/)).toBeTruthy();
-    expect(screen.queryByText(/no vision capability/)).toBeNull();
+    // "Unknown" is not "no": an older Ollama omits the capability field entirely,
+    // and reporting that as text-only would be inventing a fact.
+    expect(screen.getByText(/Capabilities unknown/)).toBeTruthy();
+    expect(screen.queryByText(/Text only/)).toBeNull();
   });
 
   it('tells the operator to set an API key when none is configured', async () => {
@@ -355,7 +334,10 @@ describe('ChatPanel backend selector', () => {
     expect(screen.getByText(/Model listing failed: HTTP 401/)).toBeTruthy();
   });
 
-  it('sends the provider and cloud model when saving', async () => {
+  it('saves only what the settings panel still edits', async () => {
+    // It used to send the provider, both model names and the preprocessing block
+    // — values it had only loaded and was echoing back — so saving a system
+    // prompt could revert a model another browser had just switched to.
     const fetchMock = routeFetch({
       '/debug/config': jsonOk({
         ...BASE_CONFIG,
@@ -378,8 +360,12 @@ describe('ChatPanel backend selector', () => {
     const put = fetchMock.mock.calls.find(c => (c[1] as any)?.method === 'PUT');
     expect(put).toBeTruthy();
     const body = JSON.parse((put![1] as any).body);
-    expect(body.provider).toBe('cloud');
-    expect(body.cloud_model).toBe('seeing:1b');
+    expect(body.system_prompt).toBeDefined();
+    expect(body.ollama_options).toBeDefined();
+    expect(body.provider).toBeUndefined();
+    expect(body.cloud_model).toBeUndefined();
+    expect(body.model).toBeUndefined();
+    expect(body.preprocessing).toBeUndefined();
   });
 
   it('shows the middleware rejection reason when a cloud switch is refused', async () => {
@@ -407,5 +393,85 @@ describe('ChatPanel backend selector', () => {
     });
 
     expect(screen.getByText(/The Ollama Cloud backend is disabled\./)).toBeTruthy();
+  });
+
+  it('lists the local models the server reports, rather than asking for free text', async () => {
+    // A typed model name failed only when a message was sent, and failed as an
+    // opaque backend error rather than as "that model is not here".
+    routeFetch({
+      '/debug/config': jsonOk({ ...BASE_CONFIG, model: 'medgemma', provider: 'local' }),
+      '/local/models': jsonOk({
+        capabilities_reported: true,
+        models: [
+          { name: 'medgemma', capabilities: ['completion', 'vision'], supports_vision: true },
+          { name: 'llama4:8b', capabilities: ['completion'], supports_vision: false },
+        ],
+      }),
+    });
+    await openSettings();
+
+    expect(screen.getByLabelText('Offer medgemma')).toBeTruthy();
+    expect(screen.getByLabelText('Offer llama4:8b')).toBeTruthy();
+    // No free-text box for the model name any more.
+    expect(screen.queryByPlaceholderText(/MedGemma/)).toBeNull();
+  });
+
+  it('says so when the local server is unreachable, rather than showing nothing', async () => {
+    // An unreachable Ollama and an Ollama with nothing pulled need different
+    // actions; an empty list would report the second when the truth is the first.
+    routeFetch({
+      '/debug/config': jsonOk({ ...BASE_CONFIG, provider: 'local' }),
+      '/local/models': {
+        ok: false,
+        status: 502,
+        json: async () => ({ detail: 'Model listing failed: connection refused' }),
+      },
+    });
+    await openSettings();
+
+    expect(screen.getByText(/connection refused/)).toBeTruthy();
+  });
+
+  it('unticking a model removes it from the chat menu, keeping the rest', async () => {
+    // The whole point of the section: the setting is which models the header
+    // menu offers, not which one answers.
+    routeFetch({
+      '/debug/config': jsonOk({ ...BASE_CONFIG, model: 'medgemma', provider: 'local' }),
+      '/local/models': jsonOk({
+        capabilities_reported: true,
+        models: [
+          { name: 'medgemma', capabilities: ['vision'], supports_vision: true },
+          { name: 'llama4:8b', capabilities: ['vision'], supports_vision: true },
+        ],
+      }),
+    });
+    await openSettings();
+
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Offer llama4:8b'));
+    });
+    expect((screen.getByLabelText('Offer llama4:8b') as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText('Offer medgemma') as HTMLInputElement).checked).toBe(true);
+
+    // And it is remembered, so a fifty-model catalogue is pruned once.
+    const stored = JSON.parse(localStorage.getItem('odelia.chat.enabledModels.v1')!);
+    expect(stored).toContain('local:medgemma');
+    expect(stored).not.toContain('local:llama4:8b');
+  });
+
+  it('never hides the model actually in use, whatever the ticks say', async () => {
+    // The header menu has to be able to name the model answering the next
+    // message, even if it was unticked or has since disappeared from the server.
+    localStorage.setItem('odelia.chat.enabledModels.v1', JSON.stringify(['local:something-else']));
+    routeFetch({
+      '/debug/config': jsonOk({ ...BASE_CONFIG, model: 'medgemma', provider: 'local' }),
+      '/local/models': jsonOk({
+        capabilities_reported: true,
+        models: [{ name: 'medgemma', capabilities: ['vision'], supports_vision: true }],
+      }),
+    });
+    await openModelMenu();
+
+    expect(screen.getByText('medgemma')).toBeTruthy();
   });
 });

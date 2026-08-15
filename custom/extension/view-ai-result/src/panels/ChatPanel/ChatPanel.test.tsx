@@ -81,10 +81,6 @@ async function renderPanel() {
 }
 
 /** Open the header's overflow menu, where session/settings/clear now live. */
-function openOverflow() {
-  fireEvent.click(screen.getByTitle('More options'));
-}
-
 const COMPOSER = 'Ask about these images...';
 
 describe('ChatPanel', () => {
@@ -94,13 +90,18 @@ describe('ChatPanel', () => {
     expect(screen.getByText('AI Assistant')).toBeTruthy();
   });
 
-  it('keeps the session id out of the primary UI, behind the overflow menu', async () => {
-    // Audit detail, not clinical information — it used to consume a permanent
-    // header row for no day-to-day benefit.
+  it('does not show the session id anywhere', async () => {
+    // A UUID is audit detail with no day-to-day use; it is in the middleware's
+    // own logs, which is where an auditor looks for it.
     await renderPanel();
     expect(screen.queryByText(/Session: /)).toBeNull();
-    openOverflow();
-    expect(screen.getByText(/Session: session-abcdef01/)).toBeTruthy();
+    expect(screen.queryByText(/session-abcdef01/)).toBeNull();
+  });
+
+  it('opens settings straight from the header, with no overflow menu', async () => {
+    await renderPanel();
+    expect(screen.queryByTitle('More options')).toBeNull();
+    expect(screen.getByTitle('Settings')).toBeTruthy();
   });
 
   it('renders the disconnected banner with a reconnect button when not connected', async () => {
@@ -218,25 +219,16 @@ describe('ChatPanel', () => {
     expect(screen.getByText('Connection lost')).toBeTruthy();
   });
 
-  it('clears history from the overflow menu; disabled when there are no messages', async () => {
+  it('no longer offers a separate "clear conversation" action', async () => {
+    // Discarding a conversation is deleting it from the history list, where the
+    // rest of the per-conversation actions already live. See the history suite
+    // for the assertion that doing so also drops the middleware session.
     await renderPanel();
-    openOverflow();
-    expect((screen.getByTitle('Clear history') as HTMLButtonElement).disabled).toBe(true);
-
-    setHook({ messages: [msg({ id: 'a1', content: 'x' })] });
-    await renderPanel();
-    const clears = screen.getAllByTitle('Clear history') as HTMLButtonElement[];
-    // Two panels are mounted by this point; drive the one that is enabled.
-    fireEvent.click(screen.getAllByTitle('More options')[1]);
-    const enabled = (screen.getAllByTitle('Clear history') as HTMLButtonElement[]).find(
-      b => !b.disabled
-    );
-    expect(clears.length).toBeGreaterThan(0);
-    fireEvent.click(enabled!);
-    expect(clearHistory).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTitle('Clear history')).toBeNull();
+    expect(screen.queryByText('Clear conversation')).toBeNull();
   });
 
-  it('opens the settings modal from the overflow menu and loads config', async () => {
+  it('opens the settings modal from the header gear and loads config', async () => {
     const fetchMock = jest.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -248,7 +240,6 @@ describe('ChatPanel', () => {
     });
     (global as any).fetch = fetchMock;
     await renderPanel();
-    openOverflow();
     await act(async () => {
       fireEvent.click(screen.getByTitle('Settings'));
     });
@@ -256,7 +247,12 @@ describe('ChatPanel', () => {
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining('/chat-api/debug/config'));
     expect(screen.getByText('Chat Settings')).toBeTruthy();
     expect(screen.getByDisplayValue('You are helpful') as HTMLTextAreaElement).toBeTruthy();
-    expect(screen.getByDisplayValue('medgemma') as HTMLInputElement).toBeTruthy();
+    // The model is no longer typed in here; it is picked from the header menu.
+    expect(screen.queryByDisplayValue('medgemma')).toBeNull();
+    expect(screen.getByText('Models available in chat')).toBeTruthy();
+    // Nor is the slice recipe: the composer's own range control governs it.
+    expect(screen.queryByText('Preprocessing')).toBeNull();
+    expect(screen.queryByText(/Central Percentage/)).toBeNull();
   });
 
   it('shows the active model in the header, condensed', async () => {
@@ -267,7 +263,11 @@ describe('ChatPanel', () => {
     await renderPanel();
     // The header carries the short name; the full tag is in the dropdown.
     expect(screen.getByTitle('Model').textContent).toContain('MedGemma 1.5');
-    fireEvent.click(screen.getByTitle('Model'));
+    await act(async () => {
+      fireEvent.click(screen.getByTitle('Model'));
+    });
+    // Listed even though this harness's stubbed /debug/local/models returns
+    // nothing usable: the menu must always be able to name the model in use.
     expect(screen.getByText('thiagomoraes/medgemma-1.5-4b-it:Q4_K_M')).toBeTruthy();
   });
 

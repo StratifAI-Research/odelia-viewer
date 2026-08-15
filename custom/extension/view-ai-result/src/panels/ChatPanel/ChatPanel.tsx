@@ -116,13 +116,6 @@ const getChatApiBase = (): string => {
 };
 
 // Slice strategy options
-const SLICE_STRATEGIES = [
-  { value: 'central', label: 'Central' },
-  { value: 'uniform', label: 'Uniform' },
-  { value: 'first_n', label: 'First N' },
-  { value: 'last_n', label: 'Last N' },
-];
-
 /** A model offered by the cloud backend, as reported by the middleware. */
 interface CloudModelInfo {
   name: string;
@@ -142,6 +135,15 @@ type ContextMode = 'following' | 'pinned';
 
 /** Session-scoped, like the disclaimer banner: a layout preference, not a setting. */
 const CONTEXT_COLLAPSED_KEY = 'odelia.chat.contextCollapsed.v1';
+
+/**
+ * Which models the header menu offers, as `provider:name`.
+ *
+ * localStorage, not session: which models a department uses is a standing
+ * choice, and re-pruning a fifty-model cloud catalogue every morning is not one
+ * anybody would make twice.
+ */
+const ENABLED_MODELS_KEY = 'odelia.chat.enabledModels.v1';
 
 /** Dismiss a popover on outside click or Escape. */
 function useDismissOnOutside(
@@ -259,7 +261,6 @@ const ChatPanel: React.FC = () => {
 
   // Header menus
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
-  const [isOverflowMenuOpen, setIsOverflowMenuOpen] = useState(false);
   const [modelError, setModelError] = useState<string | null>(null);
 
   // Per-message snapshot expansion
@@ -274,8 +275,30 @@ const ChatPanel: React.FC = () => {
   const [sliceStrategy, setSliceStrategy] = useState('central');
   const [centralPercentage, setCentralPercentage] = useState(60);
 
-  // Model state
+  // Model state. `ollamaModel` is whichever local model the middleware is
+  // currently pointed at; the list of local models comes from the server.
   const [ollamaModel, setOllamaModel] = useState('');
+  const [localModels, setLocalModels] = useState<CloudModelInfo[]>([]);
+  const [localModelsLoading, setLocalModelsLoading] = useState(false);
+  const [localModelsError, setLocalModelsError] = useState<string | null>(null);
+  // Whether a listing has been attempted at all. Guarding the fetch effect on
+  // `models.length === 0` instead would refetch forever against a host that
+  // answers 200 with an empty list, since that leaves every other signal false.
+  const [localModelsFetched, setLocalModelsFetched] = useState(false);
+  /**
+   * Which models the chat's model menu offers, as `provider:name`.
+   *
+   * This is what the settings panel is for. Choosing a model there was doing the
+   * same job as the header menu — and losing to it, since the header menu wins
+   * whenever it is used — so the setting is now which models the header menu may
+   * offer at all. A deployment with fifty cloud models becomes a list of the two
+   * a department actually uses.
+   *
+   * Empty means "not chosen yet", which shows everything. It is deliberately not
+   * the same as "none selected": a stored empty set would leave a user with no
+   * models and no obvious way back.
+   */
+  const [enabledModelKeys, setEnabledModelKeys] = useState<Set<string>>(new Set());
 
   // Backend provider state.
   //
@@ -292,6 +315,7 @@ const ChatPanel: React.FC = () => {
   const [cloudModelsLoading, setCloudModelsLoading] = useState(false);
   const [cloudModelsError, setCloudModelsError] = useState<string | null>(null);
   const [cloudCapabilitiesKnown, setCloudCapabilitiesKnown] = useState(true);
+  const [cloudModelsFetched, setCloudModelsFetched] = useState(false);
   // Text-only models are hidden by default: this chat sends DICOM slices as
   // images, so a model without vision cannot see the study at all, and most of
   // the cloud catalogue is text-only. Kept behind a toggle rather than dropped
@@ -310,12 +334,10 @@ const ChatPanel: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
-  const overflowMenuRef = useRef<HTMLDivElement>(null);
   const seriesPickerRef = useRef<HTMLDivElement>(null);
   const historyMenuRef = useRef<HTMLDivElement>(null);
 
   useDismissOnOutside(modelMenuRef, isModelMenuOpen, () => setIsModelMenuOpen(false));
-  useDismissOnOutside(overflowMenuRef, isOverflowMenuOpen, () => setIsOverflowMenuOpen(false));
   useDismissOnOutside(seriesPickerRef, isSeriesPickerOpen, () => setIsSeriesPickerOpen(false));
   useDismissOnOutside(historyMenuRef, isHistoryOpen, () => setIsHistoryOpen(false));
 
@@ -368,6 +390,35 @@ const ChatPanel: React.FC = () => {
 
   // Fetch the cloud model list. The middleware queries the cloud host with its
   // own key, so the key never reaches the browser.
+  /** Ask the local Ollama what it has actually pulled. */
+  const loadLocalModels = useCallback(async () => {
+    setLocalModelsLoading(true);
+    setLocalModelsError(null);
+    try {
+      const res = await fetch(`${getChatApiBase()}/debug/local/models`);
+      if (!res.ok) {
+        let detail = `Failed to list local models: ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.detail) {
+            detail = body.detail;
+          }
+        } catch (_) {
+          // response had no JSON body; keep the status-based message
+        }
+        throw new Error(detail);
+      }
+      const data = await res.json();
+      setLocalModels(Array.isArray(data.models) ? data.models : []);
+    } catch (e: any) {
+      setLocalModels([]);
+      setLocalModelsError(e.message || 'Failed to list local models');
+    } finally {
+      setLocalModelsLoading(false);
+      setLocalModelsFetched(true);
+    }
+  }, []);
+
   const loadCloudModels = useCallback(async () => {
     setCloudModelsLoading(true);
     setCloudModelsError(null);
@@ -395,6 +446,7 @@ const ChatPanel: React.FC = () => {
       setCloudModelsError(e.message || 'Failed to list models');
     } finally {
       setCloudModelsLoading(false);
+      setCloudModelsFetched(true);
     }
   }, []);
 
@@ -406,20 +458,18 @@ const ChatPanel: React.FC = () => {
       const res = await fetch(`${getChatApiBase()}/debug/config`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
+        // Only what this panel still edits. It used to also send the provider,
+        // both model names and the preprocessing block — values it had merely
+        // loaded and was echoing back, which meant saving a system prompt could
+        // silently revert a model another browser had just switched to. Which
+        // model answers is set by the header menu; the slice range is set per
+        // message on the composer.
         body: JSON.stringify({
           system_prompt: systemPrompt,
-          model: ollamaModel || undefined,
-          preprocessing: {
-            num_slices: numSlices,
-            slice_strategy: sliceStrategy,
-            central_percentage: centralPercentage,
-          },
           ollama_options: {
             think: ollamaThink,
             suffix: ollamaSuffix || null,
           },
-          provider,
-          cloud_model: cloudModel || undefined,
         }),
       });
       if (!res.ok) {
@@ -536,15 +586,9 @@ const ChatPanel: React.FC = () => {
 
   // Open settings modal and refresh current config
   const openSettings = useCallback(() => {
-    setIsOverflowMenuOpen(false);
     setIsSettingsOpen(true);
     loadSettings();
   }, [loadSettings]);
-
-  // Capability record for the selected cloud model, when the list is available.
-  // Undefined for a free-text entry, which is why the "no vision" warning below
-  // is only shown for a model we actually have capability data for.
-  const selectedCloudModelInfo = cloudModels.find(m => m.name === cloudModel);
 
   // Vision-capable models first and, by default, only those.
   //
@@ -569,26 +613,133 @@ const ChatPanel: React.FC = () => {
   // more common local-only deployment. `cloudModelsError` is in the guard so a
   // failed fetch does not retry forever; Refresh is the way back.
   useEffect(() => {
-    const wantsList = isModelMenuOpen || (isSettingsOpen && provider === 'cloud');
-    if (
-      wantsList &&
-      cloudUsable &&
-      cloudModels.length === 0 &&
-      !cloudModelsLoading &&
-      !cloudModelsError
-    ) {
+    const wantsList = isModelMenuOpen || isSettingsOpen;
+    if (wantsList && cloudUsable && !cloudModelsFetched && !cloudModelsLoading) {
       loadCloudModels();
     }
   }, [
     isModelMenuOpen,
     isSettingsOpen,
-    provider,
     cloudUsable,
-    cloudModels.length,
+    cloudModelsFetched,
     cloudModelsLoading,
-    cloudModelsError,
     loadCloudModels,
   ]);
+
+  // Same, for the local catalogue. Cheap by comparison — one /api/tags against a
+  // host on the same network — but still only when something is about to show it.
+  useEffect(() => {
+    const wantsList = isModelMenuOpen || isSettingsOpen;
+    if (wantsList && !localModelsFetched && !localModelsLoading) {
+      loadLocalModels();
+    }
+  }, [isModelMenuOpen, isSettingsOpen, localModelsFetched, localModelsLoading, loadLocalModels]);
+
+  /**
+   * The local models to show: what the server reports, plus whatever the
+   * middleware is currently pointed at.
+   *
+   * The second half matters when the listing is empty or failed. Without it the
+   * menu would have nothing to offer while a model is demonstrably in use, and
+   * the panel would be unable to name the model answering the next message.
+   */
+  const localCatalogue = useMemo(() => {
+    if (!ollamaModel || localModels.some(m => m.name === ollamaModel)) {
+      return localModels;
+    }
+    return [
+      ...localModels,
+      { name: ollamaModel, capabilities: [] as string[], supports_vision: false },
+    ];
+  }, [localModels, ollamaModel]);
+
+  /** A model in use but absent from the server's own listing. */
+  const isUnlisted = useCallback(
+    (name: string) => localModels.length > 0 && !localModels.some(m => m.name === name),
+    [localModels]
+  );
+
+  const modelKey = (p: ProviderName, name: string) => `${p}:${name}`;
+
+  /**
+   * What a model can do with the images, in the menu's own words.
+   *
+   * "Text only" matters here in a way it would not in a general chat client: this
+   * panel sends DICOM slices, so a model without vision answers from the
+   * conversation and never sees the study.
+   */
+  const describeCapability = (m: CloudModelInfo, known: boolean) =>
+    !known
+      ? 'Capabilities unknown'
+      : m.supports_vision
+        ? 'Vision'
+        : 'Text only — cannot see images';
+
+  /** Whether a model may appear in the header menu. */
+  const isModelEnabled = useCallback(
+    (p: ProviderName, name: string) =>
+      // An empty set means the user has not pruned the list yet, so everything
+      // shows. Anything currently in effect always shows, whatever the setting,
+      // so the menu can never hide the model it is about to use.
+      enabledModelKeys.size === 0 ||
+      enabledModelKeys.has(modelKey(p, name)) ||
+      (p === provider && name === (p === 'cloud' ? cloudModel : ollamaModel)),
+    [enabledModelKeys, provider, cloudModel, ollamaModel]
+  );
+
+  /** What the header menu actually offers, after the settings pruning. */
+  const menuLocalModels = useMemo(
+    () => localCatalogue.filter(m => isModelEnabled('local', m.name)),
+    [localCatalogue, isModelEnabled]
+  );
+  const menuCloudModels = useMemo(
+    () => visibleCloudModels.filter(m => isModelEnabled('cloud', m.name)),
+    [visibleCloudModels, isModelEnabled]
+  );
+
+  const toggleModelEnabled = useCallback(
+    (p: ProviderName, name: string) => {
+      setEnabledModelKeys(prev => {
+        // First tick materialises the implicit "everything" into a real set, so
+        // unticking one model does not read as unticking all the others.
+        const base =
+          prev.size === 0
+            ? new Set([
+                ...localCatalogue.map(m => modelKey('local', m.name)),
+                ...cloudModels.map(m => modelKey('cloud', m.name)),
+              ])
+            : prev;
+        const next = new Set(base);
+        const key = modelKey(p, name);
+        if (next.has(key)) {
+          next.delete(key);
+        } else {
+          next.add(key);
+        }
+        try {
+          localStorage.setItem(ENABLED_MODELS_KEY, JSON.stringify([...next]));
+        } catch (_) {
+          // Storage unavailable; the choice still applies for this session.
+        }
+        return next;
+      });
+    },
+    [localCatalogue, cloudModels]
+  );
+
+  // Restore the pruned list. localStorage rather than session: which models a
+  // department uses is a standing preference, not something to re-choose daily.
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(ENABLED_MODELS_KEY);
+      const parsed = stored ? JSON.parse(stored) : null;
+      if (Array.isArray(parsed)) {
+        setEnabledModelKeys(new Set(parsed.filter((k): k is string => typeof k === 'string')));
+      }
+    } catch (_) {
+      // Unreadable or corrupt: fall back to offering everything.
+    }
+  }, []);
 
   // Get active study UID from viewport
   const getStudyUIDFromActiveViewport = useActiveStudyUID({
@@ -866,10 +1017,16 @@ const ChatPanel: React.FC = () => {
     (threadId: string) => {
       setThreads(prev => saveThreads(removeThread(prev, threadId)));
       if (threadId === activeThreadId) {
+        // Discard it on both sides: the stored thread, the displayed transcript,
+        // and the middleware session backing it. This is what the old "Clear
+        // conversation" menu item did; deleting the open conversation from the
+        // history list is now the only way to ask for it, so it has to do the
+        // whole job rather than leaving a session alive on the server.
+        clearHistory();
         startNewChat();
       }
     },
-    [activeThreadId, startNewChat]
+    [activeThreadId, startNewChat, clearHistory]
   );
 
   /** Pin the context. Called from every action that invests in the prompt. */
@@ -1638,21 +1795,40 @@ const ChatPanel: React.FC = () => {
           <div className="text-muted-foreground px-3 pb-1 pt-2 text-[11px] font-semibold uppercase">
             Local
           </div>
-          {ollamaModel ? (
-            <button
-              type="button"
-              role="option"
-              aria-selected={provider === 'local'}
-              onClick={() => applyModelSelection('local', ollamaModel)}
-              className="hover:bg-accent block w-full px-3 py-2 text-left"
-            >
-              <div className="text-foreground truncate text-xs">{ollamaModel}</div>
-              <div className="text-muted-foreground text-[11px]">
-                Self-hosted{provider === 'local' ? ' · in use' : ''}
+          {/* Whatever is known comes first. A loading or error state is only
+              worth the space when there is nothing to show behind it — the model
+              in use is always in this list, and hiding it behind "Loading…"
+              would leave the menu unable to name the model answering the next
+              message. */}
+          {menuLocalModels.length === 0 ? (
+            localModelsLoading ? (
+              <div className="text-muted-foreground px-3 py-2 text-xs">Loading models…</div>
+            ) : localModelsError ? (
+              <div className="px-3 py-2 text-[11px] text-red-300">{localModelsError}</div>
+            ) : (
+              <div className="text-muted-foreground px-3 py-2 text-xs">
+                {localCatalogue.length === 0
+                  ? 'No models pulled on the local server'
+                  : 'None enabled — see Settings'}
               </div>
-            </button>
+            )
           ) : (
-            <div className="text-muted-foreground px-3 py-2 text-xs">No local model configured</div>
+            menuLocalModels.map(m => (
+              <button
+                key={m.name}
+                type="button"
+                role="option"
+                aria-selected={provider === 'local' && ollamaModel === m.name}
+                onClick={() => applyModelSelection('local', m.name)}
+                className="hover:bg-accent block w-full px-3 py-2 text-left"
+              >
+                <div className="text-foreground truncate text-xs">{m.name}</div>
+                <div className="text-muted-foreground text-[11px]">
+                  {isUnlisted(m.name) ? 'Not listed by the server' : describeCapability(m, true)}
+                  {provider === 'local' && ollamaModel === m.name ? ' · in use' : ''}
+                </div>
+              </button>
+            ))
           )}
 
           <div className="text-muted-foreground border-input mt-1 border-t px-3 pb-1 pt-2 text-[11px] font-semibold uppercase">
@@ -1666,47 +1842,39 @@ const ChatPanel: React.FC = () => {
             <div className="text-muted-foreground px-3 py-2 text-[11px]">
               No API key configured (<code>OLLAMA_API_KEY</code>).
             </div>
-          ) : cloudModelsLoading ? (
+          ) : cloudModelsLoading && menuCloudModels.length === 0 ? (
             <div className="text-muted-foreground px-3 py-2 text-xs">Loading models…</div>
-          ) : cloudModelsError ? (
+          ) : cloudModelsError && menuCloudModels.length === 0 ? (
             <div className="px-3 py-2 text-[11px] text-red-300">{cloudModelsError}</div>
           ) : (
             <>
-              {/* Sending a study off-site is the one thing a user must not
-                  discover after the fact. */}
-              <div className="px-3 pb-1 text-[11px] text-amber-300">
-                Uploads slices to {cloudUrl || 'the cloud provider'}.
+              {/* Where the images go. Stated as provenance, not as a warning:
+                  enabling the cloud backend is an operator decision, and the
+                  reader only needs to know which host answers. */}
+              <div className="text-muted-foreground px-3 pb-1 text-[11px]">
+                via {cloudUrl || 'the cloud provider'}
               </div>
-              {visibleCloudModels.map(m => (
-                <button
-                  key={m.name}
-                  type="button"
-                  role="option"
-                  aria-selected={provider === 'cloud' && cloudModel === m.name}
-                  onClick={() => applyModelSelection('cloud', m.name)}
-                  className="hover:bg-accent block w-full px-3 py-2 text-left"
-                >
-                  <div className="text-foreground truncate text-xs">{m.name}</div>
-                  <div className="text-muted-foreground text-[11px]">
-                    {cloudCapabilitiesKnown
-                      ? m.supports_vision
-                        ? 'Vision'
-                        : 'Text only — cannot see the images'
-                      : 'Capabilities unknown'}
-                    {provider === 'cloud' && cloudModel === m.name ? ' · in use' : ''}
-                  </div>
-                </button>
-              ))}
-              {visionOnlyPossible && textOnlyCount > 0 && (
-                <label className="text-muted-foreground border-input flex items-center gap-2 border-t px-3 py-2 text-[11px]">
-                  <input
-                    type="checkbox"
-                    checked={showTextOnlyModels}
-                    onChange={e => setShowTextOnlyModels(e.target.checked)}
-                    className="accent-primary"
-                  />
-                  Show {textOnlyCount} text-only model{textOnlyCount === 1 ? '' : 's'}
-                </label>
+              {menuCloudModels.length === 0 ? (
+                <div className="text-muted-foreground px-3 py-2 text-xs">
+                  {cloudModels.length === 0 ? 'No models offered' : 'None enabled — see Settings'}
+                </div>
+              ) : (
+                menuCloudModels.map(m => (
+                  <button
+                    key={m.name}
+                    type="button"
+                    role="option"
+                    aria-selected={provider === 'cloud' && cloudModel === m.name}
+                    onClick={() => applyModelSelection('cloud', m.name)}
+                    className="hover:bg-accent block w-full px-3 py-2 text-left"
+                  >
+                    <div className="text-foreground truncate text-xs">{m.name}</div>
+                    <div className="text-muted-foreground text-[11px]">
+                      {describeCapability(m, cloudCapabilitiesKnown)}
+                      {provider === 'cloud' && cloudModel === m.name ? ' · in use' : ''}
+                    </div>
+                  </button>
+                ))
               )}
             </>
           )}
@@ -1792,52 +1960,21 @@ const ChatPanel: React.FC = () => {
     </div>
   );
 
-  const renderOverflowMenu = () => (
-    <div ref={overflowMenuRef}>
-      <Button
-        variant="ghost"
-        size="icon"
-        onClick={() => setIsOverflowMenuOpen(o => !o)}
-        title="More options"
-        aria-label="More options"
-      >
-        <span className="text-lg leading-none">⋯</span>
-      </Button>
-
-      {isOverflowMenuOpen && (
-        <div className="border-input bg-muted absolute right-3 top-full z-50 mt-1 w-[calc(100%-1.5rem)] max-w-[20rem] rounded border shadow-lg">
-          <button
-            type="button"
-            onClick={openSettings}
-            title="Settings"
-            className="hover:bg-accent text-foreground block w-full px-3 py-2 text-left text-xs"
-          >
-            Settings…
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              // Discard it on both sides: the displayed transcript, its history
-              // entry, and the middleware session backing it. Leaving any one
-              // behind would resurrect the conversation on the next switch.
-              clearHistory();
-              setIsOverflowMenuOpen(false);
-              deleteThread(activeThreadId);
-            }}
-            disabled={messages.length === 0}
-            title="Clear history"
-            className="hover:bg-accent text-foreground block w-full px-3 py-2 text-left text-xs disabled:opacity-50"
-          >
-            Clear conversation
-          </button>
-          {/* Debug/audit detail, not clinical information — it used to occupy a
-              permanent header row for no day-to-day benefit. */}
-          <div className="border-input text-muted-foreground break-all border-t px-3 py-2 text-[11px]">
-            {isConnected && sessionId ? `Session: ${sessionId}` : 'Disconnected'}
-          </div>
-        </div>
-      )}
-    </div>
+  // Settings opens directly from the header. It used to sit behind an overflow
+  // menu alongside "Clear conversation" and the session UUID; with those gone the
+  // menu held one item, which is a menu that exists to be dismissed. A
+  // conversation is still discarded from the history list, where the rest of the
+  // per-conversation actions already live.
+  const renderSettingsButton = () => (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={openSettings}
+      title="Settings"
+      aria-label="Settings"
+    >
+      <Icons.GearSettings className="h-5 w-5" />
+    </Button>
   );
 
   const renderHeader = () => (
@@ -1846,7 +1983,7 @@ const ChatPanel: React.FC = () => {
       <div className="flex flex-shrink-0 items-center gap-1">
         {renderModelMenu()}
         {renderHistoryMenu()}
-        {renderOverflowMenu()}
+        {renderSettingsButton()}
       </div>
     </div>
   );
@@ -2488,235 +2625,133 @@ const ChatPanel: React.FC = () => {
               />
             </div>
 
-            {/* Backend */}
+            {/* Which models the chat may offer */}
             <div className="border-input border-t pt-4">
-              <h4 className="text-foreground mb-3 text-xs font-semibold">Backend</h4>
-
-              <div className="mb-3">
-                <Label className="mb-1 block text-xs">Provider</Label>
-                <Select
-                  value={provider}
-                  onValueChange={value => setProvider(value as ProviderName)}
+              <div className="mb-1 flex items-center justify-between">
+                <h4 className="text-foreground text-xs font-semibold">Models available in chat</h4>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    loadLocalModels();
+                    if (cloudUsable) {
+                      loadCloudModels();
+                    }
+                  }}
+                  disabled={localModelsLoading || cloudModelsLoading}
+                  aria-label="Refresh model list"
                 >
-                  <SelectTrigger aria-label="Backend provider">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="local">Local (self-hosted)</SelectItem>
-                    {/* Only offered when the operator enabled ALLOW_CLOUD_BACKEND;
-                        the middleware rejects the switch regardless, this just
-                        avoids presenting a choice that cannot succeed. */}
-                    {cloudEnabled && <SelectItem value="cloud">Ollama Cloud</SelectItem>}
-                  </SelectContent>
-                </Select>
-                {!cloudEnabled && (
-                  <p className="text-muted-foreground mt-1 text-xs">
-                    Ollama Cloud is disabled on this deployment. An operator must set{' '}
-                    <code>ALLOW_CLOUD_BACKEND=1</code> on the chat-middleware service.
-                  </p>
-                )}
+                  {localModelsLoading || cloudModelsLoading ? 'Loading…' : 'Refresh'}
+                </Button>
               </div>
+              <p className="text-muted-foreground mb-3 text-xs">
+                Tick the models the model menu should offer. Which one answers a given message is
+                chosen there, next to the chat.
+              </p>
 
-              {provider === 'cloud' && (
-                <>
-                  {/* The single most important thing a user needs to know before
-                      sending a study to a hosted model. */}
-                  <div className="bg-amber-950/40 mb-3 rounded border border-amber-600 px-3 py-2 text-xs text-amber-200">
-                    <strong>Images leave this network.</strong> The selected DICOM slices are
-                    uploaded to {cloudUrl || 'the cloud provider'} for analysis. Do not use this
-                    with patient data unless your institution permits it.
-                  </div>
-
-                  {!cloudConfigured && (
-                    <div className="mb-3 rounded border border-red-700 bg-red-900/50 px-3 py-2 text-xs text-red-300">
-                      No API key is configured on the chat-middleware service. An operator must set{' '}
-                      <code>OLLAMA_API_KEY</code>.
-                    </div>
-                  )}
-
-                  <div className="mb-3">
-                    <div className="mb-1 flex items-center justify-between">
-                      <Label className="block text-xs">Cloud Model</Label>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={loadCloudModels}
-                        disabled={cloudModelsLoading || !cloudConfigured}
-                        aria-label="Refresh cloud model list"
-                      >
-                        {cloudModelsLoading ? 'Loading…' : 'Refresh'}
-                      </Button>
-                    </div>
-
-                    {cloudModelsError && (
-                      <div className="mb-2 rounded border border-red-700 bg-red-900/50 px-3 py-2 text-xs text-red-300">
-                        {cloudModelsError}
-                      </div>
-                    )}
-
-                    {cloudModels.length > 0 ? (
-                      <Select
-                        value={cloudModel}
-                        onValueChange={setCloudModel}
-                      >
-                        <SelectTrigger aria-label="Cloud model">
-                          <SelectValue placeholder="Select a model" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {/* The label must be ONE string child, not JSX with an
-                              interpolated suffix. ui-next's SelectItem only wraps
-                              children in SelectPrimitive.ItemText when
-                              `typeof children === 'string'`, and Radix renders the
-                              trigger's SelectValue from ItemText — so any other
-                              child shape leaves the closed trigger blank after a
-                              selection. */}
-                          {visibleCloudModels.map(m => (
-                            <SelectItem
-                              key={m.name}
-                              value={m.name}
-                            >
-                              {`${m.name}${m.supports_vision ? ' — vision' : ' — text only'}`}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      // Free-text fallback so a model is still selectable when the
-                      // listing fails or the host returns nothing.
-                      <Input
-                        id="chat-cloud-model"
-                        type="text"
-                        value={cloudModel}
-                        onChange={e => setCloudModel(e.target.value)}
-                        placeholder="e.g. qwen3.5"
+              {/* Local */}
+              <div className="text-muted-foreground mb-1 text-[11px] font-semibold uppercase">
+                Local
+              </div>
+              {localModelsError ? (
+                <div className="mb-3 rounded border border-red-700 bg-red-900/50 px-3 py-2 text-xs text-red-300">
+                  {localModelsError}
+                </div>
+              ) : localCatalogue.length === 0 ? (
+                <p className="text-muted-foreground mb-3 text-xs">
+                  {localModelsLoading
+                    ? 'Loading…'
+                    : 'The local server has no models pulled. An operator adds one with `ollama pull`.'}
+                </p>
+              ) : (
+                <div className="mb-3 space-y-1">
+                  {localCatalogue.map(m => (
+                    <label
+                      key={m.name}
+                      className="text-foreground flex items-start gap-2 text-xs"
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isModelEnabled('local', m.name)}
+                        onChange={() => toggleModelEnabled('local', m.name)}
+                        aria-label={`Offer ${m.name}`}
+                        className="accent-primary mt-0.5"
                       />
-                    )}
+                      <span className="min-w-0">
+                        <span className="block truncate">{m.name}</span>
+                        <span className="text-muted-foreground block text-[11px]">
+                          {isUnlisted(m.name)
+                            ? 'In use, but not listed by the server'
+                            : describeCapability(m, true)}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
 
-                    {/* Text-only models are hidden by default rather than merely
-                        flagged: alphabetically the catalogue leads with several
-                        that cannot see the study, so an unfiltered list offers an
-                        unusable model first. */}
-                    {visionOnlyPossible && textOnlyCount > 0 && (
-                      <label className="text-muted-foreground mt-2 flex items-center gap-2 text-xs">
+              {/* Cloud */}
+              <div className="text-muted-foreground mb-1 text-[11px] font-semibold uppercase">
+                Ollama Cloud
+              </div>
+              {!cloudEnabled ? (
+                <p className="text-muted-foreground text-xs">
+                  Disabled on this deployment. An operator must set{' '}
+                  <code>ALLOW_CLOUD_BACKEND=1</code> on the chat-middleware service.
+                </p>
+              ) : !cloudConfigured ? (
+                <p className="text-muted-foreground text-xs">
+                  No API key is configured on the chat-middleware service. An operator must set{' '}
+                  <code>OLLAMA_API_KEY</code>.
+                </p>
+              ) : cloudModelsError ? (
+                <div className="rounded border border-red-700 bg-red-900/50 px-3 py-2 text-xs text-red-300">
+                  {cloudModelsError}
+                </div>
+              ) : (
+                <>
+                  <p className="text-muted-foreground mb-2 text-[11px]">
+                    Answered by {cloudUrl || 'the cloud provider'}.
+                  </p>
+                  <div className="space-y-1">
+                    {visibleCloudModels.map(m => (
+                      <label
+                        key={m.name}
+                        className="text-foreground flex items-start gap-2 text-xs"
+                      >
                         <input
                           type="checkbox"
-                          checked={showTextOnlyModels}
-                          onChange={e => setShowTextOnlyModels(e.target.checked)}
-                          className="accent-primary"
+                          checked={isModelEnabled('cloud', m.name)}
+                          onChange={() => toggleModelEnabled('cloud', m.name)}
+                          aria-label={`Offer ${m.name}`}
+                          className="accent-primary mt-0.5"
                         />
-                        Show {textOnlyCount} text-only model
-                        {textOnlyCount === 1 ? '' : 's'} (cannot see the images)
+                        <span className="min-w-0">
+                          <span className="block truncate">{m.name}</span>
+                          <span className="text-muted-foreground block text-[11px]">
+                            {describeCapability(m, cloudCapabilitiesKnown)}
+                          </span>
+                        </span>
                       </label>
-                    )}
-
-                    {/* This chat sends images, and many cloud models are text-only,
-                        so flag a text-only pick rather than letting it fail opaquely. */}
-                    {cloudCapabilitiesKnown ? (
-                      selectedCloudModelInfo &&
-                      !selectedCloudModelInfo.supports_vision && (
-                        <p className="mt-1 text-xs text-amber-300">
-                          This model has no vision capability. The chat sends DICOM slices as
-                          images, so it will not be able to see the study — pick a model marked
-                          “vision”.
-                        </p>
-                      )
-                    ) : (
-                      <p className="text-muted-foreground mt-1 text-xs">
-                        This host did not report model capabilities, so vision support is unknown. A
-                        model that cannot accept images will fail when you send a message.
-                      </p>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Local model */}
-            <div>
-              <Label
-                htmlFor="chat-model"
-                className="mb-1 block text-xs"
-              >
-                Local Model
-              </Label>
-              <Input
-                id="chat-model"
-                type="text"
-                value={ollamaModel}
-                onChange={e => setOllamaModel(e.target.value)}
-                placeholder="e.g. MedAIBase/MedGemma1.5:4b"
-              />
-              {provider === 'cloud' && (
-                <p className="text-muted-foreground mt-1 text-xs">
-                  Not in use while the cloud backend is selected.
-                </p>
-              )}
-            </div>
-
-            {/* Preprocessing Section */}
-            <div className="border-input border-t pt-4">
-              <h4 className="text-foreground mb-3 text-xs font-semibold">Preprocessing</h4>
-
-              {/* Num Slices */}
-              <div className="mb-3">
-                <Label
-                  htmlFor="chat-num-slices"
-                  className="mb-1 block text-xs"
-                >
-                  Number of Slices
-                </Label>
-                <Input
-                  id="chat-num-slices"
-                  type="number"
-                  value={numSlices}
-                  onChange={e => setNumSlices(parseInt(e.target.value) || 1)}
-                  min={1}
-                  max={50}
-                />
-              </div>
-
-              {/* Slice Strategy */}
-              <div className="mb-3">
-                <Label className="mb-1 block text-xs">Slice Strategy</Label>
-                <Select
-                  value={sliceStrategy}
-                  onValueChange={setSliceStrategy}
-                >
-                  <SelectTrigger aria-label="Slice Strategy">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {SLICE_STRATEGIES.map(opt => (
-                      <SelectItem
-                        key={opt.value}
-                        value={opt.value}
-                      >
-                        {opt.label}
-                      </SelectItem>
                     ))}
-                  </SelectContent>
-                </Select>
-              </div>
+                  </div>
 
-              {/* Central Percentage (only for central strategy) */}
-              {sliceStrategy === 'central' && (
-                <div className="mb-3">
-                  <Label
-                    htmlFor="chat-central-percentage"
-                    className="mb-1 block text-xs"
-                  >
-                    Central Percentage ({centralPercentage}%)
-                  </Label>
-                  <input
-                    id="chat-central-percentage"
-                    type="range"
-                    value={centralPercentage}
-                    onChange={e => setCentralPercentage(parseInt(e.target.value))}
-                    min={10}
-                    max={100}
-                    className="accent-primary w-full"
-                  />
-                </div>
+                  {/* Text-only models are hidden by default rather than merely
+                      flagged: alphabetically the catalogue leads with several
+                      that cannot see the study. */}
+                  {visionOnlyPossible && textOnlyCount > 0 && (
+                    <label className="text-muted-foreground mt-2 flex items-center gap-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={showTextOnlyModels}
+                        onChange={e => setShowTextOnlyModels(e.target.checked)}
+                        className="accent-primary"
+                      />
+                      Show {textOnlyCount} text-only model
+                      {textOnlyCount === 1 ? '' : 's'} (cannot see the images)
+                    </label>
+                  )}
+                </>
               )}
             </div>
 
