@@ -55,6 +55,13 @@ export interface WireSliceSelection {
   central_percentage?: number;
   /** Fractional crop applied to every slice this selection sends. */
   roi?: { x: number; y: number; width: number; height: number };
+  /**
+   * The grey-level window to render with, from the viewport the reader is
+   * looking at. Absent means the middleware windows each slice on its own
+   * percentiles, which is what it did for every message before the viewer could
+   * report a VOI.
+   */
+  voi?: { lower: number; upper: number; invert: boolean };
 }
 
 /**
@@ -128,6 +135,15 @@ export interface SnapshotSeries {
    */
   phaseNumber?: number;
   phaseCount?: number;
+  /**
+   * The window the images were rendered with, or absent when the middleware
+   * auto-windowed them.
+   *
+   * Recorded because it decides what the model could see: the same slices at a
+   * different window are a different question, and a transcript that does not
+   * say which was used cannot be checked afterwards.
+   */
+  voi?: { lower: number; upper: number; invert: boolean };
   /**
    * Positions on the axis the range was expressed against. Differs from
    * `numFrames` on a 4D series — 31 slices behind 155 frames — and it is the

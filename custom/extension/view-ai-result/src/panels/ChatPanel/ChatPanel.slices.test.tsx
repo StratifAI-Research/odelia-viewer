@@ -792,4 +792,91 @@ describe('ChatPanel — provenance under change and failure', () => {
     expect(screen.queryByText(/images from earlier messages/)).toBeNull();
     mockHookState.messages = [];
   });
+
+  describe('the viewer window', () => {
+    const show = (uid: string) => {
+      (global as any).__gridAimed = true;
+      setMockViewportGrid({
+        activeViewportId: 'v1',
+        viewports: new Map([['v1', { displaySetInstanceUIDs: [uid] }]]),
+      });
+    };
+
+    /** A viewport reporting a window, the way cornerstone does. */
+    const withWindow = (voiRange: any, invert = false) => ({
+      cornerstoneViewportService: {
+        getCornerstoneViewport: jest.fn(() => ({
+          getCurrentImageIdIndex: () => 11,
+          getProperties: () => ({ voiRange, invert }),
+        })),
+      },
+    });
+
+    const send = () => {
+      fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+        target: { value: 'q' },
+      });
+      fireEvent.click(screen.getByTitle('Send'));
+      return sendMessage.mock.calls[0];
+    };
+
+    it('sends the window the viewport is displaying with', async () => {
+      // Without this the middleware auto-windows each slice on its own
+      // percentiles, so a window set to bring out one tissue — or a viewport
+      // clipped to black — has no effect at all on what the model sees.
+      show('ds-1');
+      await renderPanel(ADDRESSABLE, withWindow({ lower: 95, upper: 1355 }));
+      expect(screen.getByText(/W:1260 L:725/)).toBeTruthy();
+
+      const selection = (send() as any[])[4][0];
+      expect(selection.voi).toEqual({ lower: 95, upper: 1355, invert: false });
+    });
+
+    it('records it in the message snapshot', async () => {
+      show('ds-1');
+      await renderPanel(ADDRESSABLE, withWindow({ lower: 95, upper: 1355 }));
+      const snapshot = (send() as any[])[3];
+      expect(snapshot.series[0].voi).toEqual({ lower: 95, upper: 1355, invert: false });
+    });
+
+    it('carries the inversion, which is part of the same choice', async () => {
+      // A lesion that reads as bright to the reader must not read as dark to the
+      // model.
+      show('ds-1');
+      await renderPanel(ADDRESSABLE, withWindow({ lower: 0, upper: 100 }, true));
+      const selection = (send() as any[])[4][0];
+      expect(selection.voi.invert).toBe(true);
+      expect(screen.getByText(/inverted/)).toBeTruthy();
+    });
+
+    it('stops sending it when the toggle is turned off', async () => {
+      show('ds-1');
+      await renderPanel(ADDRESSABLE, withWindow({ lower: 95, upper: 1355 }));
+      fireEvent.click(screen.getByLabelText("Render with the viewer's window"));
+      expect(screen.getByText(/off, auto-windowed/)).toBeTruthy();
+
+      const selection = (send() as any[])[4][0];
+      expect(selection.voi).toBeUndefined();
+    });
+
+    it('falls back to auto-windowing when the viewport cannot report one', async () => {
+      // The toggle stays on; there is simply nothing to send. Said plainly
+      // rather than left looking as though the reader's window applied.
+      show('ds-1');
+      await renderPanel(ADDRESSABLE, withWindow(undefined));
+      expect(screen.getByText(/unavailable, auto-windowed/)).toBeTruthy();
+
+      const selection = (send() as any[])[4][0];
+      expect(selection.voi).toBeUndefined();
+    });
+
+    it('refuses a degenerate window rather than sending it', async () => {
+      // upper === lower maps every pixel to one value; the middleware would
+      // reject it, and a window that shows nothing is not what the reader set.
+      show('ds-1');
+      await renderPanel(ADDRESSABLE, withWindow({ lower: 500, upper: 500 }));
+      const selection = (send() as any[])[4][0];
+      expect(selection.voi).toBeUndefined();
+    });
+  });
 });

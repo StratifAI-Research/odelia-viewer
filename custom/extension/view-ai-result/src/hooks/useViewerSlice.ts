@@ -23,12 +23,22 @@ export interface ViewerSlice {
    * post-contrast are different findings.
    */
   phaseNumber: number | null;
+  /**
+   * The grey-level window the viewport is displaying with, in the volume's own
+   * units, or null while the viewport cannot report one.
+   *
+   * Sent with a message so the model sees what the reader sees. Without it the
+   * middleware auto-windows each slice on its own percentiles, which makes the
+   * reader's window — a clinical decision — have no effect on what is sent.
+   */
+  voi: { lower: number; upper: number; invert: boolean } | null;
 }
 
 const NO_SLICE: ViewerSlice = {
   displaySetInstanceUID: null,
   sliceNumber: null,
   phaseNumber: null,
+  voi: null,
 };
 
 interface ViewerSliceConfig {
@@ -89,7 +99,25 @@ export function useViewerSlice({
     const cornerstoneViewportService = servicesManager?.services?.cornerstoneViewportService;
     const viewport = cornerstoneViewportService?.getCornerstoneViewport?.(activeViewportId);
     if (!viewport?.getCurrentImageIdIndex) {
-      return { displaySetInstanceUID, sliceNumber: null, phaseNumber: null };
+      return { displaySetInstanceUID, sliceNumber: null, phaseNumber: null, voi: null };
+    }
+
+    // The window, as `{lower, upper}` in the volume's units. Verified against the
+    // running viewer: a viewport whose overlay reads "W:1260 L:725" reports
+    // `{lower: 95.1, upper: 1354.1}`, and both track a window/level drag.
+    let voi: ViewerSlice['voi'] = null;
+    try {
+      const properties = viewport.getProperties?.();
+      const range = properties?.voiRange;
+      const lower = Number(range?.lower);
+      const upper = Number(range?.upper);
+      if (Number.isFinite(lower) && Number.isFinite(upper) && upper > lower) {
+        voi = { lower, upper, invert: Boolean(properties?.invert) };
+      }
+    } catch (_) {
+      // A viewport mid-teardown, or one with no VOI concept. Reported as
+      // unknown, which falls back to the middleware's own windowing.
+      voi = null;
     }
 
     // The phase comes off the volume, not the viewport.
@@ -118,13 +146,13 @@ export function useViewerSlice({
       index = viewport.getCurrentImageIdIndex();
     } catch (_) {
       // A viewport mid-teardown throws rather than returning a stale index.
-      return { displaySetInstanceUID, sliceNumber: null, phaseNumber };
+      return { displaySetInstanceUID, sliceNumber: null, phaseNumber, voi };
     }
 
     if (!Number.isFinite(index) || index < 0) {
-      return { displaySetInstanceUID, sliceNumber: null, phaseNumber };
+      return { displaySetInstanceUID, sliceNumber: null, phaseNumber, voi };
     }
-    return { displaySetInstanceUID, sliceNumber: index + 1, phaseNumber };
+    return { displaySetInstanceUID, sliceNumber: index + 1, phaseNumber, voi };
   }, [activeViewportId, viewports, servicesManager]);
 
   useEffect(() => {
@@ -135,7 +163,10 @@ export function useViewerSlice({
       setSlice(prev =>
         prev.displaySetInstanceUID === next.displaySetInstanceUID &&
         prev.sliceNumber === next.sliceNumber &&
-        prev.phaseNumber === next.phaseNumber
+        prev.phaseNumber === next.phaseNumber &&
+        prev.voi?.lower === next.voi?.lower &&
+        prev.voi?.upper === next.voi?.upper &&
+        prev.voi?.invert === next.voi?.invert
           ? prev
           : next
       );
@@ -143,9 +174,14 @@ export function useViewerSlice({
 
     sync();
 
-    const events = [Enums?.Events?.STACK_NEW_IMAGE, Enums?.Events?.VOLUME_NEW_IMAGE].filter(
-      Boolean
-    ) as string[];
+    const events = [
+      Enums?.Events?.STACK_NEW_IMAGE,
+      Enums?.Events?.VOLUME_NEW_IMAGE,
+      // Window/level drags. Measured on the running viewer: a drag fired
+      // VOI_MODIFIED eleven times on the element and zero times on the global
+      // target, same as the slice events.
+      Enums?.Events?.VOI_MODIFIED,
+    ].filter(Boolean) as string[];
     if (typeof document === 'undefined' || events.length === 0) {
       return;
     }

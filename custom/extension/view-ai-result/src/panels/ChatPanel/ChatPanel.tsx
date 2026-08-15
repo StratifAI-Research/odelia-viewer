@@ -47,6 +47,7 @@ import {
   formatSnapshotSummary,
   formatContextSummary,
   formatStudyLabel,
+  formatWindow,
   StudyLabelSource,
 } from '../../utils/promptContext';
 import {
@@ -145,6 +146,9 @@ const CONTEXT_COLLAPSED_KEY = 'odelia.chat.contextCollapsed.v1';
  */
 const ENABLED_MODELS_KEY = 'odelia.chat.enabledModels.v1';
 
+/** Whether messages render through the viewer's window. Session-scoped. */
+const USE_VIEWER_WINDOW_KEY = 'odelia.chat.useViewerWindow.v1';
+
 /** Dismiss a popover on outside click or Escape. */
 function useDismissOnOutside(
   ref: React.RefObject<HTMLElement>,
@@ -237,6 +241,16 @@ const ChatPanel: React.FC = () => {
   // on every mount — and open by default, because a reader who has never folded
   // it should see what their next message will send.
   const [isContextCollapsed, setIsContextCollapsed] = useState(false);
+  /**
+   * Whether to render the message's images through the viewer's window.
+   *
+   * On by default: the window a radiologist sets is a clinical decision, and a
+   * service that ignores it answers about a different image. Turning it off
+   * falls back to the middleware auto-windowing each slice on its own
+   * percentiles — useful when the viewport window is a display preference rather
+   * than a diagnostic one, and the only behaviour available before this existed.
+   */
+  const [useViewerWindow, setUseViewerWindow] = useState(true);
   // Per-series slice selection, keyed by SeriesInstanceUID. Per-series rather
   // than one global range because attached series differ in depth: "18-62" means
   // nothing shared between a 103-slice and a 24-slice acquisition.
@@ -1541,6 +1555,26 @@ const ChatPanel: React.FC = () => {
     [attachedSeries, sliceSelectionFor, effectiveSlicesFor, numSlices]
   );
 
+  /**
+   * The window a message will be rendered with, or null for the auto fallback.
+   *
+   * Only the viewport's own series gets it: a window is a range of values in one
+   * volume's units, and applying a breast-MRI window to a CT would be worse than
+   * having none. In practice the attached series IS the viewport's, but that is
+   * a consequence of following, not a guarantee.
+   */
+  const windowFor = useCallback(
+    (series: ChatSeriesInfo) => {
+      if (!useViewerWindow || !viewerSlice.voi) {
+        return null;
+      }
+      return viewerSlice.displaySetInstanceUID === series.displaySetInstanceUID
+        ? viewerSlice.voi
+        : null;
+    },
+    [useViewerWindow, viewerSlice]
+  );
+
   /** What the collapsed section says, so folding it hides controls and not facts. */
   const contextSummary = useMemo(
     () =>
@@ -1563,6 +1597,28 @@ const ChatPanel: React.FC = () => {
       // Storage can be unavailable (private mode, blocked cookies). Defaulting to
       // open is the safe answer: it shows more, never less.
     }
+  }, []);
+
+  useEffect(() => {
+    try {
+      // Only an explicit "false" turns it off; an unreadable or absent value
+      // leaves the reader's window in force, which is the safer default.
+      setUseViewerWindow(sessionStorage.getItem(USE_VIEWER_WINDOW_KEY) !== 'false');
+    } catch (_) {
+      // Storage unavailable; the default stands.
+    }
+  }, []);
+
+  const toggleViewerWindow = useCallback(() => {
+    setUseViewerWindow(current => {
+      const next = !current;
+      try {
+        sessionStorage.setItem(USE_VIEWER_WINDOW_KEY, String(next));
+      } catch (_) {
+        // Not being able to remember the choice must not prevent making it.
+      }
+      return next;
+    });
   }, []);
 
   const toggleContextCollapsed = useCallback(() => {
@@ -1600,12 +1656,17 @@ const ChatPanel: React.FC = () => {
       // replaces the range entirely — so this, not the raw sample, is what goes
       // out and what the snapshot records.
       const sent = effectiveSlicesFor(series);
+      const voi = windowFor(series);
       const entry: SnapshotSeries = {
         displaySetInstanceUID: series.displaySetInstanceUID,
         seriesInstanceUID: series.SeriesInstanceUID,
         description: series.SeriesDescription,
         modality: series.Modality,
         numFrames: series.numImageFrames,
+        // Recorded whichever way it went: "auto" is a fact about these images
+        // too, and a reader checking an old answer needs to know the window was
+        // not theirs.
+        ...(voi ? { voi: { ...voi } } : {}),
       };
 
       // `sliceSelectionFor` clamps against the current instance list, so every
@@ -1636,6 +1697,7 @@ const ChatPanel: React.FC = () => {
           // count, not the 5x larger instance count.
           total_slices: series.axis.sliceCount,
           roi: roi ? { ...roi.rect } : undefined,
+          voi: voi ? { ...voi } : undefined,
         });
       } else {
         // No slice range applies. The recipe travels with the message so the
@@ -1658,6 +1720,8 @@ const ChatPanel: React.FC = () => {
           slice_strategy: sliceRecipe.strategy,
           central_percentage: sliceRecipe.centralPercentage,
           roi: roi ? { ...roi.rect } : undefined,
+          // The window applies however the middleware ends up choosing slices.
+          voi: voi ? { ...voi } : undefined,
         });
       }
 
@@ -2157,6 +2221,32 @@ const ChatPanel: React.FC = () => {
                     )}
                   </div>
                 )}
+
+                {/* The window these images will be rendered with. Shown per
+                    series because it is per series that it applies, and stated
+                    even when it is the fallback: "auto" is a fact about what the
+                    model will see, not an absence of one. */}
+                <div className="text-muted-foreground mt-1 flex items-center gap-1 text-[11px]">
+                  <label className="flex items-center gap-1">
+                    <input
+                      type="checkbox"
+                      checked={useViewerWindow}
+                      onChange={toggleViewerWindow}
+                      aria-label="Render with the viewer's window"
+                      className="accent-primary"
+                    />
+                    Viewer window
+                  </label>
+                  <span className="truncate">
+                    {windowFor(series)
+                      ? formatWindow(
+                          windowFor(series) as { lower: number; upper: number; invert: boolean }
+                        )
+                      : useViewerWindow
+                        ? '— unavailable, auto-windowed'
+                        : '— off, auto-windowed'}
+                  </span>
+                </div>
 
                 {addressable && range ? (
                   <SliceRangeSlider

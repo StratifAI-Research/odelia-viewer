@@ -117,6 +117,19 @@ export function formatContextSummary(input: {
   return parts.join(SEP);
 }
 
+/**
+ * `W:1260 L:725` — a window in the terms the viewer's own overlay uses.
+ *
+ * Width and centre rather than the lower/upper the code carries, because that is
+ * what is printed on the image the reader is looking at, and a provenance line
+ * they cannot match against the screen is not provenance.
+ */
+export function formatWindow(voi: { lower: number; upper: number; invert?: boolean }): string {
+  const width = Math.round(voi.upper - voi.lower);
+  const centre = Math.round((voi.upper + voi.lower) / 2);
+  return `W:${width} L:${centre}${voi.invert ? ' inverted' : ''}`;
+}
+
 /** Human label for a slice-selection strategy. */
 export function formatSliceStrategy(recipe: SliceRecipe): string {
   switch (recipe.strategy) {
@@ -224,6 +237,10 @@ export function formatSeriesSliceSource(series: SnapshotSeries, recipe: SliceRec
       // what makes two identical-looking slices different findings.
       parts.push(`phase ${series.phaseNumber} of ${series.phaseCount}`);
     }
+    // Which window the model saw. Stated either way — "auto" is a fact about the
+    // images too, and a reader checking an old answer needs to know the window
+    // was not theirs.
+    parts.push(series.voi ? formatWindow(series.voi) : 'auto window');
     return parts.join(SEP);
   }
   return formatSliceRecipe(recipe);

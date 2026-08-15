@@ -7,6 +7,7 @@ import {
   formatContextSummary,
   formatSnapshotSummary,
   formatStudyLabel,
+  formatWindow,
   requestedImageCount,
 } from './promptContext';
 import type { SnapshotSeries } from '../types/chatTypes';
@@ -134,6 +135,20 @@ describe('formatContextSummary', () => {
         hasRegion: false,
       })
     ).toBe('UKA_1 · no series');
+  });
+});
+
+describe('formatWindow', () => {
+  it('reports width and centre, as the viewer overlay does', () => {
+    // Verified against the running viewer: a viewport reporting
+    // {lower: 95.1, upper: 1354.1} prints "W:1260 L:725" on the image.
+    expect(formatWindow({ lower: 95.11825755436496, upper: 1354.0737785936149 })).toBe(
+      'W:1259 L:725'
+    );
+  });
+
+  it('says so when the greyscale is inverted', () => {
+    expect(formatWindow({ lower: 0, upper: 100, invert: true })).toBe('W:100 L:50 inverted');
   });
 });
 
@@ -389,7 +404,38 @@ describe('formatSeriesSliceSource', () => {
       rangeEnd: 62,
       sentSliceNumbers: [18, 30, 44, 56, 62],
     };
-    expect(formatSeriesSliceSource(series, recipe)).toBe('18–62 of 103 · 5 slices');
+    expect(formatSeriesSliceSource(series, recipe)).toBe('18–62 of 103 · 5 slices · auto window');
+  });
+
+  it('names the window the images were rendered with', () => {
+    const series = {
+      displaySetInstanceUID: 'ds',
+      seriesInstanceUID: 'se',
+      description: 'Ax T1',
+      modality: 'MR',
+      numFrames: 103,
+      rangeStart: 18,
+      rangeEnd: 20,
+      sentSliceNumbers: [18, 19, 20],
+      voi: { lower: 95, upper: 1355, invert: false },
+    };
+    expect(formatSeriesSliceSource(series, recipe)).toBe('18–20 of 103 · 3 slices · W:1260 L:725');
+  });
+
+  it('says "auto window" rather than staying silent about it', () => {
+    // Silence would read as "the window you set" to anyone who had the toggle on
+    // for other messages. Which windowing was used is part of what the model saw.
+    const series = {
+      displaySetInstanceUID: 'ds',
+      seriesInstanceUID: 'se',
+      description: 'Ax T1',
+      modality: 'MR',
+      numFrames: 103,
+      rangeStart: 18,
+      rangeEnd: 20,
+      sentSliceNumbers: [18, 19, 20],
+    };
+    expect(formatSeriesSliceSource(series, recipe)).toContain('auto window');
   });
 
   it('does not repeat a single-slice range', () => {
@@ -403,7 +449,7 @@ describe('formatSeriesSliceSource', () => {
       rangeEnd: 27,
       sentSliceNumbers: [27],
     };
-    expect(formatSeriesSliceSource(series, recipe)).toBe('27 of 103 · 1 slice');
+    expect(formatSeriesSliceSource(series, recipe)).toBe('27 of 103 · 1 slice · auto window');
   });
 
   it('falls back to the recipe when no slices were named', () => {
