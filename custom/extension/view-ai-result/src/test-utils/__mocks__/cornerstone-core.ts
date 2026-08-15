@@ -40,6 +40,19 @@ export const dispatchOnViewport = (type: string, detail?: any) => {
 };
 
 export const getRenderingEngine = jest.fn(() => undefined);
+
+// Volume cache. `useViewerSlice` reads a dynamic volume's `dimensionGroupNumber`
+// from it to learn which contrast phase is on screen.
+export const __volumes: Record<string, any> = {};
+export const __setVolume = (volumeId: string, volume: any) => {
+  __volumes[volumeId] = volume;
+};
+export const __resetVolumes = () => {
+  Object.keys(__volumes).forEach(k => delete __volumes[k]);
+};
+export const cache = {
+  getVolume: jest.fn((volumeId: string) => __volumes[volumeId]),
+};
 // Per-module metadata a test can seed, so the ROI capture path can be exercised
 // with a real image size and instance identity.
 export const __metaData: Record<string, Record<string, any>> = {};

@@ -1,18 +1,35 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Enums } from '@cornerstonejs/core';
+import { cache, Enums } from '@cornerstonejs/core';
 
-/** Which images the active viewport shows, and which slice of them. */
+/** Which images the active viewport shows, and where in them it sits. */
 export interface ViewerSlice {
   /**
    * OHIF's identity for the displayed images, not the SeriesInstanceUID: a series
    * can be split across several display sets, and only one of them is on screen.
    */
   displaySetInstanceUID: string | null;
-  /** 1-based, matching the slice numbers the panel displays. Null if unknown. */
+  /**
+   * 1-based position on the axis the viewport scrolls. On a 4D series this is the
+   * anatomical slice within the current phase — "16" of the viewer's "16/31" —
+   * not an index into the series' instances.
+   */
   sliceNumber: number | null;
+  /**
+   * 1-based contrast phase on screen, for a 4D series. Null when the viewport is
+   * not showing a dynamic volume, or cornerstone will not say.
+   *
+   * The slice number alone is ambiguous on a dynamic study: "slice 16" is 16 of
+   * 31 in *some* phase and does not say which, and the same anatomy pre- and
+   * post-contrast are different findings.
+   */
+  phaseNumber: number | null;
 }
 
-const NO_SLICE: ViewerSlice = { displaySetInstanceUID: null, sliceNumber: null };
+const NO_SLICE: ViewerSlice = {
+  displaySetInstanceUID: null,
+  sliceNumber: null,
+  phaseNumber: null,
+};
 
 interface ViewerSliceConfig {
   activeViewportId: string | null;
@@ -71,18 +88,39 @@ export function useViewerSlice({
     const displaySetInstanceUID =
       viewports?.get(activeViewportId)?.displaySetInstanceUIDs?.[0] ?? null;
 
+    // The phase comes off the volume, not the viewport.
+    //
+    // Deliberately NOT `viewport.getCurrentImageId()`, which is the obvious way
+    // to name the image on screen and is wrong here: measured against the running
+    // viewer on the UKA dynamic series, with the viewport on "I:116 (24/31)" it
+    // returned the instance for slice 8. `getCurrentImageIdIndex()` matched the
+    // overlay at every position tested, and the dynamic volume tracks its own
+    // phase in `dimensionGroupNumber` (1-based; older cornerstone called this
+    // `timePointIndex`).
+    let phaseNumber: number | null = null;
+    try {
+      const volumeIds: string[] = viewport.getAllVolumeIds?.() ?? [];
+      const volume = volumeIds.length > 0 ? (cache?.getVolume?.(volumeIds[0]) as any) : null;
+      const group = volume?.dimensionGroupNumber;
+      phaseNumber = Number.isFinite(group) && group > 0 ? group : null;
+    } catch (_) {
+      // Not a volume viewport, or a volume mid-load. A missing phase is reported
+      // as unknown, never guessed as 1.
+      phaseNumber = null;
+    }
+
     let index: number;
     try {
       index = viewport.getCurrentImageIdIndex();
     } catch (_) {
       // A viewport mid-teardown throws rather than returning a stale index.
-      return { displaySetInstanceUID, sliceNumber: null };
+      return { displaySetInstanceUID, sliceNumber: null, phaseNumber };
     }
 
     if (!Number.isFinite(index) || index < 0) {
-      return { displaySetInstanceUID, sliceNumber: null };
+      return { displaySetInstanceUID, sliceNumber: null, phaseNumber };
     }
-    return { displaySetInstanceUID, sliceNumber: index + 1 };
+    return { displaySetInstanceUID, sliceNumber: index + 1, phaseNumber };
   }, [activeViewportId, viewports, servicesManager]);
 
   useEffect(() => {
@@ -92,7 +130,8 @@ export function useViewerSlice({
       // object identity each time would re-render the whole panel per slice.
       setSlice(prev =>
         prev.displaySetInstanceUID === next.displaySetInstanceUID &&
-        prev.sliceNumber === next.sliceNumber
+        prev.sliceNumber === next.sliceNumber &&
+        prev.phaseNumber === next.phaseNumber
           ? prev
           : next
       );

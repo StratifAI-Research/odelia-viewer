@@ -12,7 +12,7 @@
  * research data routinely arrives with StudyDate and StudyDescription stripped
  * and the accession left in place as the cohort identifier — the UKA breast MRI
  * set is exactly this, with no (0008,0020) or (0008,1030) on any instance and
- * `UKA_1` in (0008,0050). "Accession UKA_1" is a label a reader can act on;
+ * `UKA_1` in (0008,0050). "UKA_1" is a label a reader can act on;
  * "Study …5106477" is not.
  *
  * The lookup walks three sources, cheapest first, and stops as soon as every tag

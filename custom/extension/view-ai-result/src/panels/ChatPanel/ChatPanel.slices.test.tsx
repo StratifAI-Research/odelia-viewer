@@ -3,7 +3,11 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import { eventTarget } from '@cornerstonejs/core';
 // Jest-only mock helper: cornerstone fires slice-change events on the viewport
 // element, so tests must too. The alias is invisible to tsc, hence the path.
-import { dispatchOnViewport } from '../../test-utils/__mocks__/cornerstone-core';
+import {
+  __resetMetaData,
+  __setMetaData,
+  dispatchOnViewport,
+} from '../../test-utils/__mocks__/cornerstone-core';
 // Imported by path, not through '@ohif/ui-next': the alias exists only in the
 // jest moduleNameMapper, so tsc would resolve the real package and reject these
 // test-only helpers. Same resolved file either way, so it is the same module.
@@ -210,14 +214,14 @@ describe('ChatPanel — slice range', () => {
     await renderPanel();
     attachSeries();
     fireEvent.change(firstHandle(), { target: { value: '3' } });
-    expect(screen.getByText('Pinned')).toBeTruthy();
+    expect(screen.getByText('Study: pinned')).toBeTruthy();
   });
 
   it('pins the context when the sent count is adjusted', async () => {
     await renderPanel();
     attachSeries();
     fireEvent.click(screen.getByLabelText('Send more slices from Ax T1 post'));
-    expect(screen.getByText('Pinned')).toBeTruthy();
+    expect(screen.getByText('Study: pinned')).toBeTruthy();
   });
 
   describe('what is sent', () => {
@@ -354,9 +358,26 @@ describe('ChatPanel — slice range', () => {
   });
 
   describe('the viewer-slice marker', () => {
+    // Placed from the instance on screen, not from the viewport's raw index: on a
+    // 4D series that index is a slice within some phase and does not say which.
+    // So the viewport has to name its image and the metadata has to resolve it,
+    // exactly as cornerstone does.
+    const imageIdFor = (index: number) => `img-${index}`;
+    beforeEach(() => {
+      __resetMetaData();
+      for (let i = 0; i < 20; i++) {
+        __setMetaData('generalImageModule', imageIdFor(i), {
+          sopInstanceUID: `1.2.840.SE1.${i + 1}`,
+        });
+      }
+    });
+
     const viewportServices = (index: number) => ({
       cornerstoneViewportService: {
-        getCornerstoneViewport: jest.fn(() => ({ getCurrentImageIdIndex: () => index })),
+        getCornerstoneViewport: jest.fn(() => ({
+          getCurrentImageIdIndex: () => index,
+          getCurrentImageId: () => imageIdFor(index),
+        })),
       },
     });
 
@@ -383,7 +404,10 @@ describe('ChatPanel — slice range', () => {
       let index = 3;
       await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], {
         cornerstoneViewportService: {
-          getCornerstoneViewport: jest.fn(() => ({ getCurrentImageIdIndex: () => index })),
+          getCornerstoneViewport: jest.fn(() => ({
+            getCurrentImageIdIndex: () => index,
+            getCurrentImageId: () => imageIdFor(index),
+          })),
         },
       });
       attachSeries();
@@ -403,7 +427,10 @@ describe('ChatPanel — slice range', () => {
       let index = 3;
       await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], {
         cornerstoneViewportService: {
-          getCornerstoneViewport: jest.fn(() => ({ getCurrentImageIdIndex: () => index })),
+          getCornerstoneViewport: jest.fn(() => ({
+            getCurrentImageIdIndex: () => index,
+            getCurrentImageId: () => imageIdFor(index),
+          })),
         },
       });
       attachSeries();

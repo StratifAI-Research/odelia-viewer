@@ -49,7 +49,6 @@ import {
   StudyLabelSource,
 } from '../../utils/promptContext';
 import {
-  canAddressSlices,
   clampRange,
   initialRange,
   MAX_SLICES_PER_SERIES,
@@ -57,6 +56,14 @@ import {
   sampleSliceNumbers,
   SliceRange,
 } from '../../utils/sliceSelection';
+import {
+  canAddressAxis,
+  formatAxisShape,
+  phaseCount,
+  phaseInstances,
+  positionOf,
+  sliceAxisOf,
+} from '../../utils/sliceAxis';
 import SliceRangeSlider from './SliceRangeSlider';
 import {
   ChatRoi,
@@ -223,7 +230,7 @@ const ChatPanel: React.FC = () => {
   // than one global range because attached series differ in depth: "18-62" means
   // nothing shared between a 103-slice and a 24-slice acquisition.
   const [sliceStateByDisplaySet, setSliceStateByDisplaySet] = useState<
-    Record<string, { range: SliceRange; count: number }>
+    Record<string, { range: SliceRange; count: number; phaseIndex: number }>
   >({});
   // The chat's own region of interest. One at a time: a second rectangle would
   // raise a question the prompt cannot answer — which region is the question
@@ -611,13 +618,10 @@ const ChatPanel: React.FC = () => {
           SeriesNumber: ds.SeriesNumber || 0,
           Modality: ds.Modality || 'Unknown',
           numImageFrames: ds.numImageFrames || instances.length || 0,
-          // Order matters: it is the order the viewer sorted the series into, and
-          // therefore the order the slice numbers on screen refer to. Any instance
-          // missing its UID drops the whole list, because a partial mapping would
-          // silently shift every slice number after the gap.
-          sopInstanceUIDs: instances.every((i: any) => i?.SOPInstanceUID)
-            ? instances.map((i: any) => i.SOPInstanceUID as string)
-            : [],
+          // The axis the viewer scrolls, not the raw instance list: on a 4D series
+          // those are different lengths, differently ordered, and interleaved by
+          // contrast phase. See `sliceAxis.ts`.
+          axis: sliceAxisOf(ds),
         };
       });
       series.sort((a, b) => a.SeriesNumber - b.SeriesNumber);
@@ -935,16 +939,19 @@ const ChatPanel: React.FC = () => {
    * must not overwrite it.
    */
   useEffect(() => {
-    const addressable = attachedSeries.filter(s =>
-      canAddressSlices(s.sopInstanceUIDs, s.numImageFrames)
-    );
+    const addressable = attachedSeries.filter(s => canAddressAxis(s.axis, s.numImageFrames));
     const stale = addressable.filter(series => {
       const state = sliceStateByDisplaySet[series.displaySetInstanceUID];
       if (!state) {
         return true;
       }
-      const bounded = clampRange(state.range, series.numImageFrames);
-      return bounded.start !== state.range.start || bounded.end !== state.range.end;
+      const bounded = clampRange(state.range, series.axis.sliceCount);
+      const boundedPhase = Math.min(state.phaseIndex, phaseCount(series.axis) - 1);
+      return (
+        bounded.start !== state.range.start ||
+        bounded.end !== state.range.end ||
+        boundedPhase !== state.phaseIndex
+      );
     });
     if (stale.length === 0) {
       return;
@@ -952,24 +959,43 @@ const ChatPanel: React.FC = () => {
     setSliceStateByDisplaySet(prev => {
       const next = { ...prev };
       stale.forEach(series => {
-        const total = series.numImageFrames;
+        // The axis, not the frame count: on a 4D series they differ by the number
+        // of phases, and a range seeded against 155 would select five times the
+        // anatomy the user sees.
+        const total = series.axis.sliceCount;
         const existing = prev[series.displaySetInstanceUID];
         // An existing range is clamped, not discarded: the user chose it, and the
         // nearest valid range is closer to their intent than a reset.
         const range = existing
           ? clampRange(existing.range, total)
           : initialRange(total, sliceStrategy, numSlices, centralPercentage);
+        // A new series opens on whichever phase the viewport is already showing,
+        // so the panel describes the image the reader is looking at.
+        const seeded =
+          existing?.phaseIndex ??
+          (viewerSlice.displaySetInstanceUID === series.displaySetInstanceUID &&
+          viewerSlice.phaseNumber
+            ? viewerSlice.phaseNumber - 1
+            : 0);
         next[series.displaySetInstanceUID] = {
           range,
           count: Math.max(
             1,
             Math.min(existing?.count ?? numSlices, rangeSize(range), MAX_SLICES_PER_SERIES)
           ),
+          phaseIndex: Math.min(Math.max(0, seeded), phaseCount(series.axis) - 1),
         };
       });
       return next;
     });
-  }, [attachedSeries, sliceStateByDisplaySet, sliceStrategy, numSlices, centralPercentage]);
+  }, [
+    attachedSeries,
+    sliceStateByDisplaySet,
+    sliceStrategy,
+    numSlices,
+    centralPercentage,
+    viewerSlice,
+  ]);
 
   /**
    * What one series will send: the selected range, the requested count, and the
@@ -984,20 +1010,48 @@ const ChatPanel: React.FC = () => {
    */
   const sliceSelectionFor = useCallback(
     (series: ChatSeriesInfo) => {
-      const addressable = canAddressSlices(series.sopInstanceUIDs, series.numImageFrames);
+      const addressable = canAddressAxis(series.axis, series.numImageFrames);
       const state = sliceStateByDisplaySet[series.displaySetInstanceUID];
       if (!addressable || !state) {
-        return { addressable, range: null as SliceRange | null, count: 0, sampled: [] as number[] };
+        return {
+          addressable,
+          range: null as SliceRange | null,
+          count: 0,
+          sampled: [] as number[],
+          phaseIndex: 0,
+          instances: [] as string[],
+        };
       }
-      const range = clampRange(state.range, series.sopInstanceUIDs.length);
+      const range = clampRange(state.range, series.axis.sliceCount);
+      // Clamped on read as well as on write: a display set can be replaced in
+      // place with one that has fewer phases.
+      const phaseIndex = Math.min(Math.max(0, state.phaseIndex), phaseCount(series.axis) - 1);
       return {
         addressable,
         range,
         count: state.count,
         sampled: sampleSliceNumbers(range, state.count),
+        phaseIndex,
+        instances: phaseInstances(series.axis, phaseIndex),
       };
     },
     [sliceStateByDisplaySet]
+  );
+
+  /** Choose which contrast phase of a 4D series the message sends. */
+  const setSeriesPhase = useCallback(
+    (series: ChatSeriesInfo, phaseIndex: number) => {
+      pinContext();
+      setSliceStateByDisplaySet(prev => {
+        const current = prev[series.displaySetInstanceUID];
+        if (!current) {
+          return prev;
+        }
+        const bounded = Math.min(Math.max(0, phaseIndex), phaseCount(series.axis) - 1);
+        return { ...prev, [series.displaySetInstanceUID]: { ...current, phaseIndex: bounded } };
+      });
+    },
+    [pinContext]
   );
 
   /** Move a series' range. Adjusting the range is an investment in the prompt. */
@@ -1006,7 +1060,7 @@ const ChatPanel: React.FC = () => {
       pinContext();
       setSliceStateByDisplaySet(prev => {
         const current = prev[series.displaySetInstanceUID];
-        const bounded = clampRange(range, series.numImageFrames);
+        const bounded = clampRange(range, series.axis.sliceCount);
         // Narrowing the range narrows the count with it. Left alone, the count
         // would stay above the span and the +/- buttons would appear stuck: they
         // would change a number the sampler is already ignoring.
@@ -1014,7 +1068,16 @@ const ChatPanel: React.FC = () => {
           1,
           Math.min(current?.count ?? 1, rangeSize(bounded), MAX_SLICES_PER_SERIES)
         );
-        return { ...prev, [series.displaySetInstanceUID]: { range: bounded, count } };
+        return {
+          ...prev,
+          // The phase is carried through: moving the range says nothing about
+          // which contrast phase the question is about.
+          [series.displaySetInstanceUID]: {
+            range: bounded,
+            count,
+            phaseIndex: current?.phaseIndex ?? 0,
+          },
+        };
       });
     },
     [pinContext]
@@ -1088,6 +1151,13 @@ const ChatPanel: React.FC = () => {
    * the slice range uses, so a region and a range always speak about slices the
    * same way. Cornerstone failing to name the instance falls back to the
    * viewport's own position, which is where the user was drawing.
+   *
+   * On a 4D series the region is recorded as an *anatomical* slice, not as a
+   * phase-and-slice pair. The phases of one slice are the same anatomy imaged at
+   * different times, on the same pixel grid, so a fractional rectangle drawn on
+   * one is valid on all of them — and a region that stopped applying the moment
+   * the reader switched phase would be a worse surprise than one that follows.
+   * Which phase actually got cropped is recorded in the message snapshot.
    */
   const adoptRoi = useCallback(
     (captured: CapturedRoi) => {
@@ -1095,7 +1165,7 @@ const ChatPanel: React.FC = () => {
 
       const host = attachedSeries.find(series =>
         captured.sopInstanceUID
-          ? series.sopInstanceUIDs.includes(captured.sopInstanceUID)
+          ? positionOf(series.axis, captured.sopInstanceUID) !== null
           : series.displaySetInstanceUID === viewerSlice.displaySetInstanceUID
       );
       if (!host) {
@@ -1104,10 +1174,8 @@ const ChatPanel: React.FC = () => {
         return;
       }
 
-      const indexInSeries = captured.sopInstanceUID
-        ? host.sopInstanceUIDs.indexOf(captured.sopInstanceUID)
-        : -1;
-      const sliceNumber = indexInSeries >= 0 ? indexInSeries + 1 : (viewerSlice.sliceNumber ?? 1);
+      const position = positionOf(host.axis, captured.sopInstanceUID);
+      const sliceNumber = position?.sliceNumber ?? viewerSlice.sliceNumber ?? 1;
 
       setChatRoi({
         displaySetInstanceUID: host.displaySetInstanceUID,
@@ -1237,7 +1305,7 @@ const ChatPanel: React.FC = () => {
     const sliceSelections: WireSliceSelection[] = [];
 
     attachedSeries.forEach(series => {
-      const { addressable, range } = sliceSelectionFor(series);
+      const { addressable, range, phaseIndex, instances } = sliceSelectionFor(series);
       const roi = roiForSeries(series);
       // The region can narrow what a series sends — scoped to its own slice it
       // replaces the range entirely — so this, not the raw sample, is what goes
@@ -1255,14 +1323,17 @@ const ChatPanel: React.FC = () => {
       // sampled number has an instance behind it. Filtered anyway, and the
       // selection dropped if anything is missing: sending `null` in place of a
       // SOPInstanceUID would have the middleware reject the whole turn.
-      const instanceUIDs = addressable
-        ? sent.map(n => series.sopInstanceUIDs[n - 1]).filter(Boolean)
-        : [];
+      const instanceUIDs = addressable ? sent.map(n => instances[n - 1]).filter(Boolean) : [];
 
       if (addressable && range && sent.length > 0 && instanceUIDs.length === sent.length) {
         entry.rangeStart = range.start;
         entry.rangeEnd = range.end;
         entry.sentSliceNumbers = [...sent];
+        entry.sliceCount = series.axis.sliceCount;
+        if (phaseCount(series.axis) > 1) {
+          entry.phaseNumber = phaseIndex + 1;
+          entry.phaseCount = phaseCount(series.axis);
+        }
         if (roi) {
           entry.roi = { ...roi.rect, sliceNumber: roi.sliceNumber, scope: roiScope };
         }
@@ -1271,7 +1342,10 @@ const ChatPanel: React.FC = () => {
           sop_instance_uids: instanceUIDs,
           range_start: range.start,
           range_end: range.end,
-          total_slices: series.numImageFrames,
+          // The axis the range was expressed on, so the middleware's own record of
+          // the turn agrees with the panel's. On a 4D series this is the slice
+          // count, not the 5x larger instance count.
+          total_slices: series.axis.sliceCount,
           roi: roi ? { ...roi.rect } : undefined,
         });
       } else {
@@ -1676,8 +1750,8 @@ const ChatPanel: React.FC = () => {
           onClick={() => setContextMode(m => (m === 'following' ? 'pinned' : 'following'))}
           title={
             contextMode === 'following'
-              ? 'Context follows the active viewport. Click to pin it.'
-              : 'Context is pinned. Click to follow the active viewport again.'
+              ? 'The study below follows the active viewport. Series are never attached for you. Click to pin the study.'
+              : 'The study below is pinned. Click to let it follow the active viewport again.'
           }
           className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-[11px]"
         >
@@ -1685,7 +1759,10 @@ const ChatPanel: React.FC = () => {
             aria-hidden="true"
             className={`h-1.5 w-1.5 rounded-full ${contextMode === 'following' ? 'bg-highlight' : 'bg-muted-foreground'}`}
           />
-          {contextMode === 'following' ? 'Following viewer' : 'Pinned'}
+          {/* Named for what it governs. "Following viewer" read as a promise to
+              track everything on screen — including which series to send — when
+              all it does is choose which STUDY the prompt targets. */}
+          {contextMode === 'following' ? 'Study: follows viewer' : 'Study: pinned'}
         </button>
       </div>
 
@@ -1715,9 +1792,15 @@ const ChatPanel: React.FC = () => {
               range control that says what it will send. Per series because ranges
               are not comparable across acquisitions of different depth. */}
           {attachedSeries.map(series => {
-            const { addressable, range, count, sampled } = sliceSelectionFor(series);
+            const { addressable, range, count, sampled, phaseIndex } = sliceSelectionFor(series);
             const seriesRoi = roiForSeries(series);
+            const phases = phaseCount(series.axis);
             const onThisSeries = viewerSlice.displaySetInstanceUID === series.displaySetInstanceUID;
+            // Which phase the viewport is on, when it is on this series at all.
+            // Only ever an offer — adopting it automatically would let scrolling
+            // rewrite the question mid-compose.
+            const viewerPhaseIndex =
+              onThisSeries && viewerSlice.phaseNumber ? viewerSlice.phaseNumber - 1 : null;
             return (
               <div
                 key={series.displaySetInstanceUID}
@@ -1725,7 +1808,8 @@ const ChatPanel: React.FC = () => {
               >
                 <span className="border-input bg-background text-foreground flex max-w-full items-center gap-1 rounded border px-2 py-0.5 text-[11px]">
                   <span className="truncate">
-                    {series.SeriesDescription} · {series.numImageFrames} slices
+                    {series.SeriesDescription} ·{' '}
+                    {addressable ? formatAxisShape(series.axis) : `${series.numImageFrames} images`}
                   </span>
                   <button
                     type="button"
@@ -1738,14 +1822,56 @@ const ChatPanel: React.FC = () => {
                   </button>
                 </span>
 
+                {/* Which contrast phase the question is about. Only for a series
+                    that has more than one: on a dynamic study the phase decides
+                    what the images mean, and leaving it implicit is how five
+                    slices from five different phases got sent as though they
+                    were one acquisition. */}
+                {addressable && phases > 1 && (
+                  <div className="text-muted-foreground mt-1 flex items-center gap-1 text-[11px]">
+                    <label htmlFor={`phase-${series.displaySetInstanceUID}`}>
+                      {series.axis.splittingTag === 'TemporalPositionIdentifier'
+                        ? 'Contrast phase'
+                        : 'Phase'}
+                    </label>
+                    <select
+                      id={`phase-${series.displaySetInstanceUID}`}
+                      aria-label={`Contrast phase for ${series.SeriesDescription}`}
+                      className="border-input bg-background text-foreground rounded border px-1 py-0.5"
+                      value={phaseIndex}
+                      onChange={e => setSeriesPhase(series, Number(e.target.value))}
+                    >
+                      {Array.from({ length: phases }, (_, i) => (
+                        <option
+                          key={i}
+                          value={i}
+                        >
+                          {i + 1} of {phases}
+                        </option>
+                      ))}
+                    </select>
+                    {viewerPhaseIndex !== null && viewerPhaseIndex !== phaseIndex && (
+                      <button
+                        type="button"
+                        onClick={() => setSeriesPhase(series, viewerPhaseIndex)}
+                        className="text-primary underline"
+                        title={`The viewport is showing phase ${viewerPhaseIndex + 1}`}
+                      >
+                        use phase {viewerPhaseIndex + 1}
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 {addressable && range ? (
                   <SliceRangeSlider
-                    total={series.numImageFrames}
+                    total={series.axis.sliceCount}
                     range={range}
                     count={count}
-                    // Only when the viewport is showing THIS series. Marking a
-                    // slice number from another acquisition would point at a
-                    // position that means nothing here.
+                    // Only when the viewport is showing THIS series: a slice
+                    // number from another acquisition would point at a position
+                    // that means nothing here. The marker follows the anatomy
+                    // across phases, because anatomy is the axis the slider is.
                     viewerSliceNumber={onThisSeries ? viewerSlice.sliceNumber : null}
                     seriesLabel={series.SeriesDescription}
                     onRangeChange={next => setSeriesRange(series, next)}
@@ -1869,7 +1995,10 @@ const ChatPanel: React.FC = () => {
                               {s.SeriesDescription}
                             </span>
                             <span className="text-muted-foreground block text-[11px]">
-                              {s.Modality} · {s.numImageFrames} slices
+                              {s.Modality} ·{' '}
+                              {s.axis.sliceCount > 0
+                                ? formatAxisShape(s.axis)
+                                : `${s.numImageFrames} images`}
                             </span>
                           </span>
                         </button>

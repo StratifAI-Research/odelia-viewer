@@ -246,7 +246,7 @@ describe('ChatPanel — chat region of interest', () => {
     attachSeries();
     startDrawing();
     await completeRectangle();
-    expect(screen.getByText('Pinned')).toBeTruthy();
+    expect(screen.getByText('Study: pinned')).toBeTruthy();
   });
 
   describe('what is sent', () => {

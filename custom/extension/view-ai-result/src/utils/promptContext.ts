@@ -45,8 +45,9 @@ export interface StudyLabelSource {
  * The accession step is there because anonymised research data routinely arrives
  * with the date and description stripped and the accession left in place as the
  * cohort identifier: the UKA breast MRI set carries no (0008,0020) or (0008,1030)
- * on any instance and `UKA_1` in (0008,0050). It is prefixed rather than shown
- * bare so it cannot be misread as a study description.
+ * on any instance and `UKA_1` in (0008,0050). It is shown bare — the surrounding
+ * UI already says this line is the study, and a "Accession " prefix cost more
+ * width than it bought.
  */
 export function formatStudyLabel(study?: StudyLabelSource | null): string {
   if (!study) {
@@ -68,7 +69,7 @@ export function formatStudyLabel(study?: StudyLabelSource | null): string {
   }
   const accession = study.AccessionNumber?.trim();
   if (accession) {
-    return `Accession ${accession}`;
+    return accession;
   }
   const uid = study.StudyInstanceUID?.trim();
   if (uid) {
@@ -176,7 +177,17 @@ export function formatSeriesSliceSource(series: SnapshotSeries, recipe: SliceRec
         ? `${series.rangeStart}`
         : `${series.rangeStart}–${series.rangeEnd}`;
     const plural = series.sentSliceNumbers.length === 1 ? '' : 's';
-    return `${span} of ${series.numFrames}${SEP}${series.sentSliceNumbers.length} slice${plural}`;
+    // The axis the range was expressed on, which on a 4D series is the slice
+    // count and not the frame count. `sliceCount` is absent on snapshots taken
+    // before phases existed, where the two were the same thing.
+    const total = series.sliceCount ?? series.numFrames;
+    const parts = [`${span} of ${total}`, `${series.sentSliceNumbers.length} slice${plural}`];
+    if (series.phaseNumber != null && series.phaseCount != null) {
+      // Never omitted once a series has phases: on a dynamic study the phase is
+      // what makes two identical-looking slices different findings.
+      parts.push(`phase ${series.phaseNumber} of ${series.phaseCount}`);
+    }
+    return parts.join(SEP);
   }
   return formatSliceRecipe(recipe);
 }

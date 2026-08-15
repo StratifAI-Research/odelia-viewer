@@ -3,6 +3,8 @@
  * Mirrors backend models from chat-middleware/models.py
  */
 
+import type { SliceAxis } from '../utils/sliceAxis';
+
 // =============================================================================
 // Enums - Mirror backend enums
 // =============================================================================
@@ -117,6 +119,22 @@ export interface SnapshotSeries {
   rangeEnd?: number;
   sentSliceNumbers?: number[];
   /**
+   * Which contrast phase of a 4D series was sent, 1-based, and how many there
+   * were. Absent for an ordinary series.
+   *
+   * Recorded because on a dynamic study the phase decides what the images *mean*:
+   * the same anatomical slice pre- and post-contrast are different findings, and
+   * a transcript that records only "slices 7–25" cannot tell them apart.
+   */
+  phaseNumber?: number;
+  phaseCount?: number;
+  /**
+   * Positions on the axis the range was expressed against. Differs from
+   * `numFrames` on a 4D series — 31 slices behind 155 frames — and it is the
+   * slice count a range like "7–25 of 31" has to be read against.
+   */
+  sliceCount?: number;
+  /**
    * The chat region this message was cropped to, if any — where it was drawn,
    * which slice it came from, and how far it was applied. Recorded because a
    * cropped image answers a different question from a whole slice, and a reader
@@ -206,14 +224,22 @@ export interface ChatSeriesInfo {
   SeriesDescription: string;
   SeriesNumber: number;
   Modality: string;
+  /** Every frame the viewer holds for this series: slices × phases. */
   numImageFrames: number;
   /**
-   * SOPInstanceUIDs in the viewer's own slice order — the addresses a slice range
-   * is expressed in. Empty when the series holds no one-instance-per-slice
-   * mapping (a multi-frame instance), in which case a range cannot be expressed
-   * for it at all and the middleware's configured recipe applies instead.
+   * The axis the viewer scrolls this series along, and the SOPInstanceUIDs on it
+   * — the addresses a slice range is expressed in.
+   *
+   * Not a flat instance list, because a 4D series has two axes: the UKA dynamic
+   * study is 31 anatomical slices × 5 contrast phases, and its 155 instances are
+   * neither 155 slices nor in slice order. See `sliceAxis.ts`.
+   *
+   * `sliceCount: 0` means the series holds no one-instance-per-slice mapping (a
+   * multi-frame instance, or metadata the panel could not resolve), in which case
+   * a range cannot be expressed for it and the middleware's configured recipe
+   * applies instead.
    */
-  sopInstanceUIDs: string[];
+  axis: SliceAxis;
 }
 
 /**
