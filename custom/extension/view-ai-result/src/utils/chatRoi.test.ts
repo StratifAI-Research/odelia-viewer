@@ -2,7 +2,7 @@ import {
   formatRoiLabel,
   formatRoiRect,
   formatRoiScope,
-  slicesForRoi,
+  isPointInsideCorners,
   toFractionalRect,
 } from './chatRoi';
 
@@ -129,23 +129,38 @@ describe('toFractionalRect', () => {
   });
 });
 
-describe('slicesForRoi', () => {
-  it('sends only the slice the region was drawn on by default', () => {
-    expect(slicesForRoi('slice', 27, [10, 20, 30, 40])).toEqual([27]);
+describe('isPointInsideCorners', () => {
+  const A = [100, 50];
+  const B = [300, 250];
+
+  it('accepts a point in the middle of the rectangle', () => {
+    // The whole reason this exists: cornerstone's own hit test only reaches a
+    // few pixels around the outline, so the obvious drag lands on window/level.
+    expect(isPointInsideCorners([200, 150], A, B)).toBe(true);
   });
 
-  it('applies the region across the sampled range when asked', () => {
-    expect(slicesForRoi('range', 27, [10, 20, 30, 40])).toEqual([10, 20, 30, 40]);
+  it('accepts a point on the edge', () => {
+    expect(isPointInsideCorners([100, 150], A, B)).toBe(true);
   });
 
-  it('keeps a region drawn outside the selected range', () => {
-    // The user drew it deliberately; dropping it would send the uncropped range
-    // instead while the panel still showed a region attached.
-    expect(slicesForRoi('slice', 99, [10, 20])).toEqual([99]);
+  it('rejects a point outside on either axis', () => {
+    expect(isPointInsideCorners([99, 150], A, B)).toBe(false);
+    expect(isPointInsideCorners([200, 251], A, B)).toBe(false);
   });
 
-  it('sends nothing under range scope when the range samples nothing', () => {
-    expect(slicesForRoi('range', 27, [])).toEqual([]);
+  it('does not care which diagonal the corners describe', () => {
+    // A rectangle can be dragged out in any direction, so neither corner is
+    // reliably the top-left one.
+    expect(isPointInsideCorners([200, 150], B, A)).toBe(true);
+    expect(isPointInsideCorners([200, 150], [300, 50], [100, 250])).toBe(true);
+  });
+
+  it('rejects a point it cannot place', () => {
+    // Answering "yes" for a point we cannot locate would swallow a window/level
+    // drag with nothing to show for it.
+    expect(isPointInsideCorners([NaN, 150], A, B)).toBe(false);
+    expect(isPointInsideCorners([200, 150], [undefined as never, 50], B)).toBe(false);
+    expect(isPointInsideCorners([], A, B)).toBe(false);
   });
 });
 

@@ -68,14 +68,7 @@ import {
   sliceAxisOf,
 } from '../../utils/sliceAxis';
 import SliceRangeSlider from './SliceRangeSlider';
-import {
-  ChatRoi,
-  formatRoiLabel,
-  formatRoiRect,
-  formatRoiScope,
-  RoiScope,
-  slicesForRoi,
-} from '../../utils/chatRoi';
+import { ChatRoi, formatRoiLabel, formatRoiRect, formatRoiScope } from '../../utils/chatRoi';
 import {
   ensureChatRoiTool,
   removeChatRoi,
@@ -261,7 +254,6 @@ const ChatPanel: React.FC = () => {
   // raise a question the prompt cannot answer — which region is the question
   // about? — and the panel would have to guess.
   const [chatRoi, setChatRoi] = useState<ChatRoi | null>(null);
-  const [roiScope, setRoiScope] = useState<RoiScope>('slice');
   const [isDrawingRoi, setIsDrawingRoi] = useState(false);
   const [roiError, setRoiError] = useState<string | null>(null);
   // The tool that held the primary mouse button before drawing started, so it
@@ -1519,40 +1511,20 @@ const ChatPanel: React.FC = () => {
     [chatRoi]
   );
 
-  /**
-   * The slices one series will actually send, region included.
-   *
-   * A region scoped to its own slice overrides the range: the question is about
-   * that region on that slice, and sending the rest of the range as well would
-   * answer a different question.
-   */
-  const effectiveSlicesFor = useCallback(
-    (series: ChatSeriesInfo): number[] => {
-      const { addressable, sampled } = sliceSelectionFor(series);
-      if (!addressable) {
-        return [];
-      }
-      const roi = roiForSeries(series);
-      return roi ? slicesForRoi(roiScope, roi.sliceNumber, sampled) : sampled;
-    },
-    [sliceSelectionFor, roiForSeries, roiScope]
-  );
-
   /** Total images the next message will carry, across every attached series. */
   const totalImagesToSend = useMemo(
     () =>
       attachedSeries.reduce((total, series) => {
-        const { addressable } = sliceSelectionFor(series);
+        const { addressable, sampled } = sliceSelectionFor(series);
         // A series without slice addressing falls back to the configured recipe,
         // which the middleware clamps to the real volume depth.
-        return (
-          total +
-          (addressable
-            ? effectiveSlicesFor(series).length
-            : Math.min(numSlices, series.numImageFrames))
-        );
+        //
+        // A region does not change the count: it crops the slices the range
+        // selects, it does not select different ones. Narrowing to a single
+        // cropped slice is the range slider's job.
+        return total + (addressable ? sampled.length : Math.min(numSlices, series.numImageFrames));
       }, 0),
-    [attachedSeries, sliceSelectionFor, effectiveSlicesFor, numSlices]
+    [attachedSeries, sliceSelectionFor, numSlices]
   );
 
   /**
@@ -1650,12 +1622,14 @@ const ChatPanel: React.FC = () => {
     const sliceSelections: WireSliceSelection[] = [];
 
     attachedSeries.forEach(series => {
-      const { addressable, range, phaseIndex, instances } = sliceSelectionFor(series);
+      const {
+        addressable,
+        range,
+        phaseIndex,
+        instances,
+        sampled: sent,
+      } = sliceSelectionFor(series);
       const roi = roiForSeries(series);
-      // The region can narrow what a series sends — scoped to its own slice it
-      // replaces the range entirely — so this, not the raw sample, is what goes
-      // out and what the snapshot records.
-      const sent = effectiveSlicesFor(series);
       const voi = windowFor(series);
       const entry: SnapshotSeries = {
         displaySetInstanceUID: series.displaySetInstanceUID,
@@ -1668,6 +1642,14 @@ const ChatPanel: React.FC = () => {
         // not theirs.
         ...(voi ? { voi: { ...voi } } : {}),
       };
+
+      // The region crops every slice this series sends, whichever way the slices
+      // were chosen. Recorded on the snapshot either way: a cropped image answers
+      // a different question from a whole slice, and scrolling back must show
+      // which one was asked.
+      if (roi) {
+        entry.roi = { ...roi.rect, sliceNumber: roi.sliceNumber, scope: 'range' };
+      }
 
       // `sliceSelectionFor` clamps against the current instance list, so every
       // sampled number has an instance behind it. Filtered anyway, and the
@@ -1683,9 +1665,6 @@ const ChatPanel: React.FC = () => {
         if (phaseCount(series.axis) > 1) {
           entry.phaseNumber = phaseIndex + 1;
           entry.phaseCount = phaseCount(series.axis);
-        }
-        if (roi) {
-          entry.roi = { ...roi.rect, sliceNumber: roi.sliceNumber, scope: roiScope };
         }
         sliceSelections.push({
           series_uid: series.SeriesInstanceUID,
@@ -1708,11 +1687,6 @@ const ChatPanel: React.FC = () => {
         // up sending, however it chose them. Dropping it here would leave a
         // region on screen and in the chip that never reached the model — which
         // is precisely the silent disagreement the snapshot exists to prevent.
-        // It cannot be confined to one slice without addressing, so it covers
-        // every slice sent, and the panel says so.
-        if (roi) {
-          entry.roi = { ...roi.rect, sliceNumber: roi.sliceNumber, scope: 'range' };
-        }
         sliceSelections.push({
           series_uid: series.SeriesInstanceUID,
           sop_instance_uids: [],
@@ -1758,9 +1732,8 @@ const ChatPanel: React.FC = () => {
     activeModelTag,
     sliceRecipe,
     sliceSelectionFor,
-    effectiveSlicesFor,
     roiForSeries,
-    roiScope,
+    windowFor,
     sendMessage,
   ]);
 
@@ -2276,8 +2249,9 @@ const ChatPanel: React.FC = () => {
                   </div>
                 )}
 
-                {/* The region, and how far it reaches. Directly under the range
-                    it modifies, because scoped to one slice it replaces it. */}
+                {/* The region, and how far it reaches. Directly under the range,
+                    because the range is what decides how many slices it crops:
+                    a region on one slice alone is a range of one. */}
                 {seriesRoi && (
                   <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px]">
                     <span className="bg-amber-950/40 flex items-center gap-1 rounded border border-amber-500 px-2 py-0.5 text-amber-200">
@@ -2292,28 +2266,13 @@ const ChatPanel: React.FC = () => {
                         ×
                       </button>
                     </span>
-                    {addressable ? (
-                      <label className="text-muted-foreground flex items-center gap-1">
-                        Apply to
-                        <select
-                          value={roiScope}
-                          onChange={e => {
-                            pinContext();
-                            setRoiScope(e.target.value as RoiScope);
-                          }}
-                          aria-label="Apply region to"
-                          className="border-input bg-background text-foreground rounded border px-1 py-0.5 text-[11px]"
-                        >
-                          <option value="slice">{formatRoiScope('slice')}</option>
-                          <option value="range">{formatRoiScope('range')}</option>
-                        </select>
-                      </label>
-                    ) : (
-                      // Confining a region to one slice needs slice addressing,
-                      // which this series does not offer. Offering the choice
-                      // anyway would be offering something that does nothing.
-                      <span className="text-muted-foreground">Applies to every slice sent</span>
-                    )}
+                    {/* Said rather than implied. The rectangle sits on one slice,
+                        so "it crops all of them" is the surprising half, and the
+                        drag hint is the only place the panel can mention a
+                        gesture that happens on the image and not in here. */}
+                    <span className="text-muted-foreground">
+                      Crops every slice sent · drag it on the image to move it
+                    </span>
                   </div>
                 )}
               </div>

@@ -41,6 +41,15 @@ export const dispatchOnViewport = (type: string, detail?: any) => {
 
 export const getRenderingEngine = jest.fn(() => undefined);
 
+// Cornerstone's element → viewport lookup. The chat ROI tool goes through it to
+// put the rectangle's world corners into canvas space for its hit test, so a
+// test that wants to exercise that has to seed one.
+let __enabledElement: any;
+export const __setEnabledElement = (enabled: any) => {
+  __enabledElement = enabled;
+};
+export const getEnabledElement = jest.fn(() => __enabledElement);
+
 // Volume cache. `useViewerSlice` reads a dynamic volume's `dimensionGroupNumber`
 // from it to learn which contrast phase is on screen.
 export const __volumes: Record<string, any> = {};

@@ -1,6 +1,6 @@
 /**
  * The chat panel's region of interest: turning a drawn rectangle into something
- * the middleware can crop with, and deciding which slices it covers.
+ * the middleware can crop with, and answering where it is on screen.
  *
  * Pure and unit-tested, because a wrong rectangle is invisible: the model simply
  * answers about the wrong piece of anatomy, confidently, and the transcript still
@@ -21,7 +21,16 @@ export interface RoiRect {
   height: number;
 }
 
-/** Which slices a region of interest applies to. */
+/**
+ * Which slices a region of interest applies to.
+ *
+ * Only `range` is produced now: a region crops every slice the message sends,
+ * and narrowing that to one slice is what the slice-range slider is for. The
+ * panel used to offer the choice as an "Apply to" control, so `slice` still
+ * appears in snapshots taken while it existed and must keep rendering — a
+ * message that really did send one cropped slice must not start claiming it
+ * sent a cropped range.
+ */
 export type RoiScope = 'slice' | 'range';
 
 /** A region the user drew, with everything needed to describe it afterwards. */
@@ -91,27 +100,30 @@ export function toFractionalRect(
 }
 
 /**
- * The slices a region of interest actually applies to.
+ * Whether a canvas point lies within the rectangle two opposite corners span.
  *
- * `slice` — the default — sends only the slice the region was drawn on. It is
- * the unambiguous reading of "this region": one image, cropped to what the user
- * outlined. `range` applies the same crop to every slice the range samples,
- * which is useful for following a structure through the volume but means the
- * rectangle is being applied to slices it was not drawn on.
+ * Cornerstone's own hit test for a rectangle measures distance to the *outline*,
+ * so only a 6px band around the border can be grabbed. That is enough to resize
+ * a measurement whose position is the finding, and not enough to move a region
+ * someone drew to point at something: the obvious gesture — press inside it and
+ * drag — lands on window/level instead, and the rectangle sits where it was.
  *
- * A region drawn on a slice outside the selected range still governs under
- * `slice` scope: the user drew it deliberately, and silently dropping it would
- * send the uncropped range instead while the panel showed a region attached.
+ * Corners rather than an origin and extent because that is what the annotation
+ * stores, and either diagonal may be given: the user can drag a rectangle out in
+ * any direction, so neither corner is reliably the top-left one.
  */
-export function slicesForRoi(
-  scope: RoiScope,
-  roiSliceNumber: number,
-  sampledSliceNumbers: number[]
-): number[] {
-  if (scope === 'slice') {
-    return [roiSliceNumber];
+export function isPointInsideCorners(
+  point: number[],
+  cornerA: number[],
+  cornerB: number[]
+): boolean {
+  const [x, y] = point ?? [];
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return false;
   }
-  return sampledSliceNumbers;
+  const within = (value: number, a: number, b: number) =>
+    Number.isFinite(a) && Number.isFinite(b) && value >= Math.min(a, b) && value <= Math.max(a, b);
+  return within(x, cornerA?.[0], cornerB?.[0]) && within(y, cornerA?.[1], cornerB?.[1]);
 }
 
 /** `ROI · slice 27` — the attachment chip's label. */
@@ -119,7 +131,13 @@ export function formatRoiLabel(sliceNumber: number): string {
   return `ROI · slice ${sliceNumber}`;
 }
 
-/** Human name for a scope, for the "Apply ROI to" control. */
+/**
+ * Human name for a scope, for the provenance snapshot.
+ *
+ * Both names are still needed even though only `range` is produced: a snapshot
+ * taken while the "Apply to" control existed can carry either, and it describes
+ * what that message sent.
+ */
 export function formatRoiScope(scope: RoiScope): string {
   return scope === 'slice' ? 'Current slice' : 'Selected slice range';
 }

@@ -8,11 +8,42 @@ export class Synchronizer {}
 // A tool group faithful enough to catch the mistakes that matter: which tool
 // holds the primary mouse button, and whether a tool was added before use.
 
+/**
+ * Faithful in the two ways the chat ROI tool depends on:
+ *
+ *  - `isPointNearTool` is assigned as an *instance* property in the constructor,
+ *    exactly as cornerstone does it. That is why the subclass wraps the function
+ *    instead of overriding a method, and a mock with it on the prototype would
+ *    make the wrong approach pass.
+ *  - it answers for the rectangle's *outline* only, which is the limitation that
+ *    makes a drawn region impossible to pick up by its middle.
+ */
 export class RectangleROITool {
   static toolName = 'RectangleROI';
   configuration: Record<string, unknown>;
+  isPointNearTool: (...args: any[]) => boolean;
+
   constructor(props: any = {}) {
     this.configuration = props?.configuration || {};
+    this.isPointNearTool = (_element: any, drawn: any, canvasCoords: number[], proximity = 6) => {
+      const points = drawn?.data?.handles?.points;
+      if (!points) {
+        return false;
+      }
+      // Corners 0 and 3 are opposite, as cornerstone's own hit test reads them.
+      const [x1, y1] = points[0];
+      const [x2, y2] = points[3];
+      const [left, right] = [Math.min(x1, x2), Math.max(x1, x2)];
+      const [top, bottom] = [Math.min(y1, y2), Math.max(y1, y2)];
+      const [x, y] = canvasCoords;
+      const outsideX = Math.max(left - x, x - right, 0);
+      const outsideY = Math.max(top - y, y - bottom, 0);
+      const distance =
+        outsideX > 0 || outsideY > 0
+          ? Math.hypot(outsideX, outsideY)
+          : Math.min(x - left, right - x, y - top, bottom - y);
+      return distance <= proximity;
+    };
   }
 }
 

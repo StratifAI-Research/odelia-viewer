@@ -25,6 +25,7 @@
  * Everything here is imperative and talks to cornerstone's global state, which is
  * why the geometry lives in `chatRoi.ts` instead.
  */
+import { getEnabledElement } from '@cornerstonejs/core';
 import {
   addTool,
   annotation,
@@ -32,11 +33,43 @@ import {
   ToolGroupManager,
   Enums as ToolEnums,
 } from '@cornerstonejs/tools';
+import { isPointInsideCorners } from './chatRoi';
 
 export const CHAT_ROI_TOOL_NAME = 'ChatROI';
 
 /**
- * A rectangle that reports what it is instead of what it measures.
+ * Whether the pointer is over the body of a chat region.
+ *
+ * Cornerstone decides what a mouse-down is for by asking each tool whether the
+ * point is "near" it, so widening that answer to the rectangle's interior is what
+ * makes the whole rectangle draggable — the move itself is cornerstone's, and
+ * needs nothing else.
+ *
+ * Corners are read as `points[0]` and `points[3]`, the same pair RectangleROITool
+ * uses for its own hit test. A viewport that cannot be resolved answers "not
+ * over it": claiming the pointer is on a region we cannot locate would swallow a
+ * window/level drag for no reason.
+ */
+function isPointInsideRoi(element: unknown, drawn: any, canvasCoords: number[]): boolean {
+  try {
+    const viewport = (getEnabledElement as any)?.(element)?.viewport;
+    const points = drawn?.data?.handles?.points;
+    if (!viewport?.worldToCanvas || !Array.isArray(points) || points.length < 4) {
+      return false;
+    }
+    return isPointInsideCorners(
+      canvasCoords,
+      viewport.worldToCanvas(points[0]),
+      viewport.worldToCanvas(points[3])
+    );
+  } catch (_) {
+    return false;
+  }
+}
+
+/**
+ * A rectangle that reports what it is instead of what it measures, and can be
+ * dragged by its middle.
  *
  * Subclassed only to claim a distinct tool name; the drawing behaviour of
  * RectangleROITool is exactly what is wanted. `getTextLines` is replaced so the
@@ -44,7 +77,7 @@ export const CHAT_ROI_TOOL_NAME = 'ChatROI';
  * would invite the region to be read as a measurement, which is the confusion
  * this whole module exists to prevent.
  */
-class ChatRoiTool extends RectangleROITool {
+export class ChatRoiTool extends RectangleROITool {
   static toolName = CHAT_ROI_TOOL_NAME;
 
   constructor(props: Record<string, unknown> = {}) {
@@ -55,6 +88,25 @@ class ChatRoiTool extends RectangleROITool {
         getTextLines: () => ['Chat ROI'],
       },
     } as never);
+
+    // Wrapped rather than overridden: RectangleROITool assigns `isPointNearTool`
+    // as an instance property inside its own constructor, so there is nothing on
+    // the prototype for a subclass method to override or `super` to reach.
+    //
+    // The outline test is kept and the interior added to it, not substituted for
+    // it: the corner handles are how the region gets resized, and they are found
+    // through the outline.
+    const self = this as any;
+    const nearOutline = self.isPointNearTool;
+    self.isPointNearTool = (
+      element: unknown,
+      drawn: any,
+      canvasCoords: number[],
+      proximity: number,
+      interactionType: string
+    ) =>
+      Boolean(nearOutline?.call(self, element, drawn, canvasCoords, proximity, interactionType)) ||
+      isPointInsideRoi(element, drawn, canvasCoords);
   }
 }
 

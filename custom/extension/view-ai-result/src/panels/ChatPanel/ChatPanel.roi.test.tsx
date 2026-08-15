@@ -189,24 +189,24 @@ describe('ChatPanel — chat region of interest', () => {
     expect(screen.getByText('ROI · slice 12')).toBeTruthy();
   });
 
-  it('defaults to the current slice only', async () => {
-    // The unambiguous reading of "this region": one image, cropped.
+  it('crops the selected range rather than narrowing it', async () => {
+    // The region says WHERE on a slice to look, the range slider says which
+    // slices — so drawing one must not silently change how many are sent.
     await renderPanel();
     attachSeries();
     startDrawing();
     await completeRectangle();
-    expect((screen.getByLabelText('Apply region to') as HTMLSelectElement).value).toBe('slice');
-    expect(screen.getByText(/Sends 1 image in total/)).toBeTruthy();
+    // Three, not one: following seeds the range at the viewer's slice ± 1.
+    expect(screen.getByText(/Sends 3 images in total/)).toBeTruthy();
   });
 
-  it('applies the region across the range when asked', async () => {
+  it('offers no scope control, and says what the region covers instead', async () => {
     await renderPanel();
     attachSeries();
     startDrawing();
     await completeRectangle();
-    fireEvent.change(screen.getByLabelText('Apply region to'), { target: { value: 'range' } });
-    // Three, not five: following seeds the range at the viewer's slice ± 1.
-    expect(screen.getByText(/Sends 3 images in total/)).toBeTruthy();
+    expect(screen.queryByLabelText('Apply region to')).toBeNull();
+    expect(screen.getByText(/Crops every slice sent/)).toBeTruthy();
   });
 
   it('ignores annotations from other tools', async () => {
@@ -278,26 +278,19 @@ describe('ChatPanel — chat region of interest', () => {
       expect(selection.roi).toEqual({ x: 0.25, y: 0.1, width: 0.5, height: 0.4 });
     });
 
-    it('sends only the region slice under the default scope', async () => {
+    it('sends every slice the range selects, all cropped', async () => {
       await renderPanel();
       attachSeries();
       startDrawing();
       await completeRectangle();
-      send();
-      const selection = sendMessage.mock.calls[0][4][0];
-      expect(selection.sop_instance_uids).toEqual(['1.2.840.SE1.12']);
-    });
-
-    it('sends the whole sampled range under range scope, all cropped', async () => {
-      await renderPanel();
-      attachSeries();
-      startDrawing();
-      await completeRectangle();
-      fireEvent.change(screen.getByLabelText('Apply region to'), { target: { value: 'range' } });
       send();
       const selection = sendMessage.mock.calls[0][4][0];
       // The followed range is slices 11-13 around the viewer's slice 12.
-      expect(selection.sop_instance_uids).toHaveLength(3);
+      expect(selection.sop_instance_uids).toEqual([
+        '1.2.840.SE1.11',
+        '1.2.840.SE1.12',
+        '1.2.840.SE1.13',
+      ]);
       expect(selection.roi).toBeTruthy();
     });
 
@@ -309,9 +302,9 @@ describe('ChatPanel — chat region of interest', () => {
       await completeRectangle();
       send();
       const snapshot = sendMessage.mock.calls[0][3];
-      expect(snapshot.series[0].roi).toMatchObject({ sliceNumber: 12, scope: 'slice' });
-      expect(snapshot.series[0].sentSliceNumbers).toEqual([12]);
-      expect(snapshot.requestedImageCount).toBe(1);
+      expect(snapshot.series[0].roi).toMatchObject({ sliceNumber: 12, scope: 'range' });
+      expect(snapshot.series[0].sentSliceNumbers).toEqual([11, 12, 13]);
+      expect(snapshot.requestedImageCount).toBe(3);
     });
 
     it('sends no region once it has been removed', async () => {
@@ -354,17 +347,15 @@ describe('ChatPanel — a region on a series without slice addressing', () => {
     expect(selection.roi).toEqual({ x: 0.25, y: 0.1, width: 0.5, height: 0.4 });
   });
 
-  it('says the region covers every slice sent, rather than offering a scope', async () => {
-    // Confining it to one slice needs addressing this series does not offer.
+  it('says the region covers every slice sent', async () => {
     await renderPanel(MULTIFRAME);
     attachSeries();
     startDrawing();
     await completeRectangle();
-    expect(screen.getByText('Applies to every slice sent')).toBeTruthy();
-    expect(screen.queryByLabelText('Apply region to')).toBeNull();
+    expect(screen.getByText(/Crops every slice sent/)).toBeTruthy();
   });
 
-  it('records that wider scope in the snapshot', async () => {
+  it('records that scope in the snapshot', async () => {
     await renderPanel(MULTIFRAME);
     attachSeries();
     startDrawing();

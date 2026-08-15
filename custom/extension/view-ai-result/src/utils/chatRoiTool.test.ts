@@ -1,3 +1,4 @@
+import { __setEnabledElement } from '../test-utils/__mocks__/cornerstone-core';
 import {
   __resetToolGroups,
   __setToolGroup,
@@ -6,6 +7,7 @@ import {
 } from '../test-utils/__mocks__/cornerstone-tools';
 import {
   CHAT_ROI_TOOL_NAME,
+  ChatRoiTool,
   ensureChatRoiTool,
   removeChatRoi,
   startDrawingRoi,
@@ -142,6 +144,63 @@ describe('removeChatRoi', () => {
       throw new Error('gone already');
     });
     expect(() => removeChatRoi('annot-1')).not.toThrow();
+  });
+});
+
+describe('picking the region up', () => {
+  // Cornerstone decides what a mouse-down is for by asking each tool whether the
+  // point is near it, so this predicate is the whole difference between a region
+  // that can be dragged into place and one that is stuck where it was drawn.
+  const ELEMENT = {} as never;
+  const DRAWN = {
+    data: {
+      handles: {
+        points: [
+          [100, 50, 0],
+          [300, 50, 0],
+          [100, 250, 0],
+          [300, 250, 0],
+        ],
+      },
+    },
+  };
+
+  const near = (point: number[]) =>
+    (new ChatRoiTool() as any).isPointNearTool(ELEMENT, DRAWN, point, 6, 'mouse');
+
+  beforeEach(() => {
+    // World coordinates land on canvas unchanged here; the mapping is
+    // cornerstone's business, not this tool's.
+    __setEnabledElement({ viewport: { worldToCanvas: (p: number[]) => [p[0], p[1]] } });
+  });
+
+  it('claims the middle of the rectangle', () => {
+    // The gesture a reader will actually try. Cornerstone's own hit test says no
+    // here — it only reaches a few pixels around the outline — so the drag would
+    // otherwise window/level the image and leave the region behind.
+    expect(near([200, 150])).toBe(true);
+  });
+
+  it('still claims the outline, where the resize handles are', () => {
+    expect(near([100, 150])).toBe(true);
+    expect(near([300, 250])).toBe(true);
+  });
+
+  it('leaves the rest of the image alone', () => {
+    // Window/level has to keep working everywhere the region is not.
+    expect(near([50, 150])).toBe(false);
+    expect(near([200, 400])).toBe(false);
+  });
+
+  it('declines rather than throwing when the viewport cannot be resolved', () => {
+    __setEnabledElement(undefined);
+    expect(near([200, 150])).toBe(false);
+  });
+
+  it('declines when the annotation has no rectangle yet', () => {
+    expect(
+      (new ChatRoiTool() as any).isPointNearTool(ELEMENT, { data: {} }, [200, 150], 6, 'mouse')
+    ).toBe(false);
   });
 });
 
