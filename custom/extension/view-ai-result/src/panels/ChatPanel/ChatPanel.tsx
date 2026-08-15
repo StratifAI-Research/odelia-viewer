@@ -45,6 +45,7 @@ import {
   formatSliceList,
   formatSliceRecipe,
   formatSnapshotSummary,
+  formatContextSummary,
   formatStudyLabel,
   StudyLabelSource,
 } from '../../utils/promptContext';
@@ -138,6 +139,9 @@ interface CloudModelInfo {
  */
 type ContextMode = 'following' | 'pinned';
 
+/** Session-scoped, like the disclaimer banner: a layout preference, not a setting. */
+const CONTEXT_COLLAPSED_KEY = 'odelia.chat.contextCollapsed.v1';
+
 /** Dismiss a popover on outside click or Escape. */
 function useDismissOnOutside(
   ref: React.RefObject<HTMLElement>,
@@ -226,6 +230,11 @@ const ChatPanel: React.FC = () => {
   const [selectedDisplaySetUIDs, setSelectedDisplaySetUIDs] = useState<Set<string>>(new Set());
   const [contextMode, setContextMode] = useState<ContextMode>('following');
   const [isSeriesPickerOpen, setIsSeriesPickerOpen] = useState(false);
+  // Whether the prompt-context section is folded away. Read from session storage
+  // in an effect rather than in the initializer so the first render is identical
+  // on every mount — and open by default, because a reader who has never folded
+  // it should see what their next message will send.
+  const [isContextCollapsed, setIsContextCollapsed] = useState(false);
   // Per-series slice selection, keyed by SeriesInstanceUID. Per-series rather
   // than one global range because attached series differ in depth: "18-62" means
   // nothing shared between a 103-slice and a 24-slice acquisition.
@@ -1288,6 +1297,42 @@ const ChatPanel: React.FC = () => {
     [attachedSeries, sliceSelectionFor, effectiveSlicesFor, numSlices]
   );
 
+  /** What the collapsed section says, so folding it hides controls and not facts. */
+  const contextSummary = useMemo(
+    () =>
+      formatContextSummary({
+        studyLabel: promptStudyLabel,
+        seriesDescriptions: attachedSeries.map(s => s.SeriesDescription),
+        imageCount: totalImagesToSend,
+        hasRegion: Boolean(chatRoi),
+      }),
+    [promptStudyLabel, attachedSeries, totalImagesToSend, chatRoi]
+  );
+
+  // Remember whether the section was folded, for the length of the session. A
+  // reader who folds it is telling the panel their screen is short; re-opening it
+  // on every remount would be answering that with "no".
+  useEffect(() => {
+    try {
+      setIsContextCollapsed(sessionStorage.getItem(CONTEXT_COLLAPSED_KEY) === 'true');
+    } catch (_) {
+      // Storage can be unavailable (private mode, blocked cookies). Defaulting to
+      // open is the safe answer: it shows more, never less.
+    }
+  }, []);
+
+  const toggleContextCollapsed = useCallback(() => {
+    setIsContextCollapsed(collapsed => {
+      const next = !collapsed;
+      try {
+        sessionStorage.setItem(CONTEXT_COLLAPSED_KEY, String(next));
+      } catch (_) {
+        // Not being able to remember the choice must not prevent making it.
+      }
+      return next;
+    });
+  }, []);
+
   // Handle send message
   const handleSend = useCallback(() => {
     if (!inputValue.trim() || isStreaming) {
@@ -1741,10 +1786,22 @@ const ChatPanel: React.FC = () => {
 
   const renderPromptContext = () => (
     <div className="border-input border-t px-3 py-2">
-      <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-muted-foreground text-[11px] font-semibold uppercase tracking-wide">
+      <div className="flex items-center justify-between gap-2">
+        {/* The heading is the collapse control. The section is the tallest thing
+            in the panel and pushes the conversation off screen on a short
+            viewport, so it folds — but see `contextSummary`: what a message will
+            carry stays on screen either way. */}
+        <button
+          type="button"
+          onClick={toggleContextCollapsed}
+          aria-expanded={!isContextCollapsed}
+          aria-controls="chat-prompt-context"
+          title={isContextCollapsed ? 'Show prompt context' : 'Hide prompt context'}
+          className="text-muted-foreground hover:text-foreground flex min-w-0 items-center gap-1 text-[11px] font-semibold uppercase tracking-wide"
+        >
+          <span aria-hidden="true">{isContextCollapsed ? '▸' : '▾'}</span>
           Prompt context
-        </span>
+        </button>
         <button
           type="button"
           onClick={() => setContextMode(m => (m === 'following' ? 'pinned' : 'following'))}
@@ -1753,7 +1810,7 @@ const ChatPanel: React.FC = () => {
               ? 'The study below follows the active viewport. Series are never attached for you. Click to pin the study.'
               : 'The study below is pinned. Click to let it follow the active viewport again.'
           }
-          className="text-muted-foreground hover:text-foreground flex items-center gap-1 text-[11px]"
+          className="text-muted-foreground hover:text-foreground flex flex-shrink-0 items-center gap-1 text-[11px]"
         >
           <span
             aria-hidden="true"
@@ -1766,10 +1823,24 @@ const ChatPanel: React.FC = () => {
         </button>
       </div>
 
-      {/* The prompt and the viewport point at different studies. Say which one
-          will actually be sent, and offer the one-click correction. */}
+      {/* Collapsed, the section still states what the next message will send.
+          Clicking it opens the section, so the summary is also the way back. */}
+      {isContextCollapsed && promptStudyUID && (
+        <button
+          type="button"
+          onClick={toggleContextCollapsed}
+          title="Show prompt context"
+          className="text-foreground hover:text-foreground/80 mt-1 block w-full truncate text-left text-xs"
+        >
+          {contextSummary}
+        </button>
+      )}
+
+      {/* The prompt and the viewport point at different studies. This is a
+          correctness warning about the message about to be sent, so it shows
+          whether the section is open or folded. */}
       {viewerHasDiverged && (
-        <div className="bg-amber-950/40 mb-2 rounded border border-amber-600 px-2 py-1.5 text-[11px] text-amber-200">
+        <div className="bg-amber-950/40 mb-2 mt-2 rounded border border-amber-600 px-2 py-1.5 text-[11px] text-amber-200">
           <div>
             Viewer moved to <strong>{viewerStudyLabel}</strong> — this prompt still uses{' '}
             <strong>{promptStudyLabel}</strong>.
@@ -1784,9 +1855,9 @@ const ChatPanel: React.FC = () => {
         </div>
       )}
 
-      {promptStudyUID ? (
-        <>
-          <div className="text-foreground mb-1.5 truncate text-xs">{promptStudyLabel}</div>
+      {isContextCollapsed ? null : promptStudyUID ? (
+        <div id="chat-prompt-context">
+          <div className="text-foreground mb-1.5 mt-2 truncate text-xs">{promptStudyLabel}</div>
 
           {/* One block per attached series: the chip that identifies it, then the
               range control that says what it will send. Per series because ranges
@@ -2019,9 +2090,9 @@ const ChatPanel: React.FC = () => {
               ? 'No series attached — the model will answer from the conversation only.'
               : `Sends ${totalImagesToSend} image${totalImagesToSend === 1 ? '' : 's'} in total`}
           </div>
-        </>
+        </div>
       ) : (
-        <div className="text-muted-foreground text-xs">No study open in the viewer.</div>
+        <div className="text-muted-foreground mt-2 text-xs">No study open in the viewer.</div>
       )}
     </div>
   );

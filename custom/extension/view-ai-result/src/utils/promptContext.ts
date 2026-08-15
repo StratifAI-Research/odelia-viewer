@@ -80,6 +80,43 @@ export function formatStudyLabel(study?: StudyLabelSource | null): string {
   return 'Unknown study';
 }
 
+/**
+ * The one-line stand-in shown when the prompt-context panel is collapsed:
+ * `UKA_1 · NCI-dyn DEV · 5 images · region`.
+ *
+ * Collapsing hides the controls, never the claim. What a message will carry has
+ * to stay legible without expanding anything — a composer that looks empty while
+ * five images are attached is the same silent disagreement the whole panel is
+ * built to avoid — so the image count and the region marker survive the collapse
+ * even though the sliders do not.
+ */
+export function formatContextSummary(input: {
+  studyLabel: string;
+  seriesDescriptions: string[];
+  imageCount: number;
+  hasRegion: boolean;
+}): string {
+  const parts = [input.studyLabel];
+
+  if (input.seriesDescriptions.length === 0) {
+    // Said plainly rather than omitted: "no series" is a fact about the next
+    // message, not an absence of information.
+    parts.push('no series');
+    return parts.join(SEP);
+  }
+
+  parts.push(
+    input.seriesDescriptions.length === 1
+      ? input.seriesDescriptions[0]
+      : `${input.seriesDescriptions.length} series`
+  );
+  parts.push(`${input.imageCount} image${input.imageCount === 1 ? '' : 's'}`);
+  if (input.hasRegion) {
+    parts.push('region');
+  }
+  return parts.join(SEP);
+}
+
 /** Human label for a slice-selection strategy. */
 export function formatSliceStrategy(recipe: SliceRecipe): string {
   switch (recipe.strategy) {

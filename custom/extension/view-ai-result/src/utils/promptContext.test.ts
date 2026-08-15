@@ -4,6 +4,7 @@ import {
   formatSliceList,
   formatSliceRecipe,
   formatSliceStrategy,
+  formatContextSummary,
   formatSnapshotSummary,
   formatStudyLabel,
   requestedImageCount,
@@ -84,6 +85,55 @@ describe('formatStudyLabel', () => {
     expect(formatStudyLabel({ StudyDate: '20261399', StudyDescription: 'Breast MRI' })).toBe(
       'Breast MRI'
     );
+  });
+});
+
+describe('formatContextSummary', () => {
+  it('keeps the study, the series and the image count', () => {
+    expect(
+      formatContextSummary({
+        studyLabel: 'UKA_1',
+        seriesDescriptions: ['NCI-dyn DEV'],
+        imageCount: 5,
+        hasRegion: false,
+      })
+    ).toBe('UKA_1 · NCI-dyn DEV · 5 images');
+  });
+
+  it('counts series rather than listing them when there are several', () => {
+    // The line has to survive a ~270px panel; three descriptions would elide.
+    expect(
+      formatContextSummary({
+        studyLabel: 'UKA_1',
+        seriesDescriptions: ['a', 'b', 'c'],
+        imageCount: 15,
+        hasRegion: false,
+      })
+    ).toBe('UKA_1 · 3 series · 15 images');
+  });
+
+  it('says a region is in force, because it changes what the images are', () => {
+    expect(
+      formatContextSummary({
+        studyLabel: 'UKA_1',
+        seriesDescriptions: ['NCI-dyn DEV'],
+        imageCount: 1,
+        hasRegion: true,
+      })
+    ).toBe('UKA_1 · NCI-dyn DEV · 1 image · region');
+  });
+
+  it('states "no series" rather than omitting it', () => {
+    // A collapsed panel that simply showed the study would look identical
+    // whether or not images were attached, which is the one thing it must not do.
+    expect(
+      formatContextSummary({
+        studyLabel: 'UKA_1',
+        seriesDescriptions: [],
+        imageCount: 0,
+        hasRegion: false,
+      })
+    ).toBe('UKA_1 · no series');
   });
 });
 

@@ -163,6 +163,67 @@ describe('ChatPanel — study label on anonymised data', () => {
   });
 });
 
+describe('ChatPanel — folding the prompt context', () => {
+  const heading = () => screen.getByRole('button', { name: /Prompt context/ });
+
+  it('starts open', async () => {
+    await renderPanel();
+    expect(heading().getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByText('+ Add series')).toBeTruthy();
+  });
+
+  it('folds the controls away when the heading is clicked', async () => {
+    await renderPanel();
+    fireEvent.click(heading());
+    expect(heading().getAttribute('aria-expanded')).toBe('false');
+    // The tallest parts — the series picker and the per-series range controls —
+    // are what folding is for.
+    expect(screen.queryByText('+ Add series')).toBeNull();
+  });
+
+  it('still says what the next message will send', async () => {
+    // The point of the summary: folding hides controls, never the claim. A
+    // composer that looks empty while images are attached is exactly the silent
+    // disagreement the panel exists to prevent.
+    await renderPanel();
+    fireEvent.click(screen.getByText('+ Add series'));
+    fireEvent.click(screen.getByText('Ax T1 post'));
+    fireEvent.click(heading());
+    expect(screen.getByText(/Ax T1 post · 5 images/)).toBeTruthy();
+  });
+
+  it('says so when nothing is attached', async () => {
+    await renderPanel();
+    fireEvent.click(heading());
+    expect(screen.getByText(/no series/)).toBeTruthy();
+  });
+
+  it('unfolds again from the summary line', async () => {
+    await renderPanel();
+    fireEvent.click(heading());
+    fireEvent.click(screen.getByText(/no series/));
+    expect(screen.getByText('+ Add series')).toBeTruthy();
+  });
+
+  it('keeps the study-divergence warning visible while folded', async () => {
+    // A correctness warning about the message about to be sent is not part of
+    // what folding is allowed to hide.
+    const { rerender } = await renderPanel();
+    fireEvent.change(screen.getByPlaceholderText(COMPOSER), { target: { value: 'x' } });
+    await moveViewerTo('study-2', rerender);
+    fireEvent.click(heading());
+    expect(screen.getByText(/Viewer moved to/)).toBeTruthy();
+  });
+
+  it('remembers the choice for the session', async () => {
+    const { unmount } = await renderPanel();
+    fireEvent.click(heading());
+    unmount();
+    await renderPanel();
+    expect(heading().getAttribute('aria-expanded')).toBe('false');
+  });
+});
+
 describe('ChatPanel — following vs pinned', () => {
   it('follows the viewer while the prompt is untouched', async () => {
     const { rerender } = await renderPanel();
