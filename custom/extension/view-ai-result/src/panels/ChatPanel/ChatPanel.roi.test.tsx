@@ -123,18 +123,15 @@ async function renderPanel(displaySets: any[] = SERIES) {
 }
 
 /**
- * Make sure a series is attached, however it got there.
+ * Ensure a series is attached.
  *
- * While the context follows the viewer the series on screen is attached
- * automatically, so clicking it in the picker would DETACH it. Tests that need
- * it attached say so; they do not care which path put it there.
+ * The panel attaches whatever the viewport shows while it is following, and the
+ * series picker is gone, so this asserts the state rather than producing it —
+ * a test whose series never arrived should fail here, at the setup, and not
+ * three assertions later.
  */
 const attachSeries = () => {
-  if (screen.queryByLabelText('Remove Ax T1 post')) {
-    return;
-  }
-  fireEvent.click(screen.getByText('+ Add series'));
-  fireEvent.click(screen.getByText('Ax T1 post'));
+  expect(screen.getByLabelText('Remove Ax T1 post')).toBeTruthy();
 };
 
 /** Finish a rectangle, as cornerstone reports it after a drag. */

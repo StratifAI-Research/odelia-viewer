@@ -232,7 +232,6 @@ const ChatPanel: React.FC = () => {
   // images attach and detach as one.
   const [selectedDisplaySetUIDs, setSelectedDisplaySetUIDs] = useState<Set<string>>(new Set());
   const [contextMode, setContextMode] = useState<ContextMode>('following');
-  const [isSeriesPickerOpen, setIsSeriesPickerOpen] = useState(false);
   // Whether the prompt-context section is folded away. Read from session storage
   // in an effect rather than in the initializer so the first render is identical
   // on every mount — and open by default, because a reader who has never folded
@@ -334,11 +333,9 @@ const ChatPanel: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const modelMenuRef = useRef<HTMLDivElement>(null);
-  const seriesPickerRef = useRef<HTMLDivElement>(null);
   const historyMenuRef = useRef<HTMLDivElement>(null);
 
   useDismissOnOutside(modelMenuRef, isModelMenuOpen, () => setIsModelMenuOpen(false));
-  useDismissOnOutside(seriesPickerRef, isSeriesPickerOpen, () => setIsSeriesPickerOpen(false));
   useDismissOnOutside(historyMenuRef, isHistoryOpen, () => setIsHistoryOpen(false));
 
   // The model tag currently in force, and its short header label.
@@ -2256,56 +2253,6 @@ const ChatPanel: React.FC = () => {
                   ▱ Select region
                 </button>
               ))}
-
-            <div
-              ref={seriesPickerRef}
-              className="relative"
-            >
-              <button
-                type="button"
-                onClick={() => setIsSeriesPickerOpen(o => !o)}
-                className="border-input hover:bg-accent text-muted-foreground rounded border border-dashed px-2 py-0.5 text-[11px]"
-              >
-                + Add series
-              </button>
-              {isSeriesPickerOpen && (
-                <div className="border-input bg-muted absolute bottom-full left-0 z-50 mb-1 max-h-48 w-64 overflow-y-auto rounded border shadow-lg">
-                  {availableSeries.length === 0 ? (
-                    <div className="text-muted-foreground px-3 py-2 text-xs">
-                      No series available
-                    </div>
-                  ) : (
-                    availableSeries.map(s => {
-                      const isSelected = selectedDisplaySetUIDs.has(s.displaySetInstanceUID);
-                      return (
-                        <button
-                          key={s.displaySetInstanceUID}
-                          type="button"
-                          onClick={() => toggleSeries(s.displaySetInstanceUID)}
-                          className="hover:bg-accent flex w-full items-start gap-2 px-3 py-2 text-left"
-                        >
-                          <span
-                            aria-hidden="true"
-                            className={`mt-0.5 h-3 w-3 flex-shrink-0 rounded border ${isSelected ? 'bg-primary border-primary' : 'border-input'}`}
-                          />
-                          <span className="min-w-0 flex-1">
-                            <span className="text-foreground block truncate text-xs">
-                              {s.SeriesDescription}
-                            </span>
-                            <span className="text-muted-foreground block text-[11px]">
-                              {s.Modality} ·{' '}
-                              {s.axis.sliceCount > 0
-                                ? formatAxisShape(s.axis)
-                                : `${s.numImageFrames} images`}
-                            </span>
-                          </span>
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
           </div>
 
           {roiError && <div className="mb-1 text-[11px] text-amber-300">{roiError}</div>}
@@ -2313,9 +2260,26 @@ const ChatPanel: React.FC = () => {
           {/* The one number that matters across the whole prompt: how many images
               this message will carry. */}
           <div className="text-muted-foreground text-[11px]">
-            {attachedSeries.length === 0
-              ? 'No series attached — the model will answer from the conversation only.'
-              : `Sends ${totalImagesToSend} image${totalImagesToSend === 1 ? '' : 's'} in total`}
+            {attachedSeries.length > 0 ? (
+              `Sends ${totalImagesToSend} image${totalImagesToSend === 1 ? '' : 's'} in total`
+            ) : contextMode === 'pinned' ? (
+              // Detaching is the only way to get here, and with the series picker
+              // gone the follow toggle is the only way back. A dead end would be
+              // worse than a sentence.
+              <>
+                No series attached — the model will answer from the conversation only. Switch to{' '}
+                <button
+                  type="button"
+                  onClick={() => setContextMode('following')}
+                  className="text-primary underline"
+                >
+                  Follows viewer
+                </button>{' '}
+                to send what is on screen.
+              </>
+            ) : (
+              'No series attached — the model will answer from the conversation only.'
+            )}
           </div>
         </div>
       ) : (
@@ -2855,8 +2819,10 @@ const ChatPanel: React.FC = () => {
             {messages.length === 0 ? (
               <div className="text-muted-foreground flex h-full flex-col items-center justify-center text-sm">
                 <div className="mb-2">No messages yet</div>
+                {/* No longer "attach series below": the series on screen is
+                    already attached, and there is nothing to attach it with. */}
                 <div className="text-center text-xs">
-                  Attach series below, then ask questions about your study.
+                  Ask about the series you are viewing — what it will send is summarised below.
                 </div>
               </div>
             ) : (

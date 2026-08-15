@@ -1,5 +1,11 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
+// Imported by path, not through '@ohif/ui-next': the alias exists only in the
+// jest moduleNameMapper, so tsc would resolve the real package.
+import {
+  resetMockViewportGrid,
+  setMockViewportGrid,
+} from '../../test-utils/__mocks__/ohif-ui-next';
 import {
   installConsoleErrorFilter,
   makeServicesManager,
@@ -47,8 +53,17 @@ beforeEach(() => {
   // Chat threads persist in sessionStorage; clear so cases stay independent.
   window.sessionStorage.clear();
   mockActiveStudy = 'study-1';
+  resetMockViewportGrid();
   (global as any).fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
 });
+
+/** Point the active viewport at a display set, which is what attaches it. */
+function showDisplaySet(uid: string) {
+  setMockViewportGrid({
+    activeViewportId: 'v1',
+    viewports: new Map([['v1', { displaySetInstanceUIDs: [uid] }]]),
+  });
+}
 afterEach(() => {
   delete (window as any).config;
 });
@@ -69,6 +84,7 @@ function makeDisplaySetService(displaySets: any[]) {
 /** Two studies for the same patient — the case the pinning rules exist for. */
 const TWO_STUDIES = [
   {
+    displaySetInstanceUID: 'ds-1',
     StudyInstanceUID: 'study-1',
     StudyDate: '20260812',
     StudyDescription: 'Breast MRI',
@@ -79,6 +95,7 @@ const TWO_STUDIES = [
     numImageFrames: 103,
   },
   {
+    displaySetInstanceUID: 'ds-2',
     StudyInstanceUID: 'study-2',
     StudyDate: '20250101',
     StudyDescription: 'Follow-up MRI',
@@ -125,6 +142,7 @@ describe('ChatPanel — display-set context refresh', () => {
     // A series hydrating after the initial study load appears without any study change.
     dss.getActiveDisplaySets.mockReturnValue([
       {
+        displaySetInstanceUID: 'ds-late',
         StudyInstanceUID: 'study-1',
         SeriesInstanceUID: 'se-9',
         SeriesDescription: 'Late T2',
@@ -133,10 +151,14 @@ describe('ChatPanel — display-set context refresh', () => {
         numImageFrames: 30,
       },
     ]);
-    act(() => dss.emit('added'));
+    showDisplaySet('ds-late');
+    await act(async () => {
+      dss.emit('added');
+    });
 
-    fireEvent.click(screen.getByText('+ Add series'));
-    expect(screen.getByText('Late T2')).toBeTruthy();
+    // The series hydrated after the study loaded, and the panel attached it
+    // because the viewport is showing it.
+    expect(screen.getByLabelText('Remove Late T2')).toBeTruthy();
   });
 });
 
@@ -167,27 +189,27 @@ describe('ChatPanel — folding the prompt context', () => {
   const heading = () => screen.getByRole('button', { name: /Prompt context/ });
 
   it('starts open', async () => {
+    showDisplaySet('ds-1');
     await renderPanel();
     expect(heading().getAttribute('aria-expanded')).toBe('true');
-    expect(screen.getByText('+ Add series')).toBeTruthy();
+    expect(screen.getByLabelText('Remove Ax T1 post')).toBeTruthy();
   });
 
   it('folds the controls away when the heading is clicked', async () => {
+    showDisplaySet('ds-1');
     await renderPanel();
     fireEvent.click(heading());
     expect(heading().getAttribute('aria-expanded')).toBe('false');
-    // The tallest parts — the series picker and the per-series range controls —
-    // are what folding is for.
-    expect(screen.queryByText('+ Add series')).toBeNull();
+    // The per-series chips and range controls are what folding is for.
+    expect(screen.queryByLabelText('Remove Ax T1 post')).toBeNull();
   });
 
   it('still says what the next message will send', async () => {
     // The point of the summary: folding hides controls, never the claim. A
     // composer that looks empty while images are attached is exactly the silent
     // disagreement the panel exists to prevent.
+    showDisplaySet('ds-1');
     await renderPanel();
-    fireEvent.click(screen.getByText('+ Add series'));
-    fireEvent.click(screen.getByText('Ax T1 post'));
     fireEvent.click(heading());
     expect(screen.getByText(/Ax T1 post · 5 images/)).toBeTruthy();
   });
@@ -199,10 +221,11 @@ describe('ChatPanel — folding the prompt context', () => {
   });
 
   it('unfolds again from the summary line', async () => {
+    showDisplaySet('ds-1');
     await renderPanel();
     fireEvent.click(heading());
-    fireEvent.click(screen.getByText(/no series/));
-    expect(screen.getByText('+ Add series')).toBeTruthy();
+    fireEvent.click(screen.getByText(/Ax T1 post/));
+    expect(screen.getByLabelText('Remove Ax T1 post')).toBeTruthy();
   });
 
   it('keeps the study-divergence warning visible while folded', async () => {
@@ -239,6 +262,7 @@ describe('ChatPanel — following vs pinned', () => {
   });
 
   it('pins the context as soon as the user types', async () => {
+    showDisplaySet('ds-1');
     const { rerender } = await renderPanel();
     fireEvent.change(screen.getByPlaceholderText(COMPOSER), {
       target: { value: 'Is this suspicious?' },
@@ -249,17 +273,22 @@ describe('ChatPanel — following vs pinned', () => {
 
     // The half-written question was about study-1; the context must not move.
     expect(screen.getByText(/Viewer moved to/)).toBeTruthy();
-    // Still bound to study-1: its series are offered, not study-2's.
-    fireEvent.click(screen.getByText('+ Add series'));
-    expect(screen.getByText('Ax T1 post')).toBeTruthy();
-    expect(screen.queryByText('Ax T2')).toBeNull();
+    // Still bound to study-1, and study-2's series was not attached under it.
+    // Twice: the context line, and the divergence banner naming what will be sent.
+    expect(screen.getAllByText('2026-08-12 · Breast MRI').length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText('Remove Ax T2')).toBeNull();
   });
 
-  it('pins the context when a series is attached', async () => {
+  it('pins the context when a series is detached', async () => {
+    // Attaching is automatic now, so it is not an investment in the prompt.
+    // Removing one is: it says "not this", and the viewer must not put it back.
+    showDisplaySet('ds-1');
     const { rerender } = await renderPanel();
-    fireEvent.click(screen.getByText('+ Add series'));
-    fireEvent.click(screen.getByText('Ax T1 post'));
+    expect(screen.getByText('Follows viewer')).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText('Remove Ax T1 post'));
     expect(screen.getByText('Pinned')).toBeTruthy();
+    expect(screen.queryByLabelText('Remove Ax T1 post')).toBeNull();
 
     await moveViewerTo('study-2', rerender);
     expect(screen.getByText(/Viewer moved to/)).toBeTruthy();
@@ -314,9 +343,8 @@ describe('ChatPanel — following vs pinned', () => {
   it('sends the pinned study, not whatever the viewer drifted to', async () => {
     // The headline safety property: what a message is sent with is decided by the
     // prompt context, never by the viewport at the moment Send is pressed.
+    showDisplaySet('ds-1');
     const { rerender } = await renderPanel();
-    fireEvent.click(screen.getByText('+ Add series'));
-    fireEvent.click(screen.getByText('Ax T1 post'));
     fireEvent.change(screen.getByPlaceholderText(COMPOSER), { target: { value: 'suspicious?' } });
 
     await moveViewerTo('study-2', rerender);
@@ -345,9 +373,8 @@ describe('ChatPanel — following vs pinned', () => {
   });
 
   it('stamps the message with the series and image bound in force at send time', async () => {
+    showDisplaySet('ds-1');
     await renderPanel();
-    fireEvent.click(screen.getByText('+ Add series'));
-    fireEvent.click(screen.getByText('Ax T1 post'));
     fireEvent.change(screen.getByPlaceholderText(COMPOSER), { target: { value: 'q' } });
     fireEvent.click(screen.getByTitle('Send'));
 
@@ -359,14 +386,20 @@ describe('ChatPanel — following vs pinned', () => {
     expect(snapshot.requestedImageCount).toBe(5);
   });
 
-  it('detaches a series from its chip', async () => {
+  it('detaches a series from its chip, and offers the way back', async () => {
+    // With the series picker gone, the follow toggle is the only route back —
+    // so the empty state has to name it rather than leave a dead end.
+    showDisplaySet('ds-1');
     await renderPanel();
-    fireEvent.click(screen.getByText('+ Add series'));
-    fireEvent.click(screen.getByText('Ax T1 post'));
     expect(screen.getByText(/Sends 5 images in total/)).toBeTruthy();
 
     fireEvent.click(screen.getByLabelText('Remove Ax T1 post'));
     expect(screen.getByText(/No series attached/)).toBeTruthy();
+    const back = screen.getByRole('button', { name: 'Follows viewer' });
+    expect(back).toBeTruthy();
+
+    fireEvent.click(back);
+    expect(screen.getByLabelText('Remove Ax T1 post')).toBeTruthy();
   });
 });
 

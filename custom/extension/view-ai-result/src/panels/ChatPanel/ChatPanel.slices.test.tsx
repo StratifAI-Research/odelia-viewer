@@ -59,6 +59,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   (eventTarget as any).reset();
   resetMockViewportGrid();
+  (global as any).__gridAimed = false;
   (global as any).fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
   mockHookState.messages = [];
 });
@@ -70,6 +71,9 @@ const instances = (count: number, prefix = '1.2.840.SE1') =>
 /** A 20-slice series: small enough that the arithmetic stays readable in tests. */
 const ADDRESSABLE = [
   {
+    // The panel keys its per-series state on this and attaches by it, so the
+    // fixture needs one the mock viewport can point at.
+    displaySetInstanceUID: 'ds-1',
     StudyInstanceUID: 'study-1',
     StudyDate: '20260812',
     StudyDescription: 'Breast MRI',
@@ -99,6 +103,16 @@ function makeDisplaySetService(displaySets: any[]) {
 }
 
 async function renderPanel(displaySets: any[] = ADDRESSABLE, extraServices: any = {}) {
+  // The viewport shows the first display set unless a test has already aimed it
+  // somewhere else, which is what makes the panel attach it.
+  if (!(global as any).__gridAimed) {
+    setMockViewportGrid({
+      activeViewportId: 'v1',
+      viewports: new Map([
+        ['v1', { displaySetInstanceUIDs: [displaySets[0]?.displaySetInstanceUID ?? 'ds-1'] }],
+      ]),
+    });
+  }
   withSystem(
     makeServicesManager({
       services: { displaySetService: makeDisplaySetService(displaySets), ...extraServices },
@@ -113,18 +127,15 @@ async function renderPanel(displaySets: any[] = ADDRESSABLE, extraServices: any 
 
 /** Attach the first series, as a user would. */
 /**
- * Make sure a series is attached, however it got there.
+ * Ensure a series is attached.
  *
- * While the context follows the viewer the series on screen is attached
- * automatically, so clicking it in the picker would DETACH it. Tests that need
- * it attached say so; they do not care which path put it there.
+ * The panel attaches whatever the viewport shows while it is following, and the
+ * series picker is gone, so this asserts the state rather than producing it —
+ * a test whose series never arrived should fail here, at the setup, and not
+ * three assertions later.
  */
 function attachSeries(description = 'Ax T1 post') {
-  if (screen.queryByLabelText(`Remove ${description}`)) {
-    return;
-  }
-  fireEvent.click(screen.getByText('+ Add series'));
-  fireEvent.click(screen.getByText(description));
+  expect(screen.getByLabelText(`Remove ${description}`)).toBeTruthy();
 }
 
 const firstHandle = () => screen.getByLabelText('First slice of Ax T1 post') as HTMLInputElement;
@@ -369,11 +380,13 @@ describe('ChatPanel — slice range', () => {
 
   describe('following the viewer', () => {
     /** Point the active viewport at a display set, as the grid would. */
-    const show = (uid: string) =>
+    const show = (uid: string) => (
+      ((global as any).__gridAimed = true),
       setMockViewportGrid({
         activeViewportId: 'v1',
         viewports: new Map([['v1', { displaySetInstanceUIDs: [uid] }]]),
-      });
+      })
+    );
 
     const atSlice = (index: number) => ({
       cornerstoneViewportService: {
@@ -410,13 +423,13 @@ describe('ChatPanel — slice range', () => {
       ]);
     });
 
-    it('keeps the configured band for a series nobody is looking at', async () => {
-      // There is no "current slice" for a series that is not on screen, so it
-      // seeds from the middleware's own strategy as before.
-      show('ds-other');
+    it('attaches nothing when the viewport shows something the panel cannot offer', async () => {
+      // A viewport on an SR, or on a series of another study, must not drag it
+      // into the prompt. The panel only ever attaches series it is offering.
+      show('ds-not-in-this-study');
       await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], atSlice(11));
-      attachSeries();
-      expect(screen.getByText('Range 5–16 of 20')).toBeTruthy();
+      expect(screen.queryByLabelText('Remove Ax T1 post')).toBeNull();
+      expect(screen.getByText(/No series attached/)).toBeTruthy();
     });
 
     it('detaching is still the user’s to make, and pins', async () => {
@@ -455,11 +468,13 @@ describe('ChatPanel — slice range', () => {
     });
 
     /** Point the active viewport at a display set, as the grid would. */
-    const showDisplaySet = (uid: string) =>
+    const showDisplaySet = (uid: string) => (
+      ((global as any).__gridAimed = true),
       setMockViewportGrid({
         activeViewportId: 'v1',
         viewports: new Map([['v1', { displaySetInstanceUIDs: [uid] }]]),
-      });
+      })
+    );
 
     it('marks where the viewport is', async () => {
       showDisplaySet('ds-1');
@@ -547,16 +562,29 @@ describe('ChatPanel — slice range', () => {
       expect(screen.getByTitle('Viewer is on slice 20')).toBeTruthy();
     });
 
-    it('shows no marker when the viewport shows a different series', async () => {
+    it('shows no marker once the viewport moves off the attached series', async () => {
       // A slice number from another acquisition would point at a position that
-      // means nothing on this track.
-      showDisplaySet('viewer-ds');
-      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'other-ds' }], {
-        cornerstoneViewportService: {
-          getCornerstoneViewport: jest.fn(() => ({ getCurrentImageIdIndex: () => 5 })),
-        },
+      // means nothing on this track. Reachable only while pinned: following
+      // would have attached whatever the viewport moved to.
+      showDisplaySet('ds-1');
+      const { rerender } = await renderPanel(
+        [
+          { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' },
+          { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-2', SeriesDescription: 'Ax T2' },
+        ],
+        viewportServices(11)
+      );
+      expect(screen.getByTitle('Viewer is on slice 12')).toBeTruthy();
+
+      fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+        target: { value: 'pin it' },
       });
-      attachSeries();
+      showDisplaySet('ds-2');
+      await act(async () => {
+        rerender(<ChatPanel />);
+      });
+
+      expect(screen.getByText('Pinned')).toBeTruthy();
       expect(screen.queryByTitle(/Viewer is on slice/)).toBeNull();
     });
 
@@ -576,6 +604,10 @@ describe('ChatPanel — provenance under change and failure', () => {
     // instances past the end of the list.
     const shrinking = [{ ...ADDRESSABLE[0] }];
     const dss = makeDisplaySetService(shrinking);
+    setMockViewportGrid({
+      activeViewportId: 'v1',
+      viewports: new Map([['v1', { displaySetInstanceUIDs: ['ds-1'] }]]),
+    });
     withSystem(makeServicesManager({ services: { displaySetService: dss } }));
     await act(async () => {
       render(<ChatPanel />);
@@ -609,34 +641,43 @@ describe('ChatPanel — provenance under change and failure', () => {
       { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-a', SeriesDescription: 'CC' },
       { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-b', SeriesDescription: 'MLO' },
     ];
+    setMockViewportGrid({
+      activeViewportId: 'v1',
+      viewports: new Map([['v1', { displaySetInstanceUIDs: ['ds-a'] }]]),
+    });
+    (global as any).__gridAimed = true;
     await renderPanel(split);
-    fireEvent.click(screen.getByText('+ Add series'));
-    fireEvent.click(screen.getByText('CC'));
-    fireEvent.click(screen.getByLabelText('First slice of CC'));
 
-    // Only CC attached; MLO is still on offer rather than attached alongside it.
+    // Only the display set on screen is attached. Keying on the series UID would
+    // have brought MLO along with it, since both share se-1.
+    expect(screen.getByLabelText('First slice of CC')).toBeTruthy();
     expect(screen.queryByLabelText('First slice of MLO')).toBeNull();
   });
 
-  it('sends one selection per display set, both naming their own series', async () => {
+  it('sends the display set on screen, named by its own series', async () => {
+    // Two display sets share se-1; only the one being viewed is sent, and the
+    // selection names the series it actually belongs to.
     const split = [
       { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-a', SeriesDescription: 'CC' },
       { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-b', SeriesDescription: 'MLO' },
     ];
+    setMockViewportGrid({
+      activeViewportId: 'v1',
+      viewports: new Map([['v1', { displaySetInstanceUIDs: ['ds-b'] }]]),
+    });
+    (global as any).__gridAimed = true;
     await renderPanel(split);
-    fireEvent.click(screen.getByText('+ Add series'));
-    fireEvent.click(screen.getByText('CC'));
-    fireEvent.click(screen.getByText('MLO'));
     fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
       target: { value: 'q' },
     });
     fireEvent.click(screen.getByTitle('Send'));
 
     const [, , seriesUIDs, snapshot, selections] = sendMessage.mock.calls[0];
-    // The series is retrieved once; both display sets contribute their slices.
     expect(seriesUIDs).toEqual(['se-1']);
-    expect(selections).toHaveLength(2);
-    expect(snapshot.series).toHaveLength(2);
+    expect(selections).toHaveLength(1);
+    expect(snapshot.series).toEqual([
+      expect.objectContaining({ displaySetInstanceUID: 'ds-b', description: 'MLO' }),
+    ]);
   });
 
   it('marks a message whose turn produced no answer', async () => {

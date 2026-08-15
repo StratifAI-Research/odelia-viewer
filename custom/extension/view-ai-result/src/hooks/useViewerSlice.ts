@@ -40,11 +40,11 @@ interface ViewerSliceConfig {
 /**
  * The slice currently on screen in the active viewport.
  *
- * The chat panel draws it as a marker on the slice-range slider, so the reader
- * can see where they are relative to what the prompt will send. It is
- * deliberately *not* used to choose slices: a marker that follows the viewport is
- * orientation, whereas a selection that follows the viewport would change the
- * question under the user.
+ * The chat panel uses this two ways. While the context follows the viewer it is
+ * the selection: the series attached and the range sent are what is on screen.
+ * Once pinned it is only a marker on the slice-range slider, showing where the
+ * reader is relative to what the prompt will send — orientation, not selection,
+ * so scrolling cannot rewrite a question mid-compose.
  *
  * Read from cornerstone rather than from the viewport grid because the grid
  * carries no scroll position — scrolling a stack changes nothing the grid
@@ -77,16 +77,20 @@ export function useViewerSlice({
       return NO_SLICE;
     }
 
+    // Which images are on screen comes from the grid, which knows it as soon as
+    // the layout is set. Where in them the viewport sits comes from cornerstone,
+    // which does not know until it has built a viewport. Reported separately
+    // rather than as all-or-nothing: a viewport still initialising has a display
+    // set and no slice, and collapsing that to "nothing on screen" would leave
+    // the panel with nothing attached until cornerstone caught up.
+    const displaySetInstanceUID =
+      viewports?.get(activeViewportId)?.displaySetInstanceUIDs?.[0] ?? null;
+
     const cornerstoneViewportService = servicesManager?.services?.cornerstoneViewportService;
     const viewport = cornerstoneViewportService?.getCornerstoneViewport?.(activeViewportId);
     if (!viewport?.getCurrentImageIdIndex) {
-      return NO_SLICE;
+      return { displaySetInstanceUID, sliceNumber: null, phaseNumber: null };
     }
-
-    // What the viewport is showing, taken from the grid rather than by parsing
-    // the imageId, which is loader-specific.
-    const displaySetInstanceUID =
-      viewports?.get(activeViewportId)?.displaySetInstanceUIDs?.[0] ?? null;
 
     // The phase comes off the volume, not the viewport.
     //
