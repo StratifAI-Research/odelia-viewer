@@ -71,6 +71,7 @@ import SliceRangeSlider from './SliceRangeSlider';
 import { ChatRoi, formatRoiLabel, formatRoiRect, formatRoiScope } from '../../utils/chatRoi';
 import {
   ensureChatRoiTool,
+  moveChatRoiToViewportSlice,
   removeChatRoi,
   startDrawingRoi,
   stopDrawingRoi,
@@ -1489,6 +1490,52 @@ const ChatPanel: React.FC = () => {
     onRemoved: forgetRoi,
     onRejected: rejectRoi,
   });
+
+  /**
+   * While the prompt follows the viewer, the region follows it too.
+   *
+   * A cornerstone annotation stays on the plane it was drawn on, so scrolling
+   * left the rectangle behind on its own slice: invisible, and with nothing on
+   * screen to grab, unmovable — while the chip went on naming a slice the range
+   * had already scrolled past. Following is a promise that the message carries
+   * what is on screen, and the region is part of what it carries.
+   *
+   * Only while following. Pinned, the region stays exactly where it was drawn:
+   * that is what pinning is for, and the chip says which slice it belongs to.
+   *
+   * The rectangle keeps its shape and its in-plane position — only the slice
+   * changes — so nothing about the crop needs recomputing, and the slice number
+   * is taken from the panel's own reading rather than from the annotation.
+   */
+  useEffect(() => {
+    if (contextMode !== 'following' || !chatRoi) {
+      return;
+    }
+    const sliceNumber = viewerSlice.sliceNumber;
+    if (
+      sliceNumber === null ||
+      sliceNumber === chatRoi.sliceNumber ||
+      viewerSlice.displaySetInstanceUID !== chatRoi.displaySetInstanceUID
+    ) {
+      // A region on another series is not this viewport's to move.
+      return;
+    }
+    // Cast because `cornerstoneViewportService` comes from the cornerstone
+    // extension and is absent from OHIF's core `Services` type, the same reason
+    // `useViewerSlice` takes the manager untyped.
+    const viewport = (
+      servicesManager?.services as any
+    )?.cornerstoneViewportService?.getCornerstoneViewport?.(activeViewportId);
+    if (!moveChatRoiToViewportSlice(chatRoi.annotationUID, viewport)) {
+      // The slice number is deliberately left alone: it describes where the
+      // rectangle IS, and claiming it moved when it did not is the one thing
+      // this whole panel exists to prevent.
+      return;
+    }
+    setChatRoi(prev =>
+      prev && prev.annotationUID === chatRoi.annotationUID ? { ...prev, sliceNumber } : prev
+    );
+  }, [contextMode, chatRoi, viewerSlice, activeViewportId, servicesManager]);
 
   // On unmount: release the mouse button, and take the rectangle with it. A
   // region left on the image after the panel is gone belongs to nothing.

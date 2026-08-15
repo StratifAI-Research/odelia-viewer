@@ -59,9 +59,23 @@ export const Enums = {
   },
 };
 
+// Annotations a test has put on the image, by UID. Mutable objects on purpose:
+// cornerstone's tools edit annotation state in place, and so does the code that
+// moves a chat region between slices.
+export const __annotations: Record<string, any> = {};
+export const __setAnnotation = (uid: string, value: any) => {
+  __annotations[uid] = value;
+};
+export const __resetAnnotations = () => {
+  Object.keys(__annotations).forEach(k => delete __annotations[k]);
+};
+
 export const annotation = {
   config: { style: { setToolGroupToolStyles: jest.fn() } },
-  state: { removeAnnotation: jest.fn() },
+  state: {
+    removeAnnotation: jest.fn(),
+    getAnnotation: jest.fn((uid: string) => __annotations[uid]),
+  },
 };
 
 export function makeToolGroup(initial: Record<string, any> = {}) {

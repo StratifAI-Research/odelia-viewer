@@ -1,6 +1,8 @@
 import { __setEnabledElement } from '../test-utils/__mocks__/cornerstone-core';
 import {
+  __resetAnnotations,
   __resetToolGroups,
+  __setAnnotation,
   __setToolGroup,
   annotation,
   makeToolGroup,
@@ -9,6 +11,7 @@ import {
   CHAT_ROI_TOOL_NAME,
   ChatRoiTool,
   ensureChatRoiTool,
+  moveChatRoiToViewportSlice,
   removeChatRoi,
   startDrawingRoi,
   stopDrawingRoi,
@@ -25,6 +28,7 @@ const modeToolGroup = () =>
 beforeEach(() => {
   jest.clearAllMocks();
   __resetToolGroups();
+  __resetAnnotations();
 });
 
 describe('ensureChatRoiTool', () => {
@@ -201,6 +205,158 @@ describe('picking the region up', () => {
     expect(
       (new ChatRoiTool() as any).isPointNearTool(ELEMENT, { data: {} }, [200, 150], 6, 'mouse')
     ).toBe(false);
+  });
+});
+
+describe('moveChatRoiToViewportSlice', () => {
+  // A region drawn 6mm in front of the viewport's plane, on an axial volume
+  // whose normal is +z. Every corner shares that offset, as coplanar corners do.
+  const drawnAt = (z: number) => {
+    // ONE array behind both fields, as cornerstone really stamps it: the camera's
+    // focal point is handed to the plane restriction rather than copied into it.
+    const focalPoint = [0, 0, z];
+    return {
+      metadata: {
+        toolName: CHAT_ROI_TOOL_NAME,
+        referencedImageId: 'wadors:slice-16',
+        // The restriction point is the one a volume viewport filters on.
+        planeRestriction: { point: focalPoint },
+        cameraFocalPoint: focalPoint,
+        sliceIndex: 15,
+      },
+      data: {
+        handles: {
+          points: [
+            [10, 20, z],
+            [40, 20, z],
+            [10, 60, z],
+            [40, 60, z],
+          ],
+          textBox: { worldPosition: [50, 40, z] },
+        },
+      },
+    };
+  };
+
+  const volumeViewport = (focalZ: number) => ({
+    getCamera: () => ({ viewPlaneNormal: [0, 0, 1], focalPoint: [0, 0, focalZ] }),
+    getAllVolumeIds: () => ['vol-1'],
+    getCurrentImageId: () => 'wadors:whatever-cornerstone-thinks',
+    getSliceIndex: () => 18,
+    render: jest.fn(),
+  });
+
+  it('translates the region onto the slice on screen', () => {
+    const drawn = drawnAt(6);
+    __setAnnotation('annot-1', drawn);
+    expect(moveChatRoiToViewportSlice('annot-1', volumeViewport(0))).toBe(true);
+    expect(drawn.data.handles.points.map(p => p[2])).toEqual([0, 0, 0, 0]);
+  });
+
+  it('keeps its shape and in-plane position', () => {
+    // The crop the message sends must be the same rectangle: a region that
+    // changed size on a scroll would silently change the question.
+    const drawn = drawnAt(6);
+    __setAnnotation('annot-1', drawn);
+    moveChatRoiToViewportSlice('annot-1', volumeViewport(0));
+    expect(drawn.data.handles.points.map(p => [p[0], p[1]])).toEqual([
+      [10, 20],
+      [40, 20],
+      [10, 60],
+      [40, 60],
+    ]);
+  });
+
+  it('takes the label with it', () => {
+    const drawn = drawnAt(6);
+    __setAnnotation('annot-1', drawn);
+    moveChatRoiToViewportSlice('annot-1', volumeViewport(0));
+    expect(drawn.data.handles.textBox.worldPosition[2]).toBe(0);
+  });
+
+  it('moves the plane cornerstone filters on, not just the corners', () => {
+    // Measured against the running viewer: with only the corners translated, the
+    // region stayed invisible and untouchable on the new slice, because
+    // `filterAnnotationsWithinSlice` measures from `planeRestriction.point`.
+    const drawn = drawnAt(6);
+    __setAnnotation('annot-1', drawn);
+    moveChatRoiToViewportSlice('annot-1', volumeViewport(0));
+    expect(drawn.metadata.planeRestriction.point[2]).toBe(0);
+  });
+
+  it('moves the plane exactly as far as the rectangle, however many fields share it', () => {
+    // The plane and the corners have to land together. Cornerstone gives
+    // `planeRestriction.point` and `cameraFocalPoint` the same array, and moving
+    // it once per field sent the plane twice as far — which put the region out
+    // of the slice it had just been moved onto, invisible again.
+    const drawn = drawnAt(6);
+    __setAnnotation('annot-1', drawn);
+    moveChatRoiToViewportSlice('annot-1', volumeViewport(0));
+    expect(drawn.metadata.cameraFocalPoint[2]).toBe(0);
+    expect(drawn.metadata.planeRestriction.point[2]).toBe(drawn.data.handles.points[0][2]);
+  });
+
+  it('records the slice index the viewport reports', () => {
+    const drawn = drawnAt(6);
+    __setAnnotation('annot-1', drawn);
+    moveChatRoiToViewportSlice('annot-1', volumeViewport(0));
+    expect(drawn.metadata.sliceIndex).toBe(18);
+  });
+
+  it('survives an annotation cornerstone stamped differently', () => {
+    // Older annotations, or a tool that records fewer of these, must not throw.
+    const drawn: any = {
+      metadata: { toolName: CHAT_ROI_TOOL_NAME },
+      data: { handles: { points: [[10, 20, 6]] } },
+    };
+    __setAnnotation('annot-1', drawn);
+    expect(moveChatRoiToViewportSlice('annot-1', volumeViewport(0))).toBe(true);
+    expect(drawn.data.handles.points[0][2]).toBe(0);
+  });
+
+  it('repaints, so the region appears on the new slice', () => {
+    __setAnnotation('annot-1', drawnAt(6));
+    const viewport = volumeViewport(0);
+    moveChatRoiToViewportSlice('annot-1', viewport);
+    expect(viewport.render).toHaveBeenCalled();
+  });
+
+  it('reports that nothing moved when it is already on the slice', () => {
+    // The panel updates its slice number off this, so a false "it moved" would
+    // have the chip name a slice the rectangle is not on.
+    const drawn = drawnAt(0);
+    __setAnnotation('annot-1', drawn);
+    expect(moveChatRoiToViewportSlice('annot-1', volumeViewport(0))).toBe(false);
+  });
+
+  it('leaves referencedImageId alone on a volume viewport', () => {
+    // `getCurrentImageId` has been measured naming a different slice entirely on
+    // a dynamic volume, and nothing on a volume needs it: visibility there is
+    // decided from the world points.
+    const drawn = drawnAt(6);
+    __setAnnotation('annot-1', drawn);
+    moveChatRoiToViewportSlice('annot-1', volumeViewport(0));
+    expect(drawn.metadata.referencedImageId).toBe('wadors:slice-16');
+  });
+
+  it('re-references the image on a stack viewport, which is filtered by it', () => {
+    const drawn = drawnAt(6);
+    __setAnnotation('annot-1', drawn);
+    moveChatRoiToViewportSlice('annot-1', {
+      getCamera: () => ({ viewPlaneNormal: [0, 0, 1], focalPoint: [0, 0, 0] }),
+      getAllVolumeIds: () => [],
+      getCurrentImageId: () => 'wadors:slice-19',
+      render: jest.fn(),
+    });
+    expect(drawn.metadata.referencedImageId).toBe('wadors:slice-19');
+  });
+
+  it('does nothing without an annotation, a viewport or a camera', () => {
+    expect(moveChatRoiToViewportSlice('', volumeViewport(0))).toBe(false);
+    expect(moveChatRoiToViewportSlice('missing', volumeViewport(0))).toBe(false);
+    __setAnnotation('annot-1', drawnAt(6));
+    expect(moveChatRoiToViewportSlice('annot-1', undefined)).toBe(false);
+    expect(moveChatRoiToViewportSlice('annot-1', { getCamera: () => undefined })).toBe(false);
   });
 });
 

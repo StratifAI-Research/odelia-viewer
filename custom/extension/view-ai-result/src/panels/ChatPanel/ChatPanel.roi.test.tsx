@@ -1,12 +1,15 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import {
+  dispatchOnViewport,
   eventTarget,
   __resetMetaData,
   __setMetaData,
 } from '../../test-utils/__mocks__/cornerstone-core';
 import {
+  __resetAnnotations,
   __resetToolGroups,
+  __setAnnotation,
   __setToolGroup,
   annotation,
   makeToolGroup,
@@ -60,6 +63,7 @@ beforeEach(() => {
   (eventTarget as any).reset();
   __resetMetaData();
   __resetToolGroups();
+  __resetAnnotations();
   resetMockViewportGrid();
   mockHookState.messages = [];
   (global as any).fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
@@ -102,7 +106,7 @@ function makeDisplaySetService(displaySets: any[]) {
   };
 }
 
-async function renderPanel(displaySets: any[] = SERIES) {
+async function renderPanel(displaySets: any[] = SERIES, viewport: any = null) {
   setMockViewportGrid({
     activeViewportId: 'v1',
     viewports: new Map([['v1', { displaySetInstanceUIDs: ['ds-1'] }]]),
@@ -112,7 +116,8 @@ async function renderPanel(displaySets: any[] = SERIES) {
       services: {
         displaySetService: makeDisplaySetService(displaySets),
         cornerstoneViewportService: {
-          getCornerstoneViewport: jest.fn(() => ({ getCurrentImageIdIndex: () => 11 })),
+          // 0-based index 11 is slice 12, the instance IMAGE_ID names.
+          getCornerstoneViewport: jest.fn(() => viewport ?? { getCurrentImageIdIndex: () => 11 }),
         },
       },
     })
@@ -365,6 +370,92 @@ describe('ChatPanel — a region on a series without slice addressing', () => {
     });
     fireEvent.click(screen.getByTitle('Send'));
     expect(sendMessage.mock.calls[0][3].series[0].roi.scope).toBe('range');
+  });
+});
+
+describe('ChatPanel — a region while the viewer scrolls', () => {
+  // A volume viewport whose slice the test can move, and whose plane sits at
+  // z = 0. A region drawn 6mm in front of it is a region on another slice.
+  const scrollableViewport = (state: { index: number }) => ({
+    getCurrentImageIdIndex: () => state.index,
+    getCamera: () => ({ viewPlaneNormal: [0, 0, 1], focalPoint: [0, 0, 0] }),
+    getAllVolumeIds: () => ['vol-1'],
+    render: jest.fn(),
+  });
+
+  /**
+   * Draw a region, registering the same annotation cornerstone would hold.
+   *
+   * One object in both places on purpose: the panel reads it back out of
+   * annotation state to move it, so a test with two copies would prove nothing.
+   */
+  const drawRegionOffPlane = async () => {
+    const drawn = {
+      annotationUID: 'annot-1',
+      metadata: { toolName: 'ChatROI', referencedImageId: IMAGE_ID },
+      data: {
+        handles: {
+          points: [
+            [100, 50, 6],
+            [300, 50, 6],
+            [100, 250, 6],
+            [300, 250, 6],
+          ],
+        },
+      },
+    };
+    __setAnnotation('annot-1', drawn);
+    startDrawing();
+    await act(async () => {
+      (eventTarget as any).dispatch('ANNOTATION_COMPLETED', { annotation: drawn });
+    });
+    return drawn;
+  };
+
+  it('brings the region onto the slice scrolled to, while following', async () => {
+    // Left behind, the rectangle is not merely out of sight: there is nothing on
+    // screen to grab, so it cannot be moved either, while the chip goes on naming
+    // a slice the range has already scrolled past.
+    const state = { index: 11 };
+    await renderPanel(SERIES, scrollableViewport(state));
+    attachSeries();
+    const drawn = await drawRegionOffPlane();
+    // Drawing pins; the toggle is how a reader gets back to following.
+    fireEvent.click(screen.getByText('Pinned'));
+    expect(screen.getByText('ROI · slice 12')).toBeTruthy();
+
+    state.index = 15;
+    await act(async () => {
+      dispatchOnViewport('STACK_NEW_IMAGE');
+    });
+
+    expect(screen.getByText('ROI · slice 16')).toBeTruthy();
+    expect(drawn.data.handles.points.map(p => p[2])).toEqual([0, 0, 0, 0]);
+    // The same rectangle, on a different slice.
+    expect(drawn.data.handles.points.map(p => [p[0], p[1]])).toEqual([
+      [100, 50],
+      [300, 50],
+      [100, 250],
+      [300, 250],
+    ]);
+  });
+
+  it('leaves the region where it was drawn while pinned', async () => {
+    // Pinned means the prompt does not move with the viewer, and the region is
+    // part of the prompt.
+    const state = { index: 11 };
+    await renderPanel(SERIES, scrollableViewport(state));
+    attachSeries();
+    const drawn = await drawRegionOffPlane();
+    expect(screen.getByText('Pinned')).toBeTruthy();
+
+    state.index = 15;
+    await act(async () => {
+      dispatchOnViewport('STACK_NEW_IMAGE');
+    });
+
+    expect(screen.getByText('ROI · slice 12')).toBeTruthy();
+    expect(drawn.data.handles.points.map(p => p[2])).toEqual([6, 6, 6, 6]);
   });
 });
 
