@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Enums, eventTarget } from '@cornerstonejs/core';
+import { Enums } from '@cornerstonejs/core';
 
 /** Which images the active viewport shows, and which slice of them. */
 export interface ViewerSlice {
@@ -33,6 +33,20 @@ interface ViewerSliceConfig {
  * carries no scroll position — scrolling a stack changes nothing the grid
  * publishes. Hence the event subscription: STACK_NEW_IMAGE for stack viewports,
  * VOLUME_NEW_IMAGE for volume ones.
+ *
+ * Those events are dispatched on the *viewport element*, not on cornerstone's
+ * global `eventTarget`. Measured against the running viewer: scrolling a volume
+ * viewport eight notches produced eight VOLUME_NEW_IMAGE events on the element
+ * and none on `eventTarget`. Subscribing to the global target therefore looked
+ * correct, compiled, and never fired once — the marker was painted at mount and
+ * stayed there for the rest of the session.
+ *
+ * The listener goes on `document` in the capture phase rather than on the
+ * element itself. A non-bubbling event still runs the capture phase down the
+ * ancestor chain, so this hears every viewport, and it does not have to wait for
+ * an element that does not exist yet at mount or re-subscribe when the grid
+ * swaps viewports. `read()` resolves the active viewport itself, so the event is
+ * only a signal that something moved.
  */
 export function useViewerSlice({
   activeViewportId,
@@ -89,11 +103,11 @@ export function useViewerSlice({
     const events = [Enums?.Events?.STACK_NEW_IMAGE, Enums?.Events?.VOLUME_NEW_IMAGE].filter(
       Boolean
     ) as string[];
-    if (!eventTarget?.addEventListener || events.length === 0) {
+    if (typeof document === 'undefined' || events.length === 0) {
       return;
     }
-    events.forEach(evt => eventTarget.addEventListener(evt, sync));
-    return () => events.forEach(evt => eventTarget.removeEventListener(evt, sync));
+    events.forEach(evt => document.addEventListener(evt, sync, true));
+    return () => events.forEach(evt => document.removeEventListener(evt, sync, true));
   }, [read]);
 
   return slice;

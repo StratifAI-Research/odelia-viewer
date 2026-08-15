@@ -1,6 +1,9 @@
 import React from 'react';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { eventTarget } from '@cornerstonejs/core';
+// Jest-only mock helper: cornerstone fires slice-change events on the viewport
+// element, so tests must too. The alias is invisible to tsc, hence the path.
+import { dispatchOnViewport } from '../../test-utils/__mocks__/cornerstone-core';
 // Imported by path, not through '@ohif/ui-next': the alias exists only in the
 // jest moduleNameMapper, so tsc would resolve the real package and reject these
 // test-only helpers. Same resolved file either way, so it is the same module.
@@ -388,7 +391,7 @@ describe('ChatPanel — slice range', () => {
 
       index = 9;
       await act(async () => {
-        (eventTarget as any).dispatch('STACK_NEW_IMAGE');
+        dispatchOnViewport('STACK_NEW_IMAGE');
       });
       expect(screen.getByTitle('Viewer is on slice 10')).toBeTruthy();
     });
@@ -406,7 +409,7 @@ describe('ChatPanel — slice range', () => {
       attachSeries();
       index = 19;
       await act(async () => {
-        (eventTarget as any).dispatch('STACK_NEW_IMAGE');
+        dispatchOnViewport('STACK_NEW_IMAGE');
       });
       expect(screen.getByText('Range 5–16 of 20')).toBeTruthy();
       expect(screen.getByText('5 slices sent')).toBeTruthy();
