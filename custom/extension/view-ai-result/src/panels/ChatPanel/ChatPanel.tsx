@@ -53,6 +53,7 @@ import {
   clampRange,
   initialRange,
   MAX_SLICES_PER_SERIES,
+  rangeAroundSlice,
   rangeSize,
   sampleSliceNumbers,
   SliceRange,
@@ -975,9 +976,18 @@ const ChatPanel: React.FC = () => {
         const existing = prev[series.displaySetInstanceUID];
         // An existing range is clamped, not discarded: the user chose it, and the
         // nearest valid range is closer to their intent than a reset.
+        //
+        // A series the viewport is showing seeds from the slice on screen; any
+        // other seeds from the middleware's configured band, because there is no
+        // "current slice" for a series nobody is looking at.
+        const followed =
+          viewerSlice.displaySetInstanceUID === series.displaySetInstanceUID &&
+          viewerSlice.sliceNumber !== null;
         const range = existing
           ? clampRange(existing.range, total)
-          : initialRange(total, sliceStrategy, numSlices, centralPercentage);
+          : followed
+            ? rangeAroundSlice(viewerSlice.sliceNumber as number, total)
+            : initialRange(total, sliceStrategy, numSlices, centralPercentage);
         // A new series opens on whichever phase the viewport is already showing,
         // so the panel describes the image the reader is looking at.
         const seeded =
@@ -988,9 +998,15 @@ const ChatPanel: React.FC = () => {
             : 0);
         next[series.displaySetInstanceUID] = {
           range,
+          // A followed range is three slices, so it sends all three rather than
+          // sampling the configured count out of them.
           count: Math.max(
             1,
-            Math.min(existing?.count ?? numSlices, rangeSize(range), MAX_SLICES_PER_SERIES)
+            Math.min(
+              existing?.count ?? (followed ? rangeSize(range) : numSlices),
+              rangeSize(range),
+              MAX_SLICES_PER_SERIES
+            )
           ),
           phaseIndex: Math.min(Math.max(0, seeded), phaseCount(series.axis) - 1),
         };
@@ -1005,6 +1021,80 @@ const ChatPanel: React.FC = () => {
     centralPercentage,
     viewerSlice,
   ]);
+
+  /**
+   * While following, attach whatever the viewport is showing.
+   *
+   * This makes "follows viewer" mean what it says. It also means images are
+   * attached to a prompt without the user asking for each one — a deliberate
+   * change from the panel's original rule that attaching is always explicit. The
+   * protections that made that rule worth having are the ones that stay: the
+   * moment anything is invested in the prompt the context pins, and every sent
+   * message still carries an immutable snapshot of exactly what went with it.
+   */
+  useEffect(() => {
+    if (contextMode !== 'following') {
+      return;
+    }
+    const uid = viewerSlice.displaySetInstanceUID;
+    // Only a series of the study the prompt targets, and only one the panel can
+    // actually offer — a viewport showing an SR or a series from elsewhere must
+    // not silently attach it.
+    const known = uid && availableSeries.some(s => s.displaySetInstanceUID === uid);
+    setSelectedDisplaySetUIDs(prev => {
+      if (!known) {
+        // Following nothing attachable: leave whatever is there rather than
+        // clearing an attachment on a transient empty viewport.
+        return prev;
+      }
+      if (prev.size === 1 && prev.has(uid as string)) {
+        return prev;
+      }
+      return new Set([uid as string]);
+    });
+  }, [contextMode, viewerSlice.displaySetInstanceUID, availableSeries]);
+
+  /**
+   * While following, keep the range on the slice the viewer is showing.
+   *
+   * Only the followed series, and only while following: the moment the user
+   * moves a handle, types, or pins, this stops and the range is theirs. Written
+   * as a separate effect from the seeding one above so that "follow the viewer"
+   * and "repair a stale range" stay independently readable.
+   */
+  useEffect(() => {
+    if (contextMode !== 'following') {
+      return;
+    }
+    const uid = viewerSlice.displaySetInstanceUID;
+    const sliceNumber = viewerSlice.sliceNumber;
+    if (!uid || sliceNumber === null) {
+      return;
+    }
+    const series = attachedSeries.find(s => s.displaySetInstanceUID === uid);
+    if (!series || !canAddressAxis(series.axis, series.numImageFrames)) {
+      return;
+    }
+    const range = rangeAroundSlice(sliceNumber, series.axis.sliceCount);
+    const phaseIndex = viewerSlice.phaseNumber
+      ? Math.min(viewerSlice.phaseNumber - 1, phaseCount(series.axis) - 1)
+      : 0;
+    setSliceStateByDisplaySet(prev => {
+      const current = prev[uid];
+      // Compared field by field: this runs on every scroll step, and a fresh
+      // object each time would re-render the panel once per slice.
+      if (
+        current &&
+        current.range.start === range.start &&
+        current.range.end === range.end &&
+        current.phaseIndex === phaseIndex &&
+        current.count === rangeSize(range)
+      ) {
+        return prev;
+      }
+      return { ...prev, [uid]: { range, count: rangeSize(range), phaseIndex } };
+    });
+  }, [contextMode, viewerSlice, attachedSeries]);
 
   /**
    * What one series will send: the selected range, the requested count, and the
@@ -1807,8 +1897,8 @@ const ChatPanel: React.FC = () => {
           onClick={() => setContextMode(m => (m === 'following' ? 'pinned' : 'following'))}
           title={
             contextMode === 'following'
-              ? 'The study below follows the active viewport. Series are never attached for you. Click to pin the study.'
-              : 'The study below is pinned. Click to let it follow the active viewport again.'
+              ? 'Study, series and slice follow the main window. Click to freeze what will be sent.'
+              : 'Frozen: the main window no longer changes what will be sent. Click to follow it again.'
           }
           className="text-muted-foreground hover:text-foreground flex flex-shrink-0 items-center gap-1 text-[11px]"
         >
@@ -1816,10 +1906,10 @@ const ChatPanel: React.FC = () => {
             aria-hidden="true"
             className={`h-1.5 w-1.5 rounded-full ${contextMode === 'following' ? 'bg-highlight' : 'bg-muted-foreground'}`}
           />
-          {/* Named for what it governs. "Following viewer" read as a promise to
-              track everything on screen — including which series to send — when
-              all it does is choose which STUDY the prompt targets. */}
-          {contextMode === 'following' ? 'Study: follows viewer' : 'Study: pinned'}
+          {/* Named for everything it governs. It now really does track the main
+              window — study, series and slice — so the label must not scope
+              itself to the study the way it did when that was all it did. */}
+          {contextMode === 'following' ? 'Follows viewer' : 'Pinned'}
         </button>
       </div>
 

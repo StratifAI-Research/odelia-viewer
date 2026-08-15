@@ -122,7 +122,17 @@ async function renderPanel(displaySets: any[] = SERIES) {
   });
 }
 
+/**
+ * Make sure a series is attached, however it got there.
+ *
+ * While the context follows the viewer the series on screen is attached
+ * automatically, so clicking it in the picker would DETACH it. Tests that need
+ * it attached say so; they do not care which path put it there.
+ */
 const attachSeries = () => {
+  if (screen.queryByLabelText('Remove Ax T1 post')) {
+    return;
+  }
   fireEvent.click(screen.getByText('+ Add series'));
   fireEvent.click(screen.getByText('Ax T1 post'));
 };
@@ -150,11 +160,13 @@ const completeRectangle = async (
 const startDrawing = () => fireEvent.click(screen.getByText('▱ Select region'));
 
 describe('ChatPanel — chat region of interest', () => {
-  it('offers a region tool once a series is attached', async () => {
+  it('offers a region tool only while a series is attached', async () => {
+    // The viewport is showing this series, so following attaches it on mount;
+    // the tool is offered from the start and withdrawn when it is detached.
     await renderPanel();
-    expect(screen.queryByText('▱ Select region')).toBeNull();
-    attachSeries();
     expect(screen.getByText('▱ Select region')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Remove Ax T1 post'));
+    expect(screen.queryByText('▱ Select region')).toBeNull();
   });
 
   it('binds the region tool to the mouse while drawing, and says so', async () => {
@@ -196,7 +208,8 @@ describe('ChatPanel — chat region of interest', () => {
     startDrawing();
     await completeRectangle();
     fireEvent.change(screen.getByLabelText('Apply region to'), { target: { value: 'range' } });
-    expect(screen.getByText(/Sends 5 images in total/)).toBeTruthy();
+    // Three, not five: following seeds the range at the viewer's slice ± 1.
+    expect(screen.getByText(/Sends 3 images in total/)).toBeTruthy();
   });
 
   it('ignores annotations from other tools', async () => {
@@ -246,7 +259,7 @@ describe('ChatPanel — chat region of interest', () => {
     attachSeries();
     startDrawing();
     await completeRectangle();
-    expect(screen.getByText('Study: pinned')).toBeTruthy();
+    expect(screen.getByText('Pinned')).toBeTruthy();
   });
 
   describe('what is sent', () => {
@@ -286,7 +299,8 @@ describe('ChatPanel — chat region of interest', () => {
       fireEvent.change(screen.getByLabelText('Apply region to'), { target: { value: 'range' } });
       send();
       const selection = sendMessage.mock.calls[0][4][0];
-      expect(selection.sop_instance_uids).toHaveLength(5);
+      // The followed range is slices 11-13 around the viewer's slice 12.
+      expect(selection.sop_instance_uids).toHaveLength(3);
       expect(selection.roi).toBeTruthy();
     });
 
@@ -312,7 +326,8 @@ describe('ChatPanel — chat region of interest', () => {
       send();
       const selection = sendMessage.mock.calls[0][4][0];
       expect(selection.roi).toBeUndefined();
-      expect(selection.sop_instance_uids).toHaveLength(5);
+      // The followed range is slices 11-13 around the viewer's slice 12.
+      expect(selection.sop_instance_uids).toHaveLength(3);
     });
   });
 });

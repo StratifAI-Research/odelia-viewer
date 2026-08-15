@@ -227,7 +227,7 @@ describe('ChatPanel — folding the prompt context', () => {
 describe('ChatPanel — following vs pinned', () => {
   it('follows the viewer while the prompt is untouched', async () => {
     const { rerender } = await renderPanel();
-    expect(screen.getByText('Study: follows viewer')).toBeTruthy();
+    expect(screen.getByText('Follows viewer')).toBeTruthy();
     expect(screen.getByText('2026-08-12 · Breast MRI')).toBeTruthy();
 
     await moveViewerTo('study-2', rerender);
@@ -243,7 +243,7 @@ describe('ChatPanel — following vs pinned', () => {
     fireEvent.change(screen.getByPlaceholderText(COMPOSER), {
       target: { value: 'Is this suspicious?' },
     });
-    expect(screen.getByText('Study: pinned')).toBeTruthy();
+    expect(screen.getByText('Pinned')).toBeTruthy();
 
     await moveViewerTo('study-2', rerender);
 
@@ -259,7 +259,7 @@ describe('ChatPanel — following vs pinned', () => {
     const { rerender } = await renderPanel();
     fireEvent.click(screen.getByText('+ Add series'));
     fireEvent.click(screen.getByText('Ax T1 post'));
-    expect(screen.getByText('Study: pinned')).toBeTruthy();
+    expect(screen.getByText('Pinned')).toBeTruthy();
 
     await moveViewerTo('study-2', rerender);
     expect(screen.getByText(/Viewer moved to/)).toBeTruthy();
@@ -300,15 +300,15 @@ describe('ChatPanel — following vs pinned', () => {
       fireEvent.click(screen.getByText('Use current viewer'));
     });
 
-    expect(screen.getByText('Study: pinned')).toBeTruthy();
+    expect(screen.getByText('Pinned')).toBeTruthy();
   });
 
   it('can be pinned and unpinned manually', async () => {
     await renderPanel();
-    fireEvent.click(screen.getByText('Study: follows viewer'));
-    expect(screen.getByText('Study: pinned')).toBeTruthy();
-    fireEvent.click(screen.getByText('Study: pinned'));
-    expect(screen.getByText('Study: follows viewer')).toBeTruthy();
+    fireEvent.click(screen.getByText('Follows viewer'));
+    expect(screen.getByText('Pinned')).toBeTruthy();
+    fireEvent.click(screen.getByText('Pinned'));
+    expect(screen.getByText('Follows viewer')).toBeTruthy();
   });
 
   it('sends the pinned study, not whatever the viewer drifted to', async () => {

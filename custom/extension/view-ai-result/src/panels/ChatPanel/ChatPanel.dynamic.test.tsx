@@ -157,7 +157,17 @@ async function renderPanel() {
   });
 }
 
+/**
+ * Make sure a series is attached, however it got there.
+ *
+ * While the context follows the viewer the series on screen is attached
+ * automatically, so clicking it in the picker would DETACH it. Tests that need
+ * it attached say so; they do not care which path put it there.
+ */
 function attachSeries() {
+  if (screen.queryByLabelText('Remove NCI-dyn DEV')) {
+    return;
+  }
   fireEvent.click(screen.getByText('+ Add series'));
   fireEvent.click(screen.getByText('NCI-dyn DEV'));
 }
@@ -283,7 +293,7 @@ describe('ChatPanel — a 4D dynamic series', () => {
     expect(screen.getByTitle('Viewer is on slice 8')).toBeTruthy();
   });
 
-  it('offers to adopt the phase the viewport moved to', async () => {
+  it('adopts the phase the viewport moves to while following', async () => {
     await renderPanel();
     attachSeries();
     expect(phaseSelect().value).toBe('0');
@@ -293,8 +303,23 @@ describe('ChatPanel — a 4D dynamic series', () => {
     await act(async () => {
       dispatchOnViewport('VOLUME_NEW_IMAGE');
     });
-    // Offered, never taken automatically: the phase is part of the question, and
-    // scrolling the viewer must not rewrite a question mid-compose.
+    expect(phaseSelect().value).toBe('3');
+  });
+
+  it('offers the viewport’s phase rather than taking it, once pinned', async () => {
+    // Pinned, the question is the user's: scrolling the viewer must not rewrite
+    // it. The offer is how they take the change if they want it.
+    await renderPanel();
+    attachSeries();
+    fireEvent.change(phaseSelect(), { target: { value: '0' } });
+    expect(screen.getByText('Pinned')).toBeTruthy();
+
+    viewerAt = { phase: 3, slice: 1 };
+    syncVolume();
+    await act(async () => {
+      dispatchOnViewport('VOLUME_NEW_IMAGE');
+    });
+    expect(phaseSelect().value).toBe('0');
     fireEvent.click(screen.getByText('use phase 4'));
     expect(phaseSelect().value).toBe('3');
   });

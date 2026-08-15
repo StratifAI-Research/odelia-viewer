@@ -4,6 +4,7 @@ import {
   formatRange,
   formatSliceTally,
   initialRange,
+  rangeAroundSlice,
   rangeSize,
   sampleSliceNumbers,
   selectedInstanceUIDs,
@@ -206,5 +207,34 @@ describe('formatSliceTally', () => {
 
   it('reports none as a count, not as a blank', () => {
     expect(formatSliceTally(0)).toBe('0 slices');
+  });
+});
+
+describe('rangeAroundSlice', () => {
+  it('is the slice and one either side', () => {
+    expect(rangeAroundSlice(12, 20)).toEqual({ start: 11, end: 13 });
+  });
+
+  it('clamps at the ends rather than sliding the window', () => {
+    // At slice 1 this is 1-2, not 1-3. Sliding would send anatomy the reader is
+    // not looking at, and the point of following is that the two agree.
+    expect(rangeAroundSlice(1, 20)).toEqual({ start: 1, end: 2 });
+    expect(rangeAroundSlice(20, 20)).toEqual({ start: 19, end: 20 });
+  });
+
+  it('collapses onto the only slice of a one-slice series', () => {
+    expect(rangeAroundSlice(1, 1)).toEqual({ start: 1, end: 1 });
+  });
+
+  it('degrades to a valid range for a series with no slices', () => {
+    // A range is never allowed to be empty or inverted, whatever it is asked for.
+    expect(rangeAroundSlice(5, 0)).toEqual({ start: 1, end: 1 });
+  });
+
+  it('tolerates a slice number outside the series', () => {
+    // Collapses onto the nearest end rather than pretending to a neighbour that
+    // is not there: clamping 98-100 into 20 slices leaves one slice, not two.
+    expect(rangeAroundSlice(99, 20)).toEqual({ start: 20, end: 20 });
+    expect(rangeAroundSlice(-4, 20)).toEqual({ start: 1, end: 1 });
   });
 });

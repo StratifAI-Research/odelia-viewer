@@ -82,6 +82,34 @@ export function initialRange(
 }
 
 /**
+ * How far either side of the viewer's slice the followed range reaches.
+ *
+ * One. The neighbours are there so the model sees a structure in context rather
+ * than a single plane through it, and three images is small enough that the
+ * range still means "what you are looking at". Widening it is a deliberate act,
+ * and doing so pins the context.
+ */
+export const FOLLOW_NEIGHBOURS = 1;
+
+/**
+ * The range around the slice the viewer is showing: that slice, one before, one
+ * after, clamped to the series.
+ *
+ * Clamped rather than shifted at the ends: at slice 1 this yields 1–2, not 1–3.
+ * Sliding the window would send anatomy the reader is not looking at, and the
+ * whole point of following is that the two agree.
+ */
+export function rangeAroundSlice(sliceNumber: number, total: number): SliceRange {
+  if (total <= 0) {
+    return { start: 1, end: 1 };
+  }
+  return clampRange(
+    { start: sliceNumber - FOLLOW_NEIGHBOURS, end: sliceNumber + FOLLOW_NEIGHBOURS },
+    total
+  );
+}
+
+/**
  * The slice numbers that will actually be sent: `count` slices spread evenly
  * across `range`, both ends included.
  *

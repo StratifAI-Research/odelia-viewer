@@ -112,7 +112,17 @@ async function renderPanel(displaySets: any[] = ADDRESSABLE, extraServices: any 
 }
 
 /** Attach the first series, as a user would. */
+/**
+ * Make sure a series is attached, however it got there.
+ *
+ * While the context follows the viewer the series on screen is attached
+ * automatically, so clicking it in the picker would DETACH it. Tests that need
+ * it attached say so; they do not care which path put it there.
+ */
 function attachSeries(description = 'Ax T1 post') {
+  if (screen.queryByLabelText(`Remove ${description}`)) {
+    return;
+  }
   fireEvent.click(screen.getByText('+ Add series'));
   fireEvent.click(screen.getByText(description));
 }
@@ -214,14 +224,14 @@ describe('ChatPanel — slice range', () => {
     await renderPanel();
     attachSeries();
     fireEvent.change(firstHandle(), { target: { value: '3' } });
-    expect(screen.getByText('Study: pinned')).toBeTruthy();
+    expect(screen.getByText('Pinned')).toBeTruthy();
   });
 
   it('pins the context when the sent count is adjusted', async () => {
     await renderPanel();
     attachSeries();
     fireEvent.click(screen.getByLabelText('Send more slices from Ax T1 post'));
-    expect(screen.getByText('Study: pinned')).toBeTruthy();
+    expect(screen.getByText('Pinned')).toBeTruthy();
   });
 
   describe('what is sent', () => {
@@ -357,6 +367,69 @@ describe('ChatPanel — slice range', () => {
     });
   });
 
+  describe('following the viewer', () => {
+    /** Point the active viewport at a display set, as the grid would. */
+    const show = (uid: string) =>
+      setMockViewportGrid({
+        activeViewportId: 'v1',
+        viewports: new Map([['v1', { displaySetInstanceUIDs: [uid] }]]),
+      });
+
+    const atSlice = (index: number) => ({
+      cornerstoneViewportService: {
+        getCornerstoneViewport: jest.fn(() => ({ getCurrentImageIdIndex: () => index })),
+      },
+    });
+
+    it('attaches the series the viewport is showing, with no clicks', async () => {
+      show('ds-1');
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], atSlice(11));
+      expect(screen.getByLabelText('Remove Ax T1 post')).toBeTruthy();
+    });
+
+    it('defaults to the slice on screen and one either side', async () => {
+      show('ds-1');
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], atSlice(11));
+      // 0-based index 11 is slice 12.
+      expect(screen.getByText('Range 11–13 of 20')).toBeTruthy();
+      expect(screen.getByText('3 slices sent')).toBeTruthy();
+      expect(screen.getByText(/Sends 3 images in total/)).toBeTruthy();
+    });
+
+    it('sends exactly those three instances', async () => {
+      show('ds-1');
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], atSlice(11));
+      fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+        target: { value: 'q' },
+      });
+      fireEvent.click(screen.getByTitle('Send'));
+      expect(sendMessage.mock.calls[0][4][0].sop_instance_uids).toEqual([
+        '1.2.840.SE1.11',
+        '1.2.840.SE1.12',
+        '1.2.840.SE1.13',
+      ]);
+    });
+
+    it('keeps the configured band for a series nobody is looking at', async () => {
+      // There is no "current slice" for a series that is not on screen, so it
+      // seeds from the middleware's own strategy as before.
+      show('ds-other');
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], atSlice(11));
+      attachSeries();
+      expect(screen.getByText('Range 5–16 of 20')).toBeTruthy();
+    });
+
+    it('detaching is still the user’s to make, and pins', async () => {
+      // Auto-attach must not fight the user: removing the series has to stick.
+      show('ds-1');
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], atSlice(11));
+      fireEvent.click(screen.getByLabelText('Remove Ax T1 post'));
+      expect(screen.getByText('Pinned')).toBeTruthy();
+      expect(screen.queryByLabelText('Remove Ax T1 post')).toBeNull();
+      expect(screen.getByText(/No series attached/)).toBeTruthy();
+    });
+  });
+
   describe('the viewer-slice marker', () => {
     // Placed from the instance on screen, not from the viewport's raw index: on a
     // 4D series that index is a slice within some phase and does not say which.
@@ -420,9 +493,9 @@ describe('ChatPanel — slice range', () => {
       expect(screen.getByTitle('Viewer is on slice 10')).toBeTruthy();
     });
 
-    it('does not move the selection when the viewport scrolls', async () => {
-      // The marker is orientation, not selection. Scrolling must leave the range
-      // and the sent slices exactly where the user put them.
+    it('moves the selection with the viewport while following', async () => {
+      // Following means what it says: the range tracks the slice on screen, one
+      // either side of it.
       showDisplaySet('ds-1');
       let index = 3;
       await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], {
@@ -434,12 +507,44 @@ describe('ChatPanel — slice range', () => {
         },
       });
       attachSeries();
+      expect(screen.getByText('Range 3–5 of 20')).toBeTruthy();
+
+      index = 12;
+      await act(async () => {
+        dispatchOnViewport('STACK_NEW_IMAGE');
+      });
+      expect(screen.getByText('Range 12–14 of 20')).toBeTruthy();
+      expect(screen.getByText('3 slices sent')).toBeTruthy();
+    });
+
+    it('leaves the selection alone once pinned', async () => {
+      // Pinning is what makes a half-composed question safe: from then on the
+      // range and the sent slices stay exactly where the user put them, however
+      // far the viewer scrolls.
+      showDisplaySet('ds-1');
+      let index = 3;
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], {
+        cornerstoneViewportService: {
+          getCornerstoneViewport: jest.fn(() => ({
+            getCurrentImageIdIndex: () => index,
+            getCurrentImageId: () => imageIdFor(index),
+          })),
+        },
+      });
+      attachSeries();
+      // Typing invests in the prompt, which pins it.
+      fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+        target: { value: 'Is this suspicious?' },
+      });
+      expect(screen.getByText('Pinned')).toBeTruthy();
+
       index = 19;
       await act(async () => {
         dispatchOnViewport('STACK_NEW_IMAGE');
       });
-      expect(screen.getByText('Range 5–16 of 20')).toBeTruthy();
-      expect(screen.getByText('5 slices sent')).toBeTruthy();
+      expect(screen.getByText('Range 3–5 of 20')).toBeTruthy();
+      // The marker still tracks the viewport: it is orientation, not selection.
+      expect(screen.getByTitle('Viewer is on slice 20')).toBeTruthy();
     });
 
     it('shows no marker when the viewport shows a different series', async () => {
