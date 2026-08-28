@@ -143,12 +143,27 @@ describe('formatWindow', () => {
     // Verified against the running viewer: a viewport reporting
     // {lower: 95.1, upper: 1354.1} prints "W:1260 L:725" on the image.
     expect(formatWindow({ lower: 95.11825755436496, upper: 1354.0737785936149 })).toBe(
-      'W:1259 L:725'
+      'W:1260 L:725'
     );
   });
 
+  // Reported from a running viewer: the footer read "W:1547 L:701" beside an
+  // overlay reading "W:1548 L:701". The width was a unit short on every window
+  // ever shown, so a reader checking the footer against the screen found it
+  // disagreeing every time.
+  it('matches the overlay width, which counts both endpoints', () => {
+    expect(formatWindow({ lower: -73, upper: 1474 })).toBe('W:1548 L:701');
+  });
+
+  // The centre carries the same half-unit, and it is the more insidious half:
+  // it only shows up when it crosses a rounding boundary, so it survived the
+  // window above, where both roundings happen to land on 701.
+  it('matches the overlay centre across a rounding boundary', () => {
+    expect(formatWindow({ lower: 100, upper: 1502 })).toBe('W:1403 L:802');
+  });
+
   it('says so when the greyscale is inverted', () => {
-    expect(formatWindow({ lower: 0, upper: 100, invert: true })).toBe('W:100 L:50 inverted');
+    expect(formatWindow({ lower: 0, upper: 100, invert: true })).toBe('W:101 L:51 inverted');
   });
 });
 
@@ -417,7 +432,9 @@ describe('formatSeriesSliceSource', () => {
       rangeStart: 18,
       rangeEnd: 20,
       sentSliceNumbers: [18, 19, 20],
-      voi: { lower: 95, upper: 1355, invert: false },
+      // The VOI a running viewport actually reported under a "W:1260 L:725"
+      // overlay, rather than round numbers chosen to produce that string.
+      voi: { lower: 95.11825755436496, upper: 1354.0737785936149, invert: false },
     };
     expect(formatSeriesSliceSource(series, recipe)).toBe('18–20 of 103 · 3 slices · W:1260 L:725');
   });

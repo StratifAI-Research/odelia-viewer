@@ -19,6 +19,8 @@
  * one rule holds across the whole module.
  */
 
+import { utilities as csUtils } from '@cornerstonejs/core';
+
 import { formatDicomDateTime } from './dicomDateTime';
 import type { PromptContextSnapshot, SliceRecipe, SnapshotSeries } from '../types/chatTypes';
 
@@ -123,10 +125,23 @@ export function formatContextSummary(input: {
  * Width and centre rather than the lower/upper the code carries, because that is
  * what is printed on the image the reader is looking at, and a provenance line
  * they cannot match against the screen is not provenance.
+ *
+ * The conversion is cornerstone's own `toWindowLevel`, imported rather than
+ * re-derived. Re-deriving it is how this line came to read `W:1259` beside an
+ * overlay reading `W:1260`: width is `upper - lower + 1`, not `upper - lower`,
+ * because DICOM's VOI LUT LINEAR window includes both endpoints, and the centre
+ * carries the matching half-unit shift. Half a unit is invisible until it lands
+ * on a rounding boundary, and then the footer disagrees with the screen.
+ *
+ * Formatted with `toFixed(0)` for the same reason: it is what
+ * `CustomizableViewportOverlay` prints with, and it rounds halves away from zero
+ * where `Math.round` rounds them up — a difference a CT window centred on a
+ * negative half would show.
  */
 export function formatWindow(voi: { lower: number; upper: number; invert?: boolean }): string {
-  const width = Math.round(voi.upper - voi.lower);
-  const centre = Math.round((voi.upper + voi.lower) / 2);
+  const { windowWidth, windowCenter } = csUtils.windowLevel.toWindowLevel(voi.lower, voi.upper);
+  const width = windowWidth.toFixed(0);
+  const centre = windowCenter.toFixed(0);
   return `W:${width} L:${centre}${voi.invert ? ' inverted' : ''}`;
 }
 

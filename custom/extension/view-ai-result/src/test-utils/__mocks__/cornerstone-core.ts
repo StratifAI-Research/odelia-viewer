@@ -79,6 +79,16 @@ export const utilities = {
   imageIdToURI: jest.fn((id: string) => id),
   // Identity by default: tests that care seed their own conversion.
   worldToImageCoords: jest.fn((_imageId: string, world: number[]) => [world[0], world[1]]),
+  // The real arithmetic from @cornerstonejs/core's utilities/windowLevel, NOT a
+  // convenient approximation: `formatWindow` exists to print what the viewport
+  // overlay prints, and the overlay goes through this function. A stub that
+  // rounded differently would let the two drift again with the tests still green.
+  windowLevel: {
+    toWindowLevel: (low: number, high: number) => ({
+      windowWidth: Math.abs(high - low) + 1,
+      windowCenter: (low + high + 1) / 2,
+    }),
+  },
 };
 export class VolumeViewport {}
 export const Types = {};

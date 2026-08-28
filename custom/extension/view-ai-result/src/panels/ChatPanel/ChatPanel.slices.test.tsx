@@ -826,7 +826,9 @@ describe('ChatPanel — provenance under change and failure', () => {
       // clipped to black — has no effect at all on what the model sees.
       show('ds-1');
       await renderPanel(ADDRESSABLE, withWindow({ lower: 95, upper: 1355 }));
-      expect(screen.getByText(/W:1260 L:725/)).toBeTruthy();
+      // Width and centre as cornerstone's own `toWindowLevel` computes them, so
+      // the footer reads the same as the overlay on the image beside it.
+      expect(screen.getByText(/W:1261 L:726/)).toBeTruthy();
 
       const selection = (send() as any[])[4][0];
       expect(selection.voi).toEqual({ lower: 95, upper: 1355, invert: false });
