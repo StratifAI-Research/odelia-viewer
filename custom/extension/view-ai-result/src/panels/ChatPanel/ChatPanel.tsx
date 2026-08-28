@@ -63,6 +63,7 @@ import {
   canAddressAxis,
   formatAxisShape,
   dimensionGroupCount,
+  type SliceAxis,
   groupNoun,
   dimensionGroupInstances,
   positionOf,
@@ -130,6 +131,41 @@ interface CloudModelInfo {
 type ContextMode = 'following' | 'pinned';
 
 /** Session-scoped, like the disclaimer banner: a layout preference, not a setting. */
+/**
+ * Whether the viewer's slice number means anything on a given series' axis.
+ *
+ * A slice axis is the ACQUISITION axis: the order the instances were acquired
+ * in, which is what `sliceAxis` is built from and what the middleware addresses.
+ * A volume viewport counts steps along whatever its camera looks down, and OHIF
+ * offers sagittal and coronal from the viewport's orientation menu on any
+ * reconstructable series -- which a dynamic study always is, since it is
+ * upgraded to a volume viewport to be shown at all.
+ *
+ * Reoriented, the two numbers are on different axes of different lengths. Step
+ * 250 of a ~512-step sagittal scroll, read as a slice number against a 31-slice
+ * axis, clamps to 31 -- so the panel would send acquisition slice 31, and only
+ * slice 31, through nearly the whole scroll, while saying it follows the viewer.
+ *
+ * Not an attempt to make the reformat addressable: that means replicating
+ * cornerstone's projections, which is a different piece of work. This only has
+ * to be sure enough to stop claiming. Silence is therefore not a mismatch -- a
+ * stack viewport has one axis and it is this one, and reading "cannot say" as
+ * "no" would stop following everywhere.
+ */
+function viewerScrollsAxis(
+  scrollsAcquisitionAxis: boolean | null,
+  viewportSliceCount: number | null,
+  axis: SliceAxis
+): boolean {
+  if (scrollsAcquisitionAxis === false) {
+    return false;
+  }
+  if (viewportSliceCount !== null && viewportSliceCount !== axis.sliceCount) {
+    return false;
+  }
+  return true;
+}
+
 const CONTEXT_COLLAPSED_KEY = 'odelia.chat.contextCollapsed.v1';
 
 /**
@@ -1167,6 +1203,9 @@ const ChatPanel: React.FC = () => {
   // not from the selection: the marker shows where the reader is, and must never
   // be mistaken for what the prompt will send.
   const viewerSlice = useViewerSlice({ activeViewportId, viewports, servicesManager });
+  // Pulled out so the effects below can depend on the two values rather than on
+  // a function that closes over them, which the React compiler cannot see through.
+  const { scrollsAcquisitionAxis, viewportSliceCount } = viewerSlice;
 
   /**
    * Keep a slice range in step with each attached series.
@@ -1216,9 +1255,14 @@ const ChatPanel: React.FC = () => {
         // A series the viewport is showing seeds from the slice on screen; any
         // other seeds from the middleware's configured band, because there is no
         // "current slice" for a series nobody is looking at.
+        // Also only while the viewport is scrolling THIS axis. Opening the
+        // panel on an already-reoriented viewport would otherwise seed the range
+        // from a step number that means nothing here, and the later effect only
+        // preserves what it finds.
         const followed =
           viewerSlice.displaySetInstanceUID === series.displaySetInstanceUID &&
-          viewerSlice.sliceNumber !== null;
+          viewerSlice.sliceNumber !== null &&
+          viewerScrollsAxis(scrollsAcquisitionAxis, viewportSliceCount, series.axis);
         const range = existing
           ? clampRange(existing.range, total)
           : followed
@@ -1263,6 +1307,8 @@ const ChatPanel: React.FC = () => {
     numSlices,
     centralPercentage,
     viewerSlice,
+    scrollsAcquisitionAxis,
+    viewportSliceCount,
   ]);
 
   /**
@@ -1297,6 +1343,23 @@ const ChatPanel: React.FC = () => {
     });
   }, [contextMode, viewerSlice.displaySetInstanceUID, availableSeries]);
 
+  /** The attached series the viewport is showing, if it is showing one. */
+  const viewedSeries = attachedSeries.find(
+    s => s.displaySetInstanceUID === viewerSlice.displaySetInstanceUID
+  );
+
+  /**
+   * Following in name only: the viewer is on an axis this panel cannot address.
+   *
+   * Said in the chip rather than silently ignored, because "Follows viewer" is a
+   * promise and this is the one state where it cannot be kept.
+   */
+  const viewerAxisUnavailable =
+    contextMode === 'following' &&
+    !!viewedSeries &&
+    canAddressAxis(viewedSeries.axis, viewedSeries.numImageFrames) &&
+    !viewerScrollsAxis(scrollsAcquisitionAxis, viewportSliceCount, viewedSeries.axis);
+
   /**
    * While following, keep the range on the slice the viewer is showing.
    *
@@ -1318,7 +1381,18 @@ const ChatPanel: React.FC = () => {
     if (!series || !canAddressAxis(series.axis, series.numImageFrames)) {
       return;
     }
-    const range = rangeAroundSlice(sliceNumber, series.axis.sliceCount);
+    // The viewer may be scrolling an axis this one cannot be compared with.
+    // Only the RANGE is affected: which dimension group is on screen is a
+    // position on the fourth axis and has nothing to do with which way the
+    // camera is pointing, so that goes on following either way. Leaving the
+    // range where it is keeps the last thing the reader actually chose, and the
+    // chip says slice-following has stopped.
+    const scrollsThisAxis = viewerScrollsAxis(
+      scrollsAcquisitionAxis,
+      viewportSliceCount,
+      series.axis
+    );
+    const range = scrollsThisAxis ? rangeAroundSlice(sliceNumber, series.axis.sliceCount) : null;
     const groups = dimensionGroupCount(series.axis);
     // Which dimension group to follow, or null for "the viewer has not said".
     //
@@ -1339,20 +1413,28 @@ const ChatPanel: React.FC = () => {
     setSliceStateByDisplaySet(prev => {
       const current = prev[uid];
       const groupIndex = followedGroup ?? current?.groupIndex ?? 0;
+      // Nothing to seed a range from yet, and none to keep: leave it to the
+      // seeding effect rather than inventing one here.
+      if (!range && !current) {
+        return prev;
+      }
+      const next = range
+        ? { range, count: rangeSize(range), groupIndex }
+        : { ...current, groupIndex };
       // Compared field by field: this runs on every scroll step, and a fresh
       // object each time would re-render the panel once per slice.
       if (
         current &&
-        current.range.start === range.start &&
-        current.range.end === range.end &&
-        current.groupIndex === groupIndex &&
-        current.count === rangeSize(range)
+        current.range.start === next.range.start &&
+        current.range.end === next.range.end &&
+        current.groupIndex === next.groupIndex &&
+        current.count === next.count
       ) {
         return prev;
       }
-      return { ...prev, [uid]: { range, count: rangeSize(range), groupIndex } };
+      return { ...prev, [uid]: next };
     });
-  }, [contextMode, viewerSlice, attachedSeries]);
+  }, [contextMode, viewerSlice, attachedSeries, scrollsAcquisitionAxis, viewportSliceCount]);
 
   /**
    * What one series will send: the selected range, the requested count, and the
@@ -1490,6 +1572,20 @@ const ChatPanel: React.FC = () => {
   endDrawingRef.current = endDrawing;
 
   const beginDrawing = useCallback(() => {
+    // Not on a reoriented view. A rectangle drawn on a reformat is captured by
+    // projecting its world corners into the nearest acquisition image, which
+    // keeps only the row and column components -- so one dimension collapses and
+    // the crop that reaches the model is not the rectangle that was drawn.
+    // Refused rather than accepted and silently changed.
+    const viewed = attachedSeries.find(
+      series => series.displaySetInstanceUID === viewerSlice.displaySetInstanceUID
+    );
+    if (viewed && !viewerScrollsAxis(scrollsAcquisitionAxis, viewportSliceCount, viewed.axis)) {
+      setRoiError(
+        'A region can only be drawn on the acquisition view. Switch the viewport back from the reoriented view first.'
+      );
+      return;
+    }
     // Drawing a region is an investment in the prompt, like typing in it.
     pinContext();
     setRoiError(null);
@@ -1502,7 +1598,14 @@ const ChatPanel: React.FC = () => {
     }
     displacedToolRef.current = startDrawingRoi();
     setIsDrawingRoi(true);
-  }, [pinContext, clearRoi]);
+  }, [
+    pinContext,
+    clearRoi,
+    attachedSeries,
+    viewerSlice.displaySetInstanceUID,
+    scrollsAcquisitionAxis,
+    viewportSliceCount,
+  ]);
 
   /**
    * Adopt a finished rectangle.
@@ -1522,6 +1625,21 @@ const ChatPanel: React.FC = () => {
   const adoptRoi = useCallback(
     (captured: CapturedRoi) => {
       endDrawing();
+
+      // Asked again here, and not only when the tool was armed: a reader can
+      // arm it on the acquisition view, reorient, and draw the rectangle with
+      // the tool still active. This is the last gate before the region enters
+      // the prompt, so it is the one that has to hold.
+      const viewed = attachedSeries.find(
+        series => series.displaySetInstanceUID === viewerSlice.displaySetInstanceUID
+      );
+      if (viewed && !viewerScrollsAxis(scrollsAcquisitionAxis, viewportSliceCount, viewed.axis)) {
+        setRoiError(
+          'A region can only be drawn on the acquisition view. Switch the viewport back from the reoriented view first.'
+        );
+        removeChatRoi(captured.annotationUID);
+        return;
+      }
 
       const host = attachedSeries.find(series =>
         captured.sopInstanceUID
@@ -1545,7 +1663,7 @@ const ChatPanel: React.FC = () => {
       });
       setRoiError(null);
     },
-    [attachedSeries, viewerSlice, endDrawing]
+    [attachedSeries, viewerSlice, endDrawing, scrollsAcquisitionAxis, viewportSliceCount]
   );
 
   const rejectRoi = useCallback(
@@ -1620,6 +1738,19 @@ const ChatPanel: React.FC = () => {
       // A region on another series is not this viewport's to move.
       return;
     }
+    const roiSeries = attachedSeries.find(
+      s => s.displaySetInstanceUID === chatRoi.displaySetInstanceUID
+    );
+    if (
+      roiSeries &&
+      !viewerScrollsAxis(scrollsAcquisitionAxis, viewportSliceCount, roiSeries.axis)
+    ) {
+      // The viewport is looking down a different axis, so its step number is not
+      // a slice of the plane this rectangle lives on. Moving it there would
+      // translate it along the wrong normal and then record a slice number it is
+      // not on — worse than leaving it where the reader drew it.
+      return;
+    }
     // Cast because `cornerstoneViewportService` comes from the cornerstone
     // extension and is absent from OHIF's core `Services` type, the same reason
     // `useViewerSlice` takes the manager untyped.
@@ -1635,7 +1766,16 @@ const ChatPanel: React.FC = () => {
     setChatRoi(prev =>
       prev && prev.annotationUID === chatRoi.annotationUID ? { ...prev, sliceNumber } : prev
     );
-  }, [contextMode, chatRoi, viewerSlice, activeViewportId, servicesManager]);
+  }, [
+    contextMode,
+    chatRoi,
+    viewerSlice,
+    activeViewportId,
+    servicesManager,
+    attachedSeries,
+    scrollsAcquisitionAxis,
+    viewportSliceCount,
+  ]);
 
   // On unmount: release the mouse button, and take the rectangle with it. A
   // region left on the image after the panel is gone belongs to nothing.
@@ -2218,9 +2358,11 @@ const ChatPanel: React.FC = () => {
           type="button"
           onClick={() => setContextMode(m => (m === 'following' ? 'pinned' : 'following'))}
           title={
-            contextMode === 'following'
-              ? 'Study, series and slice follow the main window. Click to freeze what will be sent.'
-              : 'Frozen: the main window no longer changes what will be sent. Click to follow it again.'
+            contextMode !== 'following'
+              ? 'Frozen: the main window no longer changes what will be sent. Click to follow it again.'
+              : viewerAxisUnavailable
+                ? 'The viewport is reoriented, and slices are addressed on the acquisition axis, so the slice has stopped following it. Switch the viewport back to the acquisition view to resume. Study and series still follow.'
+                : 'Study, series and slice follow the main window. Click to freeze what will be sent.'
           }
           className="text-muted-foreground hover:text-foreground flex flex-shrink-0 items-center gap-1 text-[11px]"
         >
@@ -2230,8 +2372,16 @@ const ChatPanel: React.FC = () => {
           />
           {/* Named for everything it governs. It now really does track the main
               window — study, series and slice — so the label must not scope
-              itself to the study the way it did when that was all it did. */}
-          {contextMode === 'following' ? 'Follows viewer' : 'Pinned'}
+              itself to the study the way it did when that was all it did.
+
+              And it says when it cannot: a reoriented viewport scrolls an axis
+              this panel cannot address, and "Follows viewer" over a range that
+              has stopped moving would be the promise broken quietly. */}
+          {contextMode !== 'following'
+            ? 'Pinned'
+            : viewerAxisUnavailable
+              ? 'Not following this view'
+              : 'Follows viewer'}
         </button>
       </div>
 
@@ -2398,11 +2548,19 @@ const ChatPanel: React.FC = () => {
                     total={series.axis.sliceCount}
                     range={range}
                     count={count}
-                    // Only when the viewport is showing THIS series: a slice
-                    // number from another acquisition would point at a position
-                    // that means nothing here. The marker follows the anatomy
-                    // across groups, because anatomy is the axis the slider is.
-                    viewerSliceNumber={onThisSeries ? viewerSlice.sliceNumber : null}
+                    // Only when the viewport is showing THIS series, and only
+                    // while it is scrolling the axis this slider is: a slice
+                    // number from another acquisition, or from a reoriented view
+                    // counting down a different axis, would put the "you are
+                    // here" marker at a position that means nothing here. The
+                    // marker follows the anatomy across groups, because anatomy
+                    // is the axis the slider is.
+                    viewerSliceNumber={
+                      onThisSeries &&
+                      viewerScrollsAxis(scrollsAcquisitionAxis, viewportSliceCount, series.axis)
+                        ? viewerSlice.sliceNumber
+                        : null
+                    }
                     seriesLabel={series.SeriesDescription}
                     onRangeChange={next => setSeriesRange(series, next)}
                     onCountChange={next => setSeriesCount(series, next)}

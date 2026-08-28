@@ -5,6 +5,8 @@ import {
   eventTarget,
   __resetMetaData,
   __setMetaData,
+  __setVolume,
+  __resetVolumes,
 } from '../../test-utils/__mocks__/cornerstone-core';
 import {
   __resetAnnotations,
@@ -62,6 +64,7 @@ beforeEach(() => {
   window.sessionStorage.clear();
   (eventTarget as any).reset();
   __resetMetaData();
+  __resetVolumes();
   __resetToolGroups();
   __resetAnnotations();
   resetMockViewportGrid();
@@ -72,6 +75,10 @@ beforeEach(() => {
     'default',
     makeToolGroup({ WindowLevel: { mode: 'Active', bindings: [{ mouseButton: 1 }] } })
   );
+  // The volume behind the scrollable viewport, oriented so that its acquisition
+  // normal is the [0, 0, 1] that viewport's camera reports: cornerstone derives
+  // the acquisition normal as the negated third row of the direction matrix.
+  __setVolume('vol-1', { direction: [1, 0, 0, 0, 1, 0, 0, 0, -1] });
   // A 400x500 image whose instance is slice 12 of the attached series.
   __setMetaData('imagePlaneModule', IMAGE_ID, { rows: 500, columns: 400 });
   __setMetaData('generalImageModule', IMAGE_ID, { sopInstanceUID: '1.2.840.SE1.12' });
@@ -438,6 +445,89 @@ describe('ChatPanel — a region while the viewer scrolls', () => {
       [100, 250],
       [300, 250],
     ]);
+  });
+
+  it('refuses to start a region on a reoriented view', async () => {
+    // Capture projects the rectangle's world corners into the nearest
+    // acquisition image, keeping only the row and column components. On a
+    // reformat that collapses a dimension, so the crop the model receives is not
+    // the rectangle the reader drew. Refused rather than silently changed.
+    await renderPanel(SERIES, scrollableViewport({ index: 11 }));
+    attachSeries();
+    // The camera no longer looks down the acquisition normal.
+    __setVolume('vol-1', { direction: [1, 0, 0, 0, 1, 0, 0, 0, 1] });
+    await act(async () => {
+      dispatchOnViewport('CAMERA_MODIFIED');
+    });
+
+    startDrawing();
+
+    expect(screen.getByText(/only be drawn on the acquisition view/)).toBeTruthy();
+    expect(screen.queryByText(/ROI · slice/)).toBeNull();
+  });
+
+  it('refuses a region drawn after reorienting with the tool already armed', async () => {
+    // Checking only when the tool is armed leaves the obvious sequence open:
+    // arm it on the acquisition view, reorient, then draw. Adoption is the last
+    // gate before the region enters the prompt, so it is the one that has to
+    // hold.
+    await renderPanel(SERIES, scrollableViewport({ index: 11 }));
+    attachSeries();
+    startDrawing();
+
+    __setVolume('vol-1', { direction: [1, 0, 0, 0, 1, 0, 0, 0, 1] });
+    await act(async () => {
+      dispatchOnViewport('CAMERA_MODIFIED');
+    });
+
+    const drawn = {
+      annotationUID: 'annot-late',
+      metadata: { toolName: 'ChatROI', referencedImageId: IMAGE_ID },
+      data: {
+        handles: {
+          points: [
+            [100, 50, 6],
+            [300, 50, 6],
+            [100, 250, 6],
+            [300, 250, 6],
+          ],
+        },
+      },
+    };
+    __setAnnotation('annot-late', drawn);
+    await act(async () => {
+      (eventTarget as any).dispatch('ANNOTATION_COMPLETED', { annotation: drawn });
+    });
+
+    expect(screen.getByText(/only be drawn on the acquisition view/)).toBeTruthy();
+    expect(screen.queryByText(/ROI · slice/)).toBeNull();
+    // The rectangle exists on the image even though the panel refused it;
+    // leaving it would be an orphan the reader cannot remove from the chat.
+    expect(annotation.state.removeAnnotation).toHaveBeenCalledWith('annot-late');
+  });
+
+  it('leaves the region alone when the viewport is reoriented', async () => {
+    // The viewport's step number is a position on a different axis, so it is not
+    // a slice of the plane this rectangle lives on. Moving it there would
+    // translate it along the wrong normal and then record a slice number it is
+    // not on -- worse than leaving it where the reader drew it.
+    const state = { index: 11 };
+    await renderPanel(SERIES, scrollableViewport(state));
+    attachSeries();
+    const drawn = await drawRegionOffPlane();
+    fireEvent.click(screen.getByText('Pinned'));
+    expect(screen.getByText('ROI · slice 12')).toBeTruthy();
+
+    // The camera turns away from the acquisition axis. The volume's identity
+    // direction puts that normal at [0, 0, -1]; the viewport reports [0, 0, 1].
+    __setVolume('vol-1', { direction: [1, 0, 0, 0, 1, 0, 0, 0, 1] });
+    state.index = 15;
+    await act(async () => {
+      dispatchOnViewport('STACK_NEW_IMAGE');
+    });
+
+    expect(screen.getByText('ROI · slice 12')).toBeTruthy();
+    expect(drawn.data.handles.points.map(p => p[2])).toEqual([6, 6, 6, 6]);
   });
 
   it('leaves the region where it was drawn while pinned', async () => {

@@ -37,6 +37,31 @@
  *
  * Instances are named by SOPInstanceUID here, as everywhere else in the panel,
  * because that is what the middleware addresses slices by.
+ *
+ * **This is the ACQUISITION axis**, and only the acquisition axis. The order is
+ * the one the instances were acquired in, which is what the middleware retrieves
+ * by and what a slice number means to it. A volume viewport counts steps along
+ * whatever its camera is looking down, and OHIF offers sagittal and coronal from
+ * the viewport's orientation menu on any reconstructable series -- which a
+ * dynamic study always is, since OHIF upgrades it to a volume viewport to show it
+ * at all. Reoriented, the viewer's slice number and this axis are on different
+ * axes of different lengths: step 250 of a ~512-step sagittal scroll is not slice
+ * 250 of anything here.
+ *
+ * Nothing in this module can fix that, and it does not try. Making a reformat
+ * addressable means reprojecting the plane cornerstone is drawing back onto
+ * instances, which is a different piece of work and one whose result would still
+ * not be a set of SOPInstanceUIDs the middleware could fetch. What the panel does
+ * instead is refuse to claim: `useViewerSlice` reports whether the viewport is
+ * scrolling this axis, and the panel stops following and says so when it is not.
+ *
+ * The same limit applies to a region: cornerstone records the annotation against
+ * the nearest acquisition image, and the projection keeps only the row and column
+ * components, so a rectangle drawn on a sagittal reformat loses a dimension and
+ * crops something other than what was drawn. The panel refuses to draw one there
+ * rather than accepting it and quietly cropping something else, and an existing
+ * region is left where it was rather than translated along an axis the viewer is
+ * no longer on.
  */
 
 import { metaData } from '@cornerstonejs/core';

@@ -1,7 +1,13 @@
 export const Enums = {
   ViewportType: { ORTHOGRAPHIC: 'ORTHOGRAPHIC', STACK: 'STACK' },
   OrientationAxis: { AXIAL: 'AXIAL' },
-  Events: { STACK_NEW_IMAGE: 'STACK_NEW_IMAGE', VOLUME_NEW_IMAGE: 'VOLUME_NEW_IMAGE' },
+  Events: {
+    STACK_NEW_IMAGE: 'STACK_NEW_IMAGE',
+    VOLUME_NEW_IMAGE: 'VOLUME_NEW_IMAGE',
+    // Reorienting a viewport moves the camera without necessarily changing the
+    // slice index, so this is the only event some orientation changes produce.
+    CAMERA_MODIFIED: 'CAMERA_MODIFIED',
+  },
 };
 // Minimal EventTarget stand-in for the handful of cornerstone events that really
 // are dispatched on the global target.
@@ -83,6 +89,16 @@ export const utilities = {
   // convenient approximation: `formatWindow` exists to print what the viewport
   // overlay prints, and the overlay goes through this function. A stub that
   // rounded differently would let the two drift again with the tests still green.
+  // The real arithmetic from @cornerstonejs/core's getAcquisitionPlaneOrientation:
+  // the acquisition normal is the negated third row of the volume's direction
+  // matrix. Copied rather than approximated because the panel decides whether it
+  // is looking down the acquisition axis by comparing against it, and a stub
+  // that pointed somewhere else would make the check pass or fail for reasons
+  // the browser would not reproduce.
+  getAcquisitionPlaneOrientation: (volume: any) => ({
+    viewPlaneNormal: (volume?.direction ?? []).slice(6, 9).map((x: number) => -x),
+    viewUp: (volume?.direction ?? []).slice(3, 6).map((x: number) => -x),
+  }),
   windowLevel: {
     toWindowLevel: (low: number, high: number) => ({
       windowWidth: Math.abs(high - low) + 1,

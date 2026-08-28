@@ -121,8 +121,27 @@ function makeDisplaySetService(displaySets: any[]) {
   };
 }
 
-/** The viewport, showing one image of one phase. Mutable so a test can scroll it. */
-let viewerAt = { phase: 0, slice: 0 };
+/**
+ * The viewport, showing one image of one phase. Mutable so a test can scroll it.
+ *
+ * `normal` and `stepCount` stand in for the reader picking sagittal or coronal
+ * from the viewport's orientation menu: the camera then looks down a different
+ * axis, and the viewport counts steps along one of a different length.
+ */
+let viewerAt: {
+  phase: number;
+  slice: number;
+  /** Steps the viewport scrolls through. Differs from SLICES on a reformat. */
+  stepCount?: number;
+  /** The camera's view normal. The acquisition one, unless a test reorients. */
+  normal?: [number, number, number];
+} = { phase: 0, slice: 0 };
+
+/**
+ * The acquisition normal for the fixture's volume direction below: cornerstone
+ * derives it as the negated third row of the direction matrix.
+ */
+const ACQUISITION_NORMAL: [number, number, number] = [0, 0, -1];
 const VOLUME_ID = 'cornerstoneStreamingDynamicImageVolume:ds-uka';
 const viewportServices = () => ({
   cornerstoneViewportService: {
@@ -131,6 +150,8 @@ const viewportServices = () => ({
       // anatomical slice, the volume's dimension group for the phase.
       getCurrentImageIdIndex: () => viewerAt.slice,
       getAllVolumeIds: () => [VOLUME_ID],
+      getCamera: () => ({ viewPlaneNormal: viewerAt.normal ?? ACQUISITION_NORMAL }),
+      getNumberOfSlices: () => viewerAt.stepCount ?? SLICES,
     })),
   },
 });
@@ -140,6 +161,8 @@ function syncVolume() {
   __setVolume(VOLUME_ID, {
     dimensionGroupNumber: viewerAt.phase + 1,
     numDimensionGroups: PHASES,
+    // Identity orientation, so the acquisition normal is [0, 0, -1].
+    direction: [1, 0, 0, 0, 1, 0, 0, 0, 1],
   });
 }
 
@@ -321,8 +344,9 @@ describe('ChatPanel — a 4D dynamic series', () => {
     expect(groupSelect().value).toBe('3');
 
     // Now the volume stops reporting a group, while the viewport goes on
-    // reporting a slice.
-    __setVolume(VOLUME_ID, {});
+    // reporting a slice. Its orientation is still there: this is about the group
+    // being unknown, not the axis.
+    __setVolume(VOLUME_ID, { direction: [1, 0, 0, 0, 1, 0, 0, 0, 1] });
     viewerAt = { phase: 3, slice: 5 };
     await act(async () => {
       dispatchOnViewport('VOLUME_NEW_IMAGE');
@@ -358,7 +382,7 @@ describe('ChatPanel — a 4D dynamic series', () => {
     // would otherwise read the selector as tracked when it is a default. A stack
     // viewport of a dynamic series reports none at all, permanently, so this is
     // not a flicker during load.
-    __setVolume(VOLUME_ID, {});
+    __setVolume(VOLUME_ID, { direction: [1, 0, 0, 0, 1, 0, 0, 0, 1] });
     await renderPanel();
     attachSeries();
 
@@ -372,6 +396,235 @@ describe('ChatPanel — a 4D dynamic series', () => {
     });
     expect(screen.queryByText('(not the viewer’s)')).toBeNull();
     expect(groupSelect().value).toBe('2');
+  });
+
+  describe('a reoriented viewport', () => {
+    // A slice axis is the ACQUISITION axis. A volume viewport counts steps along
+    // whatever its camera looks down, and OHIF offers sagittal and coronal on any
+    // reconstructable series — which a dynamic study always is, since it is
+    // upgraded to a volume viewport to be shown at all. Reoriented, step 250 of a
+    // ~512-step sagittal scroll read against a 10-slice axis clamps to 10, so the
+    // prompt would sit on the last slice through nearly the whole scroll while
+    // saying it follows the viewer.
+
+    it('stops following, and says so', async () => {
+      await renderPanel();
+      attachSeries();
+      viewerAt = { phase: 0, slice: 3 };
+      await act(async () => {
+        dispatchOnViewport('STACK_NEW_IMAGE');
+      });
+      expect(screen.getByText('Follows viewer')).toBeTruthy();
+      const rangeStart = () =>
+        (screen.getByLabelText('First slice of NCI-dyn DEV') as HTMLInputElement).value;
+      const followed = rangeStart();
+      expect(followed).not.toBe('10');
+
+      // The reader switches to sagittal: a different axis, 512 steps long.
+      viewerAt = { phase: 0, slice: 250, stepCount: 512, normal: [-1, 0, 0] };
+      await act(async () => {
+        dispatchOnViewport('STACK_NEW_IMAGE');
+      });
+
+      expect(screen.getByText('Not following this view')).toBeTruthy();
+      // The range is the last one the reader actually chose, not clamped to the
+      // end of an axis the viewer is no longer scrolling.
+      expect(rangeStart()).toBe(followed);
+      // And the "you are here" marker is gone rather than pointing at a position
+      // that means nothing on this axis.
+      expect(screen.queryByTitle(/Viewer is on slice/)).toBeNull();
+    });
+
+    it('does not seed a range from it either', async () => {
+      // Opening the panel on an already-reoriented viewport. The seeding effect
+      // runs before anything has been followed, so guarding only the follow
+      // effect would let the bad number in and then faithfully preserve it.
+      viewerAt = { phase: 0, slice: 250, stepCount: 512, normal: [-1, 0, 0] };
+      await renderPanel();
+      attachSeries();
+
+      expect(screen.getByText('Not following this view')).toBeTruthy();
+      // Seeded from the configured recipe, not clamped to the end of an axis the
+      // viewer is not on.
+      const start = (screen.getByLabelText('First slice of NCI-dyn DEV') as HTMLInputElement).value;
+      expect(start).not.toBe(String(SLICES));
+    });
+
+    it('goes on following the temporal position, which has no orientation', async () => {
+      // Which position on the fourth axis is on screen is not a spatial
+      // question. Freezing it along with the range would stop the panel
+      // following something it still can.
+      await renderPanel();
+      attachSeries();
+      viewerAt = { phase: 0, slice: 250, stepCount: 512, normal: [-1, 0, 0] };
+      syncVolume();
+      await act(async () => {
+        dispatchOnViewport('VOLUME_NEW_IMAGE');
+      });
+      expect(screen.getByText('Not following this view')).toBeTruthy();
+
+      viewerAt = { ...viewerAt, phase: 3 };
+      syncVolume();
+      await act(async () => {
+        dispatchOnViewport('VOLUME_NEW_IMAGE');
+      });
+
+      expect(groupSelect().value).toBe('3');
+    });
+
+    it('stops when the same plane is looked at from the other side', async () => {
+      // The plane alone is not the question: a flipped normal is the same plane
+      // with the same step count and the index running backwards, so every slice
+      // number would be wrong by more than a reformat's would.
+      await renderPanel();
+      attachSeries();
+      expect(screen.getByText('Follows viewer')).toBeTruthy();
+
+      viewerAt = { phase: 0, slice: 3, normal: [0, 0, 1] };
+      await act(async () => {
+        dispatchOnViewport('VOLUME_NEW_IMAGE');
+      });
+
+      expect(screen.getByText('Not following this view')).toBeTruthy();
+    });
+
+    it('notices an orientation change that moves no slice', async () => {
+      // Reorienting moves the camera; the slice index need not change with it,
+      // and cornerstone suppresses the new-image event when it does not. Watching
+      // only for new images would leave "Follows viewer" standing until the
+      // reader happened to scroll.
+      await renderPanel();
+      attachSeries();
+      expect(screen.getByText('Follows viewer')).toBeTruthy();
+
+      viewerAt = { ...viewerAt, normal: [-1, 0, 0], stepCount: 512 };
+      await act(async () => {
+        dispatchOnViewport('CAMERA_MODIFIED');
+      });
+
+      expect(screen.getByText('Not following this view')).toBeTruthy();
+    });
+
+    it('stops on a shallow oblique that would render as the acquisition plane', async () => {
+      // Cornerstone's own `isInAcquisitionPlane` allows 8 degrees, which is the
+      // right tolerance for "near enough to draw as axial" and the wrong one for
+      // "this index addresses acquisition slices". Five degrees off is a
+      // different set of voxels under every pixel.
+      await renderPanel();
+      attachSeries();
+      expect(screen.getByText('Follows viewer')).toBeTruthy();
+
+      viewerAt = { phase: 0, slice: 3, normal: [0.0871557, 0, -0.9961947] };
+      await act(async () => {
+        dispatchOnViewport('CAMERA_MODIFIED');
+      });
+
+      expect(screen.getByText('Not following this view')).toBeTruthy();
+    });
+
+    it('reads a Float32Array direction, which is what cornerstone really holds', async () => {
+      // `direction` is a Mat3 and may be a typed array; the helper preserves the
+      // container. An `Array.isArray` test would quietly answer "unknown" on
+      // exactly the viewports this guard exists for.
+      await renderPanel();
+      attachSeries();
+      __setVolume(VOLUME_ID, {
+        dimensionGroupNumber: 1,
+        numDimensionGroups: PHASES,
+        direction: new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]),
+      });
+
+      // Asserted the way round that can tell the difference: reading the typed
+      // array correctly means recognising the acquisition axis and FOLLOWING it.
+      // A test that expected "not following" would pass either way, since a
+      // check that cannot read the normal also refuses.
+      viewerAt = { phase: 0, slice: 3 };
+      await act(async () => {
+        dispatchOnViewport('CAMERA_MODIFIED');
+      });
+      expect(screen.getByText('Follows viewer')).toBeTruthy();
+
+      viewerAt = { phase: 0, slice: 3, normal: [-1, 0, 0] };
+      await act(async () => {
+        dispatchOnViewport('CAMERA_MODIFIED');
+      });
+      expect(screen.getByText('Not following this view')).toBeTruthy();
+    });
+
+    it('does not follow a volume viewport whose volume it cannot read', async () => {
+      // The step count is no help there either: cornerstone computes it from the
+      // same cached volume, so both go silent together and the panel would be
+      // following on nothing at all.
+      await renderPanel();
+      attachSeries();
+      expect(screen.getByText('Follows viewer')).toBeTruthy();
+
+      __resetVolumes();
+      await act(async () => {
+        dispatchOnViewport('CAMERA_MODIFIED');
+      });
+
+      expect(screen.getByText('Not following this view')).toBeTruthy();
+    });
+
+    it('resumes when the viewport goes back to the acquisition view', async () => {
+      await renderPanel();
+      attachSeries();
+      viewerAt = { phase: 0, slice: 250, stepCount: 512, normal: [-1, 0, 0] };
+      await act(async () => {
+        dispatchOnViewport('STACK_NEW_IMAGE');
+      });
+      expect(screen.getByText('Not following this view')).toBeTruthy();
+
+      viewerAt = { phase: 0, slice: 7 };
+      await act(async () => {
+        dispatchOnViewport('STACK_NEW_IMAGE');
+      });
+
+      expect(screen.getByText('Follows viewer')).toBeTruthy();
+      expect(screen.getByTitle('Viewer is on slice 8')).toBeTruthy();
+    });
+
+    it('stops on the plane alone, when the step count happens to agree', async () => {
+      // A reformat of a near-isotropic volume can come out the same length as
+      // the acquisition axis by coincidence, and a matching count is not a
+      // matching axis. The plane is the direct question; the count is only there
+      // to catch what the plane test, being sign-insensitive, would let through.
+      await renderPanel();
+      attachSeries();
+      viewerAt = { phase: 0, slice: 3 };
+      await act(async () => {
+        dispatchOnViewport('STACK_NEW_IMAGE');
+      });
+      expect(screen.getByText('Follows viewer')).toBeTruthy();
+
+      viewerAt = { phase: 0, slice: 3, normal: [-1, 0, 0] };
+      await act(async () => {
+        dispatchOnViewport('STACK_NEW_IMAGE');
+      });
+
+      expect(screen.getByText('Not following this view')).toBeTruthy();
+    });
+
+    it('stops on a step count that cannot be this axis, whatever the plane says', async () => {
+      // The plane test is sign-insensitive, so the step count is carried
+      // alongside it: a length that cannot be the acquisition axis proves a
+      // mismatch on its own.
+      await renderPanel();
+      attachSeries();
+      viewerAt = { phase: 0, slice: 3 };
+      await act(async () => {
+        dispatchOnViewport('STACK_NEW_IMAGE');
+      });
+      expect(screen.getByText('Follows viewer')).toBeTruthy();
+
+      viewerAt = { phase: 0, slice: 250, stepCount: 512 };
+      await act(async () => {
+        dispatchOnViewport('STACK_NEW_IMAGE');
+      });
+
+      expect(screen.getByText('Not following this view')).toBeTruthy();
+    });
   });
 
   it('never calls a b-value a phase', async () => {
