@@ -68,9 +68,28 @@ const storedThread = (over: any = {}) => ({
   ...over,
 });
 
-/** Route fetch for /debug/config and /debug/sessions independently. */
-function routeFetch(sessions?: Array<{ session_id: string; message_count: number }> | 'fail') {
-  const fetchMock = jest.fn((url: string) => {
+/**
+ * Route fetch for /debug/config and /debug/sessions independently.
+ *
+ * The method matters as well as the URL: the session list and the session
+ * delete share a path prefix, and a router that ignored the verb would answer
+ * a DELETE with a session list and hide whether it was sent at all.
+ *
+ * `deleteResponse` overrides what the DELETE answers, so the failure paths can
+ * be driven without disturbing the listing.
+ */
+function routeFetch(
+  sessions?: Array<{ session_id: string; message_count: number }> | 'fail',
+  deleteResponse?: { ok: boolean; status: number } | 'reject'
+) {
+  const fetchMock = jest.fn((url: string, init?: any) => {
+    if (init?.method === 'DELETE') {
+      if (deleteResponse === 'reject') {
+        return Promise.reject(new Error('network down'));
+      }
+      const { ok, status } = deleteResponse ?? { ok: true, status: 200 };
+      return Promise.resolve({ ok, status, json: async () => ({}) });
+    }
     if (String(url).includes('/debug/sessions')) {
       if (sessions === 'fail') {
         return Promise.resolve({ ok: false, status: 500, json: async () => ({}) });
@@ -86,6 +105,12 @@ function routeFetch(sessions?: Array<{ session_id: string; message_count: number
   (global as any).fetch = fetchMock;
   return fetchMock;
 }
+
+/** The session ids a run asked the middleware to delete, in order. */
+const deletedSessionIds = (fetchMock: jest.Mock): string[] =>
+  fetchMock.mock.calls
+    .filter(([, init]: any[]) => init?.method === 'DELETE')
+    .map(([url]: any[]) => String(url).replace(/^.*\/debug\/sessions\//, ''));
 
 installConsoleErrorFilter();
 beforeAll(() => {
@@ -205,6 +230,156 @@ describe('ChatPanel — chat history switcher', () => {
     });
     expect(screen.queryByText('Second chat')).toBeNull();
     expect(screen.getByText('Is this lesion suspicious?')).toBeTruthy();
+  });
+
+  describe('closing the session on the other side', () => {
+    // A middleware session holds the conversation, and its history holds the
+    // base64 slices of every turn -- the same strings the image cache holds, so
+    // an abandoned session pins them past the cache's own eviction bound. The
+    // cache is bounded; sessions are not, and nothing sweeps them.
+
+    it('deletes the middleware session behind a chat that is not open', async () => {
+      const fetchMock = routeFetch();
+      seedThreads([
+        storedThread(),
+        storedThread({ id: 't2', title: 'Second chat', serverSessionId: 'sess-2' }),
+      ]);
+      await renderPanel();
+      await openHistory();
+
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Delete Second chat'));
+      });
+
+      expect(deletedSessionIds(fetchMock)).toEqual(['sess-2']);
+      // No socket is attached to a thread that is not open, so nothing has to
+      // be detached first.
+      expect(switchSession).not.toHaveBeenCalled();
+    });
+
+    it("uses the live socket's session for the chat that is open", async () => {
+      // The persisted id trails the live one by a render while a session is
+      // being established. Deleting the stale id would report success and leave
+      // the real session behind.
+      const fetchMock = routeFetch();
+      setHook({ sessionId: 'sess-live' });
+      seedThreads([storedThread({ serverSessionId: 'sess-stale' })]);
+      await renderPanel();
+      await openHistory();
+
+      // Open it, so it is the thread the socket is attached to.
+      await act(async () => {
+        fireEvent.click(screen.getByText('Is this lesion suspicious?'));
+      });
+      await openHistory();
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText(/^Delete /));
+      });
+
+      expect(deletedSessionIds(fetchMock)).toEqual(['sess-live']);
+    });
+
+    it('detaches from the open chat before asking the server to drop it', async () => {
+      // Deleting a session out from under a live connection is the one case the
+      // middleware cannot make tidy, so the socket moves off it first.
+      const order: string[] = [];
+      const fetchMock = jest.fn((url: string, init?: any) => {
+        if (init?.method === 'DELETE') {
+          order.push('delete');
+          return Promise.resolve({ ok: true, status: 200, json: async () => ({}) });
+        }
+        return Promise.resolve({ ok: true, status: 200, json: async () => ({ sessions: [] }) });
+      });
+      (global as any).fetch = fetchMock;
+
+      seedThreads([storedThread()]);
+      await renderPanel();
+      await openHistory();
+      await act(async () => {
+        fireEvent.click(screen.getByText('Is this lesion suspicious?'));
+      });
+
+      // Only the detach that the deletion itself performs is of interest; the
+      // one that opened the thread has already happened.
+      switchSession.mockImplementation(async () => {
+        order.push('switchSession');
+        return 'sess-new';
+      });
+
+      await openHistory();
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText(/^Delete /));
+      });
+
+      expect(order).toEqual(['switchSession', 'delete']);
+    });
+
+    it('still closes the old session when reconnecting fails', async () => {
+      // A failed reconnect is the panel's problem to report elsewhere. Letting
+      // it skip the DELETE would abandon exactly the session this path exists
+      // to close.
+      const fetchMock = routeFetch();
+      setHook({ sessionId: 'sess-live' });
+      seedThreads([storedThread()]);
+      await renderPanel();
+      await openHistory();
+      await act(async () => {
+        fireEvent.click(screen.getByText('Is this lesion suspicious?'));
+      });
+      await openHistory();
+
+      // Only the reconnect that the deletion itself performs fails.
+      switchSession.mockRejectedValueOnce(new Error('socket down'));
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText(/^Delete /));
+      });
+
+      expect(deletedSessionIds(fetchMock)).toEqual(['sess-live']);
+      expect(JSON.parse(window.sessionStorage.getItem(STORAGE_KEY)!)).toHaveLength(0);
+    });
+
+    it('sends nothing for a chat that never reached the middleware', async () => {
+      const fetchMock = routeFetch();
+      seedThreads([
+        storedThread(),
+        storedThread({ id: 't2', title: 'Second chat', serverSessionId: null }),
+      ]);
+      await renderPanel();
+      await openHistory();
+
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Delete Second chat'));
+      });
+
+      expect(deletedSessionIds(fetchMock)).toEqual([]);
+    });
+
+    it.each([
+      ['a 404, which is the outcome asked for', { ok: false, status: 404 } as const],
+      ['a server error', { ok: false, status: 500 } as const],
+      ['an unreachable middleware', 'reject' as const],
+    ])('still deletes the chat locally on %s', async (_label, deleteResponse) => {
+      // The user asked to delete a conversation. A middleware they cannot reach
+      // is not something they can act on, and leaving the chat in the list
+      // would answer their request with someone else's problem.
+      routeFetch(undefined, deleteResponse);
+      seedThreads([
+        storedThread(),
+        storedThread({ id: 't2', title: 'Second chat', serverSessionId: 'sess-2' }),
+      ]);
+      await renderPanel();
+      await openHistory();
+
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Delete Second chat'));
+      });
+
+      expect(screen.queryByText('Second chat')).toBeNull();
+      expect(JSON.parse(window.sessionStorage.getItem(STORAGE_KEY)!)).toHaveLength(1);
+      // Nothing is said about it: the notification would be about infrastructure
+      // the reader cannot do anything with.
+      expect(screen.queryByText(/could not close/i)).toBeNull();
+    });
   });
 
   describe('server-side memory', () => {

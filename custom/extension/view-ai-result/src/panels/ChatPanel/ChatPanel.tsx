@@ -871,6 +871,23 @@ const ChatPanel: React.FC = () => {
   // --- Chat threads ---------------------------------------------------------
 
   /**
+   * Threads the user has deleted, so a late effect cannot bring one back.
+   *
+   * The persist effect below is passive: one scheduled by a token arriving
+   * mid-stream can still be pending when the delete is clicked, and it captured
+   * the thread as it was then. Running afterwards it would write that thread
+   * back, and the deletion would appear to have been undone by nothing the user
+   * did. A ref rather than state because the effect has to see it in the same
+   * commit the click causes.
+   *
+   * Defence rather than a fixed reproduction: React 18 flushes pending passive
+   * effects before a discrete event, so the window is narrow and no test here
+   * reaches it. Two lines to close a race that would be invisible and infuriating
+   * if it ever opened.
+   */
+  const deletedThreadIds = useRef<Set<string>>(new Set());
+
+  /**
    * Persist the active conversation as messages arrive.
    *
    * Only once it has content: an untouched panel would otherwise litter the
@@ -879,7 +896,7 @@ const ChatPanel: React.FC = () => {
    * rather than losing the question with it.
    */
   useEffect(() => {
-    if (messages.length === 0) {
+    if (messages.length === 0 || deletedThreadIds.current.has(activeThreadId)) {
       return;
     }
     setThreads(prev => {
@@ -1017,20 +1034,77 @@ const ChatPanel: React.FC = () => {
     [activeThreadId, hydrateMessages, switchSession, refreshLiveSessions]
   );
 
+  /**
+   * Ask the middleware to forget a session.
+   *
+   * Deliberately quiet. The user asked to delete a conversation, and locally it
+   * is deleted; a middleware they cannot reach is not something they can act on,
+   * and a notification about it would only be alarming. A 404 is success by
+   * another name — the session is gone, which is what was wanted.
+   */
+  const closeServerSession = useCallback(async (serverSessionId: string) => {
+    try {
+      const res = await fetch(
+        `${getChatApiBase()}/debug/sessions/${encodeURIComponent(serverSessionId)}`,
+        { method: 'DELETE' }
+      );
+      if (!res.ok && res.status !== 404) {
+        console.warn(`Chat: could not close session ${serverSessionId}: ${res.status}`);
+      }
+    } catch (e) {
+      console.warn(`Chat: could not close session ${serverSessionId}`, e);
+    }
+  }, []);
+
   const deleteThread = useCallback(
-    (threadId: string) => {
+    async (threadId: string) => {
+      // Read the session id BEFORE the thread goes: removing it first would
+      // throw away the only handle to the conversation on the server.
+      //
+      // For the open thread the live socket's id wins. The persisted one trails
+      // it by a render while a session is being established, and deleting a
+      // stale id would leave the real session behind while reporting success.
+      const thread = threads.find(t => t.id === threadId);
+      const serverSessionId =
+        threadId === activeThreadId
+          ? (sessionId ?? thread?.serverSessionId)
+          : thread?.serverSessionId;
+
+      deletedThreadIds.current.add(threadId);
       setThreads(prev => saveThreads(removeThread(prev, threadId)));
-      if (threadId === activeThreadId) {
-        // Discard it on both sides: the stored thread, the displayed transcript,
-        // and the middleware session backing it. This is what the old "Clear
-        // conversation" menu item did; deleting the open conversation from the
-        // history list is now the only way to ask for it, so it has to do the
-        // whole job rather than leaving a session alive on the server.
-        clearHistory();
-        startNewChat();
+      try {
+        if (threadId === activeThreadId) {
+          // Discard it on both sides: the stored thread, the displayed
+          // transcript, and the middleware session backing it. This is what the
+          // old "Clear conversation" menu item did; deleting the open
+          // conversation from the history list is now the only way to ask for
+          // it, so it has to do the whole job rather than leaving a session
+          // alive on the server.
+          clearHistory();
+          // Move the socket off this session before asking the server to drop
+          // it. Not a guarantee of ordering — the close and the DELETE travel on
+          // separate connections, and nothing here waits for the middleware to
+          // process the close — so the middleware retires a deleted session for
+          // any handler still holding it rather than relying on this. It is
+          // still the right order to ask in. A non-active thread has no socket
+          // on it, so its delete goes straight out.
+          await startNewChat();
+        }
+      } catch (e) {
+        // Reconnecting failed. That is the panel's problem to report elsewhere,
+        // and it must not cost the deletion: skipping the DELETE here would
+        // abandon exactly the session this whole path exists to close.
+        console.warn('Chat: could not start a new session after deleting one', e);
+      } finally {
+        // Local deletion has already happened and does not depend on this. A
+        // middleware that is down must not leave a conversation the user deleted
+        // sitting in their history.
+        if (serverSessionId) {
+          await closeServerSession(serverSessionId);
+        }
       }
     },
-    [activeThreadId, startNewChat, clearHistory]
+    [threads, activeThreadId, sessionId, startNewChat, clearHistory, closeServerSession]
   );
 
   /** Pin the context. Called from every action that invests in the prompt. */
@@ -2025,7 +2099,7 @@ const ChatPanel: React.FC = () => {
                   </button>
                   <button
                     type="button"
-                    onClick={() => deleteThread(t.id)}
+                    onClick={() => void deleteThread(t.id)}
                     title={`Delete ${t.title}`}
                     aria-label={`Delete ${t.title}`}
                     className="text-muted-foreground hover:text-foreground flex-shrink-0 text-xs"
