@@ -1,9 +1,9 @@
 import {
   canAddressAxis,
   formatAxisShape,
-  formatPhase,
-  phaseCount,
-  phaseInstances,
+  formatDimensionGroup,
+  dimensionGroupCount,
+  dimensionGroupInstances,
   positionOf,
   sliceAxisOf,
 } from './sliceAxis';
@@ -56,8 +56,8 @@ describe('sliceAxisOf — an ordinary series', () => {
   it('is the instance list, in display-set order', () => {
     const axis = sliceAxisOf({ images: [{ SOPInstanceUID: 'a' }, { SOPInstanceUID: 'b' }] });
     expect(axis.sliceCount).toBe(2);
-    expect(axis.phases).toEqual([['a', 'b']]);
-    expect(phaseCount(axis)).toBe(1);
+    expect(axis.dimensionGroups).toEqual([['a', 'b']]);
+    expect(dimensionGroupCount(axis)).toBe(1);
     expect(axis.splittingTag).toBeUndefined();
   });
 
@@ -70,7 +70,7 @@ describe('sliceAxisOf — an ordinary series', () => {
     // panel must fall back to the middleware's recipe rather than half-address.
     const axis = sliceAxisOf({ images: [{ SOPInstanceUID: 'a' }, {}] });
     expect(axis.sliceCount).toBe(0);
-    expect(axis.phases).toEqual([[]]);
+    expect(axis.dimensionGroups).toEqual([[]]);
   });
 
   it('is empty for a display set with no instances at all', () => {
@@ -84,14 +84,14 @@ describe('sliceAxisOf — a 4D dynamic series', () => {
     // The real proportions: 155 instances that the viewer scrolls as 31 slices.
     const axis = sliceAxisOf(dynamicDisplaySet(31, 5));
     expect(axis.sliceCount).toBe(31);
-    expect(phaseCount(axis)).toBe(5);
+    expect(dimensionGroupCount(axis)).toBe(5);
     expect(axis.splittingTag).toBe('TemporalPositionIdentifier');
   });
 
-  it('keeps each phase in the viewer’s own slice order', () => {
+  it('keeps each group in the viewer’s own slice order', () => {
     const axis = sliceAxisOf(dynamicDisplaySet(3, 2));
-    expect(axis.phases[0]).toEqual([uid(1), uid(2), uid(3)]);
-    expect(axis.phases[1]).toEqual([uid(4), uid(5), uid(6)]);
+    expect(axis.dimensionGroups[0]).toEqual([uid(1), uid(2), uid(3)]);
+    expect(axis.dimensionGroups[1]).toEqual([uid(4), uid(5), uid(6)]);
   });
 
   it('does not read the interleaved instance list as the axis', () => {
@@ -103,7 +103,7 @@ describe('sliceAxisOf — a 4D dynamic series', () => {
     expect(sliceAxisOf(ds).sliceCount).toBe(3);
   });
 
-  it('refuses the axis when a phase has an unresolvable instance', () => {
+  it('refuses the axis when a group has an unresolvable instance', () => {
     // All-or-nothing, for the same reason a partial instance list is refused.
     const ds = dynamicDisplaySet(3, 2);
     __resetMetaData();
@@ -114,7 +114,7 @@ describe('sliceAxisOf — a 4D dynamic series', () => {
     expect(sliceAxisOf(ds).sliceCount).toBe(0);
   });
 
-  it('refuses the axis when phases have different lengths', () => {
+  it('refuses the axis when groups have different lengths', () => {
     const ds = dynamicDisplaySet(3, 2);
     ds.dynamicVolumeInfo.timePoints[1] = ds.dynamicVolumeInfo.timePoints[1].slice(0, 2);
     expect(sliceAxisOf(ds).sliceCount).toBe(0);
@@ -127,26 +127,26 @@ describe('sliceAxisOf — a 4D dynamic series', () => {
   });
 });
 
-describe('phaseInstances', () => {
-  it('returns the chosen phase', () => {
+describe('dimensionGroupInstances', () => {
+  it('returns the chosen group', () => {
     const axis = sliceAxisOf(dynamicDisplaySet(3, 2));
-    expect(phaseInstances(axis, 1)).toEqual([uid(4), uid(5), uid(6)]);
+    expect(dimensionGroupInstances(axis, 1)).toEqual([uid(4), uid(5), uid(6)]);
   });
 
-  it('clamps out-of-range phases rather than returning nothing', () => {
-    // A display set can be replaced in place by one with fewer phases; sending
-    // no slices at all would be a worse answer than sending the last phase.
+  it('clamps out-of-range groups rather than returning nothing', () => {
+    // A display set can be replaced in place by one with fewer groups; sending
+    // no slices at all would be a worse answer than sending the last group.
     const axis = sliceAxisOf(dynamicDisplaySet(3, 2));
-    expect(phaseInstances(axis, 9)).toEqual(phaseInstances(axis, 1));
-    expect(phaseInstances(axis, -1)).toEqual(phaseInstances(axis, 0));
+    expect(dimensionGroupInstances(axis, 9)).toEqual(dimensionGroupInstances(axis, 1));
+    expect(dimensionGroupInstances(axis, -1)).toEqual(dimensionGroupInstances(axis, 0));
   });
 });
 
 describe('positionOf', () => {
-  it('finds both the phase and the slice of an instance', () => {
+  it('finds both the group and the slice of an instance', () => {
     const axis = sliceAxisOf(dynamicDisplaySet(3, 2));
-    expect(positionOf(axis, uid(5))).toEqual({ phaseIndex: 1, sliceNumber: 2 });
-    expect(positionOf(axis, uid(1))).toEqual({ phaseIndex: 0, sliceNumber: 1 });
+    expect(positionOf(axis, uid(5))).toEqual({ groupIndex: 1, sliceNumber: 2 });
+    expect(positionOf(axis, uid(1))).toEqual({ groupIndex: 0, sliceNumber: 1 });
   });
 
   it('is null for an instance that is not on this axis', () => {
@@ -179,13 +179,43 @@ describe('canAddressAxis', () => {
 });
 
 describe('labels', () => {
-  it('names a phase 1-based, as the cine bar does', () => {
-    expect(formatPhase(0, 5)).toBe('phase 1 of 5');
-    expect(formatPhase(4, 5)).toBe('phase 5 of 5');
+  it('names a group 1-based, as the cine bar does, and after its own tag', () => {
+    expect(formatDimensionGroup(0, 5, 'TemporalPositionIdentifier')).toBe(
+      'temporal position 1 of 5'
+    );
+    expect(formatDimensionGroup(4, 5, 'TemporalPositionIdentifier')).toBe(
+      'temporal position 5 of 5'
+    );
+  });
+
+  it('never calls anything a contrast phase', () => {
+    // Cornerstone splits a 4D series on whichever of several tags separates it,
+    // and not one of them asserts contrast: even TemporalPositionIdentifier is
+    // only temporal order. A provenance line that called a b-value, or a
+    // non-contrast dynamic series, a phase would be asserting a clinical fact
+    // about the images that nothing in them supports.
+    expect(formatDimensionGroup(1, 4, 'DiffusionBValue')).toBe('b-value 2 of 4');
+    expect(formatDimensionGroup(1, 4, 'SiemensPrivateBValue')).toBe('b-value 2 of 4');
+    expect(formatDimensionGroup(0, 3, 'EchoTime')).toBe('echo 1 of 3');
+    // "echos" is what a bare +s gives, and it is not a word.
+    expect(
+      formatAxisShape({ sliceCount: 4, dimensionGroups: [[], [], []], splittingTag: 'EchoTime' })
+    ).toBe('4 slices × 3 echoes');
+    expect(formatDimensionGroup(0, 3, 'TriggerTime')).toBe('trigger time 1 of 3');
+    expect(formatDimensionGroup(0, 3, 'PetFrameReferenceTime')).toBe('frame time 1 of 3');
+  });
+
+  it('stays neutral for a tag it does not know', () => {
+    // Borrowing a word from a different acquisition would be worse than a plain
+    // one: "group" claims nothing.
+    expect(formatDimensionGroup(0, 2, 'SomethingNew')).toBe('group 1 of 2');
+    expect(formatDimensionGroup(0, 2, undefined)).toBe('group 1 of 2');
   });
 
   it('describes the shape of the axis', () => {
-    expect(formatAxisShape(sliceAxisOf(dynamicDisplaySet(31, 5)))).toBe('31 slices × 5 phases');
+    expect(formatAxisShape(sliceAxisOf(dynamicDisplaySet(31, 5)))).toBe(
+      '31 slices × 5 temporal positions'
+    );
     expect(formatAxisShape(sliceAxisOf({ images: [{ SOPInstanceUID: 'a' }] }))).toBe('1 slice');
   });
 });

@@ -10,19 +10,19 @@ export interface ViewerSlice {
   displaySetInstanceUID: string | null;
   /**
    * 1-based position on the axis the viewport scrolls. On a 4D series this is the
-   * anatomical slice within the current phase — "16" of the viewer's "16/31" —
+   * anatomical slice within the current dimension group — "16" of the viewer's "16/31" —
    * not an index into the series' instances.
    */
   sliceNumber: number | null;
   /**
-   * 1-based contrast phase on screen, for a 4D series. Null when the viewport is
+   * 1-based dimension group on screen, for a 4D series. Null when the viewport is
    * not showing a dynamic volume, or cornerstone will not say.
    *
    * The slice number alone is ambiguous on a dynamic study: "slice 16" is 16 of
-   * 31 in *some* phase and does not say which, and the same anatomy pre- and
+   * 31 in *some* group and does not say which, and the same anatomy pre- and
    * post-contrast are different findings.
    */
-  phaseNumber: number | null;
+  dimensionGroupNumber: number | null;
   /**
    * The grey-level window the viewport is displaying with, in the volume's own
    * units, or null while the viewport cannot report one.
@@ -37,7 +37,7 @@ export interface ViewerSlice {
 const NO_SLICE: ViewerSlice = {
   displaySetInstanceUID: null,
   sliceNumber: null,
-  phaseNumber: null,
+  dimensionGroupNumber: null,
   voi: null,
 };
 
@@ -99,7 +99,7 @@ export function useViewerSlice({
     const cornerstoneViewportService = servicesManager?.services?.cornerstoneViewportService;
     const viewport = cornerstoneViewportService?.getCornerstoneViewport?.(activeViewportId);
     if (!viewport?.getCurrentImageIdIndex) {
-      return { displaySetInstanceUID, sliceNumber: null, phaseNumber: null, voi: null };
+      return { displaySetInstanceUID, sliceNumber: null, dimensionGroupNumber: null, voi: null };
     }
 
     // The window, as `{lower, upper}` in the volume's units. Verified against the
@@ -120,25 +120,26 @@ export function useViewerSlice({
       voi = null;
     }
 
-    // The phase comes off the volume, not the viewport.
+    // The dimension group comes off the volume, not the viewport.
     //
     // Deliberately NOT `viewport.getCurrentImageId()`, which is the obvious way
     // to name the image on screen and is wrong here: measured against the running
     // viewer on the UKA dynamic series, with the viewport on "I:116 (24/31)" it
     // returned the instance for slice 8. `getCurrentImageIdIndex()` matched the
     // overlay at every position tested, and the dynamic volume tracks its own
-    // phase in `dimensionGroupNumber` (1-based; older cornerstone called this
-    // `timePointIndex`).
-    let phaseNumber: number | null = null;
+    // position on the fourth axis in `dimensionGroupNumber` (1-based; older
+    // cornerstone called this `timePointIndex`).
+    let dimensionGroupNumber: number | null = null;
     try {
       const volumeIds: string[] = viewport.getAllVolumeIds?.() ?? [];
       const volume = volumeIds.length > 0 ? (cache?.getVolume?.(volumeIds[0]) as any) : null;
       const group = volume?.dimensionGroupNumber;
-      phaseNumber = Number.isFinite(group) && group > 0 ? group : null;
+      dimensionGroupNumber = Number.isFinite(group) && group > 0 ? group : null;
     } catch (_) {
-      // Not a volume viewport, or a volume mid-load. A missing phase is reported
-      // as unknown, never guessed as 1.
-      phaseNumber = null;
+      // Not a volume viewport, or a volume mid-load. A missing group is reported
+      // as unknown rather than guessed as 1, so that a caller which has to pick
+      // one is at least picking knowingly, and can say so.
+      dimensionGroupNumber = null;
     }
 
     let index: number;
@@ -146,13 +147,13 @@ export function useViewerSlice({
       index = viewport.getCurrentImageIdIndex();
     } catch (_) {
       // A viewport mid-teardown throws rather than returning a stale index.
-      return { displaySetInstanceUID, sliceNumber: null, phaseNumber, voi };
+      return { displaySetInstanceUID, sliceNumber: null, dimensionGroupNumber, voi };
     }
 
     if (!Number.isFinite(index) || index < 0) {
-      return { displaySetInstanceUID, sliceNumber: null, phaseNumber, voi };
+      return { displaySetInstanceUID, sliceNumber: null, dimensionGroupNumber, voi };
     }
-    return { displaySetInstanceUID, sliceNumber: index + 1, phaseNumber, voi };
+    return { displaySetInstanceUID, sliceNumber: index + 1, dimensionGroupNumber, voi };
   }, [activeViewportId, viewports, servicesManager]);
 
   useEffect(() => {
@@ -163,7 +164,7 @@ export function useViewerSlice({
       setSlice(prev =>
         prev.displaySetInstanceUID === next.displaySetInstanceUID &&
         prev.sliceNumber === next.sliceNumber &&
-        prev.phaseNumber === next.phaseNumber &&
+        prev.dimensionGroupNumber === next.dimensionGroupNumber &&
         prev.voi?.lower === next.voi?.lower &&
         prev.voi?.upper === next.voi?.upper &&
         prev.voi?.invert === next.voi?.invert

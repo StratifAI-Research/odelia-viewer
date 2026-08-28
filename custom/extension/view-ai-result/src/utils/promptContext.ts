@@ -22,6 +22,7 @@
 import { utilities as csUtils } from '@cornerstonejs/core';
 
 import { formatDicomDateTime } from './dicomDateTime';
+import { groupNoun } from './sliceAxis';
 import type { PromptContextSnapshot, SliceRecipe, SnapshotSeries } from '../types/chatTypes';
 
 /** Separator used throughout the panel's compact metadata lines. */
@@ -247,10 +248,22 @@ export function formatSeriesSliceSource(series: SnapshotSeries, recipe: SliceRec
     // before phases existed, where the two were the same thing.
     const total = series.sliceCount ?? series.numFrames;
     const parts = [`${span} of ${total}`, `${series.sentSliceNumbers.length} slice${plural}`];
-    if (series.phaseNumber != null && series.phaseCount != null) {
-      // Never omitted once a series has phases: on a dynamic study the phase is
-      // what makes two identical-looking slices different findings.
-      parts.push(`phase ${series.phaseNumber} of ${series.phaseCount}`);
+    // Never omitted once a series has more than one group: on a dynamic study it
+    // is what makes two identical-looking slices different findings.
+    //
+    // Read under both names. Transcripts persisted before the rename carry
+    // `phaseNumber`/`phaseCount` and no tag, and a message that recorded which
+    // one it sent must not come back saying nothing.
+    //
+    // What compatibility owes them is the ordinal, not the word: the old code
+    // called any 4D split a phase, so an old diffusion snapshot recorded a
+    // b-value under that name. With no tag to check, the neutral "group" is the
+    // most that can truthfully be said about it.
+    const groupNumber = series.dimensionGroupNumber ?? series.phaseNumber;
+    const groupTotal = series.dimensionGroupCount ?? series.phaseCount;
+    if (groupNumber != null && groupTotal != null) {
+      const noun = series.dimensionGroupNumber != null ? groupNoun(series.splittingTag) : 'group';
+      parts.push(`${noun} ${groupNumber} of ${groupTotal}`);
     }
     // Which window the model saw. Stated either way — "auto" is a fact about the
     // images too, and a reader checking an old answer needs to know the window

@@ -126,14 +126,28 @@ export interface SnapshotSeries {
   rangeEnd?: number;
   sentSliceNumbers?: number[];
   /**
-   * Which contrast phase of a 4D series was sent, 1-based, and how many there
-   * were. Absent for an ordinary series.
+   * Which dimension group of a 4D series was sent, 1-based, how many there were,
+   * and the DICOM tag they were split on. Absent for an ordinary series.
    *
-   * Recorded because on a dynamic study the phase decides what the images *mean*:
+   * Recorded because on a dynamic study the group decides what the images *mean*:
    * the same anatomical slice pre- and post-contrast are different findings, and
    * a transcript that records only "slices 7–25" cannot tell them apart.
+   *
+   * The tag is recorded with them because it is what says whether the group is a
+   * temporal position, a b-value or an echo. Without it a footer read back later
+   * could only guess, and guessing is what this snapshot exists to avoid.
+   *
+   * `phaseNumber` / `phaseCount` are the names these carried before, kept for
+   * reading only: transcripts persisted under them are still in browsers now,
+   * and a message that recorded which one it sent must not come back saying
+   * nothing. They carry no tag, so they are read back as the neutral "group".
    */
+  dimensionGroupNumber?: number;
+  dimensionGroupCount?: number;
+  splittingTag?: string;
+  /** @deprecated Read-only compatibility with snapshots taken before the rename. */
   phaseNumber?: number;
+  /** @deprecated Read-only compatibility with snapshots taken before the rename. */
   phaseCount?: number;
   /**
    * The window the images were rendered with, or absent when the middleware
@@ -240,7 +254,7 @@ export interface ChatSeriesInfo {
   SeriesDescription: string;
   SeriesNumber: number;
   Modality: string;
-  /** Every frame the viewer holds for this series: slices × phases. */
+  /** Every frame the viewer holds for this series: slices × dimension groups. */
   numImageFrames: number;
   /**
    * The axis the viewer scrolls this series along, and the SOPInstanceUIDs on it

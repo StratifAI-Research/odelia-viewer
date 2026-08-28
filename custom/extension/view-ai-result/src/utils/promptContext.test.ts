@@ -422,6 +422,49 @@ describe('formatSeriesSliceSource', () => {
     expect(formatSeriesSliceSource(series, recipe)).toBe('18–62 of 103 · 5 slices · auto window');
   });
 
+  it('names the dimension group after the tag it was split on', () => {
+    const series = {
+      displaySetInstanceUID: 'ds',
+      seriesInstanceUID: 'se',
+      description: 'Ax DWI',
+      modality: 'MR',
+      numFrames: 50,
+      sliceCount: 10,
+      rangeStart: 4,
+      rangeEnd: 6,
+      sentSliceNumbers: [4, 5, 6],
+      dimensionGroupNumber: 2,
+      dimensionGroupCount: 4,
+      splittingTag: 'DiffusionBValue',
+    };
+    expect(formatSeriesSliceSource(series, recipe)).toBe(
+      '4–6 of 10 · 3 slices · b-value 2 of 4 · auto window'
+    );
+  });
+
+  it('still reads a snapshot taken before the rename', () => {
+    // Transcripts persisted under `phaseNumber`/`phaseCount` are in browsers now
+    // and carry no tag. A message that recorded which one it sent must not come
+    // back saying nothing — but the old code called any 4D split a phase, so the
+    // ordinal is what compatibility owes it, not the misnomer.
+    const series = {
+      displaySetInstanceUID: 'ds',
+      seriesInstanceUID: 'se',
+      description: 'NCI-dyn',
+      modality: 'MR',
+      numFrames: 155,
+      sliceCount: 31,
+      rangeStart: 15,
+      rangeEnd: 17,
+      sentSliceNumbers: [15, 16, 17],
+      phaseNumber: 3,
+      phaseCount: 5,
+    };
+    expect(formatSeriesSliceSource(series, recipe)).toBe(
+      '15–17 of 31 · 3 slices · group 3 of 5 · auto window'
+    );
+  });
+
   it('names the window the images were rendered with', () => {
     const series = {
       displaySetInstanceUID: 'ds',

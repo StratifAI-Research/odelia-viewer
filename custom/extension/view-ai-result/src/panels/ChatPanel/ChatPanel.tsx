@@ -62,8 +62,9 @@ import {
 import {
   canAddressAxis,
   formatAxisShape,
-  phaseCount,
-  phaseInstances,
+  dimensionGroupCount,
+  groupNoun,
+  dimensionGroupInstances,
   positionOf,
   sliceAxisOf,
 } from '../../utils/sliceAxis';
@@ -249,7 +250,7 @@ const ChatPanel: React.FC = () => {
   // than one global range because attached series differ in depth: "18-62" means
   // nothing shared between a 103-slice and a 24-slice acquisition.
   const [sliceStateByDisplaySet, setSliceStateByDisplaySet] = useState<
-    Record<string, { range: SliceRange; count: number; phaseIndex: number }>
+    Record<string, { range: SliceRange; count: number; groupIndex: number }>
   >({});
   // The chat's own region of interest. One at a time: a second rectangle would
   // raise a question the prompt cannot answer — which region is the question
@@ -1191,11 +1192,11 @@ const ChatPanel: React.FC = () => {
         return true;
       }
       const bounded = clampRange(state.range, series.axis.sliceCount);
-      const boundedPhase = Math.min(state.phaseIndex, phaseCount(series.axis) - 1);
+      const boundedGroup = Math.min(state.groupIndex, dimensionGroupCount(series.axis) - 1);
       return (
         bounded.start !== state.range.start ||
         bounded.end !== state.range.end ||
-        boundedPhase !== state.phaseIndex
+        boundedGroup !== state.groupIndex
       );
     });
     if (stale.length === 0) {
@@ -1205,8 +1206,8 @@ const ChatPanel: React.FC = () => {
       const next = { ...prev };
       stale.forEach(series => {
         // The axis, not the frame count: on a 4D series they differ by the number
-        // of phases, and a range seeded against 155 would select five times the
-        // anatomy the user sees.
+        // of dimension groups, and a range seeded against 155 would select five
+        // times the anatomy the user sees.
         const total = series.axis.sliceCount;
         const existing = prev[series.displaySetInstanceUID];
         // An existing range is clamped, not discarded: the user chose it, and the
@@ -1223,13 +1224,20 @@ const ChatPanel: React.FC = () => {
           : followed
             ? rangeAroundSlice(viewerSlice.sliceNumber as number, total)
             : initialRange(total, sliceStrategy, numSlices, centralPercentage);
-        // A new series opens on whichever phase the viewport is already showing,
-        // so the panel describes the image the reader is looking at.
+        // A new series opens on whichever dimension group the viewport is already
+        // showing, so the panel describes the image the reader is looking at.
+        //
+        // Falling back to the first is defensible here in a way it is not when
+        // following. A series being attached has no selection to preserve and
+        // some group has to be chosen; whatever is chosen is then shown in the
+        // selector beside it, so the reader can see it and change it. Following
+        // makes a promise instead — that the message carries what is on screen —
+        // and a default there would break it silently.
         const seeded =
-          existing?.phaseIndex ??
+          existing?.groupIndex ??
           (viewerSlice.displaySetInstanceUID === series.displaySetInstanceUID &&
-          viewerSlice.phaseNumber
-            ? viewerSlice.phaseNumber - 1
+          viewerSlice.dimensionGroupNumber !== null
+            ? viewerSlice.dimensionGroupNumber - 1
             : 0);
         next[series.displaySetInstanceUID] = {
           range,
@@ -1243,7 +1251,7 @@ const ChatPanel: React.FC = () => {
               MAX_SLICES_PER_SERIES
             )
           ),
-          phaseIndex: Math.min(Math.max(0, seeded), phaseCount(series.axis) - 1),
+          groupIndex: Math.min(Math.max(0, seeded), dimensionGroupCount(series.axis) - 1),
         };
       });
       return next;
@@ -1311,23 +1319,38 @@ const ChatPanel: React.FC = () => {
       return;
     }
     const range = rangeAroundSlice(sliceNumber, series.axis.sliceCount);
-    const phaseIndex = viewerSlice.phaseNumber
-      ? Math.min(viewerSlice.phaseNumber - 1, phaseCount(series.axis) - 1)
-      : 0;
+    const groups = dimensionGroupCount(series.axis);
+    // Which dimension group to follow, or null for "the viewer has not said".
+    //
+    // A one-group series has one answer, and 0 is it. On a series with more, an
+    // unreported group is NOT taken to mean the first: `useViewerSlice` reports
+    // it as unknown precisely so that it is not guessed, and a dynamic series
+    // shown in a stack viewport reports no group at all, permanently. Guessing
+    // there would have the panel claim to be following a reader who is looking
+    // at temporal position 4 while it sends position 1 — the silent disagreement
+    // between what the panel says and what it sends that this whole path exists
+    // to prevent. Unknown keeps whatever group is already selected instead.
+    const followedGroup =
+      viewerSlice.dimensionGroupNumber !== null
+        ? Math.min(viewerSlice.dimensionGroupNumber - 1, groups - 1)
+        : groups === 1
+          ? 0
+          : null;
     setSliceStateByDisplaySet(prev => {
       const current = prev[uid];
+      const groupIndex = followedGroup ?? current?.groupIndex ?? 0;
       // Compared field by field: this runs on every scroll step, and a fresh
       // object each time would re-render the panel once per slice.
       if (
         current &&
         current.range.start === range.start &&
         current.range.end === range.end &&
-        current.phaseIndex === phaseIndex &&
+        current.groupIndex === groupIndex &&
         current.count === rangeSize(range)
       ) {
         return prev;
       }
-      return { ...prev, [uid]: { range, count: rangeSize(range), phaseIndex } };
+      return { ...prev, [uid]: { range, count: rangeSize(range), groupIndex } };
     });
   }, [contextMode, viewerSlice, attachedSeries]);
 
@@ -1352,37 +1375,40 @@ const ChatPanel: React.FC = () => {
           range: null as SliceRange | null,
           count: 0,
           sampled: [] as number[],
-          phaseIndex: 0,
+          groupIndex: 0,
           instances: [] as string[],
         };
       }
       const range = clampRange(state.range, series.axis.sliceCount);
       // Clamped on read as well as on write: a display set can be replaced in
-      // place with one that has fewer phases.
-      const phaseIndex = Math.min(Math.max(0, state.phaseIndex), phaseCount(series.axis) - 1);
+      // place with one that has fewer dimension groups.
+      const groupIndex = Math.min(
+        Math.max(0, state.groupIndex),
+        dimensionGroupCount(series.axis) - 1
+      );
       return {
         addressable,
         range,
         count: state.count,
         sampled: sampleSliceNumbers(range, state.count),
-        phaseIndex,
-        instances: phaseInstances(series.axis, phaseIndex),
+        groupIndex,
+        instances: dimensionGroupInstances(series.axis, groupIndex),
       };
     },
     [sliceStateByDisplaySet]
   );
 
-  /** Choose which contrast phase of a 4D series the message sends. */
-  const setSeriesPhase = useCallback(
-    (series: ChatSeriesInfo, phaseIndex: number) => {
+  /** Choose which dimension group of a 4D series the message sends. */
+  const setSeriesGroup = useCallback(
+    (series: ChatSeriesInfo, groupIndex: number) => {
       pinContext();
       setSliceStateByDisplaySet(prev => {
         const current = prev[series.displaySetInstanceUID];
         if (!current) {
           return prev;
         }
-        const bounded = Math.min(Math.max(0, phaseIndex), phaseCount(series.axis) - 1);
-        return { ...prev, [series.displaySetInstanceUID]: { ...current, phaseIndex: bounded } };
+        const bounded = Math.min(Math.max(0, groupIndex), dimensionGroupCount(series.axis) - 1);
+        return { ...prev, [series.displaySetInstanceUID]: { ...current, groupIndex: bounded } };
       });
     },
     [pinContext]
@@ -1404,12 +1430,12 @@ const ChatPanel: React.FC = () => {
         );
         return {
           ...prev,
-          // The phase is carried through: moving the range says nothing about
-          // which contrast phase the question is about.
+          // The dimension group is carried through: moving the range says nothing about
+          // which dimension group the question is about.
           [series.displaySetInstanceUID]: {
             range: bounded,
             count,
-            phaseIndex: current?.phaseIndex ?? 0,
+            groupIndex: current?.groupIndex ?? 0,
           },
         };
       });
@@ -1487,11 +1513,11 @@ const ChatPanel: React.FC = () => {
    * viewport's own position, which is where the user was drawing.
    *
    * On a 4D series the region is recorded as an *anatomical* slice, not as a
-   * phase-and-slice pair. The phases of one slice are the same anatomy imaged at
+   * group-and-slice pair. The groups of one slice are the same anatomy imaged at
    * different times, on the same pixel grid, so a fractional rectangle drawn on
    * one is valid on all of them — and a region that stopped applying the moment
-   * the reader switched phase would be a worse surprise than one that follows.
-   * Which phase actually got cropped is recorded in the message snapshot.
+   * the reader switched group would be a worse surprise than one that follows.
+   * Which group actually got cropped is recorded in the message snapshot.
    */
   const adoptRoi = useCallback(
     (captured: CapturedRoi) => {
@@ -1746,7 +1772,7 @@ const ChatPanel: React.FC = () => {
       const {
         addressable,
         range,
-        phaseIndex,
+        groupIndex,
         instances,
         sampled: sent,
       } = sliceSelectionFor(series);
@@ -1783,9 +1809,13 @@ const ChatPanel: React.FC = () => {
         entry.rangeEnd = range.end;
         entry.sentSliceNumbers = [...sent];
         entry.sliceCount = series.axis.sliceCount;
-        if (phaseCount(series.axis) > 1) {
-          entry.phaseNumber = phaseIndex + 1;
-          entry.phaseCount = phaseCount(series.axis);
+        if (dimensionGroupCount(series.axis) > 1) {
+          entry.dimensionGroupNumber = groupIndex + 1;
+          entry.dimensionGroupCount = dimensionGroupCount(series.axis);
+          // The tag travels with them: it is what says whether this group is a
+          // temporal position, a b-value or an echo, and a footer read back next
+          // week cannot recover it from anywhere else.
+          entry.splittingTag = series.axis.splittingTag;
         }
         sliceSelections.push({
           series_uid: series.SeriesInstanceUID,
@@ -2245,15 +2275,20 @@ const ChatPanel: React.FC = () => {
               range control that says what it will send. Per series because ranges
               are not comparable across acquisitions of different depth. */}
           {attachedSeries.map(series => {
-            const { addressable, range, count, sampled, phaseIndex } = sliceSelectionFor(series);
+            const { addressable, range, count, sampled, groupIndex } = sliceSelectionFor(series);
             const seriesRoi = roiForSeries(series);
-            const phases = phaseCount(series.axis);
+            const groups = dimensionGroupCount(series.axis);
             const onThisSeries = viewerSlice.displaySetInstanceUID === series.displaySetInstanceUID;
-            // Which phase the viewport is on, when it is on this series at all.
+            // Which dimension group the viewport is on, when it is on this series at all.
             // Only ever an offer — adopting it automatically would let scrolling
             // rewrite the question mid-compose.
-            const viewerPhaseIndex =
-              onThisSeries && viewerSlice.phaseNumber ? viewerSlice.phaseNumber - 1 : null;
+            const viewerGroupIndex =
+              onThisSeries && viewerSlice.dimensionGroupNumber !== null
+                ? viewerSlice.dimensionGroupNumber - 1
+                : null;
+            // What one group of this series is called, from the tag it was split
+            // on rather than from what this deployment usually sees.
+            const noun = groupNoun(series.axis.splittingTag);
             return (
               <div
                 key={series.displaySetInstanceUID}
@@ -2275,43 +2310,59 @@ const ChatPanel: React.FC = () => {
                   </button>
                 </span>
 
-                {/* Which contrast phase the question is about. Only for a series
-                    that has more than one: on a dynamic study the phase decides
-                    what the images mean, and leaving it implicit is how five
-                    slices from five different phases got sent as though they
-                    were one acquisition. */}
-                {addressable && phases > 1 && (
+                {/* Which position on the fourth axis the question is about. Only
+                    for a series that has more than one: on a dynamic study it
+                    decides what the images mean, and leaving it implicit is how
+                    five slices from five different contrast phases got sent as
+                    though they were one acquisition.
+
+                    Named from the tag cornerstone split on, so a diffusion series
+                    reads "b-value 2 of 4" rather than calling a b-value a phase. */}
+                {addressable && groups > 1 && (
                   <div className="text-muted-foreground mt-1 flex items-center gap-1 text-[11px]">
-                    <label htmlFor={`phase-${series.displaySetInstanceUID}`}>
-                      {series.axis.splittingTag === 'TemporalPositionIdentifier'
-                        ? 'Contrast phase'
-                        : 'Phase'}
+                    <label
+                      htmlFor={`dimension-group-${series.displaySetInstanceUID}`}
+                      className="first-letter:uppercase"
+                    >
+                      {noun}
                     </label>
                     <select
-                      id={`phase-${series.displaySetInstanceUID}`}
-                      aria-label={`Contrast phase for ${series.SeriesDescription}`}
+                      id={`dimension-group-${series.displaySetInstanceUID}`}
+                      aria-label={`${noun} for ${series.SeriesDescription}`}
                       className="border-input bg-background text-foreground rounded border px-1 py-0.5"
-                      value={phaseIndex}
-                      onChange={e => setSeriesPhase(series, Number(e.target.value))}
+                      value={groupIndex}
+                      onChange={e => setSeriesGroup(series, Number(e.target.value))}
                     >
-                      {Array.from({ length: phases }, (_, i) => (
+                      {Array.from({ length: groups }, (_, i) => (
                         <option
                           key={i}
                           value={i}
                         >
-                          {i + 1} of {phases}
+                          {i + 1} of {groups}
                         </option>
                       ))}
                     </select>
-                    {viewerPhaseIndex !== null && viewerPhaseIndex !== phaseIndex && (
+                    {viewerGroupIndex !== null && viewerGroupIndex !== groupIndex && (
                       <button
                         type="button"
-                        onClick={() => setSeriesPhase(series, viewerPhaseIndex)}
+                        onClick={() => setSeriesGroup(series, viewerGroupIndex)}
                         className="text-primary underline"
-                        title={`The viewport is showing phase ${viewerPhaseIndex + 1}`}
+                        title={`The viewport is showing ${noun} ${viewerGroupIndex + 1}`}
                       >
-                        use phase {viewerPhaseIndex + 1}
+                        use {noun} {viewerGroupIndex + 1}
                       </button>
+                    )}
+                    {/* Said plainly rather than left to look like the viewer's
+                        choice. A series has to open on some group, and while
+                        following, a reader who is told the prompt tracks the
+                        viewport would otherwise read this one as tracked. A
+                        stack viewport of a dynamic series reports no group at
+                        all, so this is not a flicker during load — it can be the
+                        permanent state. */}
+                    {onThisSeries && viewerGroupIndex === null && (
+                      <span title="The viewport is not reporting which one it is showing">
+                        (not the viewer’s)
+                      </span>
                     )}
                   </div>
                 )}
@@ -2350,7 +2401,7 @@ const ChatPanel: React.FC = () => {
                     // Only when the viewport is showing THIS series: a slice
                     // number from another acquisition would point at a position
                     // that means nothing here. The marker follows the anatomy
-                    // across phases, because anatomy is the axis the slider is.
+                    // across groups, because anatomy is the axis the slider is.
                     viewerSliceNumber={onThisSeries ? viewerSlice.sliceNumber : null}
                     seriesLabel={series.SeriesDescription}
                     onRangeChange={next => setSeriesRange(series, next)}

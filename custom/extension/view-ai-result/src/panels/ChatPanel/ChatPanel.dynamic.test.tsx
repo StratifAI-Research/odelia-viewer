@@ -179,8 +179,8 @@ async function send(text = 'What is this?') {
   return sendMessage.mock.calls[sendMessage.mock.calls.length - 1];
 }
 
-const phaseSelect = () =>
-  screen.getByLabelText('Contrast phase for NCI-dyn DEV') as HTMLSelectElement;
+const groupSelect = () =>
+  screen.getByLabelText('temporal position for NCI-dyn DEV') as HTMLSelectElement;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -202,17 +202,17 @@ describe('ChatPanel — a 4D dynamic series', () => {
   it('counts the axis the viewer scrolls, not the instances', async () => {
     await renderPanel();
     attachSeries();
-    expect(screen.getAllByText(/10 slices × 5 phases/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/10 slices × 5 temporal positions/).length).toBeGreaterThan(0);
     // The range is expressed against 10, matching the "n/10" the viewport shows.
     expect(screen.getAllByText(/of 10/).length).toBeGreaterThan(0);
     expect(screen.queryByText(/of 50/)).toBeNull();
   });
 
-  it('offers a contrast phase, and no such control for an ordinary series', async () => {
+  it('offers a temporal position selector, and none for an ordinary series', async () => {
     await renderPanel();
     attachSeries();
-    expect(phaseSelect()).toBeTruthy();
-    expect(phaseSelect().value).toBe('0');
+    expect(groupSelect()).toBeTruthy();
+    expect(groupSelect().value).toBe('0');
   });
 
   it('sends every slice from one phase', async () => {
@@ -225,15 +225,16 @@ describe('ChatPanel — a 4D dynamic series', () => {
     expect(selection.sop_instance_uids.length).toBeGreaterThan(1);
     selection.sop_instance_uids.forEach((uid: string) => expect(uid).toMatch(/^uid-p0-/));
     expect(selection.total_slices).toBe(10);
-    expect(snapshot.series[0].phaseNumber).toBe(1);
-    expect(snapshot.series[0].phaseCount).toBe(5);
+    expect(snapshot.series[0].dimensionGroupNumber).toBe(1);
+    expect(snapshot.series[0].dimensionGroupCount).toBe(5);
+    expect(snapshot.series[0].splittingTag).toBe('TemporalPositionIdentifier');
     expect(snapshot.series[0].sliceCount).toBe(10);
   });
 
   it('sends the phase the user picked', async () => {
     await renderPanel();
     attachSeries();
-    fireEvent.change(phaseSelect(), { target: { value: '3' } });
+    fireEvent.change(groupSelect(), { target: { value: '3' } });
     await send();
     const selection = sendMessage.mock.calls[0][4][0];
     selection.sop_instance_uids.forEach((uid: string) => expect(uid).toMatch(/^uid-p3-/));
@@ -246,7 +247,7 @@ describe('ChatPanel — a 4D dynamic series', () => {
     attachSeries();
     await send();
     const first = sendMessage.mock.calls[0][4][0];
-    fireEvent.change(phaseSelect(), { target: { value: '2' } });
+    fireEvent.change(groupSelect(), { target: { value: '2' } });
     await send('again');
     const second = sendMessage.mock.calls[1][4][0];
     expect(second.range_start).toBe(first.range_start);
@@ -261,7 +262,7 @@ describe('ChatPanel — a 4D dynamic series', () => {
     syncVolume();
     await renderPanel();
     attachSeries();
-    expect(phaseSelect().value).toBe('2');
+    expect(groupSelect().value).toBe('2');
   });
 
   it('marks the viewer position on the anatomical axis', async () => {
@@ -293,14 +294,44 @@ describe('ChatPanel — a 4D dynamic series', () => {
   it('adopts the phase the viewport moves to while following', async () => {
     await renderPanel();
     attachSeries();
-    expect(phaseSelect().value).toBe('0');
+    expect(groupSelect().value).toBe('0');
 
     viewerAt = { phase: 3, slice: 1 };
     syncVolume();
     await act(async () => {
       dispatchOnViewport('VOLUME_NEW_IMAGE');
     });
-    expect(phaseSelect().value).toBe('3');
+    expect(groupSelect().value).toBe('3');
+  });
+
+  it('holds the phase when the viewport stops reporting one', async () => {
+    // `useViewerSlice` reports an unknown dimension group as null precisely so it
+    // is not guessed, and a dynamic series shown in a stack viewport reports none
+    // at all, permanently. Following used to read that null as group 1, so the
+    // panel claimed to follow a reader on phase 4 while sending phase 1.
+    await renderPanel();
+    attachSeries();
+
+    // Following, the viewport moves to phase 4 and the panel adopts it.
+    viewerAt = { phase: 3, slice: 1 };
+    syncVolume();
+    await act(async () => {
+      dispatchOnViewport('VOLUME_NEW_IMAGE');
+    });
+    expect(groupSelect().value).toBe('3');
+
+    // Now the volume stops reporting a group, while the viewport goes on
+    // reporting a slice.
+    __setVolume(VOLUME_ID, {});
+    viewerAt = { phase: 3, slice: 5 };
+    await act(async () => {
+      dispatchOnViewport('VOLUME_NEW_IMAGE');
+    });
+
+    // The slice still follows; the phase holds rather than silently becoming the
+    // first, which the panel would then have described as following the viewer.
+    expect(screen.getByTitle('Viewer is on slice 6')).toBeTruthy();
+    expect(groupSelect().value).toBe('3');
   });
 
   it('offers the viewport’s phase rather than taking it, once pinned', async () => {
@@ -308,7 +339,7 @@ describe('ChatPanel — a 4D dynamic series', () => {
     // it. The offer is how they take the change if they want it.
     await renderPanel();
     attachSeries();
-    fireEvent.change(phaseSelect(), { target: { value: '0' } });
+    fireEvent.change(groupSelect(), { target: { value: '0' } });
     expect(screen.getByText('Pinned')).toBeTruthy();
 
     viewerAt = { phase: 3, slice: 1 };
@@ -316,15 +347,77 @@ describe('ChatPanel — a 4D dynamic series', () => {
     await act(async () => {
       dispatchOnViewport('VOLUME_NEW_IMAGE');
     });
-    expect(phaseSelect().value).toBe('0');
-    fireEvent.click(screen.getByText('use phase 4'));
-    expect(phaseSelect().value).toBe('3');
+    expect(groupSelect().value).toBe('0');
+    fireEvent.click(screen.getByText('use temporal position 4'));
+    expect(groupSelect().value).toBe('3');
+  });
+
+  it('says when the selected position is not the viewer’s', async () => {
+    // A series has to open on some position, and the panel says it follows the
+    // viewer. If the viewport cannot report which one it is showing, a reader
+    // would otherwise read the selector as tracked when it is a default. A stack
+    // viewport of a dynamic series reports none at all, permanently, so this is
+    // not a flicker during load.
+    __setVolume(VOLUME_ID, {});
+    await renderPanel();
+    attachSeries();
+
+    expect(screen.getByText('(not the viewer’s)')).toBeTruthy();
+
+    // Once the viewport can say, the note goes and the value is the viewer's.
+    viewerAt = { phase: 2, slice: 1 };
+    syncVolume();
+    await act(async () => {
+      dispatchOnViewport('VOLUME_NEW_IMAGE');
+    });
+    expect(screen.queryByText('(not the viewer’s)')).toBeNull();
+    expect(groupSelect().value).toBe('2');
+  });
+
+  it('never calls a b-value a phase', async () => {
+    // Cornerstone splits a 4D series on the first of TemporalPositionIdentifier,
+    // a b-value, an echo or a trigger time that separates it. None of them says
+    // anything about contrast, and a panel that called a diffusion b-value a
+    // phase would be asserting a clinical fact about the images that nothing in
+    // them supports.
+    const diffusion = dynamicDisplaySet();
+    diffusion.dynamicVolumeInfo.splittingTag = 'DiffusionBValue';
+    withSystem(
+      makeServicesManager({
+        services: {
+          displaySetService: makeDisplaySetService([diffusion]),
+          ...viewportServices(),
+        },
+      })
+    );
+    syncVolume();
+    await act(async () => {
+      render(<ChatPanel />);
+    });
+    attachSeries();
+
+    expect(screen.getByLabelText('b-value for NCI-dyn DEV')).toBeTruthy();
+    expect(screen.queryByLabelText('temporal position for NCI-dyn DEV')).toBeNull();
+    expect(screen.getAllByText(/10 slices × 5 b-values/).length).toBeGreaterThan(0);
+
+    const [, , , snapshot] = (await send()) as any[];
+    expect(snapshot.series[0].splittingTag).toBe('DiffusionBValue');
+    mockHookState.messages = [
+      { id: 'm1', role: 'user', content: 'q', timestamp: new Date(), promptContext: snapshot },
+    ];
+    await act(async () => {
+      render(<ChatPanel />);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getAllByTitle('What this message was sent with')[0]);
+    });
+    expect(screen.getAllByText(/b-value 1 of 5/).length).toBeGreaterThan(0);
   });
 
   it('records the phase in the message footer', async () => {
     await renderPanel();
     attachSeries();
-    fireEvent.change(phaseSelect(), { target: { value: '1' } });
+    fireEvent.change(groupSelect(), { target: { value: '1' } });
     const [, , , snapshot] = (await send()) as any[];
     mockHookState.messages = [
       {
@@ -341,6 +434,6 @@ describe('ChatPanel — a 4D dynamic series', () => {
     await act(async () => {
       fireEvent.click(screen.getAllByTitle('What this message was sent with')[0]);
     });
-    expect(screen.getAllByText(/phase 2 of 5/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/temporal position 2 of 5/).length).toBeGreaterThan(0);
   });
 });

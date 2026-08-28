@@ -7,6 +7,17 @@
  * anatomical slices × 5 contrast phases**: the viewport counts "16/31" and the
  * cine bar steps through TemporalPositionIdentifier 1–5.
  *
+ * The fourth dimension is called a **dimension group** here, which is
+ * cornerstone's own name for it, and deliberately not "phase". Cornerstone
+ * splits a 4D series on the first of `TemporalPositionIdentifier`,
+ * `DiffusionBValue`, `TriggerTime`, `EchoTime`, `EchoNumber`, a vendor-private
+ * b-value or `PetFrameReferenceTime` that separates it. None of those is a
+ * contrast phase: even `TemporalPositionIdentifier` only asserts temporal order.
+ * Calling a b-value or an echo time "phase 3 of 5" in a provenance line would be
+ * this panel asserting a clinical fact about the images that nothing in them
+ * supports. `groupNoun` derives the word from the tag instead, and the tag
+ * travels with the axis so a snapshot can be read back the same way.
+ *
  * Reading the 155 instances as 155 slices — which the panel used to do — is wrong
  * in three separate ways, and only one of them is visible:
  *
@@ -20,7 +31,7 @@
  *   - That list is also ordered opposite to the volume: `images[0]` is
  *     InstanceNumber 151, while volume slice 1 is InstanceNumber 1.
  *
- * `dynamicVolumeInfo.timePoints` is OHIF's own per-phase split, and each entry is
+ * `dynamicVolumeInfo.timePoints` is OHIF's own per-group split, and each entry is
  * in volume order. Verified against the running viewer: with the viewport on
  * "I:106 (22/31)", `timePoints[0][21]` resolves to InstanceNumber 106.
  *
@@ -34,16 +45,20 @@ export interface SliceAxis {
   /** Positions on the axis, matching the number the viewer counts against. */
   sliceCount: number;
   /**
-   * SOPInstanceUIDs in viewer slice order, one list per phase. Always at least
-   * one list; empty overall when the series cannot be addressed instance by
-   * instance.
+   * SOPInstanceUIDs in viewer slice order, one list per dimension group. Always
+   * at least one list; empty overall when the series cannot be addressed
+   * instance by instance.
    */
-  phases: string[][];
-  /** The DICOM tag the phases were split on. Undefined when there is one phase. */
+  dimensionGroups: string[][];
+  /**
+   * The DICOM tag cornerstone split the groups on, which is what says whether
+   * they are temporal positions, b-values, echoes or something else. Undefined when
+   * there is one group, and on a series that was never dynamic.
+   */
   splittingTag?: string;
 }
 
-const EMPTY: SliceAxis = { sliceCount: 0, phases: [[]] };
+const EMPTY: SliceAxis = { sliceCount: 0, dimensionGroups: [[]] };
 
 /** SOPInstanceUID for a cornerstone imageId, or null if it cannot be resolved. */
 function sopInstanceUIDOf(imageId: string): string | null {
@@ -58,17 +73,17 @@ function sopInstanceUIDOf(imageId: string): string | null {
 }
 
 /**
- * Every phase must be complete and the same length, or the whole axis is
+ * Every group must be complete and the same length, or the whole axis is
  * refused.
  *
  * All-or-nothing for the same reason `canAddressSlices` is: a partial mapping
  * would shift every slice number after the gap, and the panel would keep
  * reporting slice numbers that no longer mean what they say.
  */
-function isUsable(phases: string[][]): boolean {
-  const length = phases[0]?.length ?? 0;
+function isUsable(groups: string[][]): boolean {
+  const length = groups[0]?.length ?? 0;
   return (
-    length > 0 && phases.every(phase => phase.length === length && phase.every(uid => Boolean(uid)))
+    length > 0 && groups.every(group => group.length === length && group.every(uid => Boolean(uid)))
   );
 }
 
@@ -83,21 +98,21 @@ export function sliceAxisOf(displaySet: any): SliceAxis {
   const timePoints = info?.timePoints;
 
   if (info?.isDynamicVolume && Array.isArray(timePoints) && timePoints.length > 0) {
-    const phases = timePoints.map((imageIds: unknown) =>
+    const dimensionGroups = timePoints.map((imageIds: unknown) =>
       Array.isArray(imageIds)
         ? imageIds.map(id => sopInstanceUIDOf(String(id))).filter((uid): uid is string => !!uid)
         : []
     );
-    // A phase that lost an instance to a metadata miss is not silently shortened:
+    // A group that lost an instance to a metadata miss is not silently shortened:
     // isUsable rejects the whole axis, and the panel falls back to the
     // middleware's own recipe rather than naming slices it cannot stand behind.
     const complete = timePoints.every(
-      (ids: unknown, i: number) => Array.isArray(ids) && phases[i].length === ids.length
+      (ids: unknown, i: number) => Array.isArray(ids) && dimensionGroups[i].length === ids.length
     );
-    if (complete && isUsable(phases)) {
+    if (complete && isUsable(dimensionGroups)) {
       return {
-        sliceCount: phases[0].length,
-        phases,
+        sliceCount: dimensionGroups[0].length,
+        dimensionGroups,
         splittingTag: info.splittingTag,
       };
     }
@@ -109,41 +124,89 @@ export function sliceAxisOf(displaySet: any): SliceAxis {
   if (uids.length === 0 || uids.length !== instances.length) {
     return EMPTY;
   }
-  return { sliceCount: uids.length, phases: [uids] };
+  return { sliceCount: uids.length, dimensionGroups: [uids] };
 }
 
-/** How many phases the axis has. One for an ordinary series. */
-export function phaseCount(axis: SliceAxis): number {
-  return axis.phases.length;
-}
-
-/** The instances of one phase, in viewer slice order. Clamped to a real phase. */
-export function phaseInstances(axis: SliceAxis, phaseIndex: number): string[] {
-  if (axis.phases.length === 0) {
-    return [];
-  }
-  const index = Math.min(Math.max(0, Math.floor(phaseIndex)), axis.phases.length - 1);
-  return axis.phases[index] ?? [];
+/** How many dimension groups the axis has. One for an ordinary series. */
+export function dimensionGroupCount(axis: SliceAxis): number {
+  return axis.dimensionGroups.length;
 }
 
 /**
- * Where an instance sits on the axis: which phase, and which slice of it.
+ * What one group of this axis should be called, from the tag it was split on.
  *
- * Used to place the "you are here" marker and to seed the phase selector from
+ * The word is a claim about the images, so it comes from the data and not from
+ * what this deployment usually sees: `phase 3 of 5` over a diffusion series would
+ * be describing a b-value as a contrast phase.
+ *
+ * Deliberately "temporal position" and not "contrast phase" for
+ * `TemporalPositionIdentifier` -- DICOM's own words for that tag, and DICOM
+ * defines it as the temporal order of a dynamic or functional set. It says
+ * nothing about contrast, and a non-contrast dynamic series would be mislabelled
+ * by exactly the reasoning this function exists to remove. On the UKA breast MRI
+ * the temporal positions *are* the contrast phases -- that is a fact about that
+ * acquisition, not about the tag, and it is not this formatter's to assert.
+ *
+ * An unrecognised or absent tag stays the neutral "group" rather than borrowing a
+ * word from a different acquisition.
+ */
+export function groupNoun(splittingTag?: string): string {
+  switch (splittingTag) {
+    case 'TemporalPositionIdentifier':
+      return 'temporal position';
+    case 'DiffusionBValue':
+    case 'PhilipsPrivateBValue':
+    case 'SiemensPrivateBValue':
+    case 'GEPrivateBValue':
+      return 'b-value';
+    case 'EchoTime':
+    case 'EchoNumber':
+      return 'echo';
+    case 'TriggerTime':
+    case 'CardiacTriggerTime':
+      return 'trigger time';
+    case 'PetFrameReferenceTime':
+      return 'frame time';
+    case 'TimeSlotVector':
+      return 'time slot';
+    default:
+      return 'group';
+  }
+}
+
+/** The plural of `groupNoun`, since not every one of them takes a bare "s". */
+export function groupNounPlural(splittingTag?: string): string {
+  const noun = groupNoun(splittingTag);
+  return noun === 'echo' ? 'echoes' : `${noun}s`;
+}
+
+/** The instances of one dimension group, in viewer slice order. Clamped to a real group. */
+export function dimensionGroupInstances(axis: SliceAxis, groupIndex: number): string[] {
+  if (axis.dimensionGroups.length === 0) {
+    return [];
+  }
+  const index = Math.min(Math.max(0, Math.floor(groupIndex)), axis.dimensionGroups.length - 1);
+  return axis.dimensionGroups[index] ?? [];
+}
+
+/**
+ * Where an instance sits on the axis: which dimension group, and which slice of it.
+ *
+ * Used to place the "you are here" marker and to seed the group selector from
  * whatever the viewport is already showing, so the panel opens describing the
- * image the reader is looking at rather than an arbitrary phase.
+ * image the reader is looking at rather than an arbitrary group.
  */
 export function positionOf(
   axis: SliceAxis,
   sopInstanceUID: string | null | undefined
-): { phaseIndex: number; sliceNumber: number } | null {
+): { groupIndex: number; sliceNumber: number } | null {
   if (!sopInstanceUID) {
     return null;
   }
-  for (let phaseIndex = 0; phaseIndex < axis.phases.length; phaseIndex++) {
-    const index = axis.phases[phaseIndex].indexOf(sopInstanceUID);
+  for (let groupIndex = 0; groupIndex < axis.dimensionGroups.length; groupIndex++) {
+    const index = axis.dimensionGroups[groupIndex].indexOf(sopInstanceUID);
     if (index >= 0) {
-      return { phaseIndex, sliceNumber: index + 1 };
+      return { groupIndex, sliceNumber: index + 1 };
     }
   }
   return null;
@@ -153,21 +216,26 @@ export function positionOf(
  * Whether a series can be addressed slice by slice.
  *
  * Every frame the viewer holds has to be accounted for by the axis: slices ×
- * phases. A multi-frame instance is one SOPInstanceUID covering many slices, so
+ * groups. A multi-frame instance is one SOPInstanceUID covering many slices, so
  * naming it cannot express "slices 18–62" — and guessing would send different
  * pixels than the panel claims.
  */
 export function canAddressAxis(axis: SliceAxis, numFrames: number): boolean {
-  return axis.sliceCount > 0 && axis.sliceCount * axis.phases.length === numFrames;
+  return axis.sliceCount > 0 && axis.sliceCount * axis.dimensionGroups.length === numFrames;
 }
 
-/** `phase 3 of 5`. */
-export function formatPhase(phaseIndex: number, count: number): string {
-  return `phase ${phaseIndex + 1} of ${count}`;
+/** `temporal position 3 of 5` / `b-value 2 of 4`. */
+export function formatDimensionGroup(
+  groupIndex: number,
+  count: number,
+  splittingTag?: string
+): string {
+  return `${groupNoun(splittingTag)} ${groupIndex + 1} of ${count}`;
 }
 
-/** `31 slices × 5 phases` / `103 slices`. */
+/** `31 slices × 5 temporal positions` / `103 slices`. */
 export function formatAxisShape(axis: SliceAxis): string {
   const slices = `${axis.sliceCount} slice${axis.sliceCount === 1 ? '' : 's'}`;
-  return axis.phases.length > 1 ? `${slices} × ${axis.phases.length} phases` : slices;
+  const groups = axis.dimensionGroups.length;
+  return groups > 1 ? `${slices} × ${groups} ${groupNounPlural(axis.splittingTag)}` : slices;
 }
