@@ -14,13 +14,8 @@ interface StudyChangeDetectorConfig {
  * Publishes STUDY_CHANGED event via AIResultsService
  */
 export const useStudyChangeDetector = (config: StudyChangeDetectorConfig): void => {
-  const {
-    servicesManager,
-    displaySetService,
-    activeViewportId,
-    viewports,
-    StudyInstanceUIDs,
-  } = config;
+  const { servicesManager, displaySetService, activeViewportId, viewports, StudyInstanceUIDs } =
+    config;
 
   const { aiResultsService } = servicesManager.services || {};
   const activeStudyUIDRef = useRef<string | null>(null);

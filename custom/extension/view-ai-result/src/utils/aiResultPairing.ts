@@ -190,8 +190,7 @@ export function findMatch(source: any, candidates: any[], opts: FindMatchOptions
   // sort is stable, so equal candidates keep their input order (deterministic).
   const scored = pool.map(candidate => {
     const candMs = creationEpochMs(candidate);
-    const diff =
-      srcMs !== undefined && candMs !== undefined ? Math.abs(candMs - srcMs) : Infinity;
+    const diff = srcMs !== undefined && candMs !== undefined ? Math.abs(candMs - srcMs) : Infinity;
     return { candidate, diff, modelMatch: matchesModelName(candidate, opts.modelName) };
   });
   scored.sort((a, b) => a.diff - b.diff || Number(b.modelMatch) - Number(a.modelMatch));
@@ -199,8 +198,7 @@ export function findMatch(source: any, candidates: any[], opts: FindMatchOptions
   const best = scored[0];
   const runnerUp = scored[1];
   // Ambiguous only when the runner-up is just as good on BOTH keys.
-  const tie =
-    !!runnerUp && runnerUp.diff === best.diff && runnerUp.modelMatch === best.modelMatch;
+  const tie = !!runnerUp && runnerUp.diff === best.diff && runnerUp.modelMatch === best.modelMatch;
 
   if (linked.length > 0) {
     // Referenced-UID identity is authoritative; use the closest linked candidate

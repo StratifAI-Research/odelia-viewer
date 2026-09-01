@@ -344,7 +344,9 @@ describe('completeness', () => {
 
   it('is true only when the resolved pair is in the group', () => {
     expect(
-      isHeatmapSyncComplete({ servicesManager: makeServices({ syncedIds: ['v1', 'v2'] }).servicesManager })
+      isHeatmapSyncComplete({
+        servicesManager: makeServices({ syncedIds: ['v1', 'v2'] }).servicesManager,
+      })
     ).toBe(true);
   });
 

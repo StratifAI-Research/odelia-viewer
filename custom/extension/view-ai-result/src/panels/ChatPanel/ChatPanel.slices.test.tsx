@@ -1,0 +1,884 @@
+import React from 'react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import { eventTarget } from '@cornerstonejs/core';
+// Jest-only mock helper: cornerstone fires slice-change events on the viewport
+// element, so tests must too. The alias is invisible to tsc, hence the path.
+import {
+  __resetMetaData,
+  __setMetaData,
+  dispatchOnViewport,
+} from '../../test-utils/__mocks__/cornerstone-core';
+// Imported by path, not through '@ohif/ui-next': the alias exists only in the
+// jest moduleNameMapper, so tsc would resolve the real package and reject these
+// test-only helpers. Same resolved file either way, so it is the same module.
+import {
+  resetMockViewportGrid,
+  setMockViewportGrid,
+} from '../../test-utils/__mocks__/ohif-ui-next';
+import {
+  installConsoleErrorFilter,
+  makeServicesManager,
+  withSystem,
+} from '../../test-utils/harness';
+
+import ChatPanel from './ChatPanel';
+
+// ChatPanel harness for the slice-range control. The display sets carry a real
+// instance list, which is what makes a range expressible at all — the sibling
+// context suite covers the opposite case, where it is not.
+const sendMessage = jest.fn();
+const mockHookState: any = {
+  messages: [],
+  isConnected: true,
+  isStreaming: false,
+  error: null,
+  sessionId: 'session-abcdef01',
+  preprocessingStatus: null,
+  preprocessingProgress: null,
+  connect: jest.fn(),
+  sendMessage,
+  cancelGeneration: jest.fn(),
+  clearHistory: jest.fn(),
+  appendEvent: jest.fn(),
+  switchSession: jest.fn().mockResolvedValue('session-abcdef01'),
+  hydrateMessages: jest.fn(),
+  disconnect: jest.fn(),
+};
+jest.mock('../../hooks/useChatService', () => ({ useChatService: () => mockHookState }));
+jest.mock('../../hooks/useActiveStudyUID', () => ({
+  useActiveStudyUID: () => () => 'study-1',
+}));
+
+installConsoleErrorFilter();
+beforeAll(() => {
+  (Element.prototype as any).scrollIntoView = jest.fn();
+  (HTMLElement.prototype as any).focus = jest.fn();
+});
+beforeEach(() => {
+  jest.clearAllMocks();
+  window.sessionStorage.clear();
+  (eventTarget as any).reset();
+  resetMockViewportGrid();
+  (global as any).__gridAimed = false;
+  (global as any).fetch = jest.fn().mockResolvedValue({ ok: true, json: async () => ({}) });
+  mockHookState.messages = [];
+});
+
+/** `count` instances whose UIDs encode their position, so order is checkable. */
+const instances = (count: number, prefix = '1.2.840.SE1') =>
+  Array.from({ length: count }, (_, i) => ({ SOPInstanceUID: `${prefix}.${i + 1}` }));
+
+/** A 20-slice series: small enough that the arithmetic stays readable in tests. */
+const ADDRESSABLE = [
+  {
+    // The panel keys its per-series state on this and attaches by it, so the
+    // fixture needs one the mock viewport can point at.
+    displaySetInstanceUID: 'ds-1',
+    StudyInstanceUID: 'study-1',
+    StudyDate: '20260812',
+    StudyDescription: 'Breast MRI',
+    SeriesInstanceUID: 'se-1',
+    SeriesDescription: 'Ax T1 post',
+    SeriesNumber: 1,
+    Modality: 'MR',
+    numImageFrames: 20,
+    images: instances(20),
+  },
+];
+
+function makeDisplaySetService(displaySets: any[]) {
+  const handlers: Record<string, Array<() => void>> = {};
+  return {
+    EVENTS: { DISPLAY_SETS_ADDED: 'added', DISPLAY_SETS_CHANGED: 'changed' },
+    getActiveDisplaySets: jest.fn(() => displaySets),
+    getDisplaySetByUID: jest.fn((uid: string) =>
+      displaySets.find(ds => ds.displaySetInstanceUID === uid)
+    ),
+    subscribe: jest.fn((evt: string, cb: () => void) => {
+      (handlers[evt] ||= []).push(cb);
+      return { unsubscribe: jest.fn() };
+    }),
+    emit: (evt: string) => (handlers[evt] || []).forEach(cb => cb()),
+  };
+}
+
+async function renderPanel(displaySets: any[] = ADDRESSABLE, extraServices: any = {}) {
+  // The viewport shows the first display set unless a test has already aimed it
+  // somewhere else, which is what makes the panel attach it.
+  if (!(global as any).__gridAimed) {
+    setMockViewportGrid({
+      activeViewportId: 'v1',
+      viewports: new Map([
+        ['v1', { displaySetInstanceUIDs: [displaySets[0]?.displaySetInstanceUID ?? 'ds-1'] }],
+      ]),
+    });
+  }
+  withSystem(
+    makeServicesManager({
+      services: { displaySetService: makeDisplaySetService(displaySets), ...extraServices },
+    })
+  );
+  let utils: any;
+  await act(async () => {
+    utils = render(<ChatPanel />);
+  });
+  return utils;
+}
+
+/** Attach the first series, as a user would. */
+/**
+ * Ensure a series is attached.
+ *
+ * The panel attaches whatever the viewport shows while it is following, and the
+ * series picker is gone, so this asserts the state rather than producing it —
+ * a test whose series never arrived should fail here, at the setup, and not
+ * three assertions later.
+ */
+function attachSeries(description = 'Ax T1 post') {
+  expect(screen.getByLabelText(`Remove ${description}`)).toBeTruthy();
+}
+
+const firstHandle = () => screen.getByLabelText('First slice of Ax T1 post') as HTMLInputElement;
+const lastHandle = () => screen.getByLabelText('Last slice of Ax T1 post') as HTMLInputElement;
+
+describe('ChatPanel — slice range', () => {
+  it('offers a range control once an addressable series is attached', async () => {
+    await renderPanel();
+    attachSeries();
+    expect(firstHandle()).toBeTruthy();
+    expect(lastHandle()).toBeTruthy();
+  });
+
+  it('seeds the range from the configured central band', async () => {
+    // Default recipe is central 60% — the band extract_slices already used. A
+    // 20-slice series drops 20% from each end, leaving slices 5..16.
+    await renderPanel();
+    attachSeries();
+    expect(firstHandle().value).toBe('5');
+    expect(lastHandle().value).toBe('16');
+    expect(screen.getByText('Range 5–16 of 20')).toBeTruthy();
+  });
+
+  it('separates the selected range from the number of slices sent', async () => {
+    // The headline distinction: 12 slices selected, 5 of them sent.
+    await renderPanel();
+    attachSeries();
+    expect(screen.getByText('Range 5–16 of 20')).toBeTruthy();
+    expect(screen.getByText('5 slices sent')).toBeTruthy();
+  });
+
+  it('reports the total images the message will carry', async () => {
+    await renderPanel();
+    attachSeries();
+    expect(screen.getByText(/Sends 5 images in total/)).toBeTruthy();
+  });
+
+  it('moves the range when a handle is dragged', async () => {
+    await renderPanel();
+    attachSeries();
+    fireEvent.change(firstHandle(), { target: { value: '9' } });
+    expect(screen.getByText('Range 9–16 of 20')).toBeTruthy();
+  });
+
+  it('does not let the handles cross', async () => {
+    // A crossed range would make the sampled set empty with nothing said about it.
+    await renderPanel();
+    attachSeries();
+    fireEvent.change(firstHandle(), { target: { value: '18' } });
+    expect(screen.getByText('Range 18 of 20')).toBeTruthy();
+    expect(lastHandle().value).toBe('18');
+  });
+
+  it('narrows the sent count when the range gets smaller than it', async () => {
+    // 5 slices cannot come out of a 3-slice range, and the panel must not claim so.
+    await renderPanel();
+    attachSeries();
+    fireEvent.change(firstHandle(), { target: { value: '14' } });
+    expect(screen.getByText('Range 14–16 of 20')).toBeTruthy();
+    expect(screen.getByText('3 slices sent')).toBeTruthy();
+  });
+
+  it('raises and lowers the sent count', async () => {
+    await renderPanel();
+    attachSeries();
+    fireEvent.click(screen.getByLabelText('Send more slices from Ax T1 post'));
+    expect(screen.getByText('6 slices sent')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Send fewer slices from Ax T1 post'));
+    expect(screen.getByText('5 slices sent')).toBeTruthy();
+  });
+
+  it('will not offer to send more slices than the range holds', async () => {
+    await renderPanel();
+    attachSeries();
+    fireEvent.change(firstHandle(), { target: { value: '15' } });
+    fireEvent.change(lastHandle(), { target: { value: '16' } });
+    expect(screen.getByText('2 slices sent')).toBeTruthy();
+    expect(
+      (screen.getByLabelText('Send more slices from Ax T1 post') as HTMLButtonElement).disabled
+    ).toBe(true);
+  });
+
+  it('will not offer to send fewer than one slice', async () => {
+    await renderPanel();
+    attachSeries();
+    const fewer = screen.getByLabelText('Send fewer slices from Ax T1 post');
+    for (let i = 0; i < 6; i++) {
+      fireEvent.click(fewer);
+    }
+    expect(screen.getByText('1 slice sent')).toBeTruthy();
+    expect((fewer as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('pins the context when the range is adjusted', async () => {
+    // Adjusting the range is an investment in the prompt: a viewport change must
+    // not then retarget it.
+    await renderPanel();
+    attachSeries();
+    fireEvent.change(firstHandle(), { target: { value: '3' } });
+    expect(screen.getByText('Pinned')).toBeTruthy();
+  });
+
+  it('pins the context when the sent count is adjusted', async () => {
+    await renderPanel();
+    attachSeries();
+    fireEvent.click(screen.getByLabelText('Send more slices from Ax T1 post'));
+    expect(screen.getByText('Pinned')).toBeTruthy();
+  });
+
+  describe('what is sent', () => {
+    it('names the sampled instances, in order', async () => {
+      await renderPanel();
+      attachSeries();
+      fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+        target: { value: 'q' },
+      });
+      fireEvent.click(screen.getByTitle('Send'));
+
+      const selections = sendMessage.mock.calls[0][4];
+      expect(selections).toHaveLength(1);
+      expect(selections[0].series_uid).toBe('se-1');
+      // Range 5..16, 5 slices: span 12, step 2.75 -> slices 5, 8, 11, 13, 16.
+      expect(selections[0].sop_instance_uids).toEqual([
+        '1.2.840.SE1.5',
+        '1.2.840.SE1.8',
+        '1.2.840.SE1.11',
+        '1.2.840.SE1.13',
+        '1.2.840.SE1.16',
+      ]);
+    });
+
+    it('sends the range as audit metadata alongside the instances', async () => {
+      await renderPanel();
+      attachSeries();
+      fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+        target: { value: 'q' },
+      });
+      fireEvent.click(screen.getByTitle('Send'));
+
+      const selection = sendMessage.mock.calls[0][4][0];
+      expect(selection.range_start).toBe(5);
+      expect(selection.range_end).toBe(16);
+      expect(selection.total_slices).toBe(20);
+    });
+
+    it('sends the range the user set, not the one it started with', async () => {
+      await renderPanel();
+      attachSeries();
+      fireEvent.change(firstHandle(), { target: { value: '2' } });
+      fireEvent.change(lastHandle(), { target: { value: '4' } });
+      fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+        target: { value: 'q' },
+      });
+      fireEvent.click(screen.getByTitle('Send'));
+
+      const selection = sendMessage.mock.calls[0][4][0];
+      expect(selection.sop_instance_uids).toEqual([
+        '1.2.840.SE1.2',
+        '1.2.840.SE1.3',
+        '1.2.840.SE1.4',
+      ]);
+    });
+
+    it('records the same slices in the message snapshot', async () => {
+      // The wire payload and the snapshot are built from one state read; if they
+      // could drift, the provenance footer would be a false claim.
+      await renderPanel();
+      attachSeries();
+      fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+        target: { value: 'q' },
+      });
+      fireEvent.click(screen.getByTitle('Send'));
+
+      const snapshot = sendMessage.mock.calls[0][3];
+      const selection = sendMessage.mock.calls[0][4][0];
+      expect(snapshot.series[0].sentSliceNumbers).toEqual([5, 8, 11, 13, 16]);
+      expect(snapshot.series[0].rangeStart).toBe(5);
+      expect(snapshot.series[0].rangeEnd).toBe(16);
+      expect(snapshot.requestedImageCount).toBe(selection.sop_instance_uids.length);
+    });
+  });
+
+  describe('series that cannot be addressed slice by slice', () => {
+    const MULTIFRAME = [
+      {
+        ...ADDRESSABLE[0],
+        // One enhanced instance covering 40 frames: naming it cannot express a range.
+        numImageFrames: 40,
+        images: instances(1),
+      },
+    ];
+
+    it('says a range does not apply and names the recipe instead', async () => {
+      await renderPanel(MULTIFRAME);
+      attachSeries();
+      expect(screen.getByText(/Slice range unavailable for this series/)).toBeTruthy();
+      expect(screen.getByText(/5 slices\/series/)).toBeTruthy();
+    });
+
+    it('offers no range handles at all', async () => {
+      await renderPanel(MULTIFRAME);
+      attachSeries();
+      expect(screen.queryByLabelText('First slice of Ax T1 post')).toBeNull();
+    });
+
+    it('names no instances, and carries the recipe the panel is showing', async () => {
+      // The middleware's runtime config is global and mutable; sending the recipe
+      // with the message is what keeps the snapshot's claim true when another
+      // browser changes that config mid-compose.
+      await renderPanel(MULTIFRAME);
+      attachSeries();
+      fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+        target: { value: 'q' },
+      });
+      fireEvent.click(screen.getByTitle('Send'));
+      const selection = sendMessage.mock.calls[0][4][0];
+      expect(selection.sop_instance_uids).toEqual([]);
+      expect(selection.num_slices).toBe(5);
+      expect(selection.slice_strategy).toBe('central');
+      expect(selection.central_percentage).toBe(60);
+    });
+
+    it('records no slice numbers in the snapshot either', async () => {
+      // Absence is the record that the recipe applied, so the snapshot must not
+      // invent a range it did not send.
+      await renderPanel(MULTIFRAME);
+      attachSeries();
+      fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+        target: { value: 'q' },
+      });
+      fireEvent.click(screen.getByTitle('Send'));
+      expect(sendMessage.mock.calls[0][3].series[0].sentSliceNumbers).toBeUndefined();
+    });
+
+    it('treats a partially loaded series as unaddressable', async () => {
+      // Fewer instances than frames means slice N points at the wrong instance.
+      await renderPanel([{ ...ADDRESSABLE[0], numImageFrames: 20, images: instances(7) }]);
+      attachSeries();
+      expect(screen.getByText(/Slice range unavailable for this series/)).toBeTruthy();
+    });
+  });
+
+  describe('following the viewer', () => {
+    /** Point the active viewport at a display set, as the grid would. */
+    const show = (uid: string) => (
+      ((global as any).__gridAimed = true),
+      setMockViewportGrid({
+        activeViewportId: 'v1',
+        viewports: new Map([['v1', { displaySetInstanceUIDs: [uid] }]]),
+      })
+    );
+
+    const atSlice = (index: number) => ({
+      cornerstoneViewportService: {
+        getCornerstoneViewport: jest.fn(() => ({ getCurrentImageIdIndex: () => index })),
+      },
+    });
+
+    it('attaches the series the viewport is showing, with no clicks', async () => {
+      show('ds-1');
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], atSlice(11));
+      expect(screen.getByLabelText('Remove Ax T1 post')).toBeTruthy();
+    });
+
+    it('defaults to the slice on screen and one either side', async () => {
+      show('ds-1');
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], atSlice(11));
+      // 0-based index 11 is slice 12.
+      expect(screen.getByText('Range 11–13 of 20')).toBeTruthy();
+      expect(screen.getByText('3 slices sent')).toBeTruthy();
+      expect(screen.getByText(/Sends 3 images in total/)).toBeTruthy();
+    });
+
+    it('sends exactly those three instances', async () => {
+      show('ds-1');
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], atSlice(11));
+      fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+        target: { value: 'q' },
+      });
+      fireEvent.click(screen.getByTitle('Send'));
+      expect(sendMessage.mock.calls[0][4][0].sop_instance_uids).toEqual([
+        '1.2.840.SE1.11',
+        '1.2.840.SE1.12',
+        '1.2.840.SE1.13',
+      ]);
+    });
+
+    it('attaches nothing when the viewport shows something the panel cannot offer', async () => {
+      // A viewport on an SR, or on a series of another study, must not drag it
+      // into the prompt. The panel only ever attaches series it is offering.
+      show('ds-not-in-this-study');
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], atSlice(11));
+      expect(screen.queryByLabelText('Remove Ax T1 post')).toBeNull();
+      expect(screen.getByText(/No series attached/)).toBeTruthy();
+    });
+
+    it('detaching is still the user’s to make, and pins', async () => {
+      // Auto-attach must not fight the user: removing the series has to stick.
+      show('ds-1');
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], atSlice(11));
+      fireEvent.click(screen.getByLabelText('Remove Ax T1 post'));
+      expect(screen.getByText('Pinned')).toBeTruthy();
+      expect(screen.queryByLabelText('Remove Ax T1 post')).toBeNull();
+      expect(screen.getByText(/No series attached/)).toBeTruthy();
+    });
+  });
+
+  describe('the viewer-slice marker', () => {
+    // Placed from the instance on screen, not from the viewport's raw index: on a
+    // 4D series that index is a slice within some phase and does not say which.
+    // So the viewport has to name its image and the metadata has to resolve it,
+    // exactly as cornerstone does.
+    const imageIdFor = (index: number) => `img-${index}`;
+    beforeEach(() => {
+      __resetMetaData();
+      for (let i = 0; i < 20; i++) {
+        __setMetaData('generalImageModule', imageIdFor(i), {
+          sopInstanceUID: `1.2.840.SE1.${i + 1}`,
+        });
+      }
+    });
+
+    const viewportServices = (index: number) => ({
+      cornerstoneViewportService: {
+        getCornerstoneViewport: jest.fn(() => ({
+          getCurrentImageIdIndex: () => index,
+          getCurrentImageId: () => imageIdFor(index),
+        })),
+      },
+    });
+
+    /** Point the active viewport at a display set, as the grid would. */
+    const showDisplaySet = (uid: string) => (
+      ((global as any).__gridAimed = true),
+      setMockViewportGrid({
+        activeViewportId: 'v1',
+        viewports: new Map([['v1', { displaySetInstanceUIDs: [uid] }]]),
+      })
+    );
+
+    it('marks where the viewport is', async () => {
+      showDisplaySet('ds-1');
+      await renderPanel(
+        [{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }],
+        viewportServices(11)
+      );
+      attachSeries();
+      // 0-based index 11 is slice 12.
+      expect(screen.getByTitle('Viewer is on slice 12')).toBeTruthy();
+    });
+
+    it('follows the viewport as it scrolls', async () => {
+      showDisplaySet('ds-1');
+      let index = 3;
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], {
+        cornerstoneViewportService: {
+          getCornerstoneViewport: jest.fn(() => ({
+            getCurrentImageIdIndex: () => index,
+            getCurrentImageId: () => imageIdFor(index),
+          })),
+        },
+      });
+      attachSeries();
+      expect(screen.getByTitle('Viewer is on slice 4')).toBeTruthy();
+
+      index = 9;
+      await act(async () => {
+        dispatchOnViewport('STACK_NEW_IMAGE');
+      });
+      expect(screen.getByTitle('Viewer is on slice 10')).toBeTruthy();
+    });
+
+    it('moves the selection with the viewport while following', async () => {
+      // Following means what it says: the range tracks the slice on screen, one
+      // either side of it.
+      showDisplaySet('ds-1');
+      let index = 3;
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], {
+        cornerstoneViewportService: {
+          getCornerstoneViewport: jest.fn(() => ({
+            getCurrentImageIdIndex: () => index,
+            getCurrentImageId: () => imageIdFor(index),
+          })),
+        },
+      });
+      attachSeries();
+      expect(screen.getByText('Range 3–5 of 20')).toBeTruthy();
+
+      index = 12;
+      await act(async () => {
+        dispatchOnViewport('STACK_NEW_IMAGE');
+      });
+      expect(screen.getByText('Range 12–14 of 20')).toBeTruthy();
+      expect(screen.getByText('3 slices sent')).toBeTruthy();
+    });
+
+    it('leaves the selection alone once pinned', async () => {
+      // Pinning is what makes a half-composed question safe: from then on the
+      // range and the sent slices stay exactly where the user put them, however
+      // far the viewer scrolls.
+      showDisplaySet('ds-1');
+      let index = 3;
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], {
+        cornerstoneViewportService: {
+          getCornerstoneViewport: jest.fn(() => ({
+            getCurrentImageIdIndex: () => index,
+            getCurrentImageId: () => imageIdFor(index),
+          })),
+        },
+      });
+      attachSeries();
+      // Typing invests in the prompt, which pins it.
+      fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+        target: { value: 'Is this suspicious?' },
+      });
+      expect(screen.getByText('Pinned')).toBeTruthy();
+
+      index = 19;
+      await act(async () => {
+        dispatchOnViewport('STACK_NEW_IMAGE');
+      });
+      expect(screen.getByText('Range 3–5 of 20')).toBeTruthy();
+      // The marker still tracks the viewport: it is orientation, not selection.
+      expect(screen.getByTitle('Viewer is on slice 20')).toBeTruthy();
+    });
+
+    it('shows no marker once the viewport moves off the attached series', async () => {
+      // A slice number from another acquisition would point at a position that
+      // means nothing on this track. Reachable only while pinned: following
+      // would have attached whatever the viewport moved to.
+      showDisplaySet('ds-1');
+      const { rerender } = await renderPanel(
+        [
+          { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' },
+          { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-2', SeriesDescription: 'Ax T2' },
+        ],
+        viewportServices(11)
+      );
+      expect(screen.getByTitle('Viewer is on slice 12')).toBeTruthy();
+
+      fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+        target: { value: 'pin it' },
+      });
+      showDisplaySet('ds-2');
+      await act(async () => {
+        rerender(<ChatPanel />);
+      });
+
+      expect(screen.getByText('Pinned')).toBeTruthy();
+      expect(screen.queryByTitle(/Viewer is on slice/)).toBeNull();
+    });
+
+    it('shows no marker when cornerstone cannot report a position', async () => {
+      showDisplaySet('ds-1');
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }]);
+      attachSeries();
+      expect(screen.queryByTitle(/Viewer is on slice/)).toBeNull();
+    });
+  });
+});
+
+describe('ChatPanel — provenance under change and failure', () => {
+  it('clamps a range when its series turns out to be shorter', async () => {
+    // Display sets hydrate progressively and can be replaced in place. A range
+    // set against 20 slices on a series that becomes 8 would otherwise address
+    // instances past the end of the list.
+    const shrinking = [{ ...ADDRESSABLE[0] }];
+    const dss = makeDisplaySetService(shrinking);
+    setMockViewportGrid({
+      activeViewportId: 'v1',
+      viewports: new Map([['v1', { displaySetInstanceUIDs: ['ds-1'] }]]),
+    });
+    withSystem(makeServicesManager({ services: { displaySetService: dss } }));
+    await act(async () => {
+      render(<ChatPanel />);
+    });
+    attachSeries();
+    expect(screen.getByText('Range 5–16 of 20')).toBeTruthy();
+
+    // The same display set is replaced in place with fewer instances, as a
+    // progressive load or a re-hydration does.
+    shrinking[0].numImageFrames = 8;
+    shrinking[0].images = instances(8);
+    await act(async () => {
+      dss.emit('changed');
+    });
+
+    expect(screen.getByText(/Range .* of 8/)).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+      target: { value: 'q' },
+    });
+    fireEvent.click(screen.getByTitle('Send'));
+    const uids = sendMessage.mock.calls[0][4][0].sop_instance_uids;
+    // Every named instance exists: no nulls reach the wire.
+    expect(uids.every((u: unknown) => typeof u === 'string')).toBe(true);
+    expect(uids.length).toBeGreaterThan(0);
+  });
+
+  it('treats two display sets of one series as separate attachments', async () => {
+    // OHIF splits some series into a display set per instance. Keying on the
+    // series UID would attach and detach both as one.
+    const split = [
+      { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-a', SeriesDescription: 'CC' },
+      { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-b', SeriesDescription: 'MLO' },
+    ];
+    setMockViewportGrid({
+      activeViewportId: 'v1',
+      viewports: new Map([['v1', { displaySetInstanceUIDs: ['ds-a'] }]]),
+    });
+    (global as any).__gridAimed = true;
+    await renderPanel(split);
+
+    // Only the display set on screen is attached. Keying on the series UID would
+    // have brought MLO along with it, since both share se-1.
+    expect(screen.getByLabelText('First slice of CC')).toBeTruthy();
+    expect(screen.queryByLabelText('First slice of MLO')).toBeNull();
+  });
+
+  it('sends the display set on screen, named by its own series', async () => {
+    // Two display sets share se-1; only the one being viewed is sent, and the
+    // selection names the series it actually belongs to.
+    const split = [
+      { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-a', SeriesDescription: 'CC' },
+      { ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-b', SeriesDescription: 'MLO' },
+    ];
+    setMockViewportGrid({
+      activeViewportId: 'v1',
+      viewports: new Map([['v1', { displaySetInstanceUIDs: ['ds-b'] }]]),
+    });
+    (global as any).__gridAimed = true;
+    await renderPanel(split);
+    fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+      target: { value: 'q' },
+    });
+    fireEvent.click(screen.getByTitle('Send'));
+
+    const [, , seriesUIDs, snapshot, selections] = sendMessage.mock.calls[0];
+    expect(seriesUIDs).toEqual(['se-1']);
+    expect(selections).toHaveLength(1);
+    expect(snapshot.series).toEqual([
+      expect.objectContaining({ displaySetInstanceUID: 'ds-b', description: 'MLO' }),
+    ]);
+  });
+
+  it('marks a message whose turn produced no answer', async () => {
+    // Otherwise the slice list reads as a record of images an answer came from,
+    // when preprocessing may have failed before one was ever sent.
+    mockHookState.messages = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: 'q',
+        timestamp: new Date(),
+        deliveryFailed: true,
+        promptContext: {
+          studyInstanceUID: 'study-1',
+          studyLabel: 'Breast MRI',
+          series: [],
+          provider: 'local',
+          model: 'm',
+          sliceRecipe: { numSlices: 5, strategy: 'central' },
+          requestedImageCount: 0,
+        },
+      },
+    ];
+    await renderPanel();
+    expect(screen.getByText('Requested, but no answer was produced')).toBeTruthy();
+    mockHookState.messages = [];
+  });
+
+  it('discloses images from earlier turns that the model can still see', async () => {
+    // The middleware replays history verbatim, images included, so an answer to
+    // question 2 is looking at question 1's slices too.
+    const snapshot = (n: number) => ({
+      studyInstanceUID: 'study-1',
+      studyLabel: 'Breast MRI',
+      series: [
+        {
+          displaySetInstanceUID: 'ds-1',
+          seriesInstanceUID: 'se-1',
+          description: 'Ax T1 post',
+          modality: 'MR',
+          numFrames: 20,
+          sentSliceNumbers: Array.from({ length: n }, (_, i) => i + 1),
+        },
+      ],
+      provider: 'local',
+      model: 'm',
+      sliceRecipe: { numSlices: n, strategy: 'central' },
+      requestedImageCount: n,
+    });
+    mockHookState.messages = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: 'first',
+        timestamp: new Date(),
+        promptContext: snapshot(3),
+      },
+      {
+        id: 'a1',
+        role: 'assistant',
+        content: 'a',
+        timestamp: new Date(),
+        promptContext: snapshot(3),
+      },
+      {
+        id: 'u2',
+        role: 'user',
+        content: 'second',
+        timestamp: new Date(),
+        promptContext: snapshot(2),
+      },
+    ];
+    await renderPanel();
+
+    const footers = screen.getAllByTitle('What this message was sent with');
+    await act(async () => {
+      fireEvent.click(footers[footers.length - 1]);
+    });
+    expect(screen.getByText(/3 images from earlier messages/)).toBeTruthy();
+    mockHookState.messages = [];
+  });
+
+  it('does not count a failed turn as still in context', async () => {
+    // The middleware commits a turn to history only once it answers, so nothing
+    // was retained from a turn that produced nothing.
+    const snapshot = {
+      studyInstanceUID: 'study-1',
+      studyLabel: 'Breast MRI',
+      series: [],
+      provider: 'local',
+      model: 'm',
+      sliceRecipe: { numSlices: 3, strategy: 'central' },
+      requestedImageCount: 3,
+    };
+    mockHookState.messages = [
+      {
+        id: 'u1',
+        role: 'user',
+        content: 'first',
+        timestamp: new Date(),
+        deliveryFailed: true,
+        promptContext: snapshot,
+      },
+      { id: 'u2', role: 'user', content: 'second', timestamp: new Date(), promptContext: snapshot },
+    ];
+    await renderPanel();
+
+    const footers = screen.getAllByTitle('What this message was sent with');
+    await act(async () => {
+      fireEvent.click(footers[footers.length - 1]);
+    });
+    expect(screen.queryByText(/images from earlier messages/)).toBeNull();
+    mockHookState.messages = [];
+  });
+
+  describe('the viewer window', () => {
+    const show = (uid: string) => {
+      (global as any).__gridAimed = true;
+      setMockViewportGrid({
+        activeViewportId: 'v1',
+        viewports: new Map([['v1', { displaySetInstanceUIDs: [uid] }]]),
+      });
+    };
+
+    /** A viewport reporting a window, the way cornerstone does. */
+    const withWindow = (voiRange: any, invert = false) => ({
+      cornerstoneViewportService: {
+        getCornerstoneViewport: jest.fn(() => ({
+          getCurrentImageIdIndex: () => 11,
+          getProperties: () => ({ voiRange, invert }),
+        })),
+      },
+    });
+
+    const send = () => {
+      fireEvent.change(screen.getByPlaceholderText('Ask about these images...'), {
+        target: { value: 'q' },
+      });
+      fireEvent.click(screen.getByTitle('Send'));
+      return sendMessage.mock.calls[0];
+    };
+
+    it('sends the window the viewport is displaying with', async () => {
+      // Without this the middleware auto-windows each slice on its own
+      // percentiles, so a window set to bring out one tissue — or a viewport
+      // clipped to black — has no effect at all on what the model sees.
+      show('ds-1');
+      await renderPanel(ADDRESSABLE, withWindow({ lower: 95, upper: 1355 }));
+      // Width and centre as cornerstone's own `toWindowLevel` computes them, so
+      // the footer reads the same as the overlay on the image beside it.
+      expect(screen.getByText(/W:1261 L:726/)).toBeTruthy();
+
+      const selection = (send() as any[])[4][0];
+      expect(selection.voi).toEqual({ lower: 95, upper: 1355, invert: false });
+    });
+
+    it('records it in the message snapshot', async () => {
+      show('ds-1');
+      await renderPanel(ADDRESSABLE, withWindow({ lower: 95, upper: 1355 }));
+      const snapshot = (send() as any[])[3];
+      expect(snapshot.series[0].voi).toEqual({ lower: 95, upper: 1355, invert: false });
+    });
+
+    it('carries the inversion, which is part of the same choice', async () => {
+      // A lesion that reads as bright to the reader must not read as dark to the
+      // model.
+      show('ds-1');
+      await renderPanel(ADDRESSABLE, withWindow({ lower: 0, upper: 100 }, true));
+      const selection = (send() as any[])[4][0];
+      expect(selection.voi.invert).toBe(true);
+      expect(screen.getByText(/inverted/)).toBeTruthy();
+    });
+
+    it('stops sending it when the toggle is turned off', async () => {
+      show('ds-1');
+      await renderPanel(ADDRESSABLE, withWindow({ lower: 95, upper: 1355 }));
+      fireEvent.click(screen.getByLabelText("Render with the viewer's window"));
+      expect(screen.getByText(/off, auto-windowed/)).toBeTruthy();
+
+      const selection = (send() as any[])[4][0];
+      expect(selection.voi).toBeUndefined();
+    });
+
+    it('falls back to auto-windowing when the viewport cannot report one', async () => {
+      // The toggle stays on; there is simply nothing to send. Said plainly
+      // rather than left looking as though the reader's window applied.
+      show('ds-1');
+      await renderPanel(ADDRESSABLE, withWindow(undefined));
+      expect(screen.getByText(/unavailable, auto-windowed/)).toBeTruthy();
+
+      const selection = (send() as any[])[4][0];
+      expect(selection.voi).toBeUndefined();
+    });
+
+    it('refuses a degenerate window rather than sending it', async () => {
+      // upper === lower maps every pixel to one value; the middleware would
+      // reject it, and a window that shows nothing is not what the reader set.
+      show('ds-1');
+      await renderPanel(ADDRESSABLE, withWindow({ lower: 500, upper: 500 }));
+      const selection = (send() as any[])[4][0];
+      expect(selection.voi).toBeUndefined();
+    });
+  });
+});

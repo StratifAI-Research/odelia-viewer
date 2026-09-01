@@ -264,10 +264,7 @@ export default async function alignHeatmapSlice(
  * its slice index runs. Assuming a direction is what produced the original mirroring bug, and
  * hardcoding the reversal the way upstream does is only correct for a plain volume.
  */
-function volumeSliceIndexFor(
-  tViewport: SyncableViewport,
-  worldPosition: vec3
-): number | undefined {
+function volumeSliceIndexFor(tViewport: SyncableViewport, worldPosition: vec3): number | undefined {
   const sliceCount = tViewport.getNumberOfSlices?.();
 
   if (!sliceCount || sliceCount < 1) {

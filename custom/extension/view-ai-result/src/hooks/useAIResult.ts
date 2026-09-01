@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { AIResult } from '../types';
 
-export const useAIResult = (displaySets: any[], servicesManager: AppTypes.ServicesManager): AIResult | null => {
+export const useAIResult = (
+  displaySets: any[],
+  servicesManager: AppTypes.ServicesManager
+): AIResult | null => {
   const studyInstanceUID: string | undefined =
     displaySets.length > 0 ? displaySets[0].StudyInstanceUID : undefined;
 

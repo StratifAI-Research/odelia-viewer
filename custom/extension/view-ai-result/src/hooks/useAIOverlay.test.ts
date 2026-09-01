@@ -76,9 +76,7 @@ describe('useAIOverlay', () => {
   });
 
   it('publishes nothing for a heatmap viewport', () => {
-    renderHook(() =>
-      useAIOverlay(makeConfig({ isHeatmapViewport: true, aiResult: sampleResult }))
-    );
+    renderHook(() => useAIOverlay(makeConfig({ isHeatmapViewport: true, aiResult: sampleResult })));
     expect(stateOf('v1')).toBeUndefined();
   });
 

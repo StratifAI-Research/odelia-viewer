@@ -1,6 +1,7 @@
 import { Icons } from '@ohif/ui-next';
 import AIChatIcon from './AIChatIcon';
 import AIFeedbackIcon from './AIFeedbackIcon';
+import ChatHistoryIcon from './ChatHistoryIcon';
 
 /**
  * Panel-rail icons this extension contributes.
@@ -17,6 +18,7 @@ import AIFeedbackIcon from './AIFeedbackIcon';
 export const VIEW_AI_RESULT_ICONS = {
   'odelia-ai-chat': AIChatIcon,
   'odelia-ai-feedback': AIFeedbackIcon,
+  'odelia-chat-history': ChatHistoryIcon,
 } as const;
 
 /**
@@ -32,4 +34,4 @@ export function registerIcons(): void {
   });
 }
 
-export { AIChatIcon, AIFeedbackIcon };
+export { AIChatIcon, AIFeedbackIcon, ChatHistoryIcon };

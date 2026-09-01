@@ -4,7 +4,12 @@
  */
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSystem } from '@ohif/core';
-import { ChatMessage, CHAT_EVENTS } from '../types/chatTypes';
+import {
+  ChatMessage,
+  CHAT_EVENTS,
+  PromptContextSnapshot,
+  WireSliceSelection,
+} from '../types/chatTypes';
 import { ChatService } from '../services/ChatService';
 
 // Generate unique message IDs
@@ -24,9 +29,21 @@ interface UseChatServiceReturn {
   // Actions
   connect: () => Promise<void>;
   disconnect: () => void;
-  sendMessage: (content: string, studyUID?: string, seriesUIDs?: string[]) => void;
+  sendMessage: (
+    content: string,
+    studyUID?: string,
+    seriesUIDs?: string[],
+    promptContext?: PromptContextSnapshot,
+    sliceSelections?: WireSliceSelection[]
+  ) => void;
   cancelGeneration: () => void;
   clearHistory: () => void;
+  /** Insert a transcript annotation (e.g. a mid-conversation model change). */
+  appendEvent: (content: string) => void;
+  /** Join another middleware session (`'new'` for a fresh one). */
+  switchSession: (sessionId: string) => Promise<string | null>;
+  /** Replace the displayed transcript, e.g. when switching chat threads. */
+  hydrateMessages: (messages: ChatMessage[]) => void;
 }
 
 export function useChatService(): UseChatServiceReturn {
@@ -44,6 +61,11 @@ export function useChatService(): UseChatServiceReturn {
 
   // Ref to track current streaming message
   const currentStreamingMessageRef = useRef<string | null>(null);
+  // The question the streaming answer belongs to. Both carry the same provenance
+  // snapshot, so a failed turn has to be marked on both or the transcript shows
+  // one half claiming images an answer came from and the other half saying the
+  // answer never happened.
+  const currentUserMessageRef = useRef<string | null>(null);
   const streamingContentRef = useRef<string>('');
   const streamingThinkingRef = useRef<string>('');
   const rawStreamingRef = useRef<string>('');
@@ -152,7 +174,13 @@ export function useChatService(): UseChatServiceReturn {
 
   // Send a message
   const sendMessage = useCallback(
-    (content: string, studyUID?: string, seriesUIDs?: string[]) => {
+    (
+      content: string,
+      studyUID?: string,
+      seriesUIDs?: string[],
+      promptContext?: PromptContextSnapshot,
+      sliceSelections?: WireSliceSelection[]
+    ) => {
       if (!chatService || !content.trim()) {
         return;
       }
@@ -163,16 +191,21 @@ export function useChatService(): UseChatServiceReturn {
       setPreprocessingProgress(null);
 
       // Add user message to history
+      const userMessageId = generateMessageId();
+      currentUserMessageRef.current = userMessageId;
       const userMessage: ChatMessage = {
-        id: generateMessageId(),
+        id: userMessageId,
         role: 'user',
         content: content.trim(),
         timestamp: new Date(),
         seriesContext: seriesUIDs,
+        promptContext,
       };
       setMessages(prev => [...prev, userMessage]);
 
-      // Create placeholder for assistant response
+      // Create placeholder for assistant response. It carries the same snapshot
+      // as the question: the answer was produced from exactly that context, so
+      // either side can be traced without walking the transcript.
       const assistantMessageId = generateMessageId();
       const assistantMessage: ChatMessage = {
         id: assistantMessageId,
@@ -180,6 +213,7 @@ export function useChatService(): UseChatServiceReturn {
         content: '',
         timestamp: new Date(),
         isStreaming: true,
+        promptContext,
       };
       setMessages(prev => [...prev, assistantMessage]);
 
@@ -191,8 +225,10 @@ export function useChatService(): UseChatServiceReturn {
       hasReceivedThinkingTokenRef.current = false;
       setIsStreaming(true);
 
-      // Send to service
-      chatService.sendMessage(content.trim(), studyUID, seriesUIDs);
+      // Send to service. The slice selection travels on the wire; the snapshot
+      // above records the same choice for the transcript, so the two are built
+      // from one state read at the call site rather than derived twice.
+      chatService.sendMessage(content.trim(), studyUID, seriesUIDs, sliceSelections);
     },
     [chatService]
   );
@@ -205,6 +241,69 @@ export function useChatService(): UseChatServiceReturn {
     chatService.cancelGeneration();
     finishStream(msg => ({ ...msg, content: msg.content + ' [cancelled]' }));
   }, [chatService, finishStream]);
+
+  // Join another conversation. The middleware owns what the model remembers
+  // (keyed by session id); the caller owns what is displayed and hydrates it
+  // separately, because the transcript the panel shows carries per-message
+  // provenance the server does not store.
+  const switchSession = useCallback(
+    async (targetSessionId: string) => {
+      if (!chatService) {
+        setError('Chat service not available');
+        return null;
+      }
+      // Whatever was streaming belongs to the conversation being left.
+      chatService.cancelGeneration();
+      resetStreamingRefs();
+      setIsStreaming(false);
+      setPreprocessingStatus(null);
+      setPreprocessingProgress(null);
+      setError(null);
+      try {
+        const id = await chatService.switchSession(targetSessionId);
+        setSessionId(id);
+        setIsConnected(true);
+        return id;
+      } catch (e: any) {
+        setError(e?.message || 'Failed to switch chat');
+        setIsConnected(false);
+        return null;
+      }
+    },
+    [chatService, resetStreamingRefs]
+  );
+
+  // Replace the displayed transcript wholesale (thread switch / restore).
+  const hydrateMessages = useCallback(
+    (next: ChatMessage[]) => {
+      resetStreamingRefs();
+      setIsStreaming(false);
+      setPreprocessingStatus(null);
+      setPreprocessingProgress(null);
+      setMessages(next);
+    },
+    [resetStreamingRefs]
+  );
+
+  // Insert a transcript annotation. Purely local: the middleware holds the
+  // conversation history and must not be told these are user turns, so this
+  // deliberately does NOT call chatService. Its only job is to keep a
+  // configuration change visible in scrollback, so that two answers produced by
+  // different models remain distinguishable after the fact.
+  const appendEvent = useCallback((content: string) => {
+    if (!content.trim()) {
+      return;
+    }
+    setMessages(prev => [
+      ...prev,
+      {
+        id: generateMessageId(),
+        role: 'event',
+        content: content.trim(),
+        timestamp: new Date(),
+      },
+    ]);
+  }, []);
 
   // Clear message history
   const clearHistory = useCallback(() => {
@@ -320,10 +419,21 @@ export function useChatService(): UseChatServiceReturn {
         setPreprocessingStatus(null);
         setPreprocessingProgress(null);
         // Finalize the placeholder, backfilling error text only if nothing streamed.
+        // A turn that produced nothing is flagged, so its provenance is not read
+        // as a record of images an answer actually came from: preprocessing may
+        // have failed before a single one was sent.
+        const producedNothing = !streamingContentRef.current;
         finishStream(msg => ({
           ...msg,
           content: msg.content || `Error: ${data.error}`,
+          deliveryFailed: producedNothing ? true : msg.deliveryFailed,
         }));
+        if (producedNothing) {
+          const questionId = currentUserMessageRef.current;
+          setMessages(prev =>
+            prev.map(msg => (msg.id === questionId ? { ...msg, deliveryFailed: true } : msg))
+          );
+        }
       })
     );
 
@@ -369,5 +479,8 @@ export function useChatService(): UseChatServiceReturn {
     sendMessage,
     cancelGeneration,
     clearHistory,
+    appendEvent,
+    switchSession,
+    hydrateMessages,
   };
 }

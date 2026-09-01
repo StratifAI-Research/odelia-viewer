@@ -1,10 +1,110 @@
 export const Enums = {
   ViewportType: { ORTHOGRAPHIC: 'ORTHOGRAPHIC', STACK: 'STACK' },
   OrientationAxis: { AXIAL: 'AXIAL' },
-  Events: { STACK_NEW_IMAGE: 'STACK_NEW_IMAGE', VOLUME_NEW_IMAGE: 'VOLUME_NEW_IMAGE' },
+  Events: {
+    STACK_NEW_IMAGE: 'STACK_NEW_IMAGE',
+    VOLUME_NEW_IMAGE: 'VOLUME_NEW_IMAGE',
+    // Reorienting a viewport moves the camera without necessarily changing the
+    // slice index, so this is the only event some orientation changes produce.
+    CAMERA_MODIFIED: 'CAMERA_MODIFIED',
+  },
 };
+// Minimal EventTarget stand-in for the handful of cornerstone events that really
+// are dispatched on the global target.
+//
+// Slice-change events are NOT among them: cornerstone fires STACK_NEW_IMAGE and
+// VOLUME_NEW_IMAGE on the viewport *element*. An earlier version of this mock let
+// `dispatch('STACK_NEW_IMAGE')` drive `useViewerSlice`, which made a hook that
+// never fired in the real viewer look correct in tests. Use `dispatchOnViewport`
+// for those, so a test exercises the path the browser actually takes.
+export const eventTarget = {
+  listeners: {} as Record<string, Array<(evt?: any) => void>>,
+  addEventListener(type: string, cb: (evt?: any) => void) {
+    (this.listeners[type] ||= []).push(cb);
+  },
+  removeEventListener(type: string, cb: (evt?: any) => void) {
+    this.listeners[type] = (this.listeners[type] || []).filter(l => l !== cb);
+  },
+  dispatch(type: string, detail?: any) {
+    (this.listeners[type] || []).forEach(cb => cb({ type, detail }));
+  },
+  reset() {
+    this.listeners = {};
+  },
+};
+/**
+ * Fire a cornerstone viewport event the way cornerstone does: a non-bubbling
+ * CustomEvent on an element inside the document. Listeners registered in the
+ * capture phase on an ancestor still receive it; listeners on the global
+ * `eventTarget` do not.
+ */
+export const dispatchOnViewport = (type: string, detail?: any) => {
+  const element = document.createElement('div');
+  document.body.appendChild(element);
+  element.dispatchEvent(new CustomEvent(type, { detail, bubbles: false, cancelable: true }));
+  element.remove();
+};
+
 export const getRenderingEngine = jest.fn(() => undefined);
-export const metaData = { get: jest.fn(() => undefined), addProvider: jest.fn() };
-export const utilities = { imageIdToURI: jest.fn((id: string) => id) };
+
+// Cornerstone's element → viewport lookup. The chat ROI tool goes through it to
+// put the rectangle's world corners into canvas space for its hit test, so a
+// test that wants to exercise that has to seed one.
+let __enabledElement: any;
+export const __setEnabledElement = (enabled: any) => {
+  __enabledElement = enabled;
+};
+export const getEnabledElement = jest.fn(() => __enabledElement);
+
+// Volume cache. `useViewerSlice` reads a dynamic volume's `dimensionGroupNumber`
+// from it to learn which contrast phase is on screen.
+export const __volumes: Record<string, any> = {};
+export const __setVolume = (volumeId: string, volume: any) => {
+  __volumes[volumeId] = volume;
+};
+export const __resetVolumes = () => {
+  Object.keys(__volumes).forEach(k => delete __volumes[k]);
+};
+export const cache = {
+  getVolume: jest.fn((volumeId: string) => __volumes[volumeId]),
+};
+// Per-module metadata a test can seed, so the ROI capture path can be exercised
+// with a real image size and instance identity.
+export const __metaData: Record<string, Record<string, any>> = {};
+export const __setMetaData = (module: string, imageId: string, value: any) => {
+  (__metaData[module] ||= {})[imageId] = value;
+};
+export const __resetMetaData = () => {
+  Object.keys(__metaData).forEach(k => delete __metaData[k]);
+};
+export const metaData = {
+  get: jest.fn((module: string, imageId: string) => __metaData[module]?.[imageId]),
+  addProvider: jest.fn(),
+};
+export const utilities = {
+  imageIdToURI: jest.fn((id: string) => id),
+  // Identity by default: tests that care seed their own conversion.
+  worldToImageCoords: jest.fn((_imageId: string, world: number[]) => [world[0], world[1]]),
+  // The real arithmetic from @cornerstonejs/core's utilities/windowLevel, NOT a
+  // convenient approximation: `formatWindow` exists to print what the viewport
+  // overlay prints, and the overlay goes through this function. A stub that
+  // rounded differently would let the two drift again with the tests still green.
+  // The real arithmetic from @cornerstonejs/core's getAcquisitionPlaneOrientation:
+  // the acquisition normal is the negated third row of the volume's direction
+  // matrix. Copied rather than approximated because the panel decides whether it
+  // is looking down the acquisition axis by comparing against it, and a stub
+  // that pointed somewhere else would make the check pass or fail for reasons
+  // the browser would not reproduce.
+  getAcquisitionPlaneOrientation: (volume: any) => ({
+    viewPlaneNormal: (volume?.direction ?? []).slice(6, 9).map((x: number) => -x),
+    viewUp: (volume?.direction ?? []).slice(3, 6).map((x: number) => -x),
+  }),
+  windowLevel: {
+    toWindowLevel: (low: number, high: number) => ({
+      windowWidth: Math.abs(high - low) + 1,
+      windowCenter: (low + high + 1) / 2,
+    }),
+  },
+};
 export class VolumeViewport {}
 export const Types = {};
