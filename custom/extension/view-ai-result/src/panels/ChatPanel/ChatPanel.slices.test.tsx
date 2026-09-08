@@ -198,6 +198,34 @@ describe('ChatPanel — slice range', () => {
     expect(screen.getByText('3 slices sent')).toBeTruthy();
   });
 
+  it('keeps a deliberately smaller count when the range is widened', async () => {
+    // The seeded band sends 5 of its 12 slices — a count from the configured
+    // recipe, not from the window. Widening must not read that as "send
+    // everything", which on a long series would be dozens of images per message.
+    await renderPanel();
+    attachSeries();
+    expect(screen.getByText('5 slices sent')).toBeTruthy();
+
+    fireEvent.change(firstHandle(), { target: { value: '1' } });
+
+    expect(screen.getByText('Range 1–16 of 20')).toBeTruthy();
+    expect(screen.getByText('5 slices sent')).toBeTruthy();
+  });
+
+  it('re-widens with the window once the count has met it', async () => {
+    // Narrowing to three brings the count down to the window's size; from there
+    // the window is the selection again, so widening sends what it gains.
+    await renderPanel();
+    attachSeries();
+    fireEvent.change(firstHandle(), { target: { value: '14' } });
+    expect(screen.getByText('3 slices sent')).toBeTruthy();
+
+    fireEvent.change(firstHandle(), { target: { value: '10' } });
+
+    expect(screen.getByText('Range 10–16 of 20')).toBeTruthy();
+    expect(screen.getByText('7 slices sent')).toBeTruthy();
+  });
+
   it('raises and lowers the sent count', async () => {
     await renderPanel();
     attachSeries();
@@ -407,6 +435,23 @@ describe('ChatPanel — slice range', () => {
       expect(screen.getByText('Range 11–13 of 20')).toBeTruthy();
       expect(screen.getByText('3 slices sent')).toBeTruthy();
       expect(screen.getByText(/Sends 3 images in total/)).toBeTruthy();
+    });
+
+    it('sends the slices the window gains when it is widened', async () => {
+      // The reader's window is what the message sends. Dragging 11–13 out to
+      // 11–15 asks for those five slices, not for three of them spread across the
+      // five with the gained ones skipped.
+      show('ds-1');
+      await renderPanel([{ ...ADDRESSABLE[0], displaySetInstanceUID: 'ds-1' }], atSlice(11));
+      expect(screen.getByText('3 slices sent')).toBeTruthy();
+
+      fireEvent.change(screen.getByLabelText('Last slice of Ax T1 post'), {
+        target: { value: '15' },
+      });
+
+      expect(screen.getByText('Range 11–15 of 20')).toBeTruthy();
+      expect(screen.getByText('5 slices sent')).toBeTruthy();
+      expect(screen.getByText(/Sends 5 images in total/)).toBeTruthy();
     });
 
     it('sends exactly those three instances', async () => {
