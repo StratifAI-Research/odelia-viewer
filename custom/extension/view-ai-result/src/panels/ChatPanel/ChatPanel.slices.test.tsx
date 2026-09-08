@@ -86,6 +86,16 @@ const ADDRESSABLE = [
   },
 ];
 
+/** A 160-slice series, the length at which the per-series send limit bites. */
+const LONG_SERIES = [
+  {
+    ...ADDRESSABLE[0],
+    SeriesDescription: 'Ax T1 long',
+    numImageFrames: 160,
+    images: instances(160),
+  },
+];
+
 function makeDisplaySetService(displaySets: any[]) {
   const handlers: Record<string, Array<() => void>> = {};
   return {
@@ -224,6 +234,13 @@ describe('ChatPanel — slice range', () => {
 
     expect(screen.getByText('Range 10–16 of 20')).toBeTruthy();
     expect(screen.getByText('7 slices sent')).toBeTruthy();
+  });
+
+  it('states a plain tally when the window fits under the limit', async () => {
+    await renderPanel();
+    attachSeries();
+    expect(screen.getByText('5 slices sent')).toBeTruthy();
+    expect(screen.queryByText(/are skipped/)).toBeNull();
   });
 
   it('raises and lowers the sent count', async () => {
@@ -435,6 +452,27 @@ describe('ChatPanel — slice range', () => {
       expect(screen.getByText('Range 11–13 of 20')).toBeTruthy();
       expect(screen.getByText('3 slices sent')).toBeTruthy();
       expect(screen.getByText(/Sends 3 images in total/)).toBeTruthy();
+    });
+
+    it('says so when the window outgrows what one message can carry', async () => {
+      // A 54-slice window reported "50 slices sent" beside "Range 67–120", with
+      // nothing on screen to reconcile the two, and the only sign of the limit
+      // was the + button greying out. With no model budget reported here, the
+      // bound is the middleware's transport guard.
+      show('ds-1');
+      await renderPanel(LONG_SERIES, atSlice(79));
+      expect(screen.getByText('3 slices sent')).toBeTruthy();
+
+      fireEvent.change(screen.getByLabelText('First slice of Ax T1 long'), {
+        target: { value: '1' },
+      });
+      fireEvent.change(screen.getByLabelText('Last slice of Ax T1 long'), {
+        target: { value: '160' },
+      });
+
+      expect(screen.getByText('128 of 160 slices sent')).toBeTruthy();
+      expect(screen.getByText(/most one message can carry/)).toBeTruthy();
+      expect(screen.getByText(/32 of the 160 slices in this window are skipped/)).toBeTruthy();
     });
 
     it('sends the slices the window gains when it is widened', async () => {
