@@ -20,8 +20,10 @@ export interface SliceRange {
 }
 
 /**
- * What the middleware will ship in one message, until it says otherwise.
+ * What the middleware will accept for one series, until it says otherwise.
  *
+ * Per series, not per message — the middleware bounds each series' slice list
+ * separately (MAX_SLICES_PER_SERIES) and the number of series separately again.
  * A transport guard, not a model limit: every slice is a WADO retrieval, a
  * decode and a base64 PNG in the request body. The real value is reported by
  * `/debug/config`; this stands in only before the config has loaded.
@@ -51,7 +53,13 @@ export interface ModelBudget {
   tokensPerImage?: number | null;
 }
 
-/** Why a slice count is bounded where it is — the UI says which one bit. */
+/**
+ * Why a slice count is bounded where it is — the UI says which one bit.
+ *
+ * Every bound here is per series. The panel attaches at most one series today,
+ * so per series and per message coincide; if that ever changes, a model's
+ * context is a per-request budget and would have to be shared across them.
+ */
 export type SliceLimitReason = 'model' | 'estimate' | 'transport';
 
 export interface SliceLimit {

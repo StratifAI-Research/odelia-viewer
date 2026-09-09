@@ -777,14 +777,20 @@ const ChatPanel: React.FC = () => {
   );
 
   /**
-   * How many slices the model in use can be shown.
+   * How many slices one series may show the model in use.
    *
    * Read from the model rather than fixed: Ollama reports its context length and
    * per-image cost, so medgemma's 131k context at 256 tokens an image is some
    * five hundred slices, where a hard-coded fifty both truncated it and would
    * have over-fed an 8k-context model. What the pipeline will ship still caps it.
+   *
+   * Per series, as the name says, because that is where the middleware applies
+   * its own bound. The panel attaches at most one series — follow-mode replaces
+   * the selection and the only other control detaches — so the two coincide
+   * today. They would not if a series picker returned: a model's context is a
+   * per-request budget, and several series would have to share this one.
    */
-  const sliceLimit = useMemo(() => {
+  const sliceLimitPerSeries = useMemo(() => {
     const catalogue = provider === 'cloud' ? cloudModels : localModels;
     const active = catalogue.find(m => m.name === activeModelTag);
     return maxSlicesForModel(
@@ -1367,7 +1373,7 @@ const ChatPanel: React.FC = () => {
             Math.min(
               existing?.count ?? (followed ? rangeSize(range) : numSlices),
               rangeSize(range),
-              sliceLimit.limit
+              sliceLimitPerSeries.limit
             )
           ),
           groupIndex: Math.min(Math.max(0, seeded), dimensionGroupCount(series.axis) - 1),
@@ -1380,7 +1386,7 @@ const ChatPanel: React.FC = () => {
     sliceStateByDisplaySet,
     sliceStrategy,
     numSlices,
-    sliceLimit.limit,
+    sliceLimitPerSeries.limit,
     centralPercentage,
     viewerSlice,
     scrollsAcquisitionAxis,
@@ -1582,17 +1588,17 @@ const ChatPanel: React.FC = () => {
    */
   useEffect(() => {
     setSliceStateByDisplaySet(prev => {
-      const over = Object.entries(prev).filter(([, st]) => st.count > sliceLimit.limit);
+      const over = Object.entries(prev).filter(([, st]) => st.count > sliceLimitPerSeries.limit);
       if (over.length === 0) {
         return prev;
       }
       const next = { ...prev };
       over.forEach(([uid, st]) => {
-        next[uid] = { ...st, count: Math.max(1, sliceLimit.limit) };
+        next[uid] = { ...st, count: Math.max(1, sliceLimitPerSeries.limit) };
       });
       return next;
     });
-  }, [sliceLimit.limit]);
+  }, [sliceLimitPerSeries.limit]);
 
   /** Move a series' range. Adjusting the range is an investment in the prompt. */
   const setSeriesRange = useCallback(
@@ -1614,7 +1620,7 @@ const ChatPanel: React.FC = () => {
         const wasSendingWholeWindow = current ? current.count >= rangeSize(current.range) : true;
         const count = Math.max(
           1,
-          Math.min(wasSendingWholeWindow ? span : current.count, span, sliceLimit.limit)
+          Math.min(wasSendingWholeWindow ? span : current.count, span, sliceLimitPerSeries.limit)
         );
         return {
           ...prev,
@@ -1628,7 +1634,7 @@ const ChatPanel: React.FC = () => {
         };
       });
     },
-    [pinContext, sliceLimit.limit]
+    [pinContext, sliceLimitPerSeries.limit]
   );
 
   const setSeriesCount = useCallback(
@@ -1641,12 +1647,12 @@ const ChatPanel: React.FC = () => {
         }
         const bounded = Math.max(
           1,
-          Math.min(count, rangeSize(current.range), sliceLimit.limit)
+          Math.min(count, rangeSize(current.range), sliceLimitPerSeries.limit)
         );
         return { ...prev, [series.displaySetInstanceUID]: { ...current, count: bounded } };
       });
     },
-    [pinContext, sliceLimit.limit]
+    [pinContext, sliceLimitPerSeries.limit]
   );
 
   // --- Chat region of interest ---------------------------------------------
@@ -2654,7 +2660,7 @@ const ChatPanel: React.FC = () => {
                     total={series.axis.sliceCount}
                     range={range}
                     count={count}
-                    sliceLimit={sliceLimit}
+                    sliceLimitPerSeries={sliceLimitPerSeries}
                     // Only when the viewport is showing THIS series, and only
                     // while it is scrolling the axis this slider is: a slice
                     // number from another acquisition, or from a reoriented view

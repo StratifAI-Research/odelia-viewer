@@ -28,8 +28,8 @@ interface SliceRangeSliderProps {
   viewerSliceNumber: number | null;
   /** Distinguishes the accessible names when several series are attached. */
   seriesLabel: string;
-  /** How many slices may be sent, and what decides it — see maxSlicesForModel. */
-  sliceLimit: SliceLimit;
+  /** How many slices this series may send, and what decides it — see maxSlicesForModel. */
+  sliceLimitPerSeries: SliceLimit;
   onRangeChange: (range: SliceRange) => void;
   onCountChange: (count: number) => void;
 }
@@ -60,7 +60,7 @@ const SliceRangeSlider: React.FC<SliceRangeSliderProps> = ({
   count,
   viewerSliceNumber,
   seriesLabel,
-  sliceLimit,
+  sliceLimitPerSeries,
   onRangeChange,
   onCountChange,
 }) => {
@@ -99,23 +99,23 @@ const SliceRangeSlider: React.FC<SliceRangeSliderProps> = ({
     return null;
   }
 
-  const maxCount = Math.min(span, sliceLimit.limit);
+  const maxCount = Math.min(span, sliceLimitPerSeries.limit);
   // A window wider than the limit cannot send all of itself, and the only sign of
   // that was the + button greying out. "Range 67–120" beside "50 slices sent"
   // then reads as arithmetic that does not add up.
-  const cappedByLimit = span > sliceLimit.limit;
+  const cappedByLimit = span > sliceLimitPerSeries.limit;
 
   /** Why the selection is being truncated, in the terms that caused it. */
   const limitExplanation = () => {
     const skipped = span - sampled.length;
     const tail = `so ${skipped} of the ${span} slices in this window are skipped. Narrow the window to send every slice in it.`;
-    if (sliceLimit.reason === 'transport' || !sliceLimit.contextLength) {
-      return `${sliceLimit.limit} slices is the most one message can carry, ${tail}`;
+    if (sliceLimitPerSeries.reason === 'transport' || !sliceLimitPerSeries.contextLength) {
+      return `${sliceLimitPerSeries.limit} slices is the most one series can send, ${tail}`;
     }
-    const context = `${Math.round(sliceLimit.contextLength / 1000)}k context`;
-    return sliceLimit.reason === 'model'
-      ? `This model fits ${sliceLimit.limit} slices — a ${context} at ${sliceLimit.tokensPerImage} tokens per image — ${tail}`
-      : `This model reports no per-image cost; at an assumed ${sliceLimit.tokensPerImage} tokens each its ${context} fits ${sliceLimit.limit} slices, ${tail}`;
+    const context = `${Math.round(sliceLimitPerSeries.contextLength / 1000)}k context`;
+    return sliceLimitPerSeries.reason === 'model'
+      ? `This model fits ${sliceLimitPerSeries.limit} slices — a ${context} at ${sliceLimitPerSeries.tokensPerImage} tokens per image — ${tail}`
+      : `This model reports no per-image cost; at an assumed ${sliceLimitPerSeries.tokensPerImage} tokens each its ${context} fits ${sliceLimitPerSeries.limit} slices, ${tail}`;
   };
 
   return (
@@ -139,7 +139,7 @@ const SliceRangeSlider: React.FC<SliceRangeSliderProps> = ({
             className="text-foreground whitespace-nowrap"
             title={
               cappedByLimit
-                ? `The window holds ${span} slices; ${sliceLimit.limit} is the most this model can be sent`
+                ? `The window holds ${span} slices; ${sliceLimitPerSeries.limit} is the most this model can be sent`
                 : undefined
             }
           >

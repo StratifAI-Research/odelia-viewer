@@ -454,7 +454,7 @@ describe('ChatPanel — slice range', () => {
       expect(screen.getByText(/Sends 3 images in total/)).toBeTruthy();
     });
 
-    it('says so when the window outgrows what one message can carry', async () => {
+    it('says so when the window outgrows what one series can send', async () => {
       // A 54-slice window reported "50 slices sent" beside "Range 67–120", with
       // nothing on screen to reconcile the two, and the only sign of the limit
       // was the + button greying out. With no model budget reported here, the
@@ -471,7 +471,7 @@ describe('ChatPanel — slice range', () => {
       });
 
       expect(screen.getByText('128 of 160 slices sent')).toBeTruthy();
-      expect(screen.getByText(/most one message can carry/)).toBeTruthy();
+      expect(screen.getByText(/most one series can send/)).toBeTruthy();
       expect(screen.getByText(/32 of the 160 slices in this window are skipped/)).toBeTruthy();
     });
 
