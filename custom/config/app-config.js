@@ -95,7 +95,7 @@ window.config = {
   //   chatMiddleware: { wsUrl: 'wss://example.org/ws/chat/new' },
   //   chatApiBase: 'https://example.org/chat-api',
   httpErrorHandler: error => {
-    console.warn(`HTTP Error Handler (status: ${error.status})`, error);
+    console.warn('HTTP request failed', { status: error.status });
   },
   // OIDC / Keycloak. `authority` is a same-origin proxied path (/keycloak/...),
   // so the browser talks to Keycloak through this origin — no third-party cookies.
@@ -107,6 +107,7 @@ window.config = {
       scope: 'openid profile email',
       post_logout_redirect_uri: '/viewer/',
       response_type: 'code',
+      disablePKCE: false,
       // Silent renew and session monitoring both work by loading the Keycloak
       // authorize endpoint in hidden iframes on a short timer. In Firefox that
       // burst of iframe requests tripped rate limiting / connection errors and

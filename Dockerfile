@@ -98,10 +98,15 @@ FROM nginxinc/nginx-unprivileged:1.31-alpine as final
 
 USER root
 # Download and install oauth2-proxy
-RUN curl -L https://github.com/oauth2-proxy/oauth2-proxy/releases/download/v7.4.0/oauth2-proxy-v7.4.0.linux-amd64.tar.gz -o oauth2-proxy.tar.gz && \
-  tar -xvzf oauth2-proxy.tar.gz && \
-  mv oauth2-proxy-v7.4.0.linux-amd64/oauth2-proxy /usr/local/bin/ && \
-  rm -rf oauth2-proxy-v7.4.0.linux-amd64 oauth2-proxy.tar.gz
+# Publisher checksum: v7.4.0/oauth2-proxy-v7.4.0.linux-amd64-sha256sum.txt
+# Extract only the executable to stdout; verify before installing or running it.
+RUN curl --fail --show-error --location --proto '=https' --proto-redir '=https' \
+      https://github.com/oauth2-proxy/oauth2-proxy/releases/download/v7.4.0/oauth2-proxy-v7.4.0.linux-amd64.tar.gz \
+      -o /tmp/oauth2-proxy.tar.gz && \
+    tar -xOzf /tmp/oauth2-proxy.tar.gz oauth2-proxy-v7.4.0.linux-amd64/oauth2-proxy > /tmp/oauth2-proxy && \
+    echo "6cec92d8eb154a2c902f72ab6334fd9d4f613b4cb3824c74173c3ca7d9bf6bed  /tmp/oauth2-proxy" | sha256sum -c - && \
+    install -m 755 /tmp/oauth2-proxy /usr/local/bin/oauth2-proxy && \
+    rm /tmp/oauth2-proxy /tmp/oauth2-proxy.tar.gz
 
 
 #RUN apk add --no-cache bash
@@ -112,7 +117,7 @@ ENV PORT=${PORT}
 RUN rm /etc/nginx/conf.d/default.conf
 USER nginx
 COPY --chown=nginx:nginx .docker/Viewer-v3.x /usr/src
-RUN chmod 777 /usr/src/entrypoint.sh
+RUN chmod 755 /usr/src/entrypoint.sh
 # --chown here rather than a `chown -R` afterwards: a recursive chown rewrites
 # every file, and because each layer stores whole files rather than metadata
 # deltas, that produced a second complete copy of the ~120 MB tree in the image.

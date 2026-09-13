@@ -8,6 +8,8 @@ server {
     root   /usr/share/nginx/html;
     index  index.html index.htm;
     try_files $uri $uri/ ${PUBLIC_URL}index.html;
+    add_header Referrer-Policy "same-origin" always;
+    add_header X-Content-Type-Options "nosniff" always;
     add_header Cross-Origin-Resource-Policy same-origin;
     proxy_set_header Host $host;
     proxy_set_header X-Real-IP $remote_addr;
