@@ -376,6 +376,24 @@ importers:
         specifier: 4.5.5
         version: 4.5.5(@types/react@18.3.23)(immer@9.0.21)(react@18.3.1)
 
+  custom/extension/viewer-updates:
+    dependencies:
+      '@ohif/core':
+        specifier: workspace:*
+        version: link:../../../platform/core
+      '@ohif/ui-next':
+        specifier: workspace:*
+        version: link:../../../platform/ui-next
+      react:
+        specifier: 18.3.1
+        version: 18.3.1
+      react-i18next:
+        specifier: 12.3.1
+        version: 12.3.1(i18next@17.3.1)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
+      semver:
+        specifier: 7.8.5
+        version: 7.8.5
+
   custom/mode/labeling-mode:
     dependencies:
       '@babel/runtime':

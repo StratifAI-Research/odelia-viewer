@@ -77,7 +77,8 @@ ARG PUBLIC_URL=/
 ENV PUBLIC_URL=${PUBLIC_URL}
 
 # RUN pnpm run show:config
-RUN pnpm run build
+ARG ODELIA_RELEASE_TAG
+RUN ODELIA_RELEASE_TAG="${ODELIA_RELEASE_TAG}" pnpm run build
 
 # Upstream's webpack copies the whole of node_modules/onnxruntime-web/dist into
 # dist/ort (platform/app/.webpack/webpack.pwa.js), which includes the ONNX

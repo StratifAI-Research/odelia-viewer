@@ -62,6 +62,12 @@ export default defineConfig({
       'process.env.PUBLIC_URL': JSON.stringify(process.env.PUBLIC_URL || '/'),
       'process.env.BUILD_NUM': JSON.stringify(BUILD_NUM),
       'process.env.VERSION_NUMBER': JSON.stringify(VERSION_NUMBER),
+      'process.env.ODELIA_PRODUCT_VERSION': JSON.stringify(
+        (process.env.ODELIA_RELEASE_TAG || require('./platform/app/package.json').productVersion).replace(
+          /^v/,
+          ''
+        )
+      ),
       'process.env.COMMIT_HASH': JSON.stringify(COMMIT_HASH),
       'process.env.USE_LOCIZE': JSON.stringify(process.env.USE_LOCIZE || ''),
       'process.env.LOCIZE_PROJECTID': JSON.stringify(process.env.LOCIZE_PROJECTID || ''),

@@ -8,6 +8,15 @@ export class DOMOverlayPageObject {
     this.page = page;
   }
 
+  get viewerUpdate() {
+    const locator = this.page.getByTestId('viewer-update-notice');
+    return {
+      locator,
+      dismiss: locator.getByRole('button', { name: 'Dismiss', exact: true }),
+      patientList: this.page.getByTestId('worklist-update-slot'),
+    };
+  }
+
   get dialog() {
     const page = this.page;
 

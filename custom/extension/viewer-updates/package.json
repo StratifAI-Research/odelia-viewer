@@ -1,0 +1,22 @@
+{
+  "name": "viewer-updates",
+  "version": "0.0.1",
+  "private": true,
+  "main": "src/index.tsx",
+  "module": "src/index.tsx",
+  "keywords": [
+    "ohif-extension"
+  ],
+  "scripts": {
+    "test:unit:ci": "jest --config jest.config.js --ci --runInBand"
+  },
+  "dependencies": {
+    "semver": "7.8.5"
+  },
+  "peerDependencies": {
+    "@ohif/core": "workspace:*",
+    "@ohif/ui-next": "workspace:*",
+    "react": "18.3.1",
+    "react-i18next": "12.3.1"
+  }
+}
