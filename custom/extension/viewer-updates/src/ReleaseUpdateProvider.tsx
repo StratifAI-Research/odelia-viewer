@@ -1,12 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { useUserAuthentication } from '@ohif/ui-next';
-import {
-  CACHE_KEY,
-  HOUR,
-  checkRelease,
-  stableVersion,
-  type Release,
-} from './releaseClient';
+import { CACHE_KEY, HOUR, checkRelease, stableVersion, type Release } from './releaseClient';
 
 export type UpdateConfig = {
   enabled?: boolean;
@@ -16,6 +10,12 @@ type AppConfig = {
   viewerUpdates?: UpdateConfig;
   routerBasename?: string;
   oidc?: { authority?: string }[];
+};
+type AuthenticationState = {
+  user: {
+    profile: { sub?: string; iss?: string };
+    expired?: boolean;
+  } | null;
 };
 type UpdateState = {
   release: Release | null;
@@ -38,7 +38,8 @@ export default function ReleaseUpdateProvider({
   children: React.ReactNode;
   appConfig: AppConfig;
 }) {
-  const [{ user }] = useUserAuthentication();
+  // OHIF infers this hook from its object default, but the provider supplies [state, api].
+  const [{ user }] = useUserAuthentication() as unknown as [AuthenticationState, unknown];
   const installed = stableVersion(process.env.ODELIA_PRODUCT_VERSION) || '';
   const options = appConfig.viewerUpdates;
   const enabled =
@@ -48,7 +49,7 @@ export default function ReleaseUpdateProvider({
   const authenticated = !oidc || Boolean(subject && !user?.expired);
   const identitySource = authenticated
     ? oidc
-      ? `${user.profile.iss || oidc.authority}:${subject}`
+      ? `${user?.profile?.iss || oidc.authority}:${subject}`
       : 'anonymous'
     : null;
   const identity = useMemo(() => {
