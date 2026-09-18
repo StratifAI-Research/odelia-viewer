@@ -3,6 +3,8 @@
 # builds from this repo (override with VIEWER_TAG / docker compose pull + --no-build).
 # Default configs live in ./deploy/. For medgemma, set a valid HF_TOKEN
 # (gated google/medgemma model); without it medgemma will not start.
+# BIND_HOST accepts a plain IP (e.g. 127.0.0.1 or ::1); unset/empty keeps the
+# container runtime's default host binding for published ports.
 services:
   viewer:
     image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-viewer:${VIEWER_TAG:-latest}
@@ -12,7 +14,9 @@ services:
     # app-config.js is baked into the viewer image (see Dockerfile); kept under custom/, not deploy/
     - ./custom/config/app-config.js:/usr/share/nginx/html/app-config.js
     ports:
-    - 8081:8081
+    - target: 8081
+      published: "8081"
+      host_ip: "${BIND_HOST:-}"
     depends_on:
     - orthanc-viewer
     - keycloak
@@ -39,9 +43,14 @@ services:
     networks:
     - odelia-network
     ports:
-    - 8000:8042
-    - 2000:4242
+    - target: 8042
+      published: "8000"
+      host_ip: "${BIND_HOST:-}"
+    - target: 4242
+      published: "2000"
+      host_ip: "${BIND_HOST:-}"
     environment:
+    - ROUTER_HOST_ALLOWLIST=${ROUTER_HOST_ALLOWLIST:-}
     - ORTHANC__NAME=orthanc-viewer
     - VERBOSE_ENABLED=true
     - VERBOSE_STARTUP=true
@@ -61,9 +70,14 @@ services:
     networks:
     - odelia-network
     ports:
-    - 4243:4242
-    - 8043:8042
+    - target: 4242
+      published: "4243"
+      host_ip: "${BIND_HOST:-}"
+    - target: 8042
+      published: "8043"
+      host_ip: "${BIND_HOST:-}"
     environment:
+    - ROUTER_HOST_ALLOWLIST=${ROUTER_HOST_ALLOWLIST:-}
     - ORTHANC__NAME=orthanc-router-mst
     - VERBOSE_ENABLED=true
     - VERBOSE_STARTUP=true
@@ -76,13 +90,16 @@ services:
     image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-model-mst:${TAG:-0.1.0}
     container_name: odelia-model-mst
     environment:
+      ROUTER_HOST_ALLOWLIST: "${ROUTER_HOST_ALLOWLIST:-}"
       ORTHANC_URL: http://orthanc-router-mst:8042
       IMAGE_FOLDER: /app/mst-service/images
       MODEL_PATH: /app/mst-service/mst_model
     networks:
     - odelia-network
     ports:
-    - 5556:5556
+    - target: 5556
+      published: "5556"
+      host_ip: "${BIND_HOST:-}"
   orthanc-router-medgemma:
     image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-orthanc-router:${TAG:-0.1.0}
     hostname: orthanc-router-medgemma
@@ -94,9 +111,14 @@ services:
     networks:
     - odelia-network
     ports:
-    - 4244:4242
-    - 8044:8042
+    - target: 4242
+      published: "4244"
+      host_ip: "${BIND_HOST:-}"
+    - target: 8042
+      published: "8044"
+      host_ip: "${BIND_HOST:-}"
     environment:
+    - ROUTER_HOST_ALLOWLIST=${ROUTER_HOST_ALLOWLIST:-}
     - ORTHANC__NAME=orthanc-router-medgemma
     - VERBOSE_ENABLED=true
     - VERBOSE_STARTUP=true
@@ -110,6 +132,7 @@ services:
     image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-model-medgemma:${TAG:-0.1.0}
     container_name: odelia-model-medgemma
     environment:
+      ROUTER_HOST_ALLOWLIST: "${ROUTER_HOST_ALLOWLIST:-}"
       ORTHANC_URL: http://orthanc-router-medgemma:8042
       IMAGE_FOLDER: /app/medgemma-service/images
       HF_TOKEN: "${HF_TOKEN:-}"
@@ -119,11 +142,15 @@ services:
     networks:
     - odelia-network
     ports:
-    - 5557:5557
+    - target: 5557
+      published: "5557"
+      host_ip: "${BIND_HOST:-}"
   chat-middleware:
     image: ${DOCKER_HUB_USERNAME:-stratifai}/odelia-chat:${TAG:-0.1.0}
     container_name: odelia-chat
     environment:
+      CHAT_ALLOWED_ORIGINS: "${CHAT_ALLOWED_ORIGINS:-}"
+      CHAT_WEBSOCKET_ORIGIN_CHECK: "${CHAT_WEBSOCKET_ORIGIN_CHECK:-0}"
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       OLLAMA_MODEL: ${OLLAMA_MODEL:-thiagomoraes/medgemma-1.5-4b-it:F16}
       BACKEND_TYPE: ${BACKEND_TYPE:-ollama}
@@ -134,7 +161,9 @@ services:
     networks:
     - odelia-network
     ports:
-    - 5560:5560
+    - target: 5560
+      published: "5560"
+      host_ip: "${BIND_HOST:-}"
     depends_on:
     - orthanc-viewer
     extra_hosts:
@@ -147,7 +176,9 @@ services:
     volumes:
     - ./deploy/volumes/models:/models:ro
     ports:
-    - 8090:8090
+    - target: 8090
+      published: "8090"
+      host_ip: "${BIND_HOST:-}"
     networks:
     - odelia-network
     restart: unless-stopped
@@ -176,12 +207,14 @@ services:
     image: grafana/grafana:11.1.0
     container_name: odelia-grafana
     ports:
-    - 3000:3000
+    - target: 3000
+      published: "3000"
+      host_ip: "${BIND_HOST:-}"
     user: 0:0
     environment:
     - GF_INSTALL_PLUGINS=frser-sqlite-datasource
     - GF_SECURITY_ADMIN_USER=admin
-    - GF_SECURITY_ADMIN_PASSWORD=odelia
+    - GF_SECURITY_ADMIN_PASSWORD=${GF_SECURITY_ADMIN_PASSWORD:-odelia}
     volumes:
     - ./deploy/grafana/provisioning:/etc/grafana/provisioning:ro
     - ./deploy/volumes/feedback-db/:/var/lib/odelia-feedback/
@@ -202,14 +235,14 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_SCHEMA: public
       KC_DB_USERNAME: keycloak
-      KC_DB_PASSWORD: password
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-password}
       KC_HOSTNAME_ADMIN_URL: http://localhost:8081/keycloak/
       KC_HOSTNAME_URL: http://localhost:8081/keycloak/
       KC_HOSTNAME_STRICT_BACKCHANNEL: 'true'
       KC_HOSTNAME_STRICT_HTTPS: 'false'
       KC_HTTP_ENABLED: 'true'
       KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       KC_HEALTH_ENABLED: 'true'
       KC_METRICS_ENABLED: 'true'
       KC_PROXY: edge
@@ -219,7 +252,9 @@ services:
       KC_HOSTNAME_DEBUG: 'true'
       PROXY_ADDRESS_FORWARDING: 'true'
     ports:
-    - 8080:8080
+    - target: 8080
+      published: "8080"
+      host_ip: "${BIND_HOST:-}"
     depends_on:
     - postgres
     restart: unless-stopped
@@ -242,7 +277,7 @@ services:
     environment:
       POSTGRES_DB: keycloak
       POSTGRES_USER: keycloak
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: ${KEYCLOAK_DB_PASSWORD:-password}
     restart: unless-stopped
     networks:
     - odelia-network
