@@ -20,13 +20,93 @@ export interface SliceRange {
 }
 
 /**
- * Most slices one message may send per series.
+ * What the middleware will accept for one series, until it says otherwise.
  *
- * Matches the ceiling on the settings dialog's slice count. The wire protocol
- * allows a little more (`MAX_SLICES_PER_SERIES = 64` in the middleware), so this
- * limit is reached before validation ever rejects a payload.
+ * Per series, not per message — the middleware bounds each series' slice list
+ * separately (MAX_SLICES_PER_SERIES) and the number of series separately again.
+ * A transport guard, not a model limit: every slice is a WADO retrieval, a
+ * decode and a base64 PNG in the request body. The real value is reported by
+ * `/debug/config`; this stands in only before the config has loaded.
  */
-export const MAX_SLICES_PER_SERIES = 50;
+export const FALLBACK_TRANSPORT_LIMIT = 128;
+
+/**
+ * Tokens one slice costs a model that does not report the figure.
+ *
+ * Ollama reports it per model (`<arch>.mm.tokens_per_image`). OpenRouter does
+ * not — `per_request_limits` is null for its whole catalogue, and the true cost
+ * depends on which provider the request is brokered to. 1500 is deliberately on
+ * the high side: overstating the cost understates how many slices fit, which
+ * fails towards a request the model can actually answer.
+ */
+export const ASSUMED_TOKENS_PER_IMAGE = 1500;
+
+/**
+ * Context left for everything that is not a slice: the system prompt, the
+ * conversation so far, the question, and the answer being generated.
+ */
+export const TEXT_TOKEN_RESERVE = 8192;
+
+/** What a model reports about its own budget. Either field may be absent. */
+export interface ModelBudget {
+  contextLength?: number | null;
+  tokensPerImage?: number | null;
+}
+
+/**
+ * Why a slice count is bounded where it is — the UI says which one bit.
+ *
+ * Every bound here is per series. The panel attaches at most one series today,
+ * so per series and per message coincide; if that ever changes, a model's
+ * context is a per-request budget and would have to be shared across them.
+ */
+export type SliceLimitReason = 'model' | 'estimate' | 'transport';
+
+export interface SliceLimit {
+  limit: number;
+  reason: SliceLimitReason;
+  /** Present when the bound came from the model's context, for explaining it. */
+  contextLength?: number;
+  tokensPerImage?: number;
+}
+
+/**
+ * How many slices one series may send to a given model.
+ *
+ * Derived rather than fixed. A hard-coded ceiling is wrong in both directions at
+ * once: it truncated a 131072-token model that fits some five hundred slices at
+ * 256 tokens each, while leaving an 8k-context model free to be sent fifty
+ * images it cannot read.
+ *
+ * The smaller of what the model can hold and what the pipeline will ship wins,
+ * and `reason` names which — so a truncated selection can say why instead of
+ * looking like arithmetic that does not add up.
+ */
+export function maxSlicesForModel(
+  budget: ModelBudget | null | undefined,
+  transportLimit: number = FALLBACK_TRANSPORT_LIMIT
+): SliceLimit {
+  const transport = Math.max(1, Math.floor(transportLimit));
+  const context = budget?.contextLength;
+
+  if (typeof context !== 'number' || context <= 0) {
+    return { limit: transport, reason: 'transport' };
+  }
+
+  const reported = budget?.tokensPerImage;
+  const perImage =
+    typeof reported === 'number' && reported > 0 ? reported : ASSUMED_TOKENS_PER_IMAGE;
+  const reason: SliceLimitReason =
+    typeof reported === 'number' && reported > 0 ? 'model' : 'estimate';
+
+  // At least one: a model too small to hold a slice alongside its prompt still
+  // has to be offered the slice, or the panel would send an empty message.
+  const fits = Math.max(1, Math.floor((context - TEXT_TOKEN_RESERVE) / perImage));
+
+  return fits <= transport
+    ? { limit: fits, reason, contextLength: context, tokensPerImage: perImage }
+    : { limit: transport, reason: 'transport' };
+}
 
 /** Clamp a range into `[1, total]`, keeping start ≤ end. */
 export function clampRange(range: SliceRange, total: number): SliceRange {

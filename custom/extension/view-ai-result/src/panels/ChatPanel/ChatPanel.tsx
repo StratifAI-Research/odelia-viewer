@@ -53,7 +53,8 @@ import {
 import {
   clampRange,
   initialRange,
-  MAX_SLICES_PER_SERIES,
+  FALLBACK_TRANSPORT_LIMIT,
+  maxSlicesForModel,
   rangeAroundSlice,
   rangeSize,
   sampleSliceNumbers,
@@ -112,12 +113,30 @@ const getChatApiBase = (): string => {
   return '/chat-api';
 };
 
+/**
+ * The settings model lists, as a scroll box about five rows tall.
+ *
+ * OpenRouter lists several hundred models, and a settings dialog that grows to
+ * hold them all buries everything below it. Five rows is enough to browse a
+ * local catalogue and short enough that the search box above stays the way you
+ * reach a particular cloud model: type until it appears, then tick it.
+ */
+const MODEL_LIST_BOX_CLASS = 'border-input max-h-48 space-y-1 overflow-y-auto rounded border p-2';
+
+// Which env var an operator sets to configure the cloud backend, before the
+// middleware has said. A middleware predating the provider choice omits the
+// field and is, by definition, an Ollama Cloud deployment.
+const FALLBACK_CLOUD_KEY_ENV = 'OLLAMA_API_KEY';
+
 // Slice strategy options
 /** A model offered by the cloud backend, as reported by the middleware. */
 interface CloudModelInfo {
   name: string;
   capabilities: string[];
   supports_vision: boolean;
+  /** What the backend reports about the model's own image budget; may be absent. */
+  context_length?: number | null;
+  tokens_per_image?: number | null;
 }
 
 /**
@@ -343,6 +362,13 @@ const ChatPanel: React.FC = () => {
    */
   const [enabledModelKeys, setEnabledModelKeys] = useState<Set<string>>(new Set());
 
+  /** Free-text narrowing of the settings model lists. Not persisted: it is a way
+   * of finding a model, not a setting. */
+  const [modelSearch, setModelSearch] = useState('');
+
+  /** What the middleware will ship in one message. Reported rather than mirrored. */
+  const [transportLimit, setTransportLimit] = useState(FALLBACK_TRANSPORT_LIMIT);
+
   // Backend provider state.
   //
   // `cloudEnabled` mirrors the operator gate (ALLOW_CLOUD_BACKEND) and
@@ -353,6 +379,12 @@ const ChatPanel: React.FC = () => {
   const [cloudEnabled, setCloudEnabled] = useState(false);
   const [cloudConfigured, setCloudConfigured] = useState(false);
   const [cloudUrl, setCloudUrl] = useState('');
+  // The section is headed "Cloud", the counterpart of "Local": the panel offers
+  // one cloud slot and which service answers it is an operator's choice, shown as
+  // the host under the heading. The env var name, though, has to come from the
+  // middleware — naming the wrong one would send an operator to the wrong
+  // dashboard.
+  const [cloudKeyEnv, setCloudKeyEnv] = useState(FALLBACK_CLOUD_KEY_ENV);
   const [cloudModel, setCloudModel] = useState('');
   const [cloudModels, setCloudModels] = useState<CloudModelInfo[]>([]);
   const [cloudModelsLoading, setCloudModelsLoading] = useState(false);
@@ -404,6 +436,12 @@ const ChatPanel: React.FC = () => {
     setCloudConfigured(Boolean(data.cloud_configured));
     setCloudUrl(data.cloud_url || '');
     setCloudModel(data.cloud_model || '');
+    setCloudKeyEnv(data.cloud_key_env || FALLBACK_CLOUD_KEY_ENV);
+    setTransportLimit(
+      typeof data.max_slices_per_series === 'number' && data.max_slices_per_series > 0
+        ? data.max_slices_per_series
+        : FALLBACK_TRANSPORT_LIMIT
+    );
   }, []);
 
   // Load settings from debug API
@@ -736,6 +774,49 @@ const ChatPanel: React.FC = () => {
   const menuCloudModels = useMemo(
     () => visibleCloudModels.filter(m => isModelEnabled('cloud', m.name)),
     [visibleCloudModels, isModelEnabled]
+  );
+
+  /**
+   * How many slices one series may show the model in use.
+   *
+   * Read from the model rather than fixed: Ollama reports its context length and
+   * per-image cost, so medgemma's 131k context at 256 tokens an image is some
+   * five hundred slices, where a hard-coded fifty both truncated it and would
+   * have over-fed an 8k-context model. What the pipeline will ship still caps it.
+   *
+   * Per series, as the name says, because that is where the middleware applies
+   * its own bound. The panel attaches at most one series — follow-mode replaces
+   * the selection and the only other control detaches — so the two coincide
+   * today. They would not if a series picker returned: a model's context is a
+   * per-request budget, and several series would have to share this one.
+   */
+  const sliceLimitPerSeries = useMemo(() => {
+    const catalogue = provider === 'cloud' ? cloudModels : localModels;
+    const active = catalogue.find(m => m.name === activeModelTag);
+    return maxSlicesForModel(
+      { contextLength: active?.context_length, tokensPerImage: active?.tokens_per_image },
+      transportLimit
+    );
+  }, [provider, cloudModels, localModels, activeModelTag, transportLimit]);
+
+  // What the pruning currently amounts to. Shown in settings because the effect
+  // of ticking is otherwise only visible by opening the model menu and counting.
+  const offeredCount = menuLocalModels.length + menuCloudModels.length;
+  const catalogueCount = localCatalogue.length + visibleCloudModels.length;
+
+  /** The settings lists, narrowed by the search box. */
+  const filterModels = useCallback(
+    (models: CloudModelInfo[]) => {
+      const query = modelSearch.trim().toLowerCase();
+      return query ? models.filter(m => m.name.toLowerCase().includes(query)) : models;
+    },
+    [modelSearch]
+  );
+
+  const localRows = useMemo(() => filterModels(localCatalogue), [filterModels, localCatalogue]);
+  const cloudRows = useMemo(
+    () => filterModels(visibleCloudModels),
+    [filterModels, visibleCloudModels]
   );
 
   const toggleModelEnabled = useCallback(
@@ -1292,7 +1373,7 @@ const ChatPanel: React.FC = () => {
             Math.min(
               existing?.count ?? (followed ? rangeSize(range) : numSlices),
               rangeSize(range),
-              MAX_SLICES_PER_SERIES
+              sliceLimitPerSeries.limit
             )
           ),
           groupIndex: Math.min(Math.max(0, seeded), dimensionGroupCount(series.axis) - 1),
@@ -1305,6 +1386,7 @@ const ChatPanel: React.FC = () => {
     sliceStateByDisplaySet,
     sliceStrategy,
     numSlices,
+    sliceLimitPerSeries.limit,
     centralPercentage,
     viewerSlice,
     scrollsAcquisitionAxis,
@@ -1496,6 +1578,28 @@ const ChatPanel: React.FC = () => {
     [pinContext]
   );
 
+  /**
+   * Bring existing selections under the limit when the model changes.
+   *
+   * Switching from a 131k-context model to an 8k one silently left a selection
+   * of eighty slices in place, which the new model cannot be shown. Clamping is
+   * the honest response — the panel reports what it will send, so the number has
+   * to be one the model can take.
+   */
+  useEffect(() => {
+    setSliceStateByDisplaySet(prev => {
+      const over = Object.entries(prev).filter(([, st]) => st.count > sliceLimitPerSeries.limit);
+      if (over.length === 0) {
+        return prev;
+      }
+      const next = { ...prev };
+      over.forEach(([uid, st]) => {
+        next[uid] = { ...st, count: Math.max(1, sliceLimitPerSeries.limit) };
+      });
+      return next;
+    });
+  }, [sliceLimitPerSeries.limit]);
+
   /** Move a series' range. Adjusting the range is an investment in the prompt. */
   const setSeriesRange = useCallback(
     (series: ChatSeriesInfo, range: SliceRange) => {
@@ -1503,12 +1607,20 @@ const ChatPanel: React.FC = () => {
       setSliceStateByDisplaySet(prev => {
         const current = prev[series.displaySetInstanceUID];
         const bounded = clampRange(range, series.axis.sliceCount);
-        // Narrowing the range narrows the count with it. Left alone, the count
-        // would stay above the span and the +/- buttons would appear stuck: they
-        // would change a number the sampler is already ignoring.
+        const span = rangeSize(bounded);
+        // A window that was sending every slice in it goes on sending every slice
+        // in it. Dragging a three-slice window out to five asks for those five,
+        // not for three of them spread across the gap — the count is not a
+        // separate decision the reader made, it is what "this window" meant.
+        //
+        // A count they dialled *below* the span is a decision, so widening leaves
+        // it alone. Narrowing still clamps either way: left alone, a count above
+        // the span would make the +/- buttons look stuck, changing a number the
+        // sampler is already ignoring.
+        const wasSendingWholeWindow = current ? current.count >= rangeSize(current.range) : true;
         const count = Math.max(
           1,
-          Math.min(current?.count ?? 1, rangeSize(bounded), MAX_SLICES_PER_SERIES)
+          Math.min(wasSendingWholeWindow ? span : current.count, span, sliceLimitPerSeries.limit)
         );
         return {
           ...prev,
@@ -1522,7 +1634,7 @@ const ChatPanel: React.FC = () => {
         };
       });
     },
-    [pinContext]
+    [pinContext, sliceLimitPerSeries.limit]
   );
 
   const setSeriesCount = useCallback(
@@ -1535,12 +1647,12 @@ const ChatPanel: React.FC = () => {
         }
         const bounded = Math.max(
           1,
-          Math.min(count, rangeSize(current.range), MAX_SLICES_PER_SERIES)
+          Math.min(count, rangeSize(current.range), sliceLimitPerSeries.limit)
         );
         return { ...prev, [series.displaySetInstanceUID]: { ...current, count: bounded } };
       });
     },
-    [pinContext]
+    [pinContext, sliceLimitPerSeries.limit]
   );
 
   // --- Chat region of interest ---------------------------------------------
@@ -2157,7 +2269,7 @@ const ChatPanel: React.FC = () => {
           )}
 
           <div className="text-muted-foreground border-input mt-1 border-t px-3 pb-1 pt-2 text-[11px] font-semibold uppercase">
-            Ollama Cloud
+            Cloud
           </div>
           {!cloudEnabled ? (
             <div className="text-muted-foreground px-3 py-2 text-[11px]">
@@ -2165,7 +2277,7 @@ const ChatPanel: React.FC = () => {
             </div>
           ) : !cloudConfigured ? (
             <div className="text-muted-foreground px-3 py-2 text-[11px]">
-              No API key configured (<code>OLLAMA_API_KEY</code>).
+              No API key configured (<code>{cloudKeyEnv}</code>).
             </div>
           ) : cloudModelsLoading && menuCloudModels.length === 0 ? (
             <div className="text-muted-foreground px-3 py-2 text-xs">Loading models…</div>
@@ -2548,6 +2660,7 @@ const ChatPanel: React.FC = () => {
                     total={series.axis.sliceCount}
                     range={range}
                     count={count}
+                    sliceLimitPerSeries={sliceLimitPerSeries}
                     // Only when the viewport is showing THIS series, and only
                     // while it is scrolling the axis this slider is: a slice
                     // number from another acquisition, or from a reoriented view
@@ -2987,9 +3100,33 @@ const ChatPanel: React.FC = () => {
                   {localModelsLoading || cloudModelsLoading ? 'Loading…' : 'Refresh'}
                 </Button>
               </div>
-              <p className="text-muted-foreground mb-3 text-xs">
+              <p className="text-muted-foreground mb-2 text-xs">
                 Tick the models the model menu should offer. Which one answers a given message is
                 chosen there, next to the chat.
+              </p>
+
+              <div className="mb-2 flex items-center gap-2">
+                <Input
+                  type="text"
+                  value={modelSearch}
+                  onChange={e => setModelSearch(e.target.value)}
+                  placeholder="Search models…"
+                  aria-label="Search models"
+                />
+                {modelSearch.trim() !== '' && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setModelSearch('')}
+                    aria-label="Clear model search"
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+
+              <p className="text-muted-foreground mb-3 text-[11px]">
+                Offering {offeredCount} of {catalogueCount}.
               </p>
 
               {/* Local */}
@@ -3007,8 +3144,14 @@ const ChatPanel: React.FC = () => {
                     : 'The local server has no models pulled. An operator adds one with `ollama pull`.'}
                 </p>
               ) : (
-                <div className="mb-3 space-y-1">
-                  {localCatalogue.map(m => (
+                <div
+                  className={`mb-3 ${MODEL_LIST_BOX_CLASS}`}
+                  data-testid="local-model-list"
+                >
+                  {localRows.length === 0 && (
+                    <p className="text-muted-foreground text-xs">No local model matches.</p>
+                  )}
+                  {localRows.map(m => (
                     <label
                       key={m.name}
                       className="text-foreground flex items-start gap-2 text-xs"
@@ -3035,7 +3178,7 @@ const ChatPanel: React.FC = () => {
 
               {/* Cloud */}
               <div className="text-muted-foreground mb-1 text-[11px] font-semibold uppercase">
-                Ollama Cloud
+                Cloud
               </div>
               {!cloudEnabled ? (
                 <p className="text-muted-foreground text-xs">
@@ -3045,7 +3188,7 @@ const ChatPanel: React.FC = () => {
               ) : !cloudConfigured ? (
                 <p className="text-muted-foreground text-xs">
                   No API key is configured on the chat-middleware service. An operator must set{' '}
-                  <code>OLLAMA_API_KEY</code>.
+                  <code>{cloudKeyEnv}</code>.
                 </p>
               ) : cloudModelsError ? (
                 <div className="rounded border border-red-700 bg-red-900/50 px-3 py-2 text-xs text-red-300">
@@ -3056,8 +3199,14 @@ const ChatPanel: React.FC = () => {
                   <p className="text-muted-foreground mb-2 text-[11px]">
                     Answered by {cloudUrl || 'the cloud provider'}.
                   </p>
-                  <div className="space-y-1">
-                    {visibleCloudModels.map(m => (
+                  <div
+                    className={MODEL_LIST_BOX_CLASS}
+                    data-testid="cloud-model-list"
+                  >
+                    {cloudRows.length === 0 && (
+                      <p className="text-muted-foreground text-xs">No cloud model matches.</p>
+                    )}
+                    {cloudRows.map(m => (
                       <label
                         key={m.name}
                         className="text-foreground flex items-start gap-2 text-xs"
@@ -3098,9 +3247,11 @@ const ChatPanel: React.FC = () => {
               )}
             </div>
 
-            {/* Ollama Options Section */}
+            {/* Generation options. Named for what they do, not for one backend:
+                they are passed through to whichever backend answers — the local
+                Ollama, llama.cpp, or the cloud provider. */}
             <div className="border-input border-t pt-4">
-              <h4 className="text-foreground mb-3 text-xs font-semibold">Ollama Options</h4>
+              <h4 className="text-foreground mb-3 text-xs font-semibold">Generation Options</h4>
 
               {/* Think (for thinking models like deepseek-r1) */}
               <div className="mb-3">

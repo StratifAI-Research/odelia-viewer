@@ -123,6 +123,60 @@ describe('ChatPanel backend selector', () => {
     expect(screen.getByText(/ALLOW_CLOUD_BACKEND/)).toBeTruthy();
   });
 
+  it('names the section for the slot, not the vendor behind it', async () => {
+    // "Cloud" is the counterpart of "Local". Which service answers is an operator
+    // choice (CLOUD_PROVIDER) shown as the host, so naming a vendor in the
+    // heading would just be a second place to get it wrong.
+    routeFetch({
+      '/debug/config': jsonOk({
+        ...BASE_CONFIG,
+        provider: 'local',
+        cloud_enabled: true,
+        cloud_configured: false,
+        cloud_provider: 'openrouter',
+        cloud_key_env: 'OPENROUTER_API_KEY',
+      }),
+    });
+    await openSettings();
+
+    expect(screen.getAllByText('Cloud').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Ollama Cloud')).toBeNull();
+  });
+
+  it('names the env var of the provider actually configured', async () => {
+    // Only the middleware knows whether this deployment points at Ollama Cloud or
+    // OpenRouter; the wrong name sends an operator to the wrong dashboard.
+    routeFetch({
+      '/debug/config': jsonOk({
+        ...BASE_CONFIG,
+        provider: 'local',
+        cloud_enabled: true,
+        cloud_configured: false,
+        cloud_provider: 'openrouter',
+        cloud_key_env: 'OPENROUTER_API_KEY',
+      }),
+    });
+    await openSettings();
+
+    expect(screen.getByText(/OPENROUTER_API_KEY/)).toBeTruthy();
+  });
+
+  it('falls back to the Ollama key name when the middleware names none', async () => {
+    // A middleware predating the provider choice omits the field and is, by
+    // definition, an Ollama Cloud deployment.
+    routeFetch({
+      '/debug/config': jsonOk({
+        ...BASE_CONFIG,
+        provider: 'local',
+        cloud_enabled: true,
+        cloud_configured: false,
+      }),
+    });
+    await openSettings();
+
+    expect(screen.getByText(/OLLAMA_API_KEY/)).toBeTruthy();
+  });
+
   it('does not fetch the cloud model list when the backend is unusable', async () => {
     // The listing costs an /api/tags plus one /api/show per model upstream, and
     // cannot succeed without the gate and a key. Settings lists both catalogues
@@ -430,6 +484,109 @@ describe('ChatPanel backend selector', () => {
     await openSettings();
 
     expect(screen.getByText(/connection refused/)).toBeTruthy();
+  });
+
+  describe('finding a model among hundreds', () => {
+    /** A cloud catalogue big enough that scrolling it is the problem. */
+    const bigCatalogue = (n: number) =>
+      jsonOk({
+        capabilities_reported: true,
+        models: [
+          ...Array.from({ length: n }, (_, i) => ({
+            name: `vendor/filler-${String(i).padStart(3, '0')}`,
+            capabilities: ['image'],
+            supports_vision: true,
+          })),
+          { name: 'qwen/qwen3.8-vl', capabilities: ['image'], supports_vision: true },
+        ],
+      });
+
+    const cloudOn = {
+      ...BASE_CONFIG,
+      provider: 'local',
+      cloud_enabled: true,
+      cloud_configured: true,
+      cloud_model: '',
+    };
+
+    it('holds the catalogue in a scroll box rather than growing the dialog', async () => {
+      // Several hundred rows would bury every setting below them. The box keeps
+      // its own height and scrolls; nothing is dropped from it.
+      routeFetch({ '/debug/config': jsonOk(cloudOn), '/cloud/models': bigCatalogue(40) });
+      await openSettings();
+
+      const box = screen.getByTestId('cloud-model-list');
+      expect(box.className).toContain('overflow-y-auto');
+      expect(box.className).toContain('max-h-48');
+      // Reachable by scrolling, not pruned away.
+      expect(screen.getByLabelText('Offer vendor/filler-039')).toBeTruthy();
+    });
+
+    it('narrows to the model being typed, and drops the rest', async () => {
+      routeFetch({ '/debug/config': jsonOk(cloudOn), '/cloud/models': bigCatalogue(40) });
+      await openSettings();
+      expect(screen.getByLabelText('Offer vendor/filler-000')).toBeTruthy();
+
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Search models'), { target: { value: 'qwen3.8' } });
+      });
+
+      expect(screen.getByLabelText('Offer qwen/qwen3.8-vl')).toBeTruthy();
+      expect(screen.queryByLabelText('Offer vendor/filler-000')).toBeNull();
+    });
+
+    it('ticks the model the search found, leaving the others behind', async () => {
+      // The whole flow: type until it appears, then tick it.
+      routeFetch({ '/debug/config': jsonOk(cloudOn), '/cloud/models': bigCatalogue(3) });
+      await openSettings();
+
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Search models'), { target: { value: 'qwen3.8' } });
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Offer qwen/qwen3.8-vl'));
+      });
+
+      // Unticking materialises "everything" minus this one, which is what the
+      // checkbox has always meant — the search only decided which box to reach.
+      const stored = JSON.parse(localStorage.getItem('odelia.chat.enabledModels.v1')!);
+      expect(stored).not.toContain('cloud:qwen/qwen3.8-vl');
+      expect(stored).toContain('cloud:vendor/filler-000');
+    });
+
+    it('says when nothing matches, rather than showing an empty box', async () => {
+      routeFetch({ '/debug/config': jsonOk(cloudOn), '/cloud/models': bigCatalogue(5) });
+      await openSettings();
+
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Search models'), {
+          target: { value: 'no-such-model' },
+        });
+      });
+      expect(screen.getByText('No cloud model matches.')).toBeTruthy();
+    });
+
+    it('clears the search back to the full list', async () => {
+      routeFetch({ '/debug/config': jsonOk(cloudOn), '/cloud/models': bigCatalogue(5) });
+      await openSettings();
+
+      await act(async () => {
+        fireEvent.change(screen.getByLabelText('Search models'), { target: { value: 'qwen3.8' } });
+      });
+      expect(screen.queryByLabelText('Offer vendor/filler-000')).toBeNull();
+
+      await act(async () => {
+        fireEvent.click(screen.getByLabelText('Clear model search'));
+      });
+      expect(screen.getByLabelText('Offer vendor/filler-000')).toBeTruthy();
+    });
+
+    it('says how much of the catalogue is on offer', async () => {
+      routeFetch({ '/debug/config': jsonOk(cloudOn), '/cloud/models': bigCatalogue(2) });
+      await openSettings();
+      // 3 cloud models, and the local model in use, all offered until pruned.
+      expect(screen.getByText(/Offering \d+ of \d+/)).toBeTruthy();
+    });
   });
 
   it('unticking a model removes it from the chat menu, keeping the rest', async () => {
