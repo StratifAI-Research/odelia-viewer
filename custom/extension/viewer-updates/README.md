@@ -29,6 +29,13 @@ Release CI passes the Git tag as the Docker build argument ODELIA_RELEASE_TAG.
 Both bundlers remove an optional leading v and embed that value; builds without
 the argument fall back to platform/app/package.json productVersion.
 
+The extension also customizes Settings → About to show this ODELIA version,
+the underlying OHIF version, and the ODELIA repository link. This remains
+available when automatic update checks are disabled.
+
+Before tagging a release, bump productVersion to match the intended tag; see
+the [release steps](../../../README.md#publishing-a-release).
+
 Only release CI enforces that its Git tag matches productVersion. Manual builds
 can override the version to test update detection against the real GitHub release:
 

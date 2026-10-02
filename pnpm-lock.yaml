@@ -384,6 +384,9 @@ importers:
       '@ohif/ui-next':
         specifier: workspace:*
         version: link:../../../platform/ui-next
+      browser-detect:
+        specifier: 0.2.28
+        version: 0.2.28
       react:
         specifier: 18.3.1
         version: 18.3.1

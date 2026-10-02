@@ -1,6 +1,7 @@
 import React from 'react';
 import ReleaseUpdateProvider from './ReleaseUpdateProvider';
 import PatientListUpdateNotice from './PatientListUpdateNotice';
+import OdeliaAboutModal from './components/OdeliaAboutModal';
 
 export default {
   id: 'viewer-updates',
@@ -13,7 +14,10 @@ export default {
   getCustomizationModule: () => [
     {
       name: 'default',
-      value: { 'workList.updateNotification': PatientListUpdateNotice },
+      value: {
+        'workList.updateNotification': PatientListUpdateNotice,
+        'ohif.aboutModal': OdeliaAboutModal,
+      },
     },
   ],
 };
