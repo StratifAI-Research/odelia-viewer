@@ -77,6 +77,10 @@
     {
       "packageName": "view-ai-result",
       "directory": "./custom/extension/view-ai-result"
+    },
+    {
+      "packageName": "viewer-updates",
+      "directory": "./custom/extension/viewer-updates"
     }
   ],
   "modes": [

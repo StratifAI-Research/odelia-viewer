@@ -7,6 +7,7 @@ import { ErrorBoundary } from '@ohif/ui-next';
 // - `'legacy'`  → LegacyWorkList (the pre-3.13 study list)
 // - anything else (including `'default'`) → WorkList (ui-next study list)
 import WorkList from './WorkList/WorkList';
+import WorkListWithNotification from './WorkList/WorkListWithNotification';
 import LegacyWorkList from './LegacyWorkList/LegacyWorkList';
 import DataSourceWrapper from './DataSourceWrapper';
 import Local from './Local';
@@ -131,7 +132,13 @@ const createRoutes = ({
     path: '/',
     children: DataSourceWrapper,
     private: true,
-    props: { children: WorkListComponent, servicesManager, extensionManager, commandsManager },
+    props: {
+      children: WorkListWithNotification,
+      workListComponent: WorkListComponent,
+      servicesManager,
+      extensionManager,
+      commandsManager,
+    },
   };
 
   const customRoutes = customizationService.getCustomization('routes.customRoutes');
