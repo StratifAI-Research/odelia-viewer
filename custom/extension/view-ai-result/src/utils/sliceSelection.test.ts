@@ -1,4 +1,5 @@
 import {
+  ASSUMED_TOKENS_PER_IMAGE,
   canAddressSlices,
   clampRange,
   formatRange,
@@ -6,8 +7,10 @@ import {
   initialRange,
   rangeAroundSlice,
   rangeSize,
+  maxSlicesForModel,
   sampleSliceNumbers,
   selectedInstanceUIDs,
+  TEXT_TOKEN_RESERVE,
 } from './sliceSelection';
 
 describe('clampRange', () => {
@@ -236,5 +239,61 @@ describe('rangeAroundSlice', () => {
     // is not there: clamping 98-100 into 20 slices leaves one slice, not two.
     expect(rangeAroundSlice(99, 20)).toEqual({ start: 20, end: 20 });
     expect(rangeAroundSlice(-4, 20)).toEqual({ start: 1, end: 1 });
+  });
+});
+
+describe('maxSlicesForModel', () => {
+  it('reads the bound from what the model reports', () => {
+    // medgemma 1.5 4B as Ollama actually describes it: gemma3.context_length
+    // 131072, gemma3.mm.tokens_per_image 256. Nothing like the 50 that was
+    // hard-coded here, which is the reason this function exists.
+    const { limit, reason } = maxSlicesForModel(
+      { contextLength: 131072, tokensPerImage: 256 },
+      1000
+    );
+    expect(reason).toBe('model');
+    expect(limit).toBe(Math.floor((131072 - TEXT_TOKEN_RESERVE) / 256));
+    expect(limit).toBeGreaterThan(400);
+  });
+
+  it('estimates when the backend reports no per-image cost', () => {
+    // OpenRouter publishes context_length and nothing about images, so the cost
+    // is assumed — and the reason says so, rather than presenting it as fact.
+    const { limit, reason, tokensPerImage } = maxSlicesForModel(
+      { contextLength: 1048576 },
+      100000
+    );
+    expect(reason).toBe('estimate');
+    expect(tokensPerImage).toBe(ASSUMED_TOKENS_PER_IMAGE);
+    expect(limit).toBe(Math.floor((1048576 - TEXT_TOKEN_RESERVE) / ASSUMED_TOKENS_PER_IMAGE));
+  });
+
+  it('protects a small-context model the old fixed ceiling would have over-fed', () => {
+    // 16k of context at 4k a slice is two slices, not fifty.
+    const { limit, reason } = maxSlicesForModel(
+      { contextLength: 16384, tokensPerImage: 4096 },
+      128
+    );
+    expect(limit).toBe(2);
+    expect(reason).toBe('model');
+  });
+
+  it('never offers zero slices, however small the context', () => {
+    // A model that cannot hold a slice beside its prompt still has to be offered
+    // one, or the panel would send a message with no images at all.
+    expect(maxSlicesForModel({ contextLength: 2048, tokensPerImage: 4096 }, 128).limit).toBe(1);
+  });
+
+  it('falls back to the transport guard when the model says nothing', () => {
+    expect(maxSlicesForModel(null, 128)).toEqual({ limit: 128, reason: 'transport' });
+    expect(maxSlicesForModel({}, 64)).toEqual({ limit: 64, reason: 'transport' });
+    expect(maxSlicesForModel({ contextLength: 0 }, 64).reason).toBe('transport');
+  });
+
+  it('ships no more than the pipeline will carry, whatever the model could hold', () => {
+    // Every slice is a retrieval, a decode and a base64 PNG in the body.
+    const { limit, reason } = maxSlicesForModel({ contextLength: 131072, tokensPerImage: 256 }, 128);
+    expect(limit).toBe(128);
+    expect(reason).toBe('transport');
   });
 });
