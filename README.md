@@ -113,6 +113,21 @@ pnpm run test:e2e:ci   # headless
 Note: Swap in `test:e2e:ui` (interactive), `test:e2e:headed` (visible
 browser), or `test:e2e:debug` (step-through) if needed.
 
+## Publishing a release
+
+1. Bump `productVersion` in [`platform/app/package.json`](platform/app/package.json)
+   to the intended ODELIA release version (for example, `2.3.0`) and merge the change
+   into `main`. Keep the OHIF `version` field separate.
+2. Tag that commit with the matching `v` prefix (for example, `v2.3.0`) and push
+   the tag. Release CI requires the tag to equal `v` + `productVersion`.
+3. Wait for the Docker Build and Push release job to publish the matching image,
+   then publish the stable GitHub release. Installed viewers use this release to
+   notify users that an update is available.
+
+The About dialog and update checks use the same ODELIA version: the release tag
+embedded during a release build, or `productVersion` for local and nightly builds.
+About also displays the underlying OHIF version separately.
+
 ## Repository structure
 
 This repository is a fork of the OHIF Viewer (version recorded in [`version.json`](version.json)),

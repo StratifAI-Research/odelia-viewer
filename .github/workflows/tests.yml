@@ -37,6 +37,7 @@ jobs:
               custom/extension/labeling/jest.config.js \
               custom/extension/view-ai-result/jest.config.js \
               custom/extension/orthanc-ai-routing/jest.config.js \
+              custom/extension/viewer-updates/jest.config.js \
               custom/mode/labeling-mode/jest.config.js \
               custom/mode/send-ai/jest.config.js \
             --coverage \
