@@ -3,10 +3,16 @@ name: Docker Build and Push
 on:
   push:
     branches: [main]
-    tags:
-      - 'v*.*.*'
   pull_request:
     branches: [main]
+  # The release environment admits only main, so tag-triggered jobs cannot
+  # access its Docker Hub secrets. Dispatch releases from main instead.
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag on this main commit, e.g. v2.3.0"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -19,6 +25,7 @@ jobs:
   nightly:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: docker/setup-buildx-action@v4
@@ -36,14 +43,16 @@ jobs:
           cache-to: type=gha,mode=max,scope=odelia-viewer
 
   release:
-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    environment: release
     steps:
       - uses: actions/checkout@v7.0.1
       - name: Validate product release tag
         env:
-          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
         run: |
+          set -euo pipefail
           node <<'NODE'
           const { productVersion } = require('./platform/app/package.json');
           if (!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(productVersion) ||
@@ -51,6 +60,11 @@ jobs:
             throw new Error('Release tag must match the stable productVersion');
           }
           NODE
+          git fetch --no-tags origin "refs/tags/${RELEASE_TAG}:refs/tags/${RELEASE_TAG}"
+          if [ "$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")" != "$GITHUB_SHA" ]; then
+            echo "::error::Release tag must point to the main commit selected for this run"
+            exit 1
+          fi
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
@@ -62,9 +76,9 @@ jobs:
           images: stratifai/odelia-viewer
           flavor: latest=false
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
+            type=semver,pattern={{version}},value=${{ inputs.release_tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ inputs.release_tag }}
+            type=semver,pattern={{major}},value=${{ inputs.release_tag }}
       - uses: docker/build-push-action@v7
         with:
           context: .
@@ -73,7 +87,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            ODELIA_RELEASE_TAG=${{ github.ref_name }}
+            ODELIA_RELEASE_TAG=${{ inputs.release_tag }}
           cache-from: type=gha,scope=odelia-viewer
           cache-to: type=gha,mode=max,scope=odelia-viewer
 
