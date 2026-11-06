@@ -34,6 +34,7 @@ jobs:
         run: |
           pnpm exec jest \
             --projects \
+              extensions/cornerstone/jest.config.js \
               custom/extension/labeling/jest.config.js \
               custom/extension/view-ai-result/jest.config.js \
               custom/extension/orthanc-ai-routing/jest.config.js \
@@ -48,12 +49,6 @@ jobs:
             --json --outputFile=outputs/jest-results.json \
             --coverageDirectory=outputs/jest-coverage \
             --coverageReporters=lcov --coverageReporters=json-summary --coverageReporters=text
-
-      - name: Test dynamic volume request order
-        run: |
-          pnpm exec jest --config extensions/cornerstone/jest.config.js \
-            --runTestsByPath extensions/cornerstone/src/utils/dynamicVolumeLoader.test.ts \
-            --ci --runInBand
 
       - name: Render summary (fails if no tests ran)
         if: always()
