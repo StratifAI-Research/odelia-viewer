@@ -34,6 +34,7 @@ jobs:
         run: |
           pnpm exec jest \
             --projects \
+              extensions/cornerstone/jest.config.js \
               custom/extension/labeling/jest.config.js \
               custom/extension/view-ai-result/jest.config.js \
               custom/extension/orthanc-ai-routing/jest.config.js \
