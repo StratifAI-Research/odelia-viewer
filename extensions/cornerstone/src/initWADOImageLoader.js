@@ -1,8 +1,6 @@
 import { volumeLoader } from '@cornerstonejs/core';
-import {
-  cornerstoneStreamingImageVolumeLoader,
-  cornerstoneStreamingDynamicImageVolumeLoader,
-} from '@cornerstonejs/core/loaders';
+import { cornerstoneStreamingImageVolumeLoader } from '@cornerstonejs/core/loaders';
+import dynamicVolumeLoader from './utils/dynamicVolumeLoader';
 import dicomImageLoader from '@cornerstonejs/dicom-image-loader';
 import { errorHandler, utils } from '@ohif/core';
 
@@ -17,7 +15,7 @@ export default function initWADOImageLoader(
 
   registerVolumeLoader(
     'cornerstoneStreamingDynamicImageVolume',
-    cornerstoneStreamingDynamicImageVolumeLoader
+    dynamicVolumeLoader
   );
 
   dicomImageLoader.init({

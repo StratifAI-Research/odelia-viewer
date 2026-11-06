@@ -14,10 +14,8 @@ import {
   Settings,
   utilities as csUtilities,
 } from '@cornerstonejs/core';
-import {
-  cornerstoneStreamingImageVolumeLoader,
-  cornerstoneStreamingDynamicImageVolumeLoader,
-} from '@cornerstonejs/core/loaders';
+import { cornerstoneStreamingImageVolumeLoader } from '@cornerstonejs/core/loaders';
+import dynamicVolumeLoader from './utils/dynamicVolumeLoader';
 
 import RequestTypes from '@cornerstonejs/core/enums/RequestType';
 
@@ -218,7 +216,7 @@ export default async function init({
 
   volumeLoader.registerVolumeLoader(
     'cornerstoneStreamingDynamicImageVolume',
-    cornerstoneStreamingDynamicImageVolumeLoader
+    dynamicVolumeLoader
   );
 
   // Register strategies using the wrapper
