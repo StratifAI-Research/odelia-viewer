@@ -2,6 +2,12 @@ import type { StreamingDynamicImageVolume } from '@cornerstonejs/core';
 import { RequestType } from '@cornerstonejs/core/enums';
 import { cornerstoneStreamingDynamicImageVolumeLoader } from '@cornerstonejs/core/loaders';
 import dynamicVolumeLoader from './dynamicVolumeLoader';
+import { cache } from '@cornerstonejs/core';
+
+// Exercise the real OHIF strategies alongside the installed Cornerstone classes.
+const nthLoader = jest.requireActual('./nthLoader').default;
+const interleaveCenterLoader = jest.requireActual('./interleaveCenterLoader').default;
+const interleaveTopToBottom = jest.requireActual('./interleaveTopToBottom').default;
 
 // Jest resolves these implementation paths without importing the renderer-heavy
 // public barrel. Use public types so TypeScript still checks the installed API.
@@ -44,6 +50,12 @@ jest.mock('@cornerstonejs/core/loaders/ProgressiveRetrieveImages', () => ({
 jest.mock('@cornerstonejs/core/loaders', () => ({
   cornerstoneStreamingDynamicImageVolumeLoader: jest.fn(),
 }));
+jest.mock('@cornerstonejs/core', () => ({
+  cache: { getVolume: jest.fn() },
+  imageLoadPoolManager: jest.requireActual('@cornerstonejs/core/requestPool/imageLoadPoolManager')
+    .default,
+  Enums: jest.requireActual('@cornerstonejs/core/enums'),
+}));
 
 const upstreamLoader = jest.mocked(cornerstoneStreamingDynamicImageVolumeLoader);
 const groups = [
@@ -57,6 +69,7 @@ function createVolume(imageIdGroups = groups, dynamic = true) {
   const volume = new Volume(
     {
       volumeId: 'test-volume',
+      metadata: { SeriesInstanceUID: 'test-series' },
       imageIds: imageIdGroups.flat(),
       imageIdGroups,
       splittingTag: 'TemporalPositionIdentifier',
@@ -72,8 +85,8 @@ function createVolume(imageIdGroups = groups, dynamic = true) {
   return volume;
 }
 
-function queuedImageIds(volume) {
-  const requests = imageLoadPoolManager.getRequestPool()[RequestType.Prefetch][5] || [];
+function queuedImageIds(volume, priority = 5) {
+  const requests = imageLoadPoolManager.getRequestPool()[RequestType.Prefetch][priority] || [];
   for (const request of requests) {
     expect(request.additionalDetails.volumeId).toBe(volume.volumeId);
     request.requestFn();
@@ -86,6 +99,7 @@ function queuedImageIds(volume) {
 
 beforeEach(() => {
   upstreamLoader.mockReset();
+  jest.mocked(cache.getVolume).mockReset();
   imageLoadPoolManager.clearRequestStack(RequestType.Prefetch);
   imageLoadPoolManager.setMaxSimultaneousRequests(RequestType.Prefetch, 0);
 });
@@ -161,4 +175,107 @@ test('propagates volume creation failures', async () => {
     decache: jest.fn(),
   });
   await expect(dynamicVolumeLoader('test-volume', { imageIds: [] }).promise).rejects.toBe(error);
+});
+
+async function adaptVolume(volume) {
+  upstreamLoader.mockReturnValue({
+    promise: Promise.resolve(volume),
+    cancel: jest.fn(),
+    decache: jest.fn(),
+  });
+  return dynamicVolumeLoader(volume.volumeId, { imageIds: volume.imageIds }).promise;
+}
+
+test('preserves direct request ordering before and immediately after loading', async () => {
+  const volume = createVolume() as StreamingDynamicImageVolume;
+  const originalRequests = volume.getImageLoadRequests;
+  const adapted = await adaptVolume(volume);
+
+  for (const active of [1, 2, 3]) {
+    adapted.dimensionGroupNumber = active;
+    const expected = originalRequests.call(volume, 7);
+    expect(adapted.getImageLoadRequests).toBe(originalRequests);
+    expect(adapted.getImageLoadRequests(7).map(request => request.imageId)).toEqual(
+      expected.map(request => request.imageId)
+    );
+    expect(adapted.getImageLoadRequests(7).every(request => request.priority === 7)).toBe(true);
+
+    const loading = adapted.loadImages();
+    // Restore synchronously: custom strategies must not see the reversal even
+    // while the returned promise is pending.
+    expect(adapted.getImageLoadRequests).toBe(originalRequests);
+    await loading;
+  }
+});
+
+describe.each([
+  ['nth', nthLoader],
+  ['interleaveCenter', interleaveCenterLoader],
+  ['interleaveTopToBottom', interleaveTopToBottom],
+] as const)('%s strategy', (name, strategy) => {
+  test.each([1, 2, 3])('preserves the full queue for active phase %i', async active => {
+    const imageIdGroups = Array.from({ length: 3 }, (_, phase) =>
+      Array.from({ length: 86 }, (_, slice) => `p${phase + 1}-s${slice + 1}`)
+    );
+    const baseline = createVolume(imageIdGroups) as StreamingDynamicImageVolume;
+    const adapted = await adaptVolume(createVolume(imageIdGroups));
+    baseline.dimensionGroupNumber = active;
+    adapted.dimensionGroupNumber = active;
+
+    function runStrategy(volume) {
+      imageLoadPoolManager.clearRequestStack(RequestType.Prefetch);
+      volume.callLoadImage.mockClear();
+      jest.mocked(cache.getVolume).mockReturnValue(volume);
+      strategy({
+        data: { viewportId: 'test-viewport', volumeInputArray: [{ volumeId: volume.volumeId }] },
+        displaySetsMatchDetails: new Map(),
+        viewportMatchDetails: new Map([
+          ['test-viewport', { displaySetsInfo: [{ displaySetInstanceUID: 'test-series' }] }],
+        ]),
+      });
+      return queuedImageIds(volume, 0);
+    }
+
+    const expected = runStrategy(baseline);
+    expect(expected).toHaveLength(258);
+    expect(new Set(expected).size).toBe(258);
+    expect(runStrategy(adapted)).toEqual(expected);
+
+    // Calling the default loader must not leave custom strategies altered.
+    await adapted.loadImages();
+    expect(runStrategy(adapted)).toEqual(expected);
+
+    if (name === 'nth' && active === 1) {
+      const activePhasePositions = imageIdGroups[0].map(imageId => expected.indexOf(imageId) + 1);
+      expect(Math.max(...activePhasePositions)).toBe(200);
+    }
+  });
+});
+
+test('restores request generation when the installed loader throws', async () => {
+  const volume = createVolume() as StreamingDynamicImageVolume;
+  const error = new Error('request creation failed');
+  const getRequests = jest.spyOn(volume, 'getImageLoadRequests').mockImplementationOnce(() => {
+    throw error;
+  });
+  const adapted = await adaptVolume(volume);
+  expect(() => adapted.loadImages()).toThrow(error);
+  expect(adapted.getImageLoadRequests).toBe(getRequests);
+  expect(adapted.getImageLoadRequests(5).map(request => request.imageId)).toEqual(groups.flat());
+});
+
+test('preserves the load promise and restores requests before it rejects', async () => {
+  const volume = createVolume() as StreamingDynamicImageVolume;
+  const originalRequests = volume.getImageLoadRequests;
+  const error = new Error('loading failed');
+  const loading = Promise.reject(error);
+  const rejection = expect(loading).rejects.toBe(error);
+  const loadImages = jest.spyOn(volume, 'loadImages').mockReturnValue(loading);
+  const adapted = await adaptVolume(volume);
+
+  const result = adapted.loadImages();
+  expect(result).toBe(loading);
+  expect(loadImages.mock.contexts).toEqual([volume]);
+  expect(adapted.getImageLoadRequests).toBe(originalRequests);
+  await rejection;
 });
