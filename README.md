@@ -15,7 +15,7 @@
     <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT"/></a>
     <a href="https://hub.docker.com/r/stratifai/odelia-viewer"><img src="https://img.shields.io/docker/v/stratifai/odelia-viewer?sort=semver&label=docker" alt="Docker image version"/></a>
     <a href="https://hub.docker.com/r/stratifai/odelia-viewer"><img src="https://img.shields.io/docker/pulls/stratifai/odelia-viewer.svg" alt="Docker pulls"/></a>
-    <a href="https://github.com/StratifAI-Research/odelia-viewer/actions/workflows/docker-build-push.yml"><img src="https://github.com/StratifAI-Research/odelia-viewer/actions/workflows/docker-build-push.yml/badge.svg" alt="Docker Build & Push"/></a>
+    <a href="https://github.com/StratifAI-Research/odelia-viewer/actions/workflows/build-and-release.yml"><img src="https://github.com/StratifAI-Research/odelia-viewer/actions/workflows/build-and-release.yml/badge.svg" alt="Build and release"/></a>
     <a href="https://github.com/StratifAI-Research/odelia-viewer/actions/workflows/tests.yml"><img src="https://github.com/StratifAI-Research/odelia-viewer/actions/workflows/tests.yml/badge.svg" alt="Tests"/></a>
   </p>
 </div>
@@ -115,18 +115,26 @@ browser), or `test:e2e:debug` (step-through) if needed.
 
 ## Publishing a release
 
-1. Bump `productVersion` in [`platform/app/package.json`](platform/app/package.json)
-   to the intended ODELIA release version (for example, `2.3.0`) and merge the change
-   into `main`. Keep the OHIF `version` field separate.
-2. Tag that commit with the matching `v` prefix (for example, `v2.3.0`) and push
-   the tag. Release CI requires the tag to equal `v` + `productVersion`.
-3. Wait for the Docker Build and Push release job to publish the matching image,
-   then publish the stable GitHub release. Installed viewers use this release to
-   notify users that an update is available.
+Merge a PR that bumps `productVersion` in
+[`platform/app/package.json`](platform/app/package.json) (for example to `2.3.1`).
+Keep the OHIF `version` field separate. Optionally add hand-written notes as
+`.github/release-notes/v2.3.1.md`; otherwise the notes list the PRs merged since the
+previous release.
 
-The About dialog and update checks use the same ODELIA version: the release tag
-embedded during a release build, or `productVersion` for local and nightly builds.
-About also displays the underlying OHIF version separately.
+Merging is the release. The Build and release workflow builds every `main` commit and
+publishes it as `stratifai/odelia-viewer:sha-<commit>`. When a commit changes
+`productVersion`, it also tags that same image `2.3.1` and `latest`, then creates the
+`v2.3.1` git tag and the GitHub Release. Installed viewers use that release to notify
+users that an update is available, so it is only created once the image exists. The
+pull request check fails if the version is already released or older than the latest
+release.
+
+`latest` is always the newest release. Platform and viewer share the first two version
+numbers; the last one counts separately in each repository. Platform releases pin the
+viewer they ship.
+
+The About dialog and update checks use the ODELIA version embedded at build time from
+`productVersion`. About also displays the underlying OHIF version separately.
 
 ## Repository structure
 

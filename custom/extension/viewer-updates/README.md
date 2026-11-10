@@ -24,24 +24,25 @@ shared by public IP, so many clients behind one network can still exhaust it.
 Failures stay silent and retry after a cooldown. Private repositories and
 nightly release tracking are not supported.
 
-The viewer version is embedded at build time, separately from the OHIF version.
-Release CI passes the Git tag as the Docker build argument ODELIA_RELEASE_TAG.
-Both bundlers remove an optional leading v and embed that value; builds without
-the argument fall back to platform/app/package.json productVersion.
+The viewer version is embedded at build time, separately from the OHIF version:
+platform/app/package.json productVersion, unless the Docker build argument
+ODELIA_RELEASE_TAG overrides it. Both bundlers remove an optional leading v.
+CI never sets the argument, so a release ships the image built from the commit
+that bumped productVersion.
 
 The extension also customizes Settings → About to show this ODELIA version,
 the underlying OHIF version, and the ODELIA repository link. This remains
 available when automatic update checks are disabled.
 
-Before tagging a release, bump productVersion to match the intended tag; see
-the [release steps](../../../README.md#publishing-a-release).
+A release is a merged productVersion bump; see the
+[release steps](../../../README.md#publishing-a-release).
 
-Only release CI enforces that its Git tag matches productVersion. Manual builds
-can override the version to test update detection against the real GitHub release:
+Manual builds can override the version to test update detection against the real
+GitHub release:
 
 ```sh
 docker build --build-arg ODELIA_RELEASE_TAG=v0.0.1 -t odelia-viewer:update-test .
 ```
 
-This is a build argument, not a runtime container environment setting. Publish a
-stable GitHub release only after its corresponding Docker image is available.
+This is a build argument, not a runtime container environment setting. Release
+CI creates the GitHub release only after its Docker image is available.
