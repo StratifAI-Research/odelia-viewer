@@ -129,9 +129,11 @@ users that an update is available, so it is only created once the image exists. 
 pull request check fails if the version is already released or older than the latest
 release.
 
-`latest` is always the newest release. Platform and viewer share the first two version
-numbers; the last one counts separately in each repository. Platform releases pin the
-viewer they ship.
+`latest` is always the newest release. The viewer and the
+[platform](https://github.com/StratifAI-Research/odelia-viewer-platform) have their own
+version numbers: platform 2.3.2 may ship viewer 2.4.0. A platform release pins the viewer
+it ships and names it in its notes. After a viewer release, a platform PR moves that pin;
+its reviewer checks that the stack works with the new viewer.
 
 The About dialog and update checks use the ODELIA version embedded at build time from
 `productVersion`. About also displays the underlying OHIF version separately.
