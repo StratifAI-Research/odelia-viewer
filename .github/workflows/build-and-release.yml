@@ -57,6 +57,16 @@ jobs:
           echo "version=$v" >> "$GITHUB_OUTPUT"
           [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "productVersion must be three numbers like 2.3.1 (got '$v')"
 
+          # A new version needs its section at the top of ODELIA-CHANGELOG.md: that
+          # section becomes the release's notes on GitHub. (CHANGELOG.md is OHIF's.)
+          section() { awk -v v="$1" '/^## / { if (found) exit; if ($0 == "## " v) { found = 1; next } } found' ODELIA-CHANGELOG.md; }
+          if [ "$v" != "$prev" ]; then
+            [ -f ODELIA-CHANGELOG.md ] || fail "add ODELIA-CHANGELOG.md with a section \"## $v\""
+            top=$(grep -m1 -E '^## ' ODELIA-CHANGELOG.md | sed 's/^## //' || true)
+            [ "$top" = "$v" ] || fail "ODELIA-CHANGELOG.md must start with a section \"## $v\" (its newest is \"${top:-none}\")"
+            section "$v" | grep -q '[^[:space:]]' || fail "the \"## $v\" section in ODELIA-CHANGELOG.md is empty"
+          fi
+
           # A new version must be unused and newer than every release so far,
           # which also keeps `latest` from ever moving backwards.
           newest=$(git ls-remote --tags --refs origin 'v*' | sed 's#.*refs/tags/v##' \
@@ -221,12 +231,9 @@ jobs:
             echo "Release $tag already exists; nothing to do."
             exit 0
           fi
-          # --target creates the tag on the commit whose image was published.
-          # Hand-written notes win; otherwise GitHub lists the PRs merged since
-          # the previous release, grouped as configured in .github/release.yml.
-          notes=".github/release-notes/${tag}.md"
-          if [ -f "$notes" ]; then
-            gh release create "$tag" --target "$SHA" --title "$tag" --notes-file "$notes"
-          else
-            gh release create "$tag" --target "$SHA" --title "$tag" --generate-notes
-          fi
+          # The notes are this version's section of ODELIA-CHANGELOG.md, which the
+          # version check made sure exists. --target creates the tag on the commit
+          # whose image was published.
+          awk -v v="$VERSION" '/^## / { if (found) exit; if ($0 == "## " v) { found = 1; next } } found' \
+            ODELIA-CHANGELOG.md > "$RUNNER_TEMP/notes.md"
+          gh release create "$tag" --target "$SHA" --title "$tag" --notes-file "$RUNNER_TEMP/notes.md"

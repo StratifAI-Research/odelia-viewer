@@ -116,19 +116,20 @@ browser), or `test:e2e:debug` (step-through) if needed.
 ## Publishing a release
 
 Merge a PR that bumps `productVersion` in
-[`platform/app/package.json`](platform/app/package.json) (for example to `2.3.1`).
-Keep the OHIF `version` field separate. Optionally add hand-written notes as
-`.github/release-notes/v2.3.1.md`; otherwise the notes list the PRs merged since the
-previous release.
+[`platform/app/package.json`](platform/app/package.json) (for example to `2.3.1`) and
+adds a `## 2.3.1` section at the top of [`ODELIA-CHANGELOG.md`](ODELIA-CHANGELOG.md)
+saying what changed. Keep the OHIF `version` field separate; `CHANGELOG.md` belongs to
+OHIF upstream.
 
 Merging is the release. The Build and release workflow builds every pull request and
 every `main` commit to catch breakage, but uploads only releases: when a commit changes
 `productVersion`, it uploads the image as `stratifai/odelia-viewer:sha-<commit>`, tags
 that same image `2.3.1` and `latest`, then creates the `v2.3.1` git tag and the GitHub
-Release. To try unreleased code, build the image locally with `docker build`. Installed viewers use that release to notify
-users that an update is available, so it is only created once the image exists. The
-pull request check fails if the version is already released or older than the latest
-release.
+Release, whose text is that changelog section. Installed viewers use the release to
+notify users that an update is available, so it is only created once the image exists.
+The pull request check fails if the version is already released or older than the
+latest release, or if its changelog section is missing, not at the top or empty. To try
+unreleased code, build the image locally with `docker build`.
 
 `latest` is always the newest release. The viewer and the
 [platform](https://github.com/StratifAI-Research/odelia-viewer-platform) have their own
