@@ -62,14 +62,12 @@ export default function PatientListUpdateNotice() {
         className="max-w-lg"
       >
         <DialogHeader>
-          <DialogTitle>
-            {t('ViewerUpdates:Title', 'A new ODELIA Viewer version is available')}
-          </DialogTitle>
+          <DialogTitle>{t('ViewerUpdates:Title', 'A new ODELIA version is available')}</DialogTitle>
         </DialogHeader>
         <DialogDescription className="text-foreground">
           {t(
             'ViewerUpdates:Message',
-            'Version {{latest}} is available. This viewer is running {{installed}}. Contact your administrator to upgrade.',
+            'ODELIA Viewer Platform {{latest}} is available. This installation is running {{installed}}. Contact your administrator to upgrade.',
             { latest: release.version, installed }
           )}
         </DialogDescription>

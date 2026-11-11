@@ -2,10 +2,14 @@ import valid from 'semver/functions/valid';
 import gt from 'semver/functions/gt';
 import prerelease from 'semver/functions/prerelease';
 
-export const REPOSITORY = 'StratifAI-Research/odelia-viewer';
+// Sites install platform releases, which pin the viewer, so the notice offers
+// the newest platform release rather than the newest viewer.
+export const REPOSITORY = 'StratifAI-Research/odelia-viewer-platform';
 export const ENDPOINT = `https://api.github.com/repos/${REPOSITORY}/releases/latest`;
 export const CACHE_KEY = `odelia:updates:v1:${REPOSITORY}`;
 export const HOUR = 60 * 60 * 1000;
+// The platform mounts its VERSION file next to app-config.js under this name.
+export const PLATFORM_VERSION_FILE = 'platform-version.txt';
 export type Release = { version: string; url: string };
 type Cache = { release: Release | null; checkedAt: number; nextAttemptAt: number };
 let memory: Cache | undefined;
@@ -22,6 +26,22 @@ export function stableVersion(value: unknown): string | null {
 export function newer(release: Release | null, installed: string): boolean {
   const version = stableVersion(installed);
   return Boolean(release && version && gt(release.version, version));
+}
+
+// The platform version this viewer is served by, or null without one: a
+// standalone viewer has no such file, and nginx answers the request with the
+// app's index.html, which is not a version.
+export async function fetchPlatformVersion(publicUrl = '/'): Promise<string | null> {
+  const base = publicUrl.endsWith('/') ? publicUrl : `${publicUrl}/`;
+  try {
+    const response = await fetch(`${base}${PLATFORM_VERSION_FILE}`, {
+      cache: 'no-store',
+      credentials: 'same-origin',
+    });
+    return response.ok ? stableVersion(await response.text()) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function parseRelease(value: unknown): Release | null {

@@ -125,8 +125,9 @@ Merging is the release. The Build and release workflow builds every pull request
 every `main` commit to catch breakage, but uploads only releases: when a commit changes
 `productVersion`, it uploads the image as `stratifai/odelia-viewer:sha-<commit>`, tags
 that same image `2.3.1` and `latest`, then creates the `v2.3.1` git tag and the GitHub
-Release, whose text is that changelog section. Installed viewers use the release to
-notify users that an update is available, so it is only created once the image exists.
+Release, whose text is that changelog section, once the image exists. Installed viewers
+tell users about new platform releases, not viewer releases: sites install the platform,
+which pins the viewer (see [`viewer-updates`](custom/extension/viewer-updates/README.md)).
 The pull request check fails if the version is already released or older than the
 latest release, or if its changelog section is missing, not at the top or empty. To try
 unreleased code, build the image locally with `docker build`.

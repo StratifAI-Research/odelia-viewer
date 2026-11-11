@@ -1,9 +1,8 @@
 # ODELIA Viewer changelog
 
 What changed in each release of the ODELIA Viewer, newest first. Every `productVersion`
-bump adds a section here, and that section becomes the release's notes on GitHub, which
-installed viewers link to from their update notice. `CHANGELOG.md` and the package
-changelogs belong to OHIF upstream.
+bump adds a section here, and that section becomes the release's notes on GitHub.
+`CHANGELOG.md` and the package changelogs belong to OHIF upstream.
 
 ## 2.3.0
 

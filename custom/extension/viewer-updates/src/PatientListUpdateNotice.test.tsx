@@ -22,11 +22,12 @@ const mockTranslate = (_key, fallback) => fallback;
 jest.mock('./releaseClient', () => ({
   ...jest.requireActual('./releaseClient'),
   checkRelease: jest.fn(),
+  fetchPlatformVersion: jest.fn(),
 }));
 
 const release = {
   version: '99.0.0',
-  url: 'https://github.com/StratifAI-Research/odelia-viewer/releases/tag/v99.0.0',
+  url: 'https://github.com/StratifAI-Research/odelia-viewer-platform/releases/tag/v99.0.0',
 };
 const config = { viewerUpdates: { enabled: true }, routerBasename: '/viewer' };
 function App({ list = true, appConfig = config }) {
@@ -38,7 +39,7 @@ function App({ list = true, appConfig = config }) {
 }
 beforeEach(() => {
   jest.useFakeTimers();
-  process.env.ODELIA_PRODUCT_VERSION = '3.4.0';
+  (client.fetchPlatformVersion as jest.Mock).mockReset().mockResolvedValue('3.4.0');
   mockAuth = { user: null };
   localStorage.clear();
   (client.checkRelease as jest.Mock).mockReset().mockResolvedValue(release);
@@ -48,9 +49,12 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 async function check() {
-  await act(async () => {
-    await jest.advanceTimersByTimeAsync(1);
-  });
+  // One step for the platform version to arrive, one for the release check it starts.
+  for (let step = 0; step < 2; step++) {
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1);
+    });
+  }
 }
 test('shows on list, hides on navigation, and shows an unacknowledged update on return', async () => {
   const view = render(<App />);
@@ -134,5 +138,13 @@ test('hidden documents do not initiate checks', async () => {
   jest.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
   render(<App />);
   await check();
+  expect(client.checkRelease).not.toHaveBeenCalled();
+});
+
+test('a viewer without a platform version file shows nothing and never checks', async () => {
+  (client.fetchPlatformVersion as jest.Mock).mockResolvedValue(null);
+  render(<App />);
+  await check();
+  expect(screen.queryByRole('dialog')).toBeNull();
   expect(client.checkRelease).not.toHaveBeenCalled();
 });

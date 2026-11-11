@@ -4,9 +4,9 @@ name: Build and release
 # uploads anything: sites run releases, so other builds have no use on Docker
 # Hub. A push to main that changes productVersion in platform/app/package.json
 # is a release: it uploads the image as sha-<commit>, tags it X.Y.Z and latest,
-# and gives the commit the vX.Y.Z git tag and a GitHub Release, which is what
-# installed viewers check for updates. There is no release button -- merging
-# the version bump is the release, so the PR approval is the gate.
+# and gives the commit the vX.Y.Z git tag and a GitHub Release. There is no
+# release button -- merging the version bump is the release, so the PR approval
+# is the gate.
 #
 # The odelia-viewer-platform repository runs the same workflow for its images.
 
@@ -207,9 +207,9 @@ jobs:
           echo "${src} -> ${VERSION}, latest"
           docker buildx imagetools create -t "$dst" -t "stratifai/odelia-viewer:latest" "$src"
 
-  # Tags the commit and publishes the GitHub Release. Installed viewers notify
-  # users about it, which is why it runs only once the image exists. A separate
-  # job because it is the only one with contents: write.
+  # Tags the commit and publishes the GitHub Release. Viewers up to 2.3.0 notify
+  # users about viewer releases, which is why it runs only once the image exists.
+  # A separate job because it is the only one with contents: write.
   record:
     needs: [version, publish]
     runs-on: ubuntu-latest
