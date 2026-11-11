@@ -121,10 +121,11 @@ Keep the OHIF `version` field separate. Optionally add hand-written notes as
 `.github/release-notes/v2.3.1.md`; otherwise the notes list the PRs merged since the
 previous release.
 
-Merging is the release. The Build and release workflow builds every `main` commit and
-publishes it as `stratifai/odelia-viewer:sha-<commit>`. When a commit changes
-`productVersion`, it also tags that same image `2.3.1` and `latest`, then creates the
-`v2.3.1` git tag and the GitHub Release. Installed viewers use that release to notify
+Merging is the release. The Build and release workflow builds every pull request and
+every `main` commit to catch breakage, but uploads only releases: when a commit changes
+`productVersion`, it uploads the image as `stratifai/odelia-viewer:sha-<commit>`, tags
+that same image `2.3.1` and `latest`, then creates the `v2.3.1` git tag and the GitHub
+Release. To try unreleased code, build the image locally with `docker build`. Installed viewers use that release to notify
 users that an update is available, so it is only created once the image exists. The
 pull request check fails if the version is already released or older than the latest
 release.
