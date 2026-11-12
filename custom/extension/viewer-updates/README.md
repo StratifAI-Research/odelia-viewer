@@ -33,12 +33,12 @@ Failures stay silent and retry after a cooldown. Private repositories and
 nightly release tracking are not supported.
 
 The viewer's own version is embedded at build time, separately from the OHIF version:
-platform/app/package.json productVersion, unless the Docker build argument
+the VERSION_ODELIA file at the repository root, unless the Docker build argument
 ODELIA_RELEASE_TAG overrides it. Both bundlers remove an optional leading v. CI never
 sets the argument, so a release ships the image built from the commit that bumped
-productVersion. Settings → About shows it with the underlying OHIF version and the
+VERSION_ODELIA. Settings → About shows it with the underlying OHIF version and the
 ODELIA repository link, also when update checks are disabled. A viewer release is a
-merged productVersion bump; see the [release steps](../../../README.md#publishing-a-release).
+merged VERSION_ODELIA bump; see the [release steps](../../../README.md#publishing-a-release).
 
 To test update detection against the real platform release, serve an older platform
 version next to app-config.js:
