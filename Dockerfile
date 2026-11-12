@@ -42,6 +42,7 @@ ENV PATH=/usr/src/app/node_modules/.bin:$PATH
 # lifecycle script runs during `pnpm install` below, before the full source is
 # copied, so the file must already be present.
 COPY pnpm-lock.yaml pnpm-workspace.yaml preinstall.js ./
+COPY patches/ ./patches/
 COPY --parents ./extensions/*/package.json ./modes/*/package.json ./platform/*/package.json ./
 COPY --parents ./custom/extension/*/package.json ./custom/mode/*/package.json ./
 
