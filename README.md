@@ -115,15 +115,15 @@ browser), or `test:e2e:debug` (step-through) if needed.
 
 ## Publishing a release
 
-Merge a PR that bumps `productVersion` in
-[`platform/app/package.json`](platform/app/package.json) (for example to `2.3.1`) and
-adds a `## 2.3.1` section at the top of [`ODELIA-CHANGELOG.md`](ODELIA-CHANGELOG.md)
-saying what changed. Keep the OHIF `version` field separate; `CHANGELOG.md` belongs to
-OHIF upstream.
+Merge a PR that bumps [`VERSION_ODELIA`](VERSION_ODELIA) (for example to `2.3.1`) and
+adds a `## 2.3.1` section at the top of [`CHANGELOG_ODELIA.md`](CHANGELOG_ODELIA.md)
+saying what changed. These two files are ODELIA's; `CHANGELOG.md`, `version.txt`,
+`version.json` and the version fields in the `package.json` files belong to OHIF
+upstream.
 
 Merging is the release. The Build and release workflow builds every pull request and
 every `main` commit to catch breakage, but uploads only releases: when a commit changes
-`productVersion`, it uploads the image as `stratifai/odelia-viewer:sha-<commit>`, tags
+`VERSION_ODELIA`, it uploads the image as `stratifai/odelia-viewer:sha-<commit>`, tags
 that same image `2.3.1` and `latest`, then creates the `v2.3.1` git tag and the GitHub
 Release, whose text is that changelog section, once the image exists. Installed viewers
 tell users about new platform releases, not viewer releases: sites install the platform,
@@ -138,8 +138,8 @@ version numbers: platform 2.3.2 may ship viewer 2.4.0. A platform release pins t
 it ships and names it in its notes. After a viewer release, a platform PR moves that pin;
 its reviewer checks that the stack works with the new viewer.
 
-The About dialog and update checks use the ODELIA version embedded at build time from
-`productVersion`. About also displays the underlying OHIF version separately.
+The About dialog shows the ODELIA version embedded at build time from `VERSION_ODELIA`,
+and the underlying OHIF version separately.
 
 ## Repository structure
 

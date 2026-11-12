@@ -1,6 +1,6 @@
 # ODELIA Viewer changelog
 
-What changed in each release of the ODELIA Viewer, newest first. Every `productVersion`
+What changed in each release of the ODELIA Viewer, newest first. Every `VERSION_ODELIA`
 bump adds a section here, and that section becomes the release's notes on GitHub.
 `CHANGELOG.md` and the package changelogs belong to OHIF upstream.
 
