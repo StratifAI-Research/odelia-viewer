@@ -1,9 +1,17 @@
-# Viewer release notifications
+# Release notifications
 
-The patient list displays a blocking OHIF dialog when the public
-StratifAI-Research/odelia-viewer GitHub release is newer than the loaded viewer's
-productVersion. Both modern and legacy patient lists are supported. The user must explicitly dismiss the dialog or open release notes before
-using the patient list. Escape and outside clicks do not close it. Dismissal is remembered per user and release.
+The patient list displays a blocking OHIF dialog when the newest public release of
+StratifAI-Research/odelia-viewer-platform is newer than the platform version this viewer
+is served by. Sites install platform releases, which pin the viewer, so a platform
+release is what users can be offered. Both modern and legacy patient lists are
+supported. The user must explicitly dismiss the dialog or open release notes before
+using the patient list. Escape and outside clicks do not close it. Dismissal is
+remembered per user and release.
+
+The platform mounts its VERSION file next to app-config.js as `platform-version.txt`,
+and the viewer reads it once per page load. A viewer without that file, such as the
+standalone image, never shows the dialog. Settings → About shows the platform version
+when the file is present.
 
 Configure in app-config.js:
 
@@ -24,25 +32,20 @@ shared by public IP, so many clients behind one network can still exhaust it.
 Failures stay silent and retry after a cooldown. Private repositories and
 nightly release tracking are not supported.
 
-The viewer version is embedded at build time, separately from the OHIF version:
+The viewer's own version is embedded at build time, separately from the OHIF version:
 platform/app/package.json productVersion, unless the Docker build argument
-ODELIA_RELEASE_TAG overrides it. Both bundlers remove an optional leading v.
-CI never sets the argument, so a release ships the image built from the commit
-that bumped productVersion.
+ODELIA_RELEASE_TAG overrides it. Both bundlers remove an optional leading v. CI never
+sets the argument, so a release ships the image built from the commit that bumped
+productVersion. Settings → About shows it with the underlying OHIF version and the
+ODELIA repository link, also when update checks are disabled. A viewer release is a
+merged productVersion bump; see the [release steps](../../../README.md#publishing-a-release).
 
-The extension also customizes Settings → About to show this ODELIA version,
-the underlying OHIF version, and the ODELIA repository link. This remains
-available when automatic update checks are disabled.
-
-A release is a merged productVersion bump; see the
-[release steps](../../../README.md#publishing-a-release).
-
-Manual builds can override the version to test update detection against the real
-GitHub release:
+To test update detection against the real platform release, serve an older platform
+version next to app-config.js:
 
 ```sh
-docker build --build-arg ODELIA_RELEASE_TAG=v0.0.1 -t odelia-viewer:update-test .
+echo 0.0.1 > platform-version.txt
+docker run --rm -p 3000:80 \
+  -v "$PWD/platform-version.txt:/usr/share/nginx/html/platform-version.txt:ro" \
+  stratifai/odelia-viewer:latest
 ```
-
-This is a build argument, not a runtime container environment setting. Release
-CI creates the GitHub release only after its Docker image is available.

@@ -2,9 +2,11 @@ import React from 'react';
 import { AboutModal } from '@ohif/ui-next';
 import detect from 'browser-detect';
 import { useTranslation } from 'react-i18next';
+import { useReleaseUpdate } from '../ReleaseUpdateProvider';
 
 export default function OdeliaAboutModal() {
   const { t } = useTranslation('AboutModal');
+  const { installed: platformVersion } = useReleaseUpdate();
   const { os, version, name } = detect();
   const browser = `${name ? name[0].toUpperCase() + name.slice(1) : ''} ${version || ''}`;
 
@@ -13,6 +15,12 @@ export default function OdeliaAboutModal() {
       <AboutModal.ProductName>ODELIA Viewer</AboutModal.ProductName>
       <AboutModal.ProductVersion>{process.env.ODELIA_PRODUCT_VERSION}</AboutModal.ProductVersion>
       <AboutModal.Body>
+        {platformVersion && (
+          <AboutModal.DetailItem
+            label={t('Platform', 'Platform')}
+            value={`ODELIA Viewer Platform ${platformVersion}`}
+          />
+        )}
         <AboutModal.DetailItem
           label={t('Based on', 'Based on')}
           value={`OHIF ${process.env.VERSION_NUMBER?.trim() || ''}`}

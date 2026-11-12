@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
 import { useUserAuthentication } from '@ohif/ui-next';
-import { CACHE_KEY, HOUR, checkRelease, stableVersion, type Release } from './releaseClient';
+import { CACHE_KEY, HOUR, checkRelease, fetchPlatformVersion, type Release } from './releaseClient';
 
 export type UpdateConfig = {
   enabled?: boolean;
@@ -40,7 +40,21 @@ export default function ReleaseUpdateProvider({
 }) {
   // OHIF infers this hook from its object default, but the provider supplies [state, api].
   const [{ user }] = useUserAuthentication() as unknown as [AuthenticationState, unknown];
-  const installed = stableVersion(process.env.ODELIA_PRODUCT_VERSION) || '';
+  // The platform version is what gets compared with platform releases; it
+  // stays empty, and the check off, when the platform serves none.
+  const [installed, setInstalled] = useState('');
+  useEffect(() => {
+    let active = true;
+    const publicUrl = (window as { PUBLIC_URL?: string }).PUBLIC_URL;
+    fetchPlatformVersion(publicUrl).then(version => {
+      if (active) {
+        setInstalled(version || '');
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
   const options = appConfig.viewerUpdates;
   const enabled =
     options?.enabled ?? (process.env.NODE_ENV === 'production' && process.env.TEST_ENV !== 'true');
