@@ -123,3 +123,11 @@ overrides:
   'js-yaml@<3.15.0': 3.15.0
   'js-yaml@>=4.0.0 <4.3.0': 4.3.0
   'postcss@<=8.5.11': 8.5.22
+
+# Backport vtk.js #3701 without changing Cornerstone's vtk version/API.
+# https://github.com/Kitware/vtk-js/pull/3701
+# The published shader is one serialized JS line, hence the large patch hunk.
+# Also disable context MSAA by default to avoid NVIDIA OpenGL black frames.
+# Explicit context options can still override this; no flush workaround is used.
+patchedDependencies:
+  '@kitware/vtk.js@36.4.1': patches/@kitware__vtk.js@36.4.1.patch
