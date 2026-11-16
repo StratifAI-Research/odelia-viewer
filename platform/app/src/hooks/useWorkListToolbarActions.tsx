@@ -26,7 +26,7 @@ export function useWorkListToolbarActions(
 
   const uploadProps = uploadEnabled
     ? {
-        title: 'Upload files',
+        title: 'Upload DICOM files',
         containerClassName: DicomUploadComponent?.containerClassName,
         closeButton: true,
         shouldCloseOnEsc: false,
@@ -51,6 +51,7 @@ export function useWorkListToolbarActions(
     <div className="flex items-center gap-1">
       {uploadProps && (
         <Button
+          data-cy="dicom-upload-open"
           variant="ghost"
           size="sm"
           className="gap-1"
