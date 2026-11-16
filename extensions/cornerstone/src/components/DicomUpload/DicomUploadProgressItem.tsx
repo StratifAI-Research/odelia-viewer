@@ -1,108 +1,81 @@
-import React, { ReactElement, memo, useCallback, useEffect, useState } from 'react';
-import PropTypes from 'prop-types';
-import DicomFileUploader, {
-  DicomFileUploaderProgressEvent,
-  EVENTS,
-  UploadRejection,
-  UploadStatus,
-} from '../../utils/DicomFileUploader';
-import { Icons } from '@ohif/ui-next';
+import React, { memo, useEffect, useReducer } from 'react';
+import { Button } from '@ohif/ui-next';
+import DicomFileUploader, { EVENTS, UploadStatus } from '../../utils/DicomFileUploader';
 
-type DicomUploadProgressItemProps = {
+export const uploadStatusLabels: Record<UploadStatus, string> = {
+  [UploadStatus.NotStarted]: 'Queued',
+  [UploadStatus.Validating]: 'Checking file',
+  [UploadStatus.InProgress]: 'Uploading',
+  [UploadStatus.Success]: 'Uploaded',
+  [UploadStatus.Failed]: 'Failed',
+  [UploadStatus.Cancelled]: 'Cancelled',
+  [UploadStatus.Skipped]: 'Skipped',
+  [UploadStatus.Warning]: 'Needs review',
+};
+
+const DicomUploadProgressItem = memo(function DicomUploadProgressItem({
+  dicomFileUploader: uploader,
+}: {
   dicomFileUploader: DicomFileUploader;
-};
+}) {
+  const [, refresh] = useReducer(value => value + 1, 0);
+  useEffect(() => {
+    const subscriptions = [
+      uploader.subscribe(EVENTS.STATUS, refresh),
+      uploader.subscribe(EVENTS.PROGRESS, refresh),
+    ];
+    return () => subscriptions.forEach(subscription => subscription.unsubscribe());
+  }, [uploader]);
 
-// eslint-disable-next-line react/display-name
-const DicomUploadProgressItem = memo(
-  ({ dicomFileUploader }: DicomUploadProgressItemProps): ReactElement => {
-    const [percentComplete, setPercentComplete] = useState(dicomFileUploader.getPercentComplete());
-    const [failedReason, setFailedReason] = useState('');
-    const [status, setStatus] = useState(dicomFileUploader.getStatus());
-
-    const isComplete = useCallback(() => {
-      return (
-        status === UploadStatus.Failed ||
-        status === UploadStatus.Cancelled ||
-        status === UploadStatus.Success
-      );
-    }, [status]);
-
-    useEffect(() => {
-      const progressSubscription = dicomFileUploader.subscribe(
-        EVENTS.PROGRESS,
-        (dicomFileUploaderProgressEvent: DicomFileUploaderProgressEvent) => {
-          setPercentComplete(dicomFileUploaderProgressEvent.percentComplete);
-        }
-      );
-
-      dicomFileUploader
-        .load()
-        .catch((reason: UploadRejection) => {
-          setStatus(reason.status);
-          setFailedReason(reason.message ?? '');
-        })
-        .finally(() => setStatus(dicomFileUploader.getStatus()));
-
-      return () => progressSubscription.unsubscribe();
-    }, []);
-
-    const cancelUpload = useCallback(() => {
-      dicomFileUploader.cancel();
-    }, []);
-
-    const getStatusIcon = (): ReactElement => {
-      switch (dicomFileUploader.getStatus()) {
-        case UploadStatus.Success:
-          return (
-            <Icons.ByName
-              name="status-tracked"
-              className="text-highlight"
-            />
-          );
-        case UploadStatus.InProgress:
-          return <Icons.ByName name="icon-transferring" className="text-highlight" />;
-        case UploadStatus.Failed:
-          return <Icons.ByName name="icon-alert-small" className="text-destructive" />;
-        case UploadStatus.Cancelled:
-          return <Icons.ByName name="icon-alert-outline" className="text-highlight" />;
-        default:
-          return <></>;
-      }
-    };
-
-    return (
-      <div className="min-h-14 border-input flex w-full items-center overflow-hidden border-b p-2.5 text-lg">
-        <div className="self-top flex w-0 shrink grow flex-col gap-1">
-          <div className="flex gap-4">
-            <div className="flex w-6 shrink-0 items-center justify-center">{getStatusIcon()}</div>
-            <div className="text-foreground overflow-hidden text-ellipsis whitespace-nowrap">
-              {dicomFileUploader.getFileName()}
-            </div>
-          </div>
-          {failedReason && <div className="pl-10">{failedReason}</div>}
-        </div>
-        <div className="flex w-24 items-center">
-          {!isComplete() && (
-            <>
-              {dicomFileUploader.getStatus() === UploadStatus.InProgress && (
-                <div className="w-10 text-right">{percentComplete}%</div>
-              )}
-              <div className="ml-auto flex cursor-pointer">
-                <Icons.Close
-                  className="text-primary self-center"
-                  onClick={cancelUpload}
-                />
-              </div>
-            </>
-          )}
-        </div>
+  const status = uploader.getStatus();
+  const issue = uploader.getIssue();
+  return (
+    <li
+      data-cy="dicom-upload-result"
+      className="border-input border-b p-3 text-sm"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <span className="min-w-0 break-all font-medium">{uploader.getFileName()}</span>
+        <span
+          className={
+            status === UploadStatus.Failed
+              ? 'text-destructive shrink-0'
+              : 'text-muted-foreground shrink-0'
+          }
+        >
+          {uploadStatusLabels[status]}
+          {status === UploadStatus.InProgress && ` ${uploader.getPercentComplete()}%`}
+        </span>
+        {!uploader.isComplete() && (
+          <Button
+            variant="ghost"
+            size="sm"
+            aria-label={`Cancel ${uploader.getFileName()}`}
+            onClick={() => uploader.cancel()}
+          >
+            Cancel
+          </Button>
+        )}
       </div>
-    );
-  }
-);
-
-DicomUploadProgressItem.propTypes = {
-  dicomFileUploader: PropTypes.instanceOf(DicomFileUploader).isRequired,
-};
+      {issue && <p className="mt-1">{issue.message}</p>}
+      {status === UploadStatus.Cancelled && (
+        <p className="text-muted-foreground mt-1">
+          Cancelled. Files already received by the server are not removed.
+        </p>
+      )}
+      {issue?.details && (
+        <details className="text-muted-foreground mt-1">
+          <summary
+            data-cy="dicom-upload-details"
+            className="cursor-pointer"
+          >
+            Technical details
+          </summary>
+          <p>{issue.details}</p>
+        </details>
+      )}
+    </li>
+  );
+});
 
 export default DicomUploadProgressItem;

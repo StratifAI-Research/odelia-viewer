@@ -1,16 +1,14 @@
-import dicomImageLoader from '@cornerstonejs/dicom-image-loader';
-
 import { PubSubService } from '@ohif/core';
+import { getStorageIssue, getUploadError } from './dicomUploadErrors';
+import { readUploadBlob, validateUploadFile, UploadIssue } from './dicomUploadValidation';
 
 export const EVENTS = {
   PROGRESS: 'event:DicomFileUploader:progress',
+  STATUS: 'event:DicomFileUploader:status',
 };
 
-export interface DicomFileUploaderEvent {
-  fileId: number;
-}
-
-export interface DicomFileUploaderProgressEvent extends DicomFileUploaderEvent {
+export interface DicomFileUploaderProgressEvent {
+  fileId: string;
   percentComplete: number;
 }
 
@@ -20,34 +18,41 @@ export enum UploadStatus {
   Success,
   Failed,
   Cancelled,
+  Validating,
+  Skipped,
+  Warning,
 }
 
-type CancelOrFailed = UploadStatus.Cancelled | UploadStatus.Failed;
-
-export class UploadRejection {
-  message: string;
-  status: CancelOrFailed;
-
-  constructor(status: CancelOrFailed, message: string) {
-    this.message = message;
-    this.status = status;
+export class UploadRejection extends Error {
+  constructor(
+    public status: UploadStatus,
+    public issue: UploadIssue
+  ) {
+    super(issue.message);
+    this.name = 'UploadRejection';
   }
 }
 
-export default class DicomFileUploader extends PubSubService {
-  private _file;
-  private _fileId;
-  private _dataSource;
-  private _loadPromise;
-  private _abortController = new AbortController();
-  private _status: UploadStatus = UploadStatus.NotStarted;
-  private _percentComplete = 0;
+export type UploadFile = File & { path?: string };
+type UploadDataSource = {
+  store: { dicom: (file: ArrayBuffer, request: XMLHttpRequest) => Promise<unknown> };
+};
 
-  constructor(file, dataSource) {
+let nextFileId = 0;
+
+export default class DicomFileUploader extends PubSubService {
+  private _fileId = `upload-${nextFileId++}`;
+  private _loadPromise?: Promise<void>;
+  private _abortController = new AbortController();
+  private _status = UploadStatus.NotStarted;
+  private _percentComplete = 0;
+  private _issue?: UploadIssue;
+
+  constructor(
+    private _file: UploadFile,
+    private _dataSource: UploadDataSource
+  ) {
     super(EVENTS);
-    this._file = file;
-    this._fileId = dicomImageLoader.wadouri.fileManager.add(file);
-    this._dataSource = dataSource;
   }
 
   getFileId(): string {
@@ -55,15 +60,11 @@ export default class DicomFileUploader extends PubSubService {
   }
 
   getFileName(): string {
-    return this._file.name;
+    return this._file.webkitRelativePath || this._file.path?.replace(/^\/+/, '') || this._file.name;
   }
 
   getFileSize(): number {
     return this._file.size;
-  }
-
-  cancel(): void {
-    this._abortController.abort();
   }
 
   getStatus(): UploadStatus {
@@ -74,131 +75,165 @@ export default class DicomFileUploader extends PubSubService {
     return this._percentComplete;
   }
 
-  async load(): Promise<void> {
-    if (this._loadPromise) {
-      // Already started loading, return the load promise.
-      return this._loadPromise;
+  getIssue(): UploadIssue | undefined {
+    return this._issue;
+  }
+
+  isComplete(): boolean {
+    return ![UploadStatus.NotStarted, UploadStatus.Validating, UploadStatus.InProgress].includes(
+      this._status
+    );
+  }
+
+  canRetry(): boolean {
+    return this._status === UploadStatus.Failed && !!this._issue?.retryable;
+  }
+
+  resetForRetry(): void {
+    if (!this.canRetry()) {
+      return;
     }
+    this._abortController = new AbortController();
+    this._loadPromise = undefined;
+    this._percentComplete = 0;
+    this._setStatus(UploadStatus.NotStarted);
+  }
 
-    this._loadPromise = new Promise<void>((resolve, reject) => {
-      // The upload listeners: fire progress events and/or settle the promise.
-      const uploadCallbacks = {
-        progress: evt => {
-          if (!evt.lengthComputable) {
-            // Progress computation is not possible.
-            return;
-          }
+  cancel(): void {
+    if (this.isComplete()) {
+      return;
+    }
+    this._abortController.abort();
+    this._setStatus(UploadStatus.Cancelled);
+  }
 
-          this._status = UploadStatus.InProgress;
-
-          this._percentComplete = Math.round((100 * evt.loaded) / evt.total);
-          this._broadcastEvent(EVENTS.PROGRESS, {
-            fileId: this._fileId,
-            percentComplete: this._percentComplete,
-          });
-        },
-        timeout: () => {
-          this._reject(reject, new UploadRejection(UploadStatus.Failed, 'The request timed out.'));
-        },
-        abort: () => {
-          this._reject(reject, new UploadRejection(UploadStatus.Cancelled, 'Cancelled'));
-        },
-        error: () => {
-          this._reject(reject, new UploadRejection(UploadStatus.Failed, 'The request failed.'));
-        },
-      };
-
-      // First try to load the file.
-      dicomImageLoader.wadouri
-        .loadFileRequest(this._fileId)
-        .then(dicomFile => {
-          if (this._abortController.signal.aborted) {
-            this._reject(reject, new UploadRejection(UploadStatus.Cancelled, 'Cancelled'));
-            return;
-          }
-
-          if (!this._checkDicomFile(dicomFile)) {
-            // The file is not DICOM
-            this._reject(
-              reject,
-              new UploadRejection(UploadStatus.Failed, 'Not a valid DICOM file.')
-            );
-            return;
-          }
-
-          const request = new XMLHttpRequest();
-          this._addRequestCallbacks(request, uploadCallbacks);
-
-          // Do the actual upload by supplying the DICOM file and upload callbacks/listeners.
-          return this._dataSource.store
-            .dicom(dicomFile, request)
-            .then(() => {
-              this._status = UploadStatus.Success;
-              resolve();
-            })
-            .catch(reason => {
-              this._reject(reject, reason);
-            });
-        })
-        .catch(reason => {
-          this._reject(reject, reason);
-        });
-    });
-
+  load(): Promise<void> {
+    if (!this._loadPromise) {
+      this._loadPromise = this._run();
+    }
     return this._loadPromise;
   }
 
-  private _isRejected(): boolean {
-    return this._status === UploadStatus.Failed || this._status === UploadStatus.Cancelled;
+  private _setStatus(status: UploadStatus, issue?: UploadIssue): void {
+    this._status = status;
+    this._issue = issue;
+    this._broadcastEvent(EVENTS.STATUS, { fileId: this._fileId });
   }
 
-  private _reject(reject: (reason?: any) => void, reason: any) {
-    if (this._isRejected()) {
-      return;
+  private async _read(blob: Blob): Promise<ArrayBuffer> {
+    try {
+      return await readUploadBlob(blob, this._abortController.signal);
+    } catch (_error) {
+      throw new UploadRejection(UploadStatus.Failed, {
+        code: 'unreadable-file',
+        disposition: 'failed',
+        message:
+          'Could not read this file. Check that it is available on your device, then select it again.',
+        retryable: true,
+      });
     }
-
-    if (reason instanceof UploadRejection) {
-      this._status = reason.status;
-      reject(reason);
-      return;
-    }
-
-    this._status = UploadStatus.Failed;
-
-    if (reason.message) {
-      reject(new UploadRejection(UploadStatus.Failed, reason.message));
-      return;
-    }
-
-    reject(new UploadRejection(UploadStatus.Failed, reason));
   }
 
-  private _addRequestCallbacks(request: XMLHttpRequest, uploadCallbacks) {
-    const abortCallback = () => request.abort();
-    this._abortController.signal.addEventListener('abort', abortCallback);
-
-    for (const [eventName, callback] of Object.entries(uploadCallbacks)) {
-      request.upload.addEventListener(eventName, callback);
-    }
-
-    const cleanUpCallback = () => {
-      this._abortController.signal.removeEventListener('abort', abortCallback);
-
-      for (const [eventName, callback] of Object.entries(uploadCallbacks)) {
-        request.upload.removeEventListener(eventName, callback);
+  private async _run(): Promise<void> {
+    const signal = this._abortController.signal;
+    try {
+      if (signal.aborted) {
+        throw new DOMException('Cancelled', 'AbortError');
       }
-
-      request.removeEventListener('loadend', cleanUpCallback);
-    };
-    request.addEventListener('loadend', cleanUpCallback);
+      this._setStatus(UploadStatus.Validating);
+      const prefix = await this._read(this._file.slice(0, 64 * 1024));
+      const issue = validateUploadFile(this._file, prefix);
+      if (issue) {
+        throw new UploadRejection(
+          issue.disposition === 'skipped' ? UploadStatus.Skipped : UploadStatus.Failed,
+          issue
+        );
+      }
+      const dicomFile =
+        this._file.size <= prefix.byteLength ? prefix : await this._read(this._file);
+      if (signal.aborted) {
+        throw new DOMException('Cancelled', 'AbortError');
+      }
+      this._setStatus(UploadStatus.InProgress);
+      const request = new XMLHttpRequest();
+      const response = await this._store(dicomFile, request);
+      if (signal.aborted) {
+        throw new DOMException('Cancelled', 'AbortError');
+      }
+      const storageIssue = getStorageIssue(response ?? request.response, request.status);
+      if (storageIssue?.disposition === 'failed') {
+        throw new UploadRejection(UploadStatus.Failed, storageIssue);
+      }
+      this._percentComplete = 100;
+      this._setStatus(storageIssue ? UploadStatus.Warning : UploadStatus.Success, storageIssue);
+    } catch (error) {
+      if (signal.aborted) {
+        this._setStatus(UploadStatus.Cancelled);
+        throw new UploadRejection(UploadStatus.Cancelled, {
+          code: 'cancelled',
+          disposition: 'failed',
+          message: 'Cancelled',
+        });
+      }
+      const rejection =
+        error instanceof UploadRejection
+          ? error
+          : new UploadRejection(UploadStatus.Failed, getUploadError(error));
+      this._setStatus(rejection.status, rejection.issue);
+      throw rejection;
+    }
   }
 
-  private _checkDicomFile(arrayBuffer: ArrayBuffer) {
-    if (arrayBuffer.length <= 132) {
-      return false;
+  private async _store(dicomFile: ArrayBuffer, request: XMLHttpRequest): Promise<unknown> {
+    const signal = this._abortController.signal;
+    let abort: () => void;
+    let timeout: () => void;
+    let networkError: () => void;
+    const progress = (event: ProgressEvent) => {
+      if (event.lengthComputable && !signal.aborted) {
+        // Sending all bytes is not confirmation that the server stored the instance.
+        this._percentComplete = Math.min(99, Math.round((100 * event.loaded) / event.total));
+        this._broadcastEvent(EVENTS.PROGRESS, {
+          fileId: this._fileId,
+          percentComplete: this._percentComplete,
+        });
+      }
+    };
+    const interrupted = new Promise<never>((_resolve, reject) => {
+      abort = () => {
+        reject(new DOMException('Cancelled', 'AbortError'));
+        request.abort();
+      };
+      timeout = () =>
+        reject(
+          new UploadRejection(UploadStatus.Failed, {
+            ...getUploadError({ status: 408 }),
+            code: 'request-timeout',
+            details: 'Browser request timeout; no HTTP response received.',
+          })
+        );
+      networkError = () =>
+        reject(new UploadRejection(UploadStatus.Failed, getUploadError({ status: 0 })));
+      signal.addEventListener('abort', abort, { once: true });
+      request.addEventListener('timeout', timeout);
+      request.addEventListener('error', networkError);
+      request.upload.addEventListener('progress', progress);
+    });
+    try {
+      const stored = this._dataSource.store.dicom(dicomFile, request).catch(async reason => {
+        // dicomweb-client rejects at readyState 4, before the browser dispatches timeout/error.
+        // Give that terminal event a chance to supply the more specific failure reason.
+        if ((reason?.status ?? reason?.request?.status) === 0 && !signal.aborted) {
+          await new Promise(resolve => setTimeout(resolve, 0));
+        }
+        throw reason;
+      });
+      return await Promise.race([stored, interrupted]);
+    } finally {
+      signal.removeEventListener('abort', abort);
+      request.removeEventListener('timeout', timeout);
+      request.removeEventListener('error', networkError);
+      request.upload.removeEventListener('progress', progress);
     }
-    const arr = new Uint8Array(arrayBuffer.slice(128, 132));
-    // bytes from 128 to 132 must be "DICM"
-    return Array.from('DICM').every((char, i) => char.charCodeAt(0) === arr[i]);
   }
 }

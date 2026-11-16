@@ -1,4 +1,5 @@
 import { Locator, Page } from '@playwright/test';
+import { DicomUploadPageObject } from './DicomUploadPageObject';
 import { DicomTagBrowserPageObject } from './DicomTagBrowserPageObject';
 
 export class DOMOverlayPageObject {
@@ -63,6 +64,10 @@ export class DOMOverlayPageObject {
             await cancelButton.click();
           },
         };
+      },
+
+      get dicomUpload() {
+        return new DicomUploadPageObject(page);
       },
 
       get dicomTagBrowser() {

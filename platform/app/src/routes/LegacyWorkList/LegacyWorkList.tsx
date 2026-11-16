@@ -523,7 +523,7 @@ function LegacyWorkList({
   const uploadProps =
     DicomUploadComponent && dataSource.getConfig()?.dicomUploadEnabled
       ? {
-          title: 'Upload files',
+          title: 'Upload DICOM files',
           containerClassName: DicomUploadComponent?.containerClassName,
           closeButton: true,
           shouldCloseOnEsc: false,
