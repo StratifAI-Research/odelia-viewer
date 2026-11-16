@@ -147,6 +147,7 @@ export function getUploadError(reason: unknown): UploadIssue {
       break;
     case 403:
       message = 'You do not have permission to upload to this server. Contact your administrator.';
+      retryable = false;
       break;
     case 413:
       message = 'This file exceeds the server’s upload limit. Contact your administrator.';

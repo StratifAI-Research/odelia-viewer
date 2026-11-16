@@ -7,7 +7,7 @@ const failedResponse = (code: number) => ({
 describe('upload server outcomes', () => {
   it.each([
     [401, 'Sign in again', true],
-    [403, 'permission', true],
+    [403, 'permission', false],
     [413, 'upload limit', false],
     [415, 'upload format', false],
     [400, 'rejected', false],

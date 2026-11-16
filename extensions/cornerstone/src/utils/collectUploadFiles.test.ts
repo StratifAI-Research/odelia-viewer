@@ -17,6 +17,36 @@ const drop = (entry: unknown) =>
   }) as unknown as DropEvent;
 
 describe('upload selection', () => {
+  it.each(['files', 'folders', 'mixed', 'fallback'])(
+    'captures all dropped %s before the browser protects the drag data',
+    async kind => {
+      const first = fileEntry('first.dcm');
+      const second = fileEntry('second.dcm');
+      const entries = [
+        kind === 'folders' ? directory([[first]]) : first,
+        ['folders', 'mixed'].includes(kind) ? directory([[second]]) : second,
+      ];
+      let readable = true;
+      const event = {
+        type: 'drop',
+        dataTransfer: {
+          items: entries.map((entry, index) => ({
+            kind: 'file',
+            webkitGetAsEntry: () =>
+              readable && !(kind === 'fallback' && index === 1) ? entry : null,
+            getAsFile: () => (readable ? new File(['data'], 'second.dcm') : null),
+          })),
+        },
+      } as unknown as DropEvent;
+      // Handles must be captured during dispatch, before the first awaited read resumes.
+      queueMicrotask(() => {
+        readable = false;
+      });
+      const files = await collectUploadFiles(event);
+      expect(files.map(file => (file as File).name)).toEqual(['first.dcm', 'second.dcm']);
+    }
+  );
+
   it('reads every directory batch and preserves nested paths and auxiliary files', async () => {
     const files = await collectUploadFiles(
       drop(

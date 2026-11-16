@@ -4,6 +4,7 @@ node_modules
 .claude/
 .nyc_output/
 # Output
+/outputs/
 build
 dist
 docs/_book

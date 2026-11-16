@@ -18,6 +18,13 @@ export async function collectUploadFiles(
     return items;
   }
 
+  // Capture every handle during drop dispatch. After the first awaited read, the
+  // browser protects the drag data and later items can no longer be accessed.
+  const sources = items.map(item => {
+    const entry = item.webkitGetAsEntry?.();
+    return { entry, file: entry ? null : item.getAsFile() };
+  });
+
   const files: UploadFile[] = [];
   const visit = async (entry: FileSystemEntry): Promise<void> => {
     if (entry.isDirectory) {
@@ -42,12 +49,10 @@ export async function collectUploadFiles(
     files.push(file);
   };
 
-  for (const item of items) {
-    const entry = item.webkitGetAsEntry?.();
+  for (const { entry, file } of sources) {
     if (entry) {
       await visit(entry);
     } else {
-      const file = item.getAsFile();
       if (!file) {
         throw new Error('Could not read the selected file.');
       }

@@ -41,6 +41,26 @@ export class DicomUploadPageObject {
   row(name: string) {
     return this.rows.filter({ hasText: name });
   }
+  async dropPaths(paths: string[]) {
+    // Native Chromium drag data preserves the browser's real protected-mode lifetime.
+    // A synthetic DataTransfer event does not reproduce that restriction.
+    await this.dropzone.scrollIntoViewIfNeeded();
+    const bounds = await this.dropzone.boundingBox();
+    if (!bounds) throw new Error('Upload dropzone is not visible.');
+    const session = await this.page.context().newCDPSession(this.page);
+    try {
+      for (const type of ['dragEnter', 'dragOver', 'drop'] as const) {
+        await session.send('Input.dispatchDragEvent', {
+          type,
+          x: bounds.x + bounds.width / 2,
+          y: bounds.y + bounds.height / 2,
+          data: { items: [], files: paths, dragOperationsMask: 1 },
+        });
+      }
+    } finally {
+      await session.detach();
+    }
+  }
   async showTechnicalDetails() {
     for (const detail of await this.results.getByTestId('dicom-upload-details').all()) {
       await detail.click();
