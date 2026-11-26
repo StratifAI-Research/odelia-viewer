@@ -62,14 +62,11 @@ jobs:
           echo "version=$v" >> "$GITHUB_OUTPUT"
           [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "VERSION_ODELIA must be three numbers like 2.3.1 (got '$v')"
 
-          # A new version needs its section at the top of CHANGELOG_ODELIA.md: that
-          # section becomes the release's notes on GitHub. (CHANGELOG.md is OHIF's.)
-          section() { awk -v v="$1" '/^## / { if (found) exit; if ($0 == "## " v) { found = 1; next } } found' CHANGELOG_ODELIA.md; }
+          # A new version needs its section in CHANGELOG_ODELIA.md, directly below an
+          # empty [Unreleased]: that section becomes the release's notes on GitHub.
+          # (CHANGELOG.md is OHIF's.) The script prints what is wrong.
           if [ "$v" != "$prev" ]; then
-            [ -f CHANGELOG_ODELIA.md ] || fail "add CHANGELOG_ODELIA.md with a section \"## $v\""
-            top=$(grep -m1 -E '^## ' CHANGELOG_ODELIA.md | sed 's/^## //' || true)
-            [ "$top" = "$v" ] || fail "CHANGELOG_ODELIA.md must start with a section \"## $v\" (its newest is \"${top:-none}\")"
-            section "$v" | grep -q '[^[:space:]]' || fail "the \"## $v\" section in CHANGELOG_ODELIA.md is empty"
+            python3 .github/scripts/change_control.py release-check "$v"
           fi
 
           # A new version must be unused and newer than every release so far,
@@ -236,9 +233,8 @@ jobs:
             echo "Release $tag already exists; nothing to do."
             exit 0
           fi
-          # The notes are this version's section of CHANGELOG_ODELIA.md, which the
-          # version check made sure exists. --target creates the tag on the commit
-          # whose image was published.
-          awk -v v="$VERSION" '/^## / { if (found) exit; if ($0 == "## " v) { found = 1; next } } found' \
-            CHANGELOG_ODELIA.md > "$RUNNER_TEMP/notes.md"
+          # The notes are this version's section of CHANGELOG_ODELIA.md without its
+          # empty headings; the version check made sure it exists. --target creates
+          # the tag on the commit whose image was published.
+          python3 .github/scripts/change_control.py notes "$VERSION" > "$RUNNER_TEMP/notes.md"
           gh release create "$tag" --target "$SHA" --title "$tag" --notes-file "$RUNNER_TEMP/notes.md"
