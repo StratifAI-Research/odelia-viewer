@@ -115,22 +115,29 @@ browser), or `test:e2e:debug` (step-through) if needed.
 
 ## Publishing a release
 
-Merge a PR that bumps [`VERSION_ODELIA`](VERSION_ODELIA) (for example to `2.3.1`) and
-adds a `## 2.3.1` section at the top of [`CHANGELOG_ODELIA.md`](CHANGELOG_ODELIA.md)
-saying what changed. These two files are ODELIA's; `CHANGELOG.md`, `version.txt`,
-`version.json` and the version fields in the `package.json` files belong to OHIF
-upstream.
+Pull requests that users or admins would notice replace N/A under the right heading of
+`## [Unreleased]` in [`CHANGELOG_ODELIA.md`](CHANGELOG_ODELIA.md) with a line; the format
+is described at its top, and the pull request template asks for it. To release, merge a
+PR that bumps [`VERSION_ODELIA`](VERSION_ODELIA) (for example to `2.3.1`) and renames
+`## [Unreleased]` to `## [2.3.1] - YYYY-MM-DD`, with a fresh `## [Unreleased]` above it
+that says N/A under every heading. These two files are ODELIA's; `CHANGELOG.md`,
+`version.txt`, `version.json` and the version fields in the `package.json` files belong
+to OHIF upstream.
 
 Merging is the release. The Build and release workflow builds every pull request and
 every `main` commit to catch breakage, but uploads only releases: when a commit changes
 `VERSION_ODELIA`, it uploads the image as `stratifai/odelia-viewer:sha-<commit>`, tags
 that same image `2.3.1` and `latest`, then creates the `v2.3.1` git tag and the GitHub
-Release, whose text is that changelog section, once the image exists. Installed viewers
-tell users about new platform releases, not viewer releases: sites install the platform,
-which pins the viewer (see [`viewer-updates`](custom/extension/viewer-updates/README.md)).
-The pull request check fails if the version is already released or older than the
-latest release, or if its changelog section is missing, not at the top or empty. To try
-unreleased code, build the image locally with `docker build`.
+Release, whose text is that changelog section without its N/A headings, once the image
+exists. Installed viewers tell users about new platform releases, not viewer releases:
+sites install the platform, which pins the viewer (see
+[`viewer-updates`](custom/extension/viewer-updates/README.md)). The pull request check
+fails if the version is already released or older than the latest release, or if its
+changelog section is missing, not directly below an `[Unreleased]` that says N/A
+everywhere, or has no entries. The Change control check on every pull request
+checks the description and the changelog format; see the platform's
+[release guide](https://github.com/StratifAI-Research/odelia-viewer-platform/blob/main/.github/RELEASING.md#pull-requests-and-the-changelog).
+To try unreleased code, build the image locally with `docker build`.
 
 `latest` is always the newest release. The viewer and the
 [platform](https://github.com/StratifAI-Research/odelia-viewer-platform) have their own

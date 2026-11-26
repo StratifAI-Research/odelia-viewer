@@ -1,93 +1,40 @@
-<!-- Do Not Delete This! pr_template -->
-<!-- Please read our Rules of Conduct: https://github.com/OHIF/Viewers/blob/master/CODE_OF_CONDUCT.md -->
-<!-- 🕮 Read our guide about our Contributing Guide here https://docs.ohif.org/development/contributing -->
-<!-- :hand: Thank you for starting this amazing contribution! -->
+## What and why
+<!-- What changes and why. Link the issue or ticket if there is one.
+     No patient data, secrets, or details of unfixed security problems. -->
 
-<!--
-⚠️⚠️ Please make sure the checklist section below is complete before submitting your PR.
-To complete the checklist, add an 'x' to each item: [] -> [x]
-(PRs that do not have all the checkboxes marked will not be approved)
--->
+## Impact assessment
+<!-- After each question, answer **Yes**, **No** or **Unsure**, followed by a short reason,
+     e.g. "**No** — docs only". Think about indirect effects too:
+     a weakened test or a changed sentence in the docs can matter. -->
 
-### Context
+- **Hazards:** Could this change introduce a new hazard or affect an existing one (e.g. a
+  result shown for the wrong patient, an image displayed incorrectly, a failed AI result
+  shown as valid)?
+- **Requirements:** Does it add, change or remove behaviour described in a requirement,
+  or affect the intended use?
+- **Verification evidence:** Does it affect existing verification items or evidence tests,
+  or need new ones?
+- **AI output:** Does it change how AI results are produced (model, preprocessing,
+  thresholds) or how users see and interact with them?
+- **Security and data:** Does it change logins, permissions, network exposure, stored data
+  or data sent to third parties?
+- **Existing installations:** Do sites need to do anything when updating (configuration,
+  migration, new dependency)?
 
-<!--
-Provide a clear explanation of the reasoning behind this change, such as:
-- A link to the issue being addressed, using the format "Fixes #ISSUE_NUMBER"
-- An image showing the issue or problem being addressed (if not already in the issue)
-- Error logs or callStacks to help with the understanding of the problem (if not already in the issue)
--->
+<!-- For any Yes or Unsure: describe it in the reason; name HAZ-, requirement or VER- IDs if
+     you know them (QA can add them). -->
 
-### Changes & Results
+## How it was verified
+<!-- A few sentences, answering whichever of these apply: -->
+- Which automated tests did you add or change, and what do they cover?
+- Which existing tests already cover the change (e.g. for a refactoring or an update)?
+- Which manual checks did you do: what, on which build, browser or data, and the result?
+- If no verification is needed, why not?
 
-<!--
-List all the changes that have been done, such as:
-- Add new components
-- Remove old components
-- Update dependencies
-
-What are the effects of this change?
-- Before vs After
-- Screenshots / GIFs / Videos
--->
-
-### Testing
-
-<!--
-Describe how we can test your changes.
-- open a URL
-- visit a page
-- click on a button
-- etc.
--->
-
-### Checklist
-
-#### PR
-
-<!--
-https://semantic-release.gitbook.io/semantic-release/#how-does-it-work
-
-Examples:
-Please note the letter casing in the provided examples (upper or lower).
-
-- feat(MeasurementService): add ...
-- fix(Toolbar): fix ...
-- docs(Readme): update ...
-- style(Whitespace): fix ...
-- refactor(ExtensionManager): ...
-- test(HangingProtocol): Add test ...
-- chore(git): update ...
-- perf(VolumeLoader): ...
-
-You don't need to have each commit within the Pull Request follow the rule,
-but the PR title must comply with it, as it will be used as the commit message
-after the commits are squashed.
--->
-
-- [] My Pull Request title is descriptive, accurate and follows the
-  semantic-release format and guidelines.
-
-#### Code
-
-- [] My code has been well-documented (function documentation, inline comments,
-  etc.)
-
-#### Public Documentation Updates
-
-<!-- https://docs.ohif.org/ -->
-
-- [] The documentation page has been updated as necessary for any public API
-  additions or removals.
-
-#### Tested Environment
-
-- [] OS: <!--[e.g. Windows 10, macOS 10.15.4]-->
-- [] Node version: <!--[e.g. 18.16.1]-->
-- [] Browser:
-  <!--[e.g. Chrome 83.0.4103.116, Firefox 77.0.1, Safari 13.1.1]-->
-
-<!-- prettier-ignore-start -->
-[blog]: https://circleci.com/blog/triggering-trusted-ci-jobs-on-untrusted-forks/
-[script]: https://github.com/jklukas/git-push-fork-to-upstream-branch
-<!-- prettier-ignore-end -->
+## Release note
+<!-- Users or admins would notice the change: under ## [Unreleased] in the changelog,
+     replace N/A below the right heading with a line ending in this PR's number. If this PR
+     releases (bumps the version), rename ## [Unreleased] to ## [X.Y.Z] - YYYY-MM-DD and add
+     a fresh ## [Unreleased] above it, with N/A under every heading. -->
+- [ ] Added to the changelog (under Unreleased, or under the new version if this PR releases)
+- [ ] Not needed: nothing users or admins would notice
